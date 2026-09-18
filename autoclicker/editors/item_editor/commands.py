@@ -308,8 +308,8 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         # Dieselbe Slot-Groesse wird bewusst aktualisiert.
         template_file = passende[0]
     elif item.template_names():
-        breite, hoehe = img.size
-        basis = f"{safe_name}_{breite}x{hoehe}"
+        width, height = img.size
+        basis = f"{safe_name}_{width}x{height}"
         template_file = f"{basis}.png"
         nummer = 2
         while (active_templates_dir(state) / template_file).exists():

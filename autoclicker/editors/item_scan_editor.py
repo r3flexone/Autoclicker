@@ -33,7 +33,7 @@ from .icon_scan_editor import run_icon_scan_editor
 # ausgeschrieben: <Nr>, <Von>-<Bis>, all, clear, show, done, cancel. Zwei Kopien sind
 # zwei Verhaltensweisen — eine Korrektur an der einen ging an der anderen vorbei.
 
-def bereich_parsen(eingabe: str, anzahl: int) -> Optional[tuple[int, int]]:
+def bereich_parsen(eingabe: str, count: int) -> Optional[tuple[int, int]]:
     """'1-5' → (1, 5), aufsteigend normalisiert.
 
     None, wenn es kein Bereich ist oder eine Grenze ausserhalb 1..anzahl liegt.
@@ -41,25 +41,25 @@ def bereich_parsen(eingabe: str, anzahl: int) -> Optional[tuple[int, int]]:
     """
     if "-" not in eingabe:
         return None
-    teile = eingabe.split("-")
-    if len(teile) != 2:
+    parts = eingabe.split("-")
+    if len(parts) != 2:
         return None
     try:
-        von, bis = int(teile[0]), int(teile[1])
+        von, bis = int(parts[0]), int(parts[1])
     except ValueError:
         return None
-    if not (1 <= von <= anzahl and 1 <= bis <= anzahl):
+    if not (1 <= von <= count and 1 <= bis <= count):
         return None
     return (min(von, bis), max(von, bis))
 
 
-def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
-                     zeile, extra_praefix: str = "", extra_fn=None,
+def mehrfach_auswahl(prompt: str, entries: list, gewaehlt: list,
+                     line, extra_praefix: str = "", extra_fn=None,
                      leer_fehler: str = "") -> Optional[list]:
     """Mehrfachauswahl aus einer nummerierten Liste. None = Abbruch.
 
-    `eintraege` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `gewaehlt`
-    die Vorauswahl. `zeile(index, name, markiert)` liefert die Anzeigezeile.
+    `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `gewaehlt`
+    die Vorauswahl. `line(index, name, markiert)` liefert die Anzeigezeile.
 
     `extra_praefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
     'new <Slot-Nr>'): `extra_fn(eingabe)` gibt den Namen des neu angelegten Eintrags
@@ -73,16 +73,16 @@ def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
         befehle.append(extra_praefix)
 
     def _zeige():
-        print(f"\n{len(gewaehlt)}/{len(eintraege)} ausgewählt:")
-        if not eintraege:
+        print(f"\n{len(gewaehlt)}/{len(entries)} ausgewählt:")
+        if not entries:
             print("  (nichts vorhanden)")
-        for i, name in enumerate(eintraege):
-            print(zeile(i, name, name in gewaehlt))
+        for i, name in enumerate(entries):
+            print(line(i, name, name in gewaehlt))
 
     while True:
         try:
-            roh = safe_input(prompt).strip()
-            inp = roh.lower()
+            raw = safe_input(prompt).strip()
+            inp = raw.lower()
 
             if inp in ("done", "d"):
                 if leer_fehler and not gewaehlt:
@@ -93,8 +93,8 @@ def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
             if is_cancel(inp):
                 return None
             if inp == "all":
-                gewaehlt = list(eintraege)
-                print(f"  + Alle {len(eintraege)} ausgewählt")
+                gewaehlt = list(entries)
+                print(f"  + Alle {len(entries)} ausgewählt")
                 continue
             if inp == "clear":
                 gewaehlt = []
@@ -104,26 +104,26 @@ def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
                 _zeige()
                 continue
             if extra_praefix and inp.startswith(extra_praefix):
-                neuer = extra_fn(roh)
+                neuer = extra_fn(raw)
                 if neuer:
-                    if neuer not in eintraege:
-                        eintraege.append(neuer)
+                    if neuer not in entries:
+                        entries.append(neuer)
                     if neuer not in gewaehlt:
                         gewaehlt.append(neuer)
                 continue
 
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
-            bereich = bereich_parsen(inp, len(eintraege))
-            if bereich:
-                von, bis = bereich
+            area = bereich_parsen(inp, len(entries))
+            if area:
+                von, bis = area
                 for nr in range(von, bis + 1):
-                    name = eintraege[nr - 1]
+                    name = entries[nr - 1]
                     if name not in gewaehlt:
                         gewaehlt.append(name)
                 print(f"  + {von}-{bis} hinzugefügt")
                 continue
             if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
-                print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(eintraege)}")
+                print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(entries)}")
                 continue
 
             try:
@@ -131,10 +131,10 @@ def mehrfach_auswahl(prompt: str, eintraege: list, gewaehlt: list,
             except ValueError:
                 print(f"  -> Unbekannter Befehl.{suggest_command(inp, befehle)}")
                 continue
-            if not (1 <= nr <= len(eintraege)):
-                print(f"  -> Ungültig! 1-{len(eintraege)}")
+            if not (1 <= nr <= len(entries)):
+                print(f"  -> Ungültig! 1-{len(entries)}")
                 continue
-            name = eintraege[nr - 1]
+            name = entries[nr - 1]
             if name in gewaehlt:
                 gewaehlt.remove(name)
                 print(f"  - {name} entfernt")
@@ -272,15 +272,15 @@ def _schritt_presets(state: AutoClickerState) -> bool:
     ):
         if not presets:
             continue
-        art = titel.split("-")[0]
+        kind = titel.split("-")[0]
         print(f"\n{titel}:")
-        for i, (name, _pfad, anzahl) in enumerate(presets):
-            print(f"  [{i+1}] {name} ({anzahl} {art}s)")
-        print(f"  [0] Aktuelle {art}s verwenden ({aktuell} geladen)")
+        for i, (name, _pfad, count) in enumerate(presets):
+            print(f"  [{i+1}] {name} ({count} {kind}s)")
+        print(f"  [0] Aktuelle {kind}s verwenden ({aktuell} geladen)")
 
         while True:
             try:
-                wahl = safe_input(f"\n{art}-Preset wählen (Enter=0, 'cancel'): ").strip()
+                wahl = safe_input(f"\n{kind}-Preset wählen (Enter=0, 'cancel'): ").strip()
                 if is_cancel(wahl):
                     print("  -> Abgebrochen")
                     return False
@@ -432,16 +432,16 @@ def _schritt_katalog(use_catalog: bool, state: AutoClickerState) -> bool:
     Ueberlegung wie bei der Laufrichtung.
     """
     print(header("SCHRITT 6: ITEM-KATALOG (optional)"))
-    pfad = state.config.scan_catalog_file
+    path = state.config.scan_catalog_file
     print("\n  Mit Katalog kennt der Editor die echten Item-Namen des Spiels:")
     print("  Kategorie und Priorität lassen sich daraus setzen, und die")
     print("  LLM-Benennung wählt aus den echten Namen statt frei zu raten.")
-    if not pfad:
+    if not path:
         print("  " + warn("Noch keine Katalog-Datei eingetragen."))
         print("  " + hint("Anlegen mit: python tools/katalog.py"))
         print("  " + hint("Eintragen unter scan_catalog_file (Studio: Einstellungen)."))
     else:
-        print(f"  Katalog: {pfad}")
+        print(f"  Katalog: {path}")
     print(f"  Aktuell: {'an' if use_catalog else 'aus'}")
     return confirm("  Katalog für diesen Scan benutzen?", default=use_catalog)
 
@@ -551,8 +551,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         "[Items] > ", item_list, selected_item_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_items[name]}",
         extra_praefix="new",
-        extra_fn=lambda roh: _neues_item_per_template(
-            state, roh, slot_list, available_slots, available_items))
+        extra_fn=lambda raw: _neues_item_per_template(
+            state, raw, slot_list, available_slots, available_items))
     if gewaehlt is None:
         return
     selected_item_names = gewaehlt
@@ -575,9 +575,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         # schaltet sie für den Lauf ein oder aus, statt die abgewählten samt
         # Fläche und ID aus der Datei zu löschen.
         slots = list(state.global_slots.values())
-        aktiv = set(selected_slot_names)
+        active = set(selected_slot_names)
         for slot in slots:
-            slot.enabled = slot.name in aktiv
+            slot.enabled = slot.name in active
         items = [state.global_items[n] for n in selected_item_names if n in state.global_items]
 
     # **Jedes Feld muss hier stehen.** Der Editor baut die Config NEU auf,

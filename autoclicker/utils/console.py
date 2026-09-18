@@ -202,10 +202,10 @@ def coord_context(x: int, y: int) -> str:
     """
     try:
         from ..winapi import get_screen_size
-        groesse = get_screen_size()
-        if not groesse:
+        size = get_screen_size()
+        if not size:
             return f"({x}, {y})"
-        screen_w, screen_h = groesse
+        screen_w, screen_h = size
     except (AttributeError, ImportError, OSError):
         return f"({x}, {y})"
 
@@ -390,8 +390,8 @@ class _TagFormatter(_logging.Formatter):
     """Formatiert Logger-Meldungen im Stil der uebrigen Konsolen-Ausgabe."""
 
     def format(self, record: '_logging.LogRecord') -> str:
-        tag, farbe = _LEVEL_TAGS.get(record.levelno, ("LOG", "cyan"))
-        return f"{col(f'[{tag}]', farbe)} {record.getMessage()}"
+        tag, color = _LEVEL_TAGS.get(record.levelno, ("LOG", "cyan"))
+        return f"{col(f'[{tag}]', color)} {record.getMessage()}"
 
 
 def init_logging(debug: bool = False) -> None:

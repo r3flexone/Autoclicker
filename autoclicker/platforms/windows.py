@@ -464,9 +464,9 @@ def get_screen_center() -> tuple[int, int]:
     rect = get_virtual_desktop()
     if rect:
         return (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
-    groesse = get_screen_size()
-    if groesse:
-        return groesse[0] // 2, groesse[1] // 2
+    size = get_screen_size()
+    if size:
+        return size[0] // 2, size[1] // 2
     return 960, 540
 
 
@@ -627,8 +627,8 @@ def get_window_title_at(x: int, y: int) -> str:
     zum Fenster auf — sonst käme bei einem Knopf dessen leerer Titel zurück.
     """
     try:
-        punkt = wintypes.POINT(int(x), int(y))
-        hwnd = user32.WindowFromPoint(punkt)
+        point = wintypes.POINT(int(x), int(y))
+        hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
         wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
@@ -683,7 +683,7 @@ def list_windows() -> list:
     Client-Bereich; Fenster ohne Titel, ohne Fläche oder ausserhalb aller
     Monitore fallen weg. Sortiert nach Lage (oben vor unten, links vor rechts).
     """
-    gefunden = []
+    found = []
 
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
@@ -702,14 +702,14 @@ def list_windows() -> list:
             return True
         if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
             return True
-        breite, hoehe = rect.right - rect.left, rect.bottom - rect.top
-        if breite < 80 or hoehe < 80:
+        width, height = rect.right - rect.left, rect.bottom - rect.top
+        if width < 80 or height < 80:
             return True
         # Das Handle kommt mit: nur damit laesst sich das Fenster spaeter
         # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
         # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
         # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
-        gefunden.append((titel, (pt.x, pt.y, pt.x + breite, pt.y + hoehe),
+        found.append((titel, (pt.x, pt.y, pt.x + width, pt.y + height),
                          int(hwnd)))
         return True
 
@@ -719,10 +719,10 @@ def list_windows() -> list:
         return []
     schirm = get_virtual_desktop()
     if schirm:
-        gefunden = [e for e in gefunden
+        found = [e for e in found
                     if e[1][0] < schirm[2] and e[1][2] > schirm[0]
                     and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
-    return sorted(gefunden, key=lambda e: (e[1][1], e[1][0]))
+    return sorted(found, key=lambda e: (e[1][1], e[1][0]))
 
 
 def get_client_rect_by_handle(hwnd: int):
@@ -755,26 +755,26 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     if not isinstance(title, str) or not title.strip():
         return None
     fenster = list_windows()
-    ziel = title.strip().casefold()
-    kandidaten = [e for e in fenster if e[0].strip().casefold() == ziel]
-    if not kandidaten:
-        kandidaten = [e for e in fenster if ziel in e[0].casefold()]
-    if not kandidaten:
+    target = title.strip().casefold()
+    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    if not candidates:
+        candidates = [e for e in fenster if target in e[0].casefold()]
+    if not candidates:
         return None
     try:
         index = int(instance)
     except (TypeError, ValueError):
         index = 0
-    if 0 <= index < len(kandidaten):
-        return kandidaten[index]
+    if 0 <= index < len(candidates):
+        return candidates[index]
     if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
         try:
             ref = tuple(int(v) for v in reference_rect)
-            return min(kandidaten, key=lambda e: sum(
+            return min(candidates, key=lambda e: sum(
                 abs(int(e[1][i]) - ref[i]) for i in range(4)))
         except (TypeError, ValueError):
             pass
-    return kandidaten[0]
+    return candidates[0]
 
 
 def get_client_rect_by_title(title_substring: str):
@@ -1108,7 +1108,7 @@ def set_app_id(app_id: str = APP_ID) -> bool:
         return False
 
 
-def _icon_bits(kante: int = 32) -> bytes:
+def _icon_bits(edge: int = 32) -> bytes:
     """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
 
     Ein DIB statt `CreateIcon()` mit rohen Farbbits: das erzeugt eine
@@ -1119,17 +1119,17 @@ def _icon_bits(kante: int = 32) -> bytes:
     Formats: die Höhe im Kopf zählt doppelt, und DIB-Zeilen stehen von unten
     nach oben.
     """
-    kopf = struct.pack("<IiiHHIIiiII", 40, kante, kante * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    kopf = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     farben = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
-    for zeile in reversed(list(symbol.pixel_rows(kante))):
-        for r, g, b, a in zeile:
+    for line in reversed(list(symbol.pixel_rows(edge))):
+        for r, g, b, a in line:
             farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.
-    return kopf + bytes(farben) + bytes(((kante + 31) // 32 * 4) * kante)
+    return kopf + bytes(farben) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
 def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
@@ -1165,14 +1165,14 @@ def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
         # Jede Grösse wird in ihrer Grösse gezeichnet, nicht eine hochgerechnet:
         # 0 = klein (Titelleiste, 16 px), 1 = gross (ALT+TAB und Taskleiste, die
         # daraus ihre 24 px skaliert). Ein gedehntes 16er sah dort matschig aus.
-        for art, kante in ((0, 16), (1, 32)):
-            bits = _icon_bits(kante)
+        for kind, edge in ((0, 16), (1, 32)):
+            bits = _icon_bits(edge)
             # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
             symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
-                                                     kante, kante, 0)
+                                                     edge, edge, 0)
             if not symbol:
                 return False
-            user32.SendMessageW(hwnd, WM_SETICON, art, symbol)
+            user32.SendMessageW(hwnd, WM_SETICON, kind, symbol)
         return True
     except (OSError, ValueError, AttributeError):
         return False

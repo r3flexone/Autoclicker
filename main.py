@@ -44,7 +44,7 @@ from autoclicker.handlers import (
     handle_rec_phase, handle_rec_region, handle_rec_watch,
     handle_sequence_studio, handle_scan_studio, COMMANDS
 )
-from autoclicker.befehl import fetch_command as hole_befehl, discard_command as verwirf_befehle
+from autoclicker.mailbox import fetch_command, discard_command
 
 
 def print_banner() -> None:
@@ -185,10 +185,10 @@ def _pruefe_befehle(state) -> None:
         return
     _befehl_zuletzt = jetzt
 
-    auftrag = hole_befehl()
+    auftrag = fetch_command()
     if auftrag is None:
         return
-    name = auftrag["befehl"]
+    name = auftrag["command"]
     fn = COMMANDS.get(name)
     if fn is None:
         print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
@@ -198,7 +198,7 @@ def _pruefe_befehle(state) -> None:
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     try:
-        fn(state, auftrag["argumente"])
+        fn(state, auftrag["arguments"])
     except PlatformError as fehler:
         print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
 
@@ -231,10 +231,10 @@ def _tui_bereit_anzeigen(state) -> None:
 
 def _plattform_bereit() -> bool:
     """Meldet fehlende Systemvoraussetzungen, bevor Daten verändert werden."""
-    meldungen = environment_warnings()
-    for meldung in meldungen:
-        print(warn(meldung))
-    if meldungen:
+    messages = environment_warnings()
+    for message in messages:
+        print(warn(message))
+    if messages:
         print(err("Plattform nicht einsatzbereit; Start abgebrochen."))
         print()
         return False
@@ -325,13 +325,13 @@ def main() -> int:
     # Briefkasten leeren, bevor die Schleife anfängt zu lesen. Wer im Studio auf
     # „Starten" drückt, während gar kein Hauptprozess läuft, bekommt keine
     # Wirkung — und darf sie auch nicht bekommen, sobald einer startet. Die
-    # Altersregel in befehl.py fängt das meiste ab, aber nicht die letzten
+    # Altersregel in mailbox.py fängt das meiste ab, aber nicht die letzten
     # Sekunden davor.
-    verwirf_befehle()
+    discard_command()
 
     # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
     # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
-    # wuerde `verwirf_befehle()` genau diesen ersten Auftrag wegwerfen.
+    # wuerde `discard_command()` genau diesen ersten Auftrag wegwerfen.
     studio_offen = _studio_beim_start_oeffnen(state)
     if not tui_start and not studio_offen:
         # Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten

@@ -255,7 +255,7 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         # im Klartext in "AusschlussGrund". InKetten=True heisst nur "verkaufbar" - das
         # Item kann trotzdem im Ketten-Tab fehlen (s. README).
         in_ketten = sell_price > 0
-        exclusion_reason = weg.grund
+        exclusion_reason = weg.reason
 
         gold_per_hour = items_per_hour * sell_price
         xp_per_hour = actions_per_hour * r["xp"]
@@ -288,8 +288,8 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             gold_pro_stueck = gold_pro_xp = None
             cost_per_hour = None
             fehlt = ", ".join(kosten.fehlende[:3]) or "unbekannt"
-            grund = f"Zutatenpreis unbekannt ({fehlt})"
-            exclusion_reason = f"{exclusion_reason} + {grund}" if exclusion_reason else grund
+            reason = f"Zutatenpreis unbekannt ({fehlt})"
+            exclusion_reason = f"{exclusion_reason} + {reason}" if exclusion_reason else reason
 
         output_anomaly = price_anomaly(m) if not sold_to_npc else False
         output_spread_warning = wide_spread(m) if not sold_to_npc else False
@@ -763,10 +763,10 @@ def chain_reliability(chain_skills: str) -> tuple[float, str]:
     faktor, gruende = 1.0, []
     for teil in str(chain_skills or "").split("->"):
         skill = teil.strip()
-        eintrag = SKILL_RELIABILITY.get(skill)
-        if eintrag and eintrag[0] < 1.0:
-            faktor = min(faktor, eintrag[0])
-            gruende.append(f"{skill}: {eintrag[1]}")
+        entry = SKILL_RELIABILITY.get(skill)
+        if entry and entry[0] < 1.0:
+            faktor = min(faktor, entry[0])
+            gruende.append(f"{skill}: {entry[1]}")
     return faktor, "; ".join(gruende)
 
 
@@ -923,7 +923,7 @@ def _geduld_text(geduld: dict | None) -> str:
 
 
 def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
-             schnitt: float, verlust: float, warnung: str, abweichung: float = 0.0,
+             schnitt: float, verlust: float, warning: str, abweichung: float = 0.0,
              position: float | None = None, trend: str = "",
              geduld: dict | None = None) -> str:
     """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
@@ -933,35 +933,35 @@ def _verdict(an_npc: bool, npc: float, top_preis: float, stunden_deckung: float,
         return (f"NPC zahlt {npc:,.0f}g und damit mehr als das beste Spielergebot "
                 f"({top_preis:,.0f}g) - unbegrenzt und sofort.")
 
-    teile = []
+    parts = []
     if stunden_deckung >= 8:
-        teile.append(f"Top-Gebot schluckt {stunden_deckung:,.1f} h Produktion - sofort verkaufbar")
+        parts.append(f"Top-Gebot schluckt {stunden_deckung:,.1f} h Produktion - sofort verkaufbar")
     elif stunden_deckung >= 1:
-        teile.append(f"Top-Gebot reicht nur fuer {stunden_deckung:,.1f} h, danach faellt der Preis")
+        parts.append(f"Top-Gebot reicht nur fuer {stunden_deckung:,.1f} h, danach faellt der Preis")
     elif stunden_deckung > 0:
-        teile.append(f"Top-Gebot ist nach {stunden_deckung * 60:,.0f} min leer")
+        parts.append(f"Top-Gebot ist nach {stunden_deckung * 60:,.0f} min leer")
     else:
-        teile.append("kein Volumen am Top-Gebot")
+        parts.append("kein Volumen am Top-Gebot")
 
     if verlust > 0.02:
-        teile.append(f"1 h Produktion druecken den Schnitt auf {schnitt:,.0f}g ({-verlust:.0%})")
+        parts.append(f"1 h Produktion druecken den Schnitt auf {schnitt:,.0f}g ({-verlust:.0%})")
     elif stunden_deckung >= 1:
-        teile.append("eine Stunde Produktion bewegt den Preis kaum")
+        parts.append("eine Stunde Produktion bewegt den Preis kaum")
 
     if npc > schnitt > 0:
-        teile.append(f"NPC waere mit {npc:,.0f}g besser")
+        parts.append(f"NPC waere mit {npc:,.0f}g besser")
     if abweichung > 0.1:
-        teile.append(f"Achtung: Orderbuch weicht {abweichung:.0%} vom Listenpreis ab "
+        parts.append(f"Achtung: Orderbuch weicht {abweichung:.0%} vom Listenpreis ab "
                      "(zwei Momentaufnahmen)")
     pos_text = _preis_position_text(position, trend)
     if pos_text:
-        teile.append(pos_text)
+        parts.append(pos_text)
     geduld_text = _geduld_text(geduld)
     if geduld_text:
-        teile.append(geduld_text)
-    if warnung:
-        teile.append(warnung)
-    return "; ".join(teile) + "."
+        parts.append(geduld_text)
+    if warning:
+        parts.append(warning)
+    return "; ".join(parts) + "."
 
 
 REASON_COLUMNS = [
@@ -992,8 +992,8 @@ def reason_kandidaten(df_rec: pd.DataFrame) -> pd.DataFrame:
     if df_rec.empty:
         return df_rec
     lohnt = pd.to_numeric(df_rec["Gold/h"], errors="coerce").fillna(0) > 0
-    kandidaten = df_rec[lohnt]
-    return kandidaten.head(REASON_CANDIDATES) if REASON_CANDIDATES else kandidaten
+    candidates = df_rec[lohnt]
+    return candidates.head(REASON_CANDIDATES) if REASON_CANDIDATES else candidates
 
 
 def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.DataFrame, list]:
@@ -1061,8 +1061,8 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             # deshalb Menge 1, nicht `verkauft`.
             erloes = net_player_price(brutto, 1.0)
             # Was nicht mehr ins Buch passt, geht zum NPC (steuerfrei) statt verloren
-            rest = stueck_h - verkauft
-            erloes += rest * npc
+            remainder = stueck_h - verkauft
+            erloes += remainder * npc
             schnitt = erloes / stueck_h if stueck_h > 0 else 0.0
             verlust = (1 - schnitt / referenz) if referenz > 0 else 0.0
         else:
@@ -1131,18 +1131,18 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     # Gold sofort gebraucht wird (s. RANKING_BASIS). Fehlt die Geduld-Zahl - beim
     # NPC-Verkauf gibt es nichts zu verhandeln -, zaehlt die Sofort-Zahl.
     if RANKING_BASIS == "geduld":
-        schluessel = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
+        key_name = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
     else:
-        schluessel = df_reason["Gold/h realistisch"]
+        key_name = df_reason["Gold/h realistisch"]
     # Dieselbe Abwertung wie beim Papier-Rang (SKILL_RELIABILITY): unplanbarer
     # Nachschub soll die Empfehlung nicht anfuehren, nur weil sein Buch gerade
     # tief ist. Solange nur zehn Items gemessen wurden, fiel das Fehlen kaum auf;
     # ueber den ganzen Bestand stuende sonst ein Papaya-Feld ganz oben.
-    schluessel = schluessel * df_reason["Verlässlichkeit"]
+    key_name = key_name * df_reason["Verlässlichkeit"]
     # Jede Messung bleibt im Blatt. Hier stand ein `.head(REASON_TOP_N)`, und weil
     # die Empfehlung ihre gemessene Zahl aus dieser Liste zieht, fielen die
     # uebrigen Messungen still weg - bezahlt und nie gezeigt.
-    df_reason = df_reason.assign(_rang=schluessel).sort_values(
+    df_reason = df_reason.assign(_rang=key_name).sort_values(
         "_rang", ascending=False).drop(columns=["_rang"])
     df_reason["Rang"] = range(1, len(df_reason) + 1)
     df_reason = df_reason.reset_index(drop=True)
@@ -1191,8 +1191,8 @@ def sortiere_nach_messung(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.D
     raus["Gold/h realistisch"] = messung.fillna(raus["Gold/h"])
     raus["Gold/h Quelle"] = messung.notna().map({True: QUELLE_ORDERBUCH, False: QUELLE_PAPIER})
     faktor = pd.to_numeric(raus["Verlässlichkeit"], errors="coerce").fillna(1.0)
-    schluessel = (messung * faktor).fillna(pd.to_numeric(raus["Gold/h gewichtet"], errors="coerce"))
-    raus = raus.assign(_rang=schluessel).sort_values(
+    key_name = (messung * faktor).fillna(pd.to_numeric(raus["Gold/h gewichtet"], errors="coerce"))
+    raus = raus.assign(_rang=key_name).sort_values(
         "_rang", ascending=False, kind="stable").drop(columns=["_rang"]).reset_index(drop=True)
     raus["Rang"] = range(1, len(raus) + 1)
     ranks = dict(zip(raus["Item"], raus["Rang"]))
@@ -1256,22 +1256,22 @@ def export_market_values(df: pd.DataFrame, path: str) -> int:
     spalte = "Gold pro Stück" if "Gold pro Stück" in df.columns else None
     if spalte is None:
         return 0
-    werte: dict[str, float] = {}
-    for _, zeile in df.iterrows():
-        name = str(zeile["Item"]).strip()
+    values: dict[str, float] = {}
+    for _, line in df.iterrows():
+        name = str(line["Item"]).strip()
         try:
-            wert = float(zeile[spalte])
+            value = float(line[spalte])
         except (TypeError, ValueError):
             continue
-        if not name or wert != wert:          # NaN faellt hier raus
+        if not name or value != value:          # NaN faellt hier raus
             continue
         # Mehrere Rezepte auf dasselbe Item: der beste Wert gewinnt.
-        if name not in werte or wert > werte[name]:
-            werte[name] = round(wert, 2)
+        if name not in values or value > values[name]:
+            values[name] = round(value, 2)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(werte, f, ensure_ascii=False, indent=1, sort_keys=True)
-    return len(werte)
+        json.dump(values, f, ensure_ascii=False, indent=1, sort_keys=True)
+    return len(values)
 
 
 def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
@@ -1373,7 +1373,7 @@ def historie_zeilen(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
         gemessen = dict(zip(df_reason["Item"], df_reason["Gold/h realistisch"]))
         ranks = dict(zip(df_reason["Item"], df_reason["Rang"]))
 
-    zeilen = []
+    lines = []
     for _, r in df_chain.iterrows():
         name = str(r["Item"])
         warnungen = [text for flag, text in (
@@ -1384,7 +1384,7 @@ def historie_zeilen(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
             (not r.get("KostenVollstaendig", True), "Zutatenpreis unbekannt"),
             (not r.get("FullySelfSufficient"), "Zutat muss gekauft werden"),
         ) if bool(flag)]
-        zeilen.append({
+        lines.append({
             "item": name,
             "item_id": r.get("ItemID"),
             "skill": r.get("FinalSkill"),
@@ -1401,31 +1401,31 @@ def historie_zeilen(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
             "rang": ranks.get(name),
             "warnungen": ", ".join(warnungen),
         })
-    return zeilen
+    return lines
 
 
 def schreibe_historie(df_chain: pd.DataFrame, df_reason: pd.DataFrame, buecher: list,
-                      pfad: str = HISTORY_PATH) -> str:
+                      path: str = HISTORY_PATH) -> str:
     """Den fertigen Lauf in die SQLite-Historie schreiben und alte Bestaende aufraeumen.
 
     Laeuft ganz am Ende, NACH dem Excel-Export: was hier landet, ist damit ein Lauf,
     der auch ein Ergebnis produziert hat. Ein Fehlschlag kostet nur die Historie -
     die Excel-Datei ist das eigentliche Ergebnis und steht bereits.
     """
-    zeilen = historie_zeilen(df_chain, df_reason)
-    if not zeilen:
+    lines = historie_zeilen(df_chain, df_reason)
+    if not lines:
         return ""
-    conn = historie.oeffne(pfad)
+    conn = historie.oeffne(path)
     try:
         with historie.lauf(conn) as run_id:
-            historie.schreibe_items(conn, run_id, zeilen)
+            historie.schreibe_items(conn, run_id, lines)
             historie.schreibe_orderbuch(conn, run_id, buecher, HISTORY_ORDERBOOK_TOP_N)
         weg = historie.aufraeumen(conn)
     finally:
         conn.close()
     geloescht = sum(v for k, v in weg.items() if k != "verdichtet")
     hinweis = f" ({weg['verdichtet']} Tageswerte, {geloescht} Altzeilen entfernt)" if geloescht or weg["verdichtet"] else ""
-    return f"{len(zeilen)} Items{hinweis}"
+    return f"{len(lines)} Items{hinweis}"
 
 
 # ---------------------------------------------------------------
@@ -1682,9 +1682,9 @@ def main():
     # Ein halber Lauf saehe in der Zeitreihe wie ein Markteinbruch aus.
     if HISTORY_ENABLED:
         try:
-            bericht = schreibe_historie(df_chain, df_reason, buecher)
-            if bericht:
-                print(f"Historie ergaenzt: {HISTORY_PATH} - {bericht}")
+            report = schreibe_historie(df_chain, df_reason, buecher)
+            if report:
+                print(f"Historie ergaenzt: {HISTORY_PATH} - {report}")
         except Exception as e:      # noqa: BLE001 - die Historie ist Beiwerk
             print(f"⚠ Historie konnte nicht geschrieben werden: {e}")
 

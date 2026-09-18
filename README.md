@@ -1289,7 +1289,7 @@ Autoclicker-Idleclans/
 │   ├── session_log.py      # CSV-Session-Logger
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
-│   ├── befehl.py           # Briefkasten Studio -> Hauptprozess
+│   ├── mailbox.py          # Briefkasten Studio -> Hauptprozess
 │   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
 │   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
 │   ├── symbol.py           # Programm-Symbol als Geometrie

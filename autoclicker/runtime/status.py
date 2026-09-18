@@ -78,7 +78,7 @@ def heartbeat(state) -> None:
     write_status(state, {})
 
 
-def schedule_run(sequenz: str, zielzeit: float) -> None:
+def schedule_run(sequence: str, zielzeit: float) -> None:
     """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
 
     Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
@@ -93,7 +93,7 @@ def schedule_run(sequenz: str, zielzeit: float) -> None:
         atomic_write(STATUS_PATH, compact_json({
             "aktiv": False,
             "countdown": True,
-            "sequenz": sequenz,
+            "sequenz": sequence,
             "zielzeit": float(zielzeit),
             "stand": time.time(),
         }))
@@ -105,8 +105,8 @@ def end_schedule() -> None:
     """Entfernt nur eine Countdown-Anzeige, nie die Laufzusammenfassung."""
     try:
         import json
-        daten = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
-        if isinstance(daten, dict) and daten.get("countdown"):
+        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("countdown"):
             STATUS_PATH.unlink(missing_ok=True)
     except (OSError, ValueError):
         pass
@@ -122,7 +122,7 @@ _MOMENT_FIELDS = ("block", "bloecke", "block_titel", "block_label", "block_typ",
                   "block_seit", "warten", "durchlauf", "manuell")
 
 
-def finish_run(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0) -> None:
+def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:
     """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
 
     Der letzte Stand bleibt als abgeschlossener Lauf liegen (`aktiv: False`
@@ -152,9 +152,9 @@ def finish_run(state=None, grund: str = "", zyklen: int = 0, dauer: float = 0.0)
         letzter.update({
             "aktiv": False,
             "ende": time.time(),
-            "grund": grund,
-            "gelaufen": zyklen,
-            "dauer": dauer,
+            "grund": reason,
+            "gelaufen": cycles,
+            "dauer": duration,
             "zaehler": _counters(state),
             "stand": time.time(),
         })

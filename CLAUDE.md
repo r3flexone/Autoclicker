@@ -583,7 +583,7 @@ das Werkzeug weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug.
 Gelesen wird in `autoclicker/katalog.py` (Cache am Dateistand, kaputte Einträge
 fliegen einzeln raus). Es liegt **nicht** unter `runtime/`, weil vor allem
 Editoren es brauchen und `runtime/__init__` den Worker samt `imaging` und
-`winapi` nachzöge — dieselbe Überlegung wie bei `befehl.py`.
+`winapi` nachzöge — dieselbe Überlegung wie bei `mailbox.py`.
 
 **Zwei Schalter, und sie beantworten verschiedene Fragen.**
 `config.scan_catalog_file` sagt, **wo** die Datei liegt (eine je Spiel, also
@@ -1274,7 +1274,7 @@ es die Marker-Farben.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 
-- `autoclicker/befehl.py` — der **Rückweg** zu `runtime/status.py`: dort schreibt der
+- `autoclicker/mailbox.py` — der **Rückweg** zu `runtime/status.py`: dort schreibt der
   Hauptprozess, was läuft, hier legt das Studio ab, was passieren soll. Ein Briefkasten,
   kein Log — wer liest, leert ihn, und zu alte Befehle fliegen weg (siehe unten beim
   Sequenz-Studio). Liegt bewusst **nicht** unter `runtime/`: dessen `__init__` zieht den
@@ -2798,7 +2798,7 @@ Regeln für die Ansicht:
   wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht
   zu den Punkten der Sequenz.
 
-**Start, Pause und Stopp gehen über einen Briefkasten** (`befehl.py`), nicht direkt:
+**Start, Pause und Stopp gehen über einen Briefkasten** (`mailbox.py`), nicht direkt:
 dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
 und der Hauptprozess holt sie **im Main-Thread, in derselben Schleife, in der auch
 seine Hotkeys ankommen** (`_pruefe_befehle` in `main.py`, alle 250 ms im Leerlauf).
@@ -3739,6 +3739,29 @@ in `tests/mutationspruefung.py`, die per Namensstring monkeypatchen. Vorher
 prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
 zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
 findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.
+
+**Zwei Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
+Suite laufen lassen, sie findet beide:**
+
+- **Keyword-Argumente, die zu JSON-Schlüsseln werden, sind Strings in
+  Verkleidung.** `send_command("zeigen", punkt=…)` schreibt `{"punkt": …}` in
+  den Briefkasten, `dict(info, bild=True)` und `fokus.update(aktiv=False)`
+  ebenso — das Werkzeug benennt das `punkt=` um (es ist ein Name), der
+  Empfänger liest weiter `.get("punkt")`. Der Lokalen-Durchgang von Phase 2a
+  hat damit den halben Briefkasten umgestellt; deshalb ist sein Protokoll
+  (Umschlag `command`/`arguments`/`sent_at`, Argument-Schlüssel) seither
+  vollständig englisch, und das Modul heisst seither `mailbox.py` (vorher
+  befehl).
+- **Tests, die JS-Quelltext als Python-String tragen**, werden nach der
+  Verweis-Regel umgeschrieben (`werte()` → `values()`), während `app.js`
+  unverändert bleibt — der Vergleich schlägt dann fehl. Betroffen sind
+  Quelltext-Prüfungen (`… in _html18`) und JS-Schnipsel in Rauchtests
+  (`seite.evaluate("""…""")`). Zurücksetzen, nicht die Seite nachziehen: die
+  Seite kommt in Phase 3 als Ganzes.
+
+Aus demselben Grund gibt es `--python-only`: Lokale wie `punkt`, `wert`,
+`kategorie` sind zugleich JSON-Schlüssel der Brücke, und der JS-Lexer würde
+`z.kategorie` umschreiben, während Python weiter `"kategorie"` schickt.
 
 **Nicht Teil der Umstellung sind Schlüssel in gespeicherten Dateien** —
 `config.json`, `sequence.json`, `katalog.json`, `marktwert.json`. Das sind

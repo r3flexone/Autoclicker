@@ -120,15 +120,15 @@ class ScanStateMixin:
             self._foto_laden(neuster)
         self._platte = self._platte_stand()
 
-    def _scan_hat_konfiguration(self, art: str) -> bool:
+    def _scan_hat_konfiguration(self, kind: str) -> bool:
         """Ist für die gewünschte Aufnahmeart wirklich ein Scan geöffnet?"""
-        if art == "boss":
+        if kind == "boss":
             return self.boss_offen in self.boss_scans
-        if art == "icon":
+        if kind == "icon":
             return self.icon_offen in self.icon_scans
         return self.scan_offen in self.scans
 
-    def _scan_voraussetzung(self, daten: Optional[dict] = None) -> Optional[dict]:
+    def _scan_voraussetzung(self, data: Optional[dict] = None) -> Optional[dict]:
         """Sperrt Aufnahme und Bildwerkzeuge ohne eindeutiges Speicherziel.
 
         Ein Bild oder Slot ohne Scan lebte vorher nur im Arbeitsspeicher. Beim
@@ -137,13 +137,13 @@ class ScanStateMixin:
         Brücke und nicht nur als deaktivierter Knopf in der Seite.
         """
         self._scan_laden()
-        art = str((daten or {}).get("art") or self.scan_aufnahme_art or "item")
-        if art not in SCAN_KINDS:
-            art = "item"
-        self.scan_aufnahme_art = art
-        if self._scan_hat_konfiguration(art):
+        kind = str((data or {}).get("art") or self.scan_aufnahme_art or "item")
+        if kind not in SCAN_KINDS:
+            kind = "item"
+        self.scan_aufnahme_art = kind
+        if self._scan_hat_konfiguration(kind):
             return None
-        name = {"item": "Item-Scan", "boss": "Boss-Scan", "icon": "Icon-Scan"}[art]
+        name = {"item": "Item-Scan", "boss": "Boss-Scan", "icon": "Icon-Scan"}[kind]
         return self._scan_melde(
             f"Zuerst einen {name} anlegen oder öffnen — erst danach können Bild "
             "und Bereiche dazu erfasst werden.", "warn")
@@ -186,9 +186,9 @@ class ScanStateMixin:
         if not pfade:
             self._platte = stand
             return
-        for pfad in pfade:
-            if str(pfad) in stand:
-                self._platte[str(pfad)] = stand[str(pfad)]
+        for path in pfade:
+            if str(path) in stand:
+                self._platte[str(path)] = stand[str(path)]
 
     def _platte_fremd(self) -> bool:
         """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
@@ -199,14 +199,14 @@ class ScanStateMixin:
         """
         return bool(self._scan_geladen) and self._platte_stand() != self._platte
 
-    def scan_neu_laden(self, daten: Optional[dict] = None) -> dict:
+    def scan_neu_laden(self, data: Optional[dict] = None) -> dict:
         """Liest Slots, Items und Scans neu von Platte.
 
         **Ungespeichertes wird nicht kommentarlos verworfen.** Der erste Druck
         meldet nur, der zweite (mit `verwerfen`) lädt — dieselbe Zwei-Schritt-
         Regel wie überall, wo hier etwas verloren gehen kann.
         """
-        if self._scan_dirty and not (daten or {}).get("verwerfen"):
+        if self._scan_dirty and not (data or {}).get("verwerfen"):
             return self._scan_melde(
                 "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
                 "— „Speichern“ behält sie.", "warn")
@@ -271,20 +271,20 @@ class ScanStateMixin:
         welcher Scan beim Öffnen vorne steht.
         """
         from ...persistence import load_item_scan_file
-        gefunden = {}
+        found = {}
         self._scan_stand = {}
-        ordner = self.filepath.parent / "item_scans"
-        for pfad in sorted(ordner.glob("*.json")) if ordner.is_dir() else []:
-            cfg = load_item_scan_file(pfad, self.board.name)
+        folder = self.filepath.parent / "item_scans"
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            cfg = load_item_scan_file(path, self.board.name)
             if cfg is None:
                 continue
-            schluessel = cfg.name or pfad.stem
-            gefunden[schluessel] = cfg
+            key_name = cfg.name or path.stem
+            found[key_name] = cfg
             try:
-                self._scan_stand[schluessel] = pfad.stat().st_mtime
+                self._scan_stand[key_name] = path.stat().st_mtime
             except OSError:
-                self._scan_stand[schluessel] = 0.0
-        return gefunden
+                self._scan_stand[key_name] = 0.0
+        return found
 
     def _scan_arbeitsbestand(self, name: str) -> None:
         """Bindet Listen und Werkzeuge an den Besitz des geöffneten Scans."""
@@ -300,7 +300,7 @@ class ScanStateMixin:
             cfg.slots = list(self.slots.values())
             cfg.items = list(self.items.values())
 
-    def _dazu(self, art: str, name: str) -> bool:
+    def _dazu(self, kind: str, name: str) -> bool:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
         Wer in einem offenen Scan etwas anlegt, legt es für ihn an — sonst wäre es
@@ -310,19 +310,19 @@ class ScanStateMixin:
         cfg = self.scans.get(self.scan_offen)
         if cfg is None:
             return False
-        bestand = self.slots if art == ART_SLOT else self.items
+        bestand = self.slots if kind == ART_SLOT else self.items
         if name not in bestand:
             return False
         self._objekte_angleichen()
         return True
 
-    def _scan_melde(self, text: str, art: str = "ok") -> dict:
-        self._scan_status = (text, art)
+    def _scan_melde(self, text: str, kind: str = "ok") -> dict:
+        self._scan_status = (text, kind)
         return self.scan_daten()
 
-    def _scan_geaendert(self, text: str = "", art: str = "ok") -> dict:
+    def _scan_geaendert(self, text: str = "", kind: str = "ok") -> dict:
         self._scan_dirty = True
-        return self._scan_melde(text, art) if text else self.scan_daten()
+        return self._scan_melde(text, kind) if text else self.scan_daten()
 
     def _werkzeug_fertig(self) -> None:
         """Einmal-Werkzeuge fallen nach erfolgreicher Aktion ins Auswaehlen zurueck."""
@@ -367,7 +367,7 @@ class ScanStateMixin:
         self._undo.append((was, self._zustand()))
         del self._undo[:-UNDO_TIEFE]
 
-    def scan_rueckgaengig(self, daten: Optional[dict] = None) -> dict:
+    def scan_rueckgaengig(self, data: Optional[dict] = None) -> dict:
         """Nimmt den letzten Schritt zurück (STRG+Z).
 
         Was auf Platte passiert ist, holt das nicht zurück: ein gelöschter Scan kommt
@@ -411,7 +411,7 @@ class ScanStateMixin:
                      else any(s.enabled for s in self.slots.values()))
         hat_items = (any(i.enabled for i in cfg.items) if cfg
                      else any(i.enabled for i in self.items.values()))
-        roh = [
+        raw = [
             (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
                 "wählen.", self._foto is not None,
              "scan_foto", "Screenshot aufnehmen"),
@@ -421,19 +421,19 @@ class ScanStateMixin:
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
              hat_items, "scan_lernvorschau", "Items prüfen & lernen"),
         ]
-        offen = [nr for nr, _, _, fertig, _, _ in roh if not fertig]
+        offen = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
         aktuell = offen[0] if offen else 0
         return [{"nr": nr, "titel": titel, "was": was, "fertig": fertig,
-                 "aktuell": nr == aktuell, "befehl": befehl, "knopf": knopf}
-                for nr, titel, was, fertig, befehl, knopf in roh]
+                 "aktuell": nr == aktuell, "befehl": command, "knopf": knopf}
+                for nr, titel, was, fertig, command, knopf in raw]
 
     def _flaeche(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.
 
         Ein älterer Scan bringt Slots mit, aber kein gemerktes Bild; ohne die
         Ersatzfläche stünde die Mitte leer, obwohl die Slots da sind. Alle
-        Umrechnungen laufen über `links`/`oben`/`skala` und stimmen genauso.
-        `bild` sagt, was von beidem dasteht.
+        Umrechnungen laufen über `left`/`top`/`skala` und stimmen genauso.
+        `image` sagt, was von beidem dasteht.
         """
         if self._foto_info:
             return dict(self._foto_info, bild=True)
@@ -441,12 +441,12 @@ class ScanStateMixin:
         if not regionen:
             return None
         rand = 40
-        links = min(r[0] for r in regionen) - rand
-        oben = min(r[1] for r in regionen) - rand
-        rechts = max(r[2] for r in regionen) + rand
-        unten = max(r[3] for r in regionen) + rand
-        return {"links": links, "oben": oben, "bild": False, "skala": 1.0,
-                "breite": max(1, rechts - links), "hoehe": max(1, unten - oben),
+        left = min(r[0] for r in regionen) - rand
+        top = min(r[1] for r in regionen) - rand
+        right = max(r[2] for r in regionen) + rand
+        bottom = max(r[3] for r in regionen) + rand
+        return {"links": left, "oben": top, "bild": False, "skala": 1.0,
+                "breite": max(1, right - left), "hoehe": max(1, bottom - top),
                 "stand": 0.0}
 
     def _scan_slots(self) -> list:
@@ -460,7 +460,7 @@ class ScanStateMixin:
 
     # -------------------------------------------------------- Momentaufnahme
 
-    def scan_daten(self, daten: Optional[dict] = None) -> dict:
+    def scan_daten(self, data: Optional[dict] = None) -> dict:
         """Alles, was der Reiter zum Zeichnen braucht — ohne das Bild selbst."""
         # Lokal wie in `_katalog_pruefen()`: `scan_state` soll `config` nicht
         # schon beim Import nachziehen. `CONFIG` und nicht `load_config()` —
@@ -468,7 +468,7 @@ class ScanStateMixin:
         # haelt es aktuell.
         from ...config import CONFIG
         self._scan_laden()
-        text, art = self._scan_status
+        text, kind = self._scan_status
         cfg = self.scans.get(self.scan_offen)
         dabei_slots = set(cfg.slot_names) if cfg else set()
         dabei_items = set(cfg.item_names) if cfg else set()
@@ -490,7 +490,7 @@ class ScanStateMixin:
             # mehreren Sequenzen zu fehleranfaellig.
             "sequenz": self.board.name,
             "aufnahme_bereit": {
-                art: self._scan_hat_konfiguration(art) for art in SCAN_KINDS
+                kind: self._scan_hat_konfiguration(kind) for kind in SCAN_KINDS
             },
             "modus": self.scan_modus,
             "werkzeug_fixiert": self.scan_werkzeug_fixiert,
@@ -543,7 +543,7 @@ class ScanStateMixin:
             # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
             # gelernten Items im Reiter vergeblich.
             "fremd": self._platte_fremd(),
-            "status": {"text": text, "art": art},
+            "status": {"text": text, "art": kind},
             "ergebnis": self._ergebnis_json(),
             "review": self._review_json(),
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
@@ -564,10 +564,10 @@ class ScanStateMixin:
             return None
         slots = self._scan_slots()
         slot_namen = {s.name for s in slots}
-        treffer = {n: t for n, t in self._treffer.items() if n in slot_namen}
-        erkannt = [n for n, t in treffer.items() if t.get("name") and not t.get("fremd")]
-        fremd = [n for n, t in treffer.items() if t.get("name") and t.get("fremd")]
-        unbekannt = [n for n, t in treffer.items() if not t.get("name")]
+        match = {n: t for n, t in self._treffer.items() if n in slot_namen}
+        erkannt = [n for n, t in match.items() if t.get("name") and not t.get("fremd")]
+        fremd = [n for n, t in match.items() if t.get("name") and t.get("fremd")]
+        unbekannt = [n for n, t in match.items() if not t.get("name")]
         return {
             "gesamt": len(slots), "erkannt": len(erkannt), "fremd": len(fremd),
             "unbekannt": len(unbekannt), "erkannt_slots": erkannt,
@@ -579,8 +579,8 @@ class ScanStateMixin:
             return None
         return {
             "zeilen": [
-                {k: v for k, v in zeile.items() if k != "crop"}
-                for zeile in self._lern_review
+                {k: v for k, v in line.items() if k != "crop"}
+                for line in self._lern_review
             ],
             # Name ist zugleich die Item-Identitaet. Die Vorschlaege machen es
             # moeglich, eine weitere Slot-Groesse an ein bestehendes Item zu
@@ -605,11 +605,11 @@ class ScanStateMixin:
             return False
 
     def _slot_json(self, slot: ItemSlot, dabei: bool = False,
-                   nummer: Optional[int] = None, gesamt: int = 0,
+                   nummer: Optional[int] = None, total: int = 0,
                    rueckwaerts: bool = False) -> dict:
-        treffer = self._treffer.get(slot.name)
-        breite = slot.scan_region[2] - slot.scan_region[0]
-        hoehe = slot.scan_region[3] - slot.scan_region[1]
+        match = self._treffer.get(slot.name)
+        width = slot.scan_region[2] - slot.scan_region[0]
+        height = slot.scan_region[3] - slot.scan_region[1]
         return {
             "dabei": dabei,
             "aktiv": bool(slot.enabled),
@@ -617,14 +617,14 @@ class ScanStateMixin:
             "region": list(slot.scan_region),
             "klick": list(slot.click_pos),
             "farbe": hexfarbe(slot.slot_color),
-            "breite": breite,
-            "hoehe": hoehe,
+            "breite": width,
+            "hoehe": height,
             # Zu klein, um je etwas zu erkennen — und im Bild kaum zu treffen.
             # Neu entstehen kann so einer nicht mehr; wer noch einen hat, soll
             # ihn in der LISTE finden, denn dort ist er so gross wie jeder
             # andere. Das ist der zweite Weg zum Löschen.
-            "winzig": breite < MIN_SLOT or hoehe < MIN_SLOT,
-            "treffer": treffer,
+            "winzig": width < MIN_SLOT or height < MIN_SLOT,
+            "treffer": match,
             # **Stabile Identität.** Bleibt beim Aus- und Wiedereinschalten
             # gleich; die laufende Nummer gehört dagegen nur aktiven Slots.
             "id": slot.id,
@@ -632,8 +632,8 @@ class ScanStateMixin:
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
             # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
             "nummer": nummer,
-            "lauf": (gesamt - nummer + 1) if (nummer and rueckwaerts) else nummer,
-            "gesamt": gesamt,
+            "lauf": (total - nummer + 1) if (nummer and rueckwaerts) else nummer,
+            "gesamt": total,
         }
 
     def _erkannte_items(self) -> dict:
@@ -643,12 +643,12 @@ class ScanStateMixin:
         zweites Mal lernt. Der Slot-Name kommt mit: „erkannt" ohne Beleg ist eine
         Behauptung, und in der Item-Liste sah man vom Erkennen sonst gar nichts.
         """
-        gefunden: dict = {}
-        for slot, eintrag in self._treffer.items():
-            name = eintrag.get("name")
+        found: dict = {}
+        for slot, entry in self._treffer.items():
+            name = entry.get("name")
             if name:
-                gefunden.setdefault(name, []).append(slot)
-        return gefunden
+                found.setdefault(name, []).append(slot)
+        return found
 
     def _item_json(self, item: ItemProfile, dabei: bool = False,
                    erkannt_in=None) -> dict:
@@ -656,9 +656,9 @@ class ScanStateMixin:
         vorlagen = item.template_names()
         groessen = []
         for name in vorlagen:
-            groesse = template_size(name, self.filepath.parent / "templates")
-            if groesse and list(groesse) not in groessen:
-                groessen.append(list(groesse))
+            size = template_size(name, self.filepath.parent / "templates")
+            if size and list(size) not in groessen:
+                groessen.append(list(size))
         scan_groessen = []
         cfg = self.scans.get(self.scan_offen)
         if cfg is not None:
@@ -667,9 +667,9 @@ class ScanStateMixin:
                 if slot is None:
                     continue
                 region = slot.scan_region
-                groesse = [region[2] - region[0], region[3] - region[1]]
-                if groesse not in scan_groessen:
-                    scan_groessen.append(groesse)
+                size = [region[2] - region[0], region[3] - region[1]]
+                if size not in scan_groessen:
+                    scan_groessen.append(size)
         fehlende_groessen = ([g for g in scan_groessen if g not in groessen]
                              if vorlagen else [])
         return {
@@ -714,13 +714,13 @@ class ScanStateMixin:
         """
         if item.confirm_point_id is None:
             return None
-        punkt = next((p for p in self.points if p.id == item.confirm_point_id), None)
-        if punkt is None:
+        point = next((p for p in self.points if p.id == item.confirm_point_id), None)
+        if point is None:
             return {"punkt_id": item.confirm_point_id, "fehlt": True,
                     "text": f"Punkt #{item.confirm_point_id} fehlt"}
-        return {"punkt_id": punkt.id, "fehlt": False,
-                "text": (punkt.name or f"Punkt {punkt.id}")
-                        + f" ({punkt.x}, {punkt.y})"}
+        return {"punkt_id": point.id, "fehlt": False,
+                "text": (point.name or f"Punkt {point.id}")
+                        + f" ({point.x}, {point.y})"}
 
     def _scan_json(self, cfg: ItemScanConfig) -> dict:
         return {
@@ -743,7 +743,7 @@ class ScanStateMixin:
                         [n for n in cfg.item_names if n not in self.items]),
         }
 
-    def scan_vorschau(self, daten: Optional[dict] = None) -> dict:
+    def scan_vorschau(self, data: Optional[dict] = None) -> dict:
         """Template-Bilder als data:-URLs — nur die angefragten Namen.
 
         Getrennt von `scan_daten()` aus demselben Grund wie der Screenshot: bei
@@ -751,32 +751,32 @@ class ScanStateMixin:
         Seite merkt sie sich und fragt nur nach, was sie noch nicht hat.
         """
         self._scan_laden()
-        namen = (daten or {}).get("namen") or []
-        ergebnis = {}
-        for name in namen:
+        names = (data or {}).get("namen") or []
+        result = {}
+        for name in names:
             item = self.items.get(name)
             if item is None or not item.template_names():
                 continue
             url = self._template_url(item.template_names()[0])
             if url:
-                ergebnis[name] = url
-        return ergebnis
+                result[name] = url
+        return result
 
     def _template_url(self, dateiname: str) -> str:
         """Ein Template als data:-URL, gemerkt an mtime + Name."""
-        pfad = self.filepath.parent / "templates" / dateiname
+        path = self.filepath.parent / "templates" / dateiname
         try:
-            stand = pfad.stat().st_mtime
+            stand = path.stat().st_mtime
         except OSError:
             return ""
         gemerkt = self._vorschau.get(dateiname)
         if gemerkt and gemerkt[0] == stand:
             return gemerkt[1]
         try:
-            roh = pfad.read_bytes()
+            raw = path.read_bytes()
         except OSError:
             return ""
-        url = "data:image/png;base64," + base64.b64encode(roh).decode("ascii")
+        url = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
         self._vorschau[dateiname] = (stand, url)
         return url
 

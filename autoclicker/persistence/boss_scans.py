@@ -115,9 +115,9 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
         data, _meldungen = migrate(data, KIND_GLOBAL_BOSSES)
         if not isinstance(data, list):
             raise TypeError("Boss-Bibliothek muss eine JSON-Liste sein")
-        geladen = [_boss_profile_from_dict(b) for b in data]
+        loaded = [_boss_profile_from_dict(b) for b in data]
         with state.lock:
-            state.global_bosses = geladen
+            state.global_bosses = loaded
             count = len(state.global_bosses)
         print(load_tag(f"{count} globale(r) Boss(e) geladen"))
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
@@ -129,9 +129,9 @@ def list_available_boss_scans(owner: str = "") -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Boss-Scan Konfigurationen auf."""
     if not owner:
         return []
-    return [(name, pfad) for name, pfad in
+    return [(name, path) for name, path in
             list_scan_files(str(_boss_scans_dir(owner)))
-            if pfad.name != "bibliothek.json"]
+            if path.name != "bibliothek.json"]
 
 
 def load_all_boss_scans(state: AutoClickerState) -> None:
@@ -140,12 +140,12 @@ def load_all_boss_scans(state: AutoClickerState) -> None:
     if not owner:
         state.boss_scans.clear()
         return
-    geladen = {}
-    for _name, pfad in list_available_boss_scans(owner):
-        config = load_boss_scan_file(pfad, owner)
+    loaded = {}
+    for _name, path in list_available_boss_scans(owner):
+        config = load_boss_scan_file(path, owner)
         if config is not None:
-            geladen[config.name] = config
+            loaded[config.name] = config
     with state.lock:
-        state.boss_scans = geladen
-    if geladen:
-        print(load_tag(f"{len(geladen)} Boss-Scan(s) geladen"))
+        state.boss_scans = loaded
+    if loaded:
+        print(load_tag(f"{len(loaded)} Boss-Scan(s) geladen"))

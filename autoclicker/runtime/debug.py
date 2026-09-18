@@ -179,19 +179,19 @@ def print_step_detail(state: AutoClickerState, step: SequenceStep, phase: str,
 
     wc = step.wait_condition
     if wc is not None:
-        art = ("einmal prüfen" if wc.check_only
+        kind = ("einmal prüfen" if wc.check_only
                else ("warten bis Farbe WEG" if wc.until_gone else "warten bis Farbe DA"))
-        print(col(f"   Farbe an {wc.pixel}: {art}", "gray"))
+        print(col(f"   Farbe an {wc.pixel}: {kind}", "gray"))
         print(f"   {color_swatch(wc.color)}")
     if step.else_config is not None:
         print(col(f"   Fallback wenn nicht erfüllt: {step.else_config.action}", "gray"))
 
-    ziel = target_of(step)
-    if ziel is not None:
+    target = target_of(step)
+    if target is not None:
         # Im manuellen Modus setzt step_gate() den Zeiger - nicht doppelt springen.
         # Ohne Label: die Koordinaten stehen schon in der Kopfzeile.
         if not is_step_mode(state):
-            show_point(state, ziel[0], ziel[1])
+            show_point(state, target[0], target[1])
 
 
 # ---------------------------------------------------------------------------
@@ -232,15 +232,15 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
 
     wc = step.wait_condition
     if wc is not None:
-        art = ("einmal prüfen" if wc.check_only
+        kind = ("einmal prüfen" if wc.check_only
                else ("bis Farbe WEG" if wc.until_gone else "bis Farbe DA"))
-        print(col(f"   Farbe an {wc.pixel}: {art}", "gray"))
+        print(col(f"   Farbe an {wc.pixel}: {kind}", "gray"))
         print(f"   {color_swatch(wc.color)}")
 
-    ziel = target_of(step)
-    if ziel is not None:
-        set_cursor_pos(ziel[0], ziel[1])
-        print(col(f"   Zeiger steht auf {ziel[2]} ({ziel[0]}, {ziel[1]}) - stimmt die Stelle?",
+    target = target_of(step)
+    if target is not None:
+        set_cursor_pos(target[0], target[1])
+        print(col(f"   Zeiger steht auf {target[2]} ({target[0]}, {target[1]}) - stimmt die Stelle?",
                   "gray"))
 
     if haltepunkt:
@@ -276,21 +276,21 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         "aktion": describe_step(step),
     }}, sofort=True)
     try:
-        befehl = _gate_studio(state) if studio else _gate_console(state)
+        command = _gate_studio(state) if studio else _gate_console(state)
     finally:
         with state.lock:
             state.gate_waiting = False
         status.write_status(state, {"manuell": None}, sofort=True)
-    return _gate_decide(state, befehl, studio)
+    return _gate_decide(state, command, studio)
 
 
 def _gate_take_command(state: AutoClickerState) -> str:
     """Den Befehl aus dem Briefkasten bzw. Hotkey nehmen und das Event leeren."""
     with state.lock:
-        befehl = state.step_command
+        command = state.step_command
         state.step_command = ""
         state.step_command_event.clear()
-    return befehl
+    return command
 
 
 def _gate_studio(state: AutoClickerState) -> str:
@@ -300,9 +300,9 @@ def _gate_studio(state: AutoClickerState) -> str:
         if not state.step_command_event.wait(0.2):
             status.heartbeat(state)
             continue
-        befehl = _gate_take_command(state)
-        if befehl in GATE_COMMANDS:
-            return befehl
+        command = _gate_take_command(state)
+        if command in GATE_COMMANDS:
+            return command
     return "stop"
 
 
@@ -310,27 +310,27 @@ def _gate_console(state: AutoClickerState) -> str:
     """Wartet auf eine Taste in der Konsole — oder auf CTRL+ALT+G bzw. das Studio."""
     from . import status
     while not state.stop_event.is_set():
-        taste = read_command(timeout=0.2)
-        if taste == "":
+        key = read_command(timeout=0.2)
+        if key == "":
             status.heartbeat(state)
-        if taste in _KEYS_RUN:
+        if key in _KEYS_RUN:
             return "run"
-        if taste in _KEYS_SKIP:
+        if key in _KEYS_SKIP:
             return "skip"
-        if taste in _KEYS_CONTINUE:
+        if key in _KEYS_CONTINUE:
             return "continue"
-        if taste in _KEYS_STEP:
+        if key in _KEYS_STEP:
             return "step"
-        if taste in _KEYS_STOP:
+        if key in _KEYS_STOP:
             return "stop"
         if state.step_command_event.is_set():
-            befehl = _gate_take_command(state)
-            if befehl in GATE_COMMANDS:
-                return befehl
+            command = _gate_take_command(state)
+            if command in GATE_COMMANDS:
+                return command
     return "stop"
 
 
-def _gate_decide(state: AutoClickerState, befehl: str, studio: bool) -> str:
+def _gate_decide(state: AutoClickerState, command: str, studio: bool) -> str:
     """Einen der fuenf Befehle in GATE_RUN / GATE_SKIP / GATE_STOP uebersetzen.
 
     `continue` und `step` sind die beiden, die den MODUS aendern: das eine
@@ -338,20 +338,20 @@ def _gate_decide(state: AutoClickerState, befehl: str, studio: bool) -> str:
     andere ein (ab diesem Block Schritt fuer Schritt) — beides fuehrt den
     aktuellen Block aus.
     """
-    if befehl == "skip":
+    if command == "skip":
         print(dbg("übersprungen"))
         return GATE_SKIP
-    if befehl == "stop":
+    if command == "stop":
         print(col("   Abbruch", "red"))
         state.stop_event.set()
         return GATE_STOP
-    if befehl == "continue":
+    if command == "continue":
         with state.lock:
             state.step_mode = False
             state.step_via_studio = False
         print(dbg("Manueller Modus aus - Sequenz läuft normal weiter"))
         return GATE_RUN
-    if befehl == "step":
+    if command == "step":
         with state.lock:
             state.step_mode = True
             state.step_via_studio = studio
@@ -376,14 +376,14 @@ def walk_points(state: AutoClickerState) -> None:
     from ..persistence import save_points
 
     with state.lock:
-        punkte = list(state.points)
+        points = list(state.points)
 
-    if not punkte:
+    if not points:
         print(col("Keine Punkte vorhanden.", "yellow"))
         return
 
     print()
-    print(col(f"■ PUNKTE DURCHGEHEN ({len(punkte)} Punkte) - es wird nichts geklickt",
+    print(col(f"■ PUNKTE DURCHGEHEN ({len(points)} Punkte) - es wird nichts geklickt",
               "cyan"))
     print(col("   [w /→] weiter   [a /←] zurück   [q /ESC] beenden", "yellow"))
     print(col("   [n] Maus an die richtige Stelle, dann n = Punkt neu setzen", "yellow"))
@@ -392,28 +392,28 @@ def walk_points(state: AutoClickerState) -> None:
 
     geaendert = 0
     i = 0
-    while 0 <= i < len(punkte):
-        p = punkte[i]
-        farbe = f"  {color_swatch(p.color)}" if p.color else ""
-        quelle = f"  [{p.source}]" if p.source else ""
+    while 0 <= i < len(points):
+        p = points[i]
+        color = f"  {color_swatch(p.color)}" if p.color else ""
+        source = f"  [{p.source}]" if p.source else ""
         set_cursor_pos(p.x, p.y)
-        print(f"   {i + 1}/{len(punkte)}  #{p.id} {p.name or '(ohne Name)'} "
-              f"({p.x}, {p.y}){farbe}{quelle}")
+        print(f"   {i + 1}/{len(points)}  #{p.id} {p.name or '(ohne Name)'} "
+              f"({p.x}, {p.y}){color}{source}")
 
-        taste = read_command()
-        if taste in _KEYS_STOP:
+        key = read_command()
+        if key in _KEYS_STOP:
             break
-        if taste in _KEYS_BACK:
+        if key in _KEYS_BACK:
             i = max(0, i - 1)
             continue
 
-        if taste == "n":
+        if key == "n":
             neu_x, neu_y = get_cursor_pos()
             if (neu_x, neu_y) == (p.x, p.y):
                 print(col("      Maus steht noch auf der alten Stelle - nichts geändert.",
                           "yellow"))
                 continue
-            alt = (p.x, p.y)
+            old = (p.x, p.y)
             with state.lock:
                 p.x, p.y = neu_x, neu_y
                 # Die Farbe gehört zur Position. Hatte der Punkt eine, wird sie
@@ -425,12 +425,12 @@ def walk_points(state: AutoClickerState) -> None:
                         p.color = neue_farbe
             save_points(state)
             geaendert += 1
-            print(col(f"      gesetzt: {alt} -> ({neu_x}, {neu_y})"
+            print(col(f"      gesetzt: {old} -> ({neu_x}, {neu_y})"
                       f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
             i += 1
             continue
 
-        if taste == "f":
+        if key == "f":
             neue_farbe = get_pixel_color(p.x, p.y)
             if not neue_farbe:
                 print(col("      Farbe konnte nicht gelesen werden.", "yellow"))
@@ -443,7 +443,7 @@ def walk_points(state: AutoClickerState) -> None:
                       f"  ->  {color_swatch(neue_farbe)}", "green"))
             continue
 
-        if taste in _KEYS_NEXT:
+        if key in _KEYS_NEXT:
             i += 1
             continue
         # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst

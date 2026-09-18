@@ -103,7 +103,7 @@ def _norm_points(data, context: dict) -> list[str]:
     """
     if not isinstance(data, list):
         return []
-    meldungen = []
+    messages = []
     ohne_id = [p for p in data if isinstance(p, dict) and p.get("id") is None]
     if ohne_id:
         vergeben = {p["id"] for p in data if isinstance(p, dict) and p.get("id") is not None}
@@ -113,7 +113,7 @@ def _norm_points(data, context: dict) -> list[str]:
                 naechste += 1
             p["id"] = naechste
             vergeben.add(naechste)
-        meldungen.append(f"{len(ohne_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
+        messages.append(f"{len(ohne_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
 
     entfernt = set()
     for p in data:
@@ -123,8 +123,8 @@ def _norm_points(data, context: dict) -> list[str]:
             del p[key]
             entfernt.add(key)
     if entfernt:
-        meldungen.append(f"tote Punkt-Felder entfernt: {', '.join(sorted(entfernt))}")
-    return meldungen
+        messages.append(f"tote Punkt-Felder entfernt: {', '.join(sorted(entfernt))}")
+    return messages
 
 
 def _norm_noop(data, context: dict) -> list[str]:
@@ -183,7 +183,7 @@ def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
 
     kette = _CHAINS.get(kind, [])
     version = file_version(data)
-    meldungen = []
+    messages = []
 
     if version > SCHEMA_VERSION:
         # Datei aus einer neueren Version - nicht herunterrechnen, nur warnen.
@@ -195,11 +195,11 @@ def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
             # Kein Schritt hinterlegt: Version anheben, nichts zu tun.
             version += 1
             continue
-        meldungen.extend(kette[version](data, context))
+        messages.extend(kette[version](data, context))
         version += 1
 
     data[VERSION_KEY] = SCHEMA_VERSION
-    return data, meldungen
+    return data, messages
 
 
 def needs_migration(data: dict) -> bool:

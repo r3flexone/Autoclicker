@@ -2012,7 +2012,7 @@ async function fortfahren(verwerfen) {
   if (offen.art === "speichern") return ruf("speichern", {erzwingen: true});
   if (!verwerfen) await ruf("speichern");
   if (offen.art === "laden") await ruf("laden", {name: offen.ziel, verwerfen: true});
-  else await ruf("neu", {verwerfen: true});
+  else await ruf("new", {verwerfen: true});
 }
 
 /* ------------------------------------------------------------ Ansicht: Scans */

@@ -62,8 +62,8 @@ class EditorPersistenzTest(unittest.TestCase):
         self.assertEqual(list(self.state.item_scans), ["Inventar"])
 
     def test_sequenzwechsel_laedt_neuen_bestand_ohne_alte_eintraege(self):
-        neu = ItemScanConfig("Neu", items=[ItemProfile("NeuItem")], owner_sequence="Neu")
-        item_scans.save_item_scan(neu)
+        new = ItemScanConfig("Neu", items=[ItemProfile("NeuItem")], owner_sequence="Neu")
+        item_scans.save_item_scan(new)
         self.state.active_sequence = Sequence(name="Neu")
         _load_sequence_data(self.state)
         self.assertEqual(list(self.state.item_scans), ["Neu"])
@@ -88,44 +88,44 @@ class EditorPersistenzTest(unittest.TestCase):
     def test_cancel_stellt_scan_und_vorlagen_wieder_her(self):
         self.scan.items = [ItemProfile("Alt", template="alt.png")]
         item_scans.bind_item_scan_context(self.state, self.scan.name)
-        ordner = active_templates_dir(self.state)
-        ordner.mkdir(parents=True)
-        (ordner / "alt.png").write_bytes(b"Original")
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "alt.png").write_bytes(b"Original")
         item_scans.save_item_scan(self.scan)
-        datei = Path("sequences/alt/item_scans/inventar.json")
-        vorher = datei.read_bytes()
+        file = Path("sequences/alt/item_scans/inventar.json")
+        vorher = file.read_bytes()
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
                 patch.object(editor, "safe_input", side_effect=["rename 1", "cancel"]), \
                 patch.object(commands, "safe_input", return_value="Neu"):
             editor.run_global_item_editor(self.state)
         self.assertEqual(list(self.state.global_items), ["Alt"])
         self.assertEqual([i.name for i in self.state.item_scans["Inventar"].items], ["Alt"])
-        self.assertEqual((ordner / "alt.png").read_bytes(), b"Original")
-        self.assertFalse((ordner / "neu.png").exists())
-        self.assertEqual(datei.read_bytes(), vorher)
+        self.assertEqual((folder / "alt.png").read_bytes(), b"Original")
+        self.assertFalse((folder / "neu.png").exists())
+        self.assertEqual(file.read_bytes(), vorher)
 
     def test_cancel_nach_preset_laden_stellt_datei_wieder_her(self):
         item_scans.save_item_scan(self.scan)
-        datei = Path("sequences/alt/item_scans/inventar.json")
-        vorher = datei.read_bytes()
+        file = Path("sequences/alt/item_scans/inventar.json")
+        vorher = file.read_bytes()
         preset = Path("presets/items/fremd.json")
         preset.parent.mkdir(parents=True)
         preset.write_text(json.dumps({"Fremd": {}}), encoding="utf-8")
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
                 patch.object(editor, "safe_input", side_effect=["load fremd", "cancel"]):
             editor.run_global_item_editor(self.state)
-        self.assertEqual(datei.read_bytes(), vorher)
+        self.assertEqual(file.read_bytes(), vorher)
         self.assertEqual(self.state.item_scans["Inventar"].item_names, ["A", "B"])
 
     def test_rename_dateifehler_laesst_referenz_unveraendert(self):
         self.state.global_items["A"].template = "a.png"
-        ordner = active_templates_dir(self.state)
-        ordner.mkdir(parents=True)
-        (ordner / "a.png").write_bytes(b"Original")
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "a.png").write_bytes(b"Original")
         with patch.object(Path, "rename", side_effect=PermissionError("gesperrt")):
             self.assertFalse(commands._apply_item_rename(self.state, "A", "Neu"))
         self.assertEqual(self.state.global_items["A"].template, "a.png")
-        self.assertEqual((ordner / "a.png").read_bytes(), b"Original")
+        self.assertEqual((folder / "a.png").read_bytes(), b"Original")
 
     def test_rename_erhaelt_vorlage_eines_anderen_scans(self):
         self.state.global_items["A"].template = "a.png"
@@ -133,15 +133,15 @@ class EditorPersistenzTest(unittest.TestCase):
                               owner_sequence="Alt")
         self.state.item_scans[fremd.name] = fremd
         item_scans.save_item_scan(fremd)
-        ordner = active_templates_dir(self.state)
-        ordner.mkdir(parents=True)
-        (ordner / "a.png").write_bytes(b"Original")
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "a.png").write_bytes(b"Original")
         self.assertTrue(commands._apply_item_rename(self.state, "A", "Neu"))
         self.assertTrue(bestand.save_global_items(self.state))
         for name in ("inventar", "zweiter"):
-            geladen = item_scans.load_item_scan_file(Path(f"sequences/alt/item_scans/{name}.json"))
-            item = next(i for i in geladen.items if i.name == ("Neu" if name == "inventar" else "A"))
-            self.assertEqual((ordner / item.template).read_bytes(), b"Original")
+            loaded = item_scans.load_item_scan_file(Path(f"sequences/alt/item_scans/{name}.json"))
+            item = next(i for i in loaded.items if i.name == ("Neu" if name == "inventar" else "A"))
+            self.assertEqual((folder / item.template).read_bytes(), b"Original")
         self.assertEqual(fremd.items[0].name, "A")
 
     def test_speicherfehler_wird_bis_zum_aufrufer_gemeldet(self):
@@ -170,8 +170,8 @@ class EditorPersistenzTest(unittest.TestCase):
                         patch.object(editor, "safe_input", side_effect=["del 1", ende]):
                     editor.run_global_item_editor(self.state)
                 erwartet = ["B"] if ende == "done" else ["A", "B"]
-                geladen = item_scans.load_item_scan_file(Path("sequences/alt/item_scans/inventar.json"))
-                self.assertEqual(geladen.item_names, erwartet)
+                loaded = item_scans.load_item_scan_file(Path("sequences/alt/item_scans/inventar.json"))
+                self.assertEqual(loaded.item_names, erwartet)
                 self.assertEqual(list(self.state.global_items), erwartet)
 
     def test_studio_lehnt_reservierten_bossnamen_auch_beim_umbenennen_ab(self):
@@ -186,12 +186,12 @@ class EditorPersistenzTest(unittest.TestCase):
     def test_reservierter_bossname_ueberschreibt_keine_bibliothek(self):
         self.state.global_bosses = [BossProfile("Drache")]
         boss_scans.save_global_bosses(self.state)
-        datei = Path("sequences/alt/boss_scans/bibliothek.json")
-        vorher = datei.read_bytes()
+        file = Path("sequences/alt/boss_scans/bibliothek.json")
+        vorher = file.read_bytes()
         for name in ("bibliothek", "Bibliothek", "bibliothek!"):
             with self.subTest(name=name):
                 self.assertFalse(boss_scans.save_boss_scan(BossScanConfig(name, owner_sequence="Alt")))
-                self.assertEqual(datei.read_bytes(), vorher)
+                self.assertEqual(file.read_bytes(), vorher)
 
     def test_scan_loader_fangen_falsche_json_strukturen_ab(self):
         faelle = [(item_scans.load_item_scan_file, x) for x in (
@@ -200,39 +200,39 @@ class EditorPersistenzTest(unittest.TestCase):
             {"name": "Scan", "slots": []}, {"name": "Scan", "items": None},
         )]
         faelle += [(boss_scans.load_boss_scan_file, []), (icon_scans.load_icon_scan_file, [])]
-        datei = Path("scan.json")
-        for loader, daten in faelle:
-            with self.subTest(loader=loader.__name__, daten=daten):
-                datei.write_text(json.dumps(daten), encoding="utf-8")
-                self.assertIsNone(loader(datei))
+        file = Path("scan.json")
+        for loader, data in faelle:
+            with self.subTest(loader=loader.__name__, data=data):
+                file.write_text(json.dumps(data), encoding="utf-8")
+                self.assertIsNone(loader(file))
 
     def test_defektes_preset_laesst_bestand_und_datei_unveraendert(self):
         item_scans.save_item_scan(self.scan)
         scan_datei = Path("sequences/alt/item_scans/inventar.json")
         vorher = scan_datei.read_bytes()
-        for art, laden, attribut in (
+        for kind, laden, attribut in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
-            datei = Path("presets") / art / "defekt.json"
-            datei.parent.mkdir(parents=True, exist_ok=True)
+            file = Path("presets") / kind / "defekt.json"
+            file.parent.mkdir(parents=True, exist_ok=True)
             bestand_vorher = dict(getattr(self.state, attribut))
-            gueltig = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if art == "slots" else {}
-            for daten in ([], {"Gueltig": gueltig, "Defekt": None}):
-                with self.subTest(art=art, daten=daten):
-                    datei.write_text(json.dumps(daten), encoding="utf-8")
+            gueltig = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
+            for data in ([], {"Gueltig": gueltig, "Defekt": None}):
+                with self.subTest(kind=kind, data=data):
+                    file.write_text(json.dumps(data), encoding="utf-8")
                     self.assertFalse(laden(self.state, "defekt"))
                     self.assertEqual(getattr(self.state, attribut), bestand_vorher)
                     self.assertEqual(scan_datei.read_bytes(), vorher)
 
     def test_preset_meldet_speicherfehler(self):
-        for art, laden, speichern in (
+        for kind, laden, speichern in (
                 ("items", presets.load_item_preset, "save_global_items"),
                 ("slots", presets.load_slot_preset, "save_global_slots")):
-            with self.subTest(art=art):
-                datei = Path("presets") / art / "neu.json"
-                datei.parent.mkdir(parents=True, exist_ok=True)
-                eintrag = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if art == "slots" else {}
-                datei.write_text(json.dumps({"Neu": eintrag}), encoding="utf-8")
+            with self.subTest(kind=kind):
+                file = Path("presets") / kind / "neu.json"
+                file.parent.mkdir(parents=True, exist_ok=True)
+                entry = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
+                file.write_text(json.dumps({"Neu": entry}), encoding="utf-8")
                 with patch.object(presets, speichern, return_value=False) as speichern_mock:
                     self.assertFalse(laden(self.state, "neu"))
                 speichern_mock.assert_called_once()

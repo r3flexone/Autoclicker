@@ -36,7 +36,7 @@ AUSGEWERTET = {
 }
 
 
-def _lies(pfad: Path) -> tuple[list[dict], str]:
+def _lies(path: Path) -> tuple[list[dict], str]:
     """Zeilen der Datei und, falls sie nicht lesbar war, der Grund.
 
     Der Grund wird zurueckgegeben statt gedruckt: `auswerten()` darf nichts
@@ -44,15 +44,15 @@ def _lies(pfad: Path) -> tuple[list[dict], str]:
     Bericht-Reiter.
     """
     try:
-        with open(pfad, "r", encoding="utf-8", newline="") as f:
+        with open(path, "r", encoding="utf-8", newline="") as f:
             return list(csv.DictReader(f)), ""
     except (IOError, OSError, csv.Error) as e:
         return [], str(e)
 
 
-def _dauer(zeilen: list[dict]) -> float:
+def _dauer(lines: list[dict]) -> float:
     """Laufzeit der Session in Sekunden (aus elapsed_sec der letzten Zeile)."""
-    for z in reversed(zeilen):
+    for z in reversed(lines):
         try:
             return float(z.get("elapsed_sec") or 0)
         except ValueError:
@@ -61,8 +61,8 @@ def _dauer(zeilen: list[dict]) -> float:
 
 
 def _fmt_dauer(sek: float) -> str:
-    h, rest = divmod(int(sek), 3600)
-    m, s = divmod(rest, 60)
+    h, remainder = divmod(int(sek), 3600)
+    m, s = divmod(remainder, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
@@ -74,7 +74,7 @@ def _rang(zaehler: Counter) -> list[list]:
 def auswerten(pfade: list[Path]) -> dict:
     """Wertet Session-Logs aus und gibt reine Daten zurueck — ohne eine Zeile Ausgabe.
 
-    Getrennt von `bericht()`, weil der Bericht-Reiter des Studios dieselbe
+    Getrennt von `report()`, weil der Bericht-Reiter des Studios dieselbe
     Auswertung braucht und mit gedrucktem Text nichts anfangen kann. Die
     Richtung bleibt dabei, wie sie war: dieses Werkzeug importiert nichts aus
     `autoclicker/` — die Bruecke ruft es, nicht umgekehrt.
@@ -94,17 +94,17 @@ def auswerten(pfade: list[Path]) -> dict:
     nicht_lesbar = []
     gesamt_dauer = 0.0
 
-    for pfad in pfade:
-        zeilen, fehler = _lies(pfad)
+    for path in pfade:
+        lines, fehler = _lies(path)
         if fehler:
-            nicht_lesbar.append([pfad.name, fehler])
+            nicht_lesbar.append([path.name, fehler])
             continue
-        if not zeilen:
+        if not lines:
             continue
-        dauer = _dauer(zeilen)
-        gesamt_dauer += dauer
+        duration = _dauer(lines)
+        gesamt_dauer += duration
         eigen = Counter()
-        for z in zeilen:
+        for z in lines:
             ev = z.get("event", "")
             gesamt_events[ev] += 1
             eigen[ev] += 1
@@ -120,9 +120,9 @@ def auswerten(pfade: list[Path]) -> dict:
             elif ev == "verify_ok":
                 verify_ok[detail or "(ohne Namen)"] += 1
         sitzungen.append({
-            "datei": pfad.name,
-            "beginn": (zeilen[0].get("timestamp") or "").strip(),
-            "dauer": dauer,
+            "datei": path.name,
+            "beginn": (lines[0].get("timestamp") or "").strip(),
+            "dauer": duration,
             "klicks": eigen.get("click", 0),
             "timeouts": eigen.get("timeout", 0),
             "items": eigen.get("item_found", 0),
@@ -147,21 +147,21 @@ def auswerten(pfade: list[Path]) -> dict:
     }
 
 
-def bericht(pfade: list[Path]) -> None:
-    daten = auswerten(pfade)
-    for datei, fehler in daten["nicht_lesbar"]:
-        print(f"  ! {datei}: nicht lesbar ({fehler})")
+def report(pfade: list[Path]) -> None:
+    data = auswerten(pfade)
+    for file, fehler in data["nicht_lesbar"]:
+        print(f"  ! {file}: nicht lesbar ({fehler})")
 
-    sessions = len(daten["sitzungen"])
+    sessions = len(data["sitzungen"])
     if not sessions:
         print("Keine lesbaren Logs gefunden.")
         return
 
-    gesamt_events = daten["ereignisse"]
-    timeouts_je_schritt = daten["timeouts"]
-    verify_miss = daten["verify_miss"]
-    verify_ok = daten["verify_ok"]
-    gesamt_dauer = daten["dauer"]
+    gesamt_events = data["ereignisse"]
+    timeouts_je_schritt = data["timeouts"]
+    verify_miss = data["verify_miss"]
+    verify_ok = data["verify_ok"]
+    gesamt_dauer = data["dauer"]
 
     print("=" * 66)
     print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_dauer(gesamt_dauer)}")
@@ -196,34 +196,34 @@ def bericht(pfade: list[Path]) -> None:
             print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
                   "Spiel\n       braucht laenger als verify_timeout.")
 
-    if daten["items"]:
+    if data["items"]:
         print(f"\n{'-' * 66}\nGEFUNDENE ITEMS "
-              f"({sum(n for _, n in daten['items'])} gesamt):")
-        for name, n in daten["items"][:15]:
+              f"({sum(n for _, n in data['items'])} gesamt):")
+        for name, n in data["items"][:15]:
             print(f"  {n:>5}x  {name}")
 
-    if daten["erkannt"]:
+    if data["erkannt"]:
         print(f"\n{'-' * 66}\nERKANNT (Boss/Icon):")
-        for name, n in daten["erkannt"][:10]:
+        for name, n in data["erkannt"][:10]:
             print(f"  {n:>5}x  {name}")
 
-    if daten["stoerungen"]:
+    if data["stoerungen"]:
         print(f"\n{'-' * 66}\nUNTERBRECHUNGEN:")
-        for k, v in daten["stoerungen"]:
+        for k, v in data["stoerungen"]:
             print(f"  {v:>5}x  {k}")
 
-    if daten["unbekannt"]:
+    if data["unbekannt"]:
         # Neue Ereignisarten sollen hier auffallen, nicht stillschweigend fehlen.
-        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(daten['unbekannt'])}")
+        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(data['unbekannt'])}")
 
 
 def main() -> int:
     args = [a for a in sys.argv[1:] if a]
     if args and args[0] not in ("--letzte", "--last"):
         pfade = [Path(a) for a in args]
-        fehlend = [p for p in pfade if not p.exists()]
-        if fehlend:
-            print(f"Nicht gefunden: {', '.join(str(p) for p in fehlend)}")
+        missing = [p for p in pfade if not p.exists()]
+        if missing:
+            print(f"Nicht gefunden: {', '.join(str(p) for p in missing)}")
             return 1
     else:
         if not LOGS_DIR.is_dir():
@@ -237,7 +237,7 @@ def main() -> int:
             pfade = pfade[-1:]
             print(f"Neueste Session: {pfade[0].name}\n")
 
-    bericht(pfade)
+    report(pfade)
     return 0
 
 

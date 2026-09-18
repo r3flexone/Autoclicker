@@ -85,11 +85,11 @@ def hexfarbe(rgb) -> Optional[str]:
 
 def rgbwert(hexwert) -> Optional[tuple]:
     """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
-    roh = str(hexwert or "").strip().lstrip("#")
-    if len(roh) != 6:
+    raw = str(hexwert or "").strip().lstrip("#")
+    if len(raw) != 6:
         return None
     try:
-        return tuple(int(roh[i:i + 2], 16) for i in (0, 2, 4))
+        return tuple(int(raw[i:i + 2], 16) for i in (0, 2, 4))
     except ValueError:
         return None
 

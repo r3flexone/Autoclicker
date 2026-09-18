@@ -214,8 +214,8 @@ def _read_key_polling(zusatz: dict | None = None,
 
     if sys.platform != "win32":
         from ..winapi import wait_for_key
-        taste = wait_for_key(tuple(dict.fromkeys(tasten.values())), timeout)
-        return taste or ("" if timeout is not None else "unknown")
+        key = wait_for_key(tuple(dict.fromkeys(tasten.values())), timeout)
+        return key or ("" if timeout is not None else "unknown")
 
     user32 = ctypes.windll.user32
 

@@ -326,8 +326,8 @@ class AppConfig:
 DEFAULT_CONFIG = AppConfig().to_dict()
 
 
-def apply_config(ziel: AppConfig, quelle: AppConfig) -> None:
-    """Schreibt alle Werte aus `quelle` in `ziel` — ohne das Objekt zu tauschen.
+def apply_config(target: AppConfig, source: AppConfig) -> None:
+    """Schreibt alle Werte aus `source` in `target` — ohne das Objekt zu tauschen.
 
     Im Prozess gibt es EIN Config-Objekt: `state.config` IST das Modul-`CONFIG`.
     Wer es austauscht, lässt jeden mit `from .config import CONFIG` (imaging, die
@@ -337,7 +337,7 @@ def apply_config(ziel: AppConfig, quelle: AppConfig) -> None:
     nach einem Speichern im Studio.
     """
     for f in fields(AppConfig):
-        setattr(ziel, f.name, getattr(quelle, f.name))
+        setattr(target, f.name, getattr(source, f.name))
 
 
 def load_config() -> AppConfig:
@@ -466,9 +466,9 @@ def config_sections() -> list:
     alle = [f.name for f in fields(AppConfig)]
     abschnitte = [(titel, [k for k in keys if k in alle])
                   for titel, keys in _CONFIG_SECTIONS]
-    rest = [k for k in alle if k not in zugeordnet]
-    if rest:
-        abschnitte.append(("SONSTIGE", rest))
+    remainder = [k for k in alle if k not in zugeordnet]
+    if remainder:
+        abschnitte.append(("SONSTIGE", remainder))
     return abschnitte
 
 

@@ -245,9 +245,9 @@ class SequenceStep:
             return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
         if self.scroll:
             richtung = "hoch" if self.scroll > 0 else "runter"
-            ziel = f"{self.name} " if self.name else ""
+            target = f"{self.name} " if self.name else ""
             return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
-                    f"bei {ziel}({self.x}, {self.y}){else_str}")
+                    f"bei {target}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
         if self.icon_scan:
@@ -300,13 +300,13 @@ class SequenceStep:
         zustand = "WEG" if wc.until_gone else "DA"
         pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
         if wc.check_only:
-            art = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+            kind = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
         else:
-            art = f"warte bis Farbe {zustand} bei {pixel}"
+            kind = f"warte bis Farbe {zustand} bei {pixel}"
         if self.delay_before > 0:
             # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
-            return f"warte {self._delay_str()}, dann {art.removeprefix('warte ')}"
-        return art
+            return f"warte {self._delay_str()}, dann {kind.removeprefix('warte ')}"
+        return kind
 
     def _verify_str(self) -> str:
         """Was NACH der Aktion geprüft wird — leer, wenn nichts geprüft wird.
@@ -475,17 +475,17 @@ class ItemProfile:
 
     def template_names(self) -> list[str]:
         """Alle Vorlagen ohne leere oder doppelte Dateinamen."""
-        ergebnis = []
+        result = []
         for name in [self.template, *self.template_variants]:
-            if isinstance(name, str) and name and name not in ergebnis:
-                ergebnis.append(name)
-        return ergebnis
+            if isinstance(name, str) and name and name not in result:
+                result.append(name)
+        return result
 
     def __str__(self) -> str:
         vorlagen = self.template_names()
         if vorlagen:
-            anzahl = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
-            template_str = f"Template: {vorlagen[0]}{anzahl} (≥{self.min_confidence:.0%})"
+            count = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
+            template_str = f"Template: {vorlagen[0]}{count} (≥{self.min_confidence:.0%})"
         else:
             colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:3]])
             if len(self.marker_colors) > 3:

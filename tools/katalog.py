@@ -62,9 +62,9 @@ SLOTS = {
 }
 
 
-def anzeigename(schluessel: str) -> str:
+def anzeigename(key_name: str) -> str:
     """`godlike_bow` -> `Godlike Bow` — der Name, wie er im Spiel steht."""
-    return schluessel.replace("_", " ").title()
+    return key_name.replace("_", " ").title()
 
 
 def kategorie_fuer(item: dict) -> str:
@@ -135,11 +135,11 @@ def _argument_ende(text: str, start: int) -> int:
 
 def _als_zahl(inneres: str):
     """`5`, `"5"`, `"1.5"` -> `5` bzw. `1.5`; sonst None."""
-    roh = inneres.strip()
-    if len(roh) >= 2 and roh[0] == '"' and roh[-1] == '"':
-        roh = roh[1:-1].strip()
-    if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", roh):
-        return roh
+    raw = inneres.strip()
+    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+        raw = raw[1:-1].strip()
+    if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", raw):
+        return raw
     return None
 
 
@@ -167,37 +167,37 @@ def _ersatz(name: str, inneres: str, unbekannt: dict) -> str:
 def bereinige_extended_json(text: str) -> tuple:
     """`(json_text, unbekannte)` — `unbekannte` zaehlt je Konstruktname."""
     unbekannt: dict = {}
-    teile = []
+    parts = []
     i = 0
     n = len(text)
     while i < n:
         c = text[i]
         if c == '"':
             ende = _string_ende(text, i)
-            teile.append(text[i:ende])
+            parts.append(text[i:ende])
             i = ende
             continue
-        treffer = _AUFRUF.match(text, i)
-        if treffer is None:
-            teile.append(c)
+        match = _AUFRUF.match(text, i)
+        if match is None:
+            parts.append(c)
             i += 1
             continue
-        ende = _argument_ende(text, treffer.end())
+        ende = _argument_ende(text, match.end())
         if ende < 0:
-            teile.append(text[i:treffer.end()])
-            i = treffer.end()
+            parts.append(text[i:match.end()])
+            i = match.end()
             continue
-        teile.append(_ersatz(treffer.group(1), text[treffer.end():ende - 1], unbekannt))
+        parts.append(_ersatz(match.group(1), text[match.end():ende - 1], unbekannt))
         i = ende
-    return "".join(teile), unbekannt
+    return "".join(parts), unbekannt
 
 
 def extended_json_hinweise(unbekannt: dict) -> list:
     """Die Meldungen zu unbekannten Konstrukten — eine je Name, mit Anzahl."""
-    return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {anzahl}× — Wert "
+    return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {count}× — Wert "
             f"uebernommen, nicht uebersetzt. Falls es eine Zahl oder ein Text ist: "
             f"in ZAHL_HUELLEN bzw. TEXT_HUELLEN eintragen."
-            for name, anzahl in sorted(unbekannt.items())]
+            for name, count in sorted(unbekannt.items())]
 
 
 def hole_spieldaten(url: str = GAME_URL, timeout: int = 60, hinweise: list = None) -> dict:
@@ -210,8 +210,8 @@ def hole_spieldaten(url: str = GAME_URL, timeout: int = 60, hinweise: list = Non
     """
     req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-katalog"})
     with urllib.request.urlopen(req, timeout=timeout) as antwort:
-        roh = antwort.read().decode("utf-8")
-    bereinigt, unbekannt = bereinige_extended_json(roh)
+        raw = antwort.read().decode("utf-8")
+    bereinigt, unbekannt = bereinige_extended_json(raw)
     if hinweise is not None:
         hinweise.extend(extended_json_hinweise(unbekannt))
     return json.loads(bereinigt)
@@ -220,13 +220,13 @@ def hole_spieldaten(url: str = GAME_URL, timeout: int = 60, hinweise: list = Non
 def baue_katalog(spieldaten: dict) -> dict:
     """Aus den Spieldaten die beiden Listen, die der Autoclicker braucht."""
     items = {}
-    for eintrag in (spieldaten.get("Items") or {}).get("Items") or []:
-        schluessel = eintrag.get("Name")
-        if not schluessel:
+    for entry in (spieldaten.get("Items") or {}).get("Items") or []:
+        key_name = entry.get("Name")
+        if not key_name:
             continue
-        items[anzeigename(schluessel)] = {
-            "kategorie": kategorie_fuer(eintrag),
-            "wert": eintrag.get("BaseValue") or 0,
+        items[anzeigename(key_name)] = {
+            "kategorie": kategorie_fuer(entry),
+            "wert": entry.get("BaseValue") or 0,
         }
 
     # Gegner stehen verstreut (Kampf-Aufgaben, Raids, Clan-Bosse) und tragen mal
@@ -237,14 +237,14 @@ def baue_katalog(spieldaten: dict) -> dict:
     def sammle(knoten) -> None:
         if isinstance(knoten, dict):
             for feld in ("EnemyName", "MonsterName", "BossNameLocalizationKey"):
-                wert = knoten.get(feld)
-                if isinstance(wert, str) and wert:
-                    gegner.add(anzeigename(wert))
-            for wert in knoten.values():
-                sammle(wert)
+                value = knoten.get(feld)
+                if isinstance(value, str) and value:
+                    gegner.add(anzeigename(value))
+            for value in knoten.values():
+                sammle(value)
         elif isinstance(knoten, list):
-            for wert in knoten:
-                sammle(wert)
+            for value in knoten:
+                sammle(value)
 
     sammle(spieldaten)
     return {
@@ -258,13 +258,13 @@ def baue_katalog(spieldaten: dict) -> dict:
 def _zusammenfassung(katalog: dict) -> str:
     """Was drinsteht — die Zeile, die man nach dem Lauf liest."""
     kategorien = {}
-    for eintrag in katalog["items"].values():
-        kategorien[eintrag["kategorie"]] = kategorien.get(eintrag["kategorie"], 0) + 1
+    for entry in katalog["items"].values():
+        kategorien[entry["kategorie"]] = kategorien.get(entry["kategorie"], 0) + 1
     gross = sorted(kategorien.items(), key=lambda kv: -kv[1])[:8]
     return (f"{len(katalog['items'])} Items in {len(kategorien)} Kategorien, "
             f"{len(katalog['gegner'])} Gegner\n"
             "  groesste Kategorien: "
-            + ", ".join(f"{name} ({anzahl})" for name, anzahl in gross))
+            + ", ".join(f"{name} ({count})" for name, count in gross))
 
 
 def main(argv=None) -> int:
@@ -296,9 +296,9 @@ def main(argv=None) -> int:
     if args.zeige:
         return 0
 
-    with open(args.ziel, "w", encoding="utf-8") as f:
+    with open(args.target, "w", encoding="utf-8") as f:
         json.dump(katalog, f, ensure_ascii=False, indent=1)
-    print(f"[OK] Geschrieben: {args.ziel}")
+    print(f"[OK] Geschrieben: {args.target}")
     print("  Eintragen unter Einstellungen -> SCAN-EINSTELLUNGEN -> 'Item-Katalog' "
           "(config.json: scan_catalog_file)")
     return 0

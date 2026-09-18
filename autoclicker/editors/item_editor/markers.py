@@ -92,10 +92,10 @@ def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> lis
 
     for x in range(width):
         for y in range(height):
-            roh = pixels[x, y]
-            if maskiert and len(roh) > 3 and roh[3] <= 127:
+            raw = pixels[x, y]
+            if maskiert and len(raw) > 3 and raw[3] <= 127:
                 continue                      # Hintergrund, schon ausmaskiert
-            pixel = roh[:3]
+            pixel = raw[:3]
             rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 

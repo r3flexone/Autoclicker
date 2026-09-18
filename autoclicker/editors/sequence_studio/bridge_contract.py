@@ -147,17 +147,17 @@ def _gleicher_wert(a, b) -> bool:
     return a == b
 
 
-def _mtime(pfad) -> Optional[float]:
+def _mtime(path) -> Optional[float]:
     """Zeitstempel einer Datei — `None`, wenn es sie (noch) nicht gibt."""
     try:
-        return Path(pfad).stat().st_mtime
+        return Path(path).stat().st_mtime
     except OSError:
         return None
 
 
-def _bloecke(anzahl: int) -> str:
+def _bloecke(count: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
-    return "1 Block" if anzahl == 1 else f"{anzahl} Blöcke"
+    return "1 Block" if count == 1 else f"{count} Blöcke"
 
 
 def scan_warnungen(board: SequenceBoard) -> list[str]:

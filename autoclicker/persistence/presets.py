@@ -97,14 +97,14 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
         data, _meldungen = migrate(data, KIND_SLOTS)
         if not isinstance(data, dict):
             raise TypeError("Slot-Preset muss ein JSON-Objekt sein")
-        geladen = {name: _slot_from_dict(name, s) for name, s in data.items()}
+        loaded = {name: _slot_from_dict(name, s) for name, s in data.items()}
         with state.lock:
-            state.global_slots = geladen
+            state.global_slots = loaded
             hat_scan = state.active_item_scan in state.item_scans
         # Der Assistent lädt Presets auch vor dem Anlegen seines ersten Scans.
         if hat_scan and not save_global_slots(state):
             return False
-        print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(geladen)} Slots)"))
+        print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(loaded)} Slots)"))
         return True
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
@@ -150,13 +150,13 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
         data, _meldungen = migrate(data, KIND_ITEMS)
         if not isinstance(data, dict):
             raise TypeError("Item-Preset muss ein JSON-Objekt sein")
-        geladen = {name: _item_from_dict(i, name) for name, i in data.items()}
+        loaded = {name: _item_from_dict(i, name) for name, i in data.items()}
         with state.lock:
-            state.global_items = geladen
+            state.global_items = loaded
             hat_scan = state.active_item_scan in state.item_scans
         if hat_scan and not save_global_items(state):
             return False
-        print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(geladen)} Items)"))
+        print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(loaded)} Items)"))
         return True
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))

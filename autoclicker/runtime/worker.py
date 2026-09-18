@@ -149,7 +149,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     finally:
         # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
         # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
-        grund = fehler or _end_reason(state)
+        reason = fehler or _end_reason(state)
         schedule_shutdown.set()
         state.stop_event.set()
         try:
@@ -157,7 +157,7 @@ def sequence_worker(state: AutoClickerState) -> None:
             if llm_thread is not None and llm_thread.is_alive():
                 llm_thread.join(timeout=state.config.llm_timeout + 5)
             if sequence is not None:
-                status.finish_run(state, grund, cycle_count,
+                status.finish_run(state, reason, cycle_count,
                               time.time() - state.start_time if state.start_time else 0)
         finally:
             # Der gespeicherte Log-Verweis wird selbst bei einem Close-Fehler
@@ -445,7 +445,7 @@ def _phase_overview(sequence) -> list[dict]:
     return raus
 
 
-def _phase_pos(sequence, art: str, idx: int = 0) -> int:
+def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
     """Position einer Phase in `_phase_overview()`.
 
     Die Ansicht kennt nur diese eine Liste; `phase_index` (−1 für INIT/END)
@@ -454,9 +454,9 @@ def _phase_pos(sequence, art: str, idx: int = 0) -> int:
     falsche Kachel als laufend.
     """
     versatz = 1 if sequence.init_steps else 0
-    if art == "init":
+    if kind == "init":
         return 0
-    if art == "end":
+    if kind == "end":
         return versatz + len(sequence.loop_phases)
     return versatz + idx
 

@@ -250,26 +250,26 @@ _alt_shift = _IF.shift_category_priorities
 _IF.shift_category_priorities = lambda st, kat: _verschoben.append(kat)
 try:
     check("eine Zahl kommt als Prioritaet zurueck",
-          _feld_folge(_IF.frage_prioritaet, ["3"], state=_st_f, kategorie="Helme") == 3)
+          _feld_folge(_IF.frage_prioritaet, ["3"], state=_st_f, category="Helme") == 3)
     check("leere Eingabe behaelt die Vorgabe",
           _feld_folge(_IF.frage_prioritaet, [""], state=_st_f,
-                      kategorie="Helme", vorgabe=4) == 4)
+                      category="Helme", vorgabe=4) == 4)
     check("Zahlensalat behaelt die Vorgabe",
           _feld_folge(_IF.frage_prioritaet, ["abc"], state=_st_f,
-                      kategorie="Helme", vorgabe=4) == 4)
+                      category="Helme", vorgabe=4) == 4)
     check("negative Zahlen werden auf 1 gehoben",
-          _feld_folge(_IF.frage_prioritaet, ["-5"], state=_st_f, kategorie="Helme") == 1)
+          _feld_folge(_IF.frage_prioritaet, ["-5"], state=_st_f, category="Helme") == 1)
     # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.
     check("0 mit Kategorie verschiebt und ergibt 1",
           _feld_folge(_IF.frage_prioritaet, ["0"], state=_st_f,
-                      kategorie="Helme") == 1 and _verschoben == ["Helme"])
+                      category="Helme") == 1 and _verschoben == ["Helme"])
     # Ohne Kategorie gibt es nichts zu verschieben — das wird gesagt, nicht getan.
     _verschoben.clear()
     check("0 ohne Kategorie verschiebt nichts",
           _feld_folge(_IF.frage_prioritaet, ["0"], state=_st_f,
-                      kategorie=None) == 1 and _verschoben == [])
+                      category=None) == 1 and _verschoben == [])
     check("abbrechbar: 'cancel' meldet ABBRUCH",
           _feld_folge(_IF.frage_prioritaet, ["cancel"], state=_st_f,
-                      kategorie="Helme", abbrechbar=True) is _IF.ABBRUCH)
+                      category="Helme", abbrechbar=True) is _IF.ABBRUCH)
 finally:
     _IF.shift_category_priorities = _alt_shift

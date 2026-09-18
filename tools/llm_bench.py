@@ -74,38 +74,38 @@ class NurConfig:
 
 # ---------------------------------------------------------------- Bestand
 
-def finde_scan(pfad: str = "") -> Path:
+def finde_scan(path: str = "") -> Path:
     """Die Scan-Datei — angegeben oder die zuletzt bearbeitete.
 
     Dieselbe Regel wie `last_edited()` im Studio: ein echtes „zuletzt
     geoeffnet" muesste jemand mitschreiben, und das Dateisystem weiss es schon.
     """
-    if pfad:
-        return Path(pfad)
-    kandidaten = sorted(Path("sequences").glob("*/item_scans/*.json"),
+    if path:
+        return Path(path)
+    candidates = sorted(Path("sequences").glob("*/item_scans/*.json"),
                         key=lambda p: p.stat().st_mtime, reverse=True)
-    kandidaten = [p for p in kandidaten if p.name != "bibliothek.json"]
-    if not kandidaten:
+    candidates = [p for p in candidates if p.name != "bibliothek.json"]
+    if not candidates:
         raise SystemExit("Kein Item-Scan gefunden — --scan angeben.")
-    return kandidaten[0]
+    return candidates[0]
 
 
-def lade_scan(pfad: Path) -> dict:
+def lade_scan(path: Path) -> dict:
     """Rohdaten des Scans plus die Pfade, die daran haengen."""
-    daten = json.loads(pfad.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
     return {
-        "name": daten.get("name") or pfad.stem,
-        "items": daten.get("items") or {},
-        "slots": daten.get("slots") or {},
-        "toleranz": int(daten.get("color_tolerance") or 30),
-        "vorlagen": pfad.parent.parent / "templates",
+        "name": data.get("name") or path.stem,
+        "items": data.get("items") or {},
+        "slots": data.get("slots") or {},
+        "toleranz": int(data.get("color_tolerance") or 30),
+        "vorlagen": path.parent.parent / "templates",
         # `sequences/<name>/bilder/<scan>.png` — neben `item_scans/`, nicht
         # darin (`_foto_pfad()` im Studio: `filepath.parent / "bilder"`).
-        "bild": pfad.parent.parent / "bilder" / (pfad.stem + ".png"),
+        "bild": path.parent.parent / "bilder" / (path.stem + ".png"),
     }
 
 
-def lade_foto(pfad: Path):
+def lade_foto(path: Path):
     """Das gemerkte Bild samt Ursprung — `(Bild, links, oben)` oder `None`.
 
     Der Ursprung des virtuellen Desktops steht IM PNG (Text-Chunk), nicht in
@@ -114,45 +114,45 @@ def lade_foto(pfad: Path):
     """
     from PIL import Image
     try:
-        bild = Image.open(pfad)
-        bild.load()
+        image = Image.open(path)
+        image.load()
     except (OSError, ValueError):
         return None
     try:
-        return bild, int(bild.info["links"]), int(bild.info["oben"])
+        return image, int(image.info["links"]), int(image.info["oben"])
     except (KeyError, TypeError, ValueError):
-        return bild, 0, 0
+        return image, 0, 0
 
 
 # ---------------------------------------------------------------- Proben
 
-def proben_aus_vorlagen(scan: dict, katalog, grund: bool, limit: int) -> list:
+def proben_aus_vorlagen(scan: dict, katalog, reason: bool, limit: int) -> list:
     """`(Wahrheit, Bild)` je Item mit Vorlage, dessen Name im Katalog steht."""
     from PIL import Image
     proben = []
-    for name, eintrag in scan["items"].items():
+    for name, entry in scan["items"].items():
         if len(proben) >= limit:
             break
-        datei = eintrag.get("template")
-        if not datei or not katalog.treffer(name):
+        file = entry.get("template")
+        if not file or not katalog.match(name):
             continue
-        pfad = scan["vorlagen"] / datei
+        path = scan["vorlagen"] / file
         try:
-            with Image.open(pfad) as roh:
-                bild = roh.copy()
+            with Image.open(path) as raw:
+                image = raw.copy()
         except (OSError, ValueError):
             continue
-        proben.append((katalog.treffer(name), auf_grund(bild) if grund else bild))
+        proben.append((katalog.match(name), auf_grund(image) if reason else image))
     return proben
 
 
-def auf_grund(bild, farbe=NEUTRAL):
+def auf_grund(image, color=NEUTRAL):
     """Alpha auf einen neutralen Grund legen, statt es mitzuschicken."""
     from PIL import Image
-    if bild.mode != "RGBA":
-        return bild.convert("RGB")
-    flaeche = Image.new("RGB", bild.size, farbe)
-    flaeche.paste(bild, mask=bild.getchannel("A"))
+    if image.mode != "RGBA":
+        return image.convert("RGB")
+    flaeche = Image.new("RGB", image.size, color)
+    flaeche.paste(image, mask=image.getchannel("A"))
     return flaeche
 
 
@@ -173,7 +173,7 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
     if foto is None:
         raise SystemExit(f"Kein gemerktes Bild ({scan['bild']}) — "
                          "im Scans-Reiter einmal aufnehmen, oder --bild vorlage.")
-    bild, links, oben = foto
+    image, left, top = foto
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
     stellvertreter = NurConfig(config)
     proben = []
@@ -183,35 +183,35 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
         region = slot.get("scan_region")
         if not region or len(region) != 4:
             continue
-        kasten = (region[0] - links, region[1] - oben,
-                  region[2] - links, region[3] - oben)
+        kasten = (region[0] - left, region[1] - top,
+                  region[2] - left, region[3] - top)
         if kasten[0] < 0 or kasten[1] < 0:
             continue
-        if kasten[2] > bild.width or kasten[3] > bild.height:
+        if kasten[2] > image.width or kasten[3] > image.height:
             continue
-        ausschnitt = bild.crop(kasten).convert("RGB")
+        ausschnitt = image.crop(kasten).convert("RGB")
         for item in profile:
-            if not katalog.treffer(item.name):
+            if not katalog.match(item.name):
                 continue
             if _check_profile_match(item, ausschnitt, scan["toleranz"],
                                     stellvertreter, False,
                                     template_root=scan["vorlagen"]):
-                proben.append((katalog.treffer(item.name), ausschnitt))
+                proben.append((katalog.match(item.name), ausschnitt))
                 break
     return proben
 
 
 # ---------------------------------------------------------------- Fragen
 
-def frage_einstufig(bild, kandidaten: list, config, modell: str) -> tuple:
+def frage_einstufig(image, candidates: list, config, modell: str) -> tuple:
     """Ein Aufruf mit der ganzen Namensliste — der Weg, den das Studio geht."""
     return suggest_item_name_with_reason(
-        bild, provider=config.llm_provider, endpoint=config.llm_endpoint,
+        image, provider=config.llm_provider, endpoint=config.llm_endpoint,
         model=modell, timeout=max(config.llm_timeout, 120),
-        candidates=kandidaten)
+        candidates=candidates)
 
 
-def frage_zweistufig(bild, katalog, config, modell: str) -> tuple:
+def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
     """Erst die Art, dann der Name aus NUR dieser Art.
 
     Gegen den Fehler, der uebrig bleibt: die Art trifft das Modell zuverlaessig
@@ -219,27 +219,27 @@ def frage_zweistufig(bild, katalog, config, modell: str) -> tuple:
     Aufruf sieht statt tausend Namen nur noch die paar Dutzend seiner Art —
     und damit ist die Stufe die einzige Frage, die offenbleibt.
     """
-    kategorien = sorted({katalog.kategorie(n) for n in katalog.namen()
-                         if katalog.kategorie(n)})
+    kategorien = sorted({katalog.category(n) for n in katalog.names()
+                         if katalog.category(n)})
     system = ("You identify items from the game Idle Clans by their inventory "
               "icon.\nAnswer with exactly one word copied verbatim from the "
               "CATEGORIES list below. No explanation.\n\nCATEGORIES:\n"
               + "\n".join(kategorien))
     ok, antwort, _ms = analyze_image(
-        img=bild, provider=config.llm_provider, endpoint=config.llm_endpoint,
+        img=image, provider=config.llm_provider, endpoint=config.llm_endpoint,
         model=modell, prompt="Which category is this item?",
         system_prompt=system, timeout=max(config.llm_timeout, 120),
         max_tokens=16)
     if not ok:
         return None, (TIMEOUT if str(antwort).startswith("Timeout") else str(antwort))
-    art = clean_boss_name(antwort)
-    passend = {k.casefold(): k for k in kategorien}.get(art.casefold())
+    kind = clean_boss_name(antwort)
+    passend = {k.casefold(): k for k in kategorien}.get(kind.casefold())
     if passend is None:
         # Eine erfundene Art ist kein Ergebnis: die zweite Frage haette dann
         # gar keine Kandidaten. Lieber sagen, woran es lag.
-        return None, f"unbekannte Art '{art}'"
-    eng = [n for n in katalog.namen() if katalog.kategorie(n) == passend]
-    return frage_einstufig(bild, eng, config, modell)
+        return None, f"unbekannte Art '{kind}'"
+    eng = [n for n in katalog.names() if katalog.category(n) == passend]
+    return frage_einstufig(image, eng, config, modell)
 
 
 def mit_stimmen(frage, stimmen: int) -> tuple:
@@ -250,24 +250,24 @@ def mit_stimmen(frage, stimmen: int) -> tuple:
     schwankt, ist eine andere Auskunft als eines, das konsequent danebenliegt.
     Genau das misst dieser Schalter.
     """
-    namen, gruende = [], []
+    names, gruende = [], []
     for _ in range(stimmen):
-        name, grund = frage()
+        name, reason = frage()
         if name:
-            namen.append(name)
+            names.append(name)
         else:
-            gruende.append(grund)
-    if not namen:
+            gruende.append(reason)
+    if not names:
         return None, (gruende[0] if gruende else "")
-    return Counter(namen).most_common(1)[0][0], ""
+    return Counter(names).most_common(1)[0][0], ""
 
 
 # ---------------------------------------------------------------- Lauf
 
-def aufwaermen(bild, config, modell: str) -> float:
+def aufwaermen(image, config, modell: str) -> float:
     """Ein Aufruf vor der Messung — er misst das Laden, nicht die Frage."""
     start = time.time()
-    suggest_item_name_with_reason(bild, provider=config.llm_provider,
+    suggest_item_name_with_reason(image, provider=config.llm_provider,
                             endpoint=config.llm_endpoint, model=modell,
                             timeout=300, candidates=["Godlike Bow"])
     return time.time() - start
@@ -275,32 +275,32 @@ def aufwaermen(bild, config, modell: str) -> float:
 
 def lauf(proben: list, katalog, config, args, modell: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
-    kandidaten = katalog.namen()
-    treffer, offen, zeiten, fehler = 0, 0, [], []
-    for wahrheit, bild in proben:
+    candidates = katalog.names()
+    match, offen, zeiten, fehler = 0, 0, [], []
+    for wahrheit, image in proben:
         start = time.time()
         if args.zweistufig:
             def einmal():
-                return frage_zweistufig(bild, katalog, config, modell)
+                return frage_zweistufig(image, katalog, config, modell)
         else:
             def einmal():
-                return frage_einstufig(bild, kandidaten, config, modell)
+                return frage_einstufig(image, candidates, config, modell)
         if args.stimmen > 1:
-            name, grund = mit_stimmen(einmal, args.stimmen)
+            name, reason = mit_stimmen(einmal, args.stimmen)
         else:
-            name, grund = einmal()
-        dauer = time.time() - start
-        zeiten.append(dauer)
+            name, reason = einmal()
+        duration = time.time() - start
+        zeiten.append(duration)
         richtig = bool(name) and name.casefold() == wahrheit.casefold()
-        treffer += 1 if richtig else 0
+        match += 1 if richtig else 0
         if not name:
             offen += 1
         if not richtig:
-            fehler.append((wahrheit, name or f"— ({grund})"))
+            fehler.append((wahrheit, name or f"— ({reason})"))
         marke = "OK " if richtig else "-- "
-        print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({dauer:.1f}s)")
+        print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
-        "treffer": treffer, "gesamt": len(proben), "ohne": offen,
+        "treffer": match, "gesamt": len(proben), "ohne": offen,
         "sekunden": sum(zeiten) / len(zeiten) if zeiten else 0.0,
         "fehler": fehler,
     }
@@ -310,19 +310,19 @@ def geladene_modelle(config) -> list:
     """Was der Server gerade anbietet — fuer `--alle-modelle`."""
     import json as _json
     import urllib.request
-    ziel = config.llm_endpoint or test_endpoint_for(config.llm_provider)
+    target = config.llm_endpoint or test_endpoint_for(config.llm_provider)
     if config.llm_endpoint:
-        ziel = chat_endpoint(config.llm_provider).replace(
+        target = chat_endpoint(config.llm_provider).replace(
             "/chat/completions", "/models")
     try:
-        with urllib.request.urlopen(ziel, timeout=10) as antwort:
-            roh = _json.loads(antwort.read().decode("utf-8"))
+        with urllib.request.urlopen(target, timeout=10) as antwort:
+            raw = _json.loads(antwort.read().decode("utf-8"))
     except Exception as e:                       # noqa: BLE001 — Auskunft, kein Absturz
         print(f"[WARN] Modell-Liste nicht lesbar: {e}")
         return []
     if config.llm_provider == "ollama":
-        return [m.get("name") for m in roh.get("models", []) if m.get("name")]
-    return [m.get("id") for m in roh.get("data", []) if m.get("id")]
+        return [m.get("name") for m in raw.get("models", []) if m.get("name")]
+    return [m.get("id") for m in raw.get("data", []) if m.get("id")]
 
 
 def main(argv=None) -> int:
@@ -353,20 +353,20 @@ def main(argv=None) -> int:
                          "oder python tools/katalog.py")
 
     scan = lade_scan(finde_scan(args.scan))
-    if args.bild == "slot":
+    if args.image == "slot":
         proben = proben_aus_slots(scan, katalog, config, args.limit)
     else:
-        proben = proben_aus_vorlagen(scan, katalog, args.bild == "grund", args.limit)
+        proben = proben_aus_vorlagen(scan, katalog, args.image == "grund", args.limit)
     if not proben:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "
             "Katalog. Erst benennen (Studio → Scans → „Alle … benennen“).")
 
-    print(f"Scan '{scan['name']}' · {len(proben)} Proben · Bild: {args.bild}"
+    print(f"Scan '{scan['name']}' · {len(proben)} Proben · Bild: {args.image}"
           + (" · zweistufig" if args.zweistufig else "")
           + (f" · {args.stimmen} Stimmen" if args.stimmen > 1 else "")
           + (" · Reasoning" if args.reasoning else ""))
-    if args.bild != "slot":
+    if args.image != "slot":
         print("  \033[90mDer Goldstandard sind die gespeicherten Namen — sie "
               "beweisen nur, dass sie ECHTE Namen sind, nicht dass sie am "
               "richtigen Item stehen. --bild slot misst gegen die "

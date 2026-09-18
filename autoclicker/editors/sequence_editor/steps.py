@@ -610,15 +610,15 @@ class _PhaseEditor:
         NICHT verknüpft, damit nicht stillschweigend der falsche Punkt gewinnt.
         """
         with self.state.lock:
-            punkte = list(self.state.points)
+            points = list(self.state.points)
 
-        if not punkte:
+        if not points:
             print("  -> Keine Punkte im Pool - nichts zu verknüpfen.")
             return
 
         # Koordinate -> Punkte (mehrere = mehrdeutig)
         nach_pos = {}
-        for p in punkte:
+        for p in points:
             nach_pos.setdefault((p.x, p.y), []).append(p)
 
         verknuepft, mehrdeutig, ohne_punkt, schon_ok = [], [], [], 0
@@ -630,13 +630,13 @@ class _PhaseEditor:
             if step.key_press or step.item_scan or step.boss_scan or step.boss_watcher \
                     or step.icon_scan or step.screenshot_only or step.wait_only:
                 continue
-            treffer = nach_pos.get((step.x, step.y), [])
-            if len(treffer) == 1:
-                step.point_id = treffer[0].id
-                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{treffer[0].id} "
-                                  f"'{treffer[0].name or '(ohne Name)'}'")
-            elif len(treffer) > 1:
-                ids = ", ".join(f"#{p.id}" for p in treffer)
+            match = nach_pos.get((step.x, step.y), [])
+            if len(match) == 1:
+                step.point_id = match[0].id
+                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
+                                  f"'{match[0].name or '(ohne Name)'}'")
+            elif len(match) > 1:
+                ids = ", ".join(f"#{p.id}" for p in match)
                 mehrdeutig.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
                                   f"mehrere Punkte passen ({ids}) - nicht verknüpft")
             else:
@@ -803,9 +803,9 @@ class _PhaseEditor:
 
     def _handle_screenshot(self, user_input: str) -> None:
         """Format: screenshot [full | <x1> <y1> <x2> <y2>] (sonst interaktiv)"""
-        rest = user_input.split()[1:]  # alles nach dem Befehl
+        remainder = user_input.split()[1:]  # alles nach dem Befehl
 
-        if rest and rest[0].lower() == "full":
+        if remainder and remainder[0].lower() == "full":
             step = SequenceStep(x=0, y=0, delay_before=0.0,
                                 screenshot_only=True, screenshot_region=None,
                                 name="Screenshot (Vollbild)")
@@ -813,8 +813,8 @@ class _PhaseEditor:
             print(ok("Screenshot-Schritt (Vollbild) hinzugefügt"))
             return
 
-        if len(rest) == 4 and all(r.lstrip("-").isdigit() for r in rest):
-            x1, y1, x2, y2 = (int(v) for v in rest)
+        if len(remainder) == 4 and all(r.lstrip("-").isdigit() for r in remainder):
+            x1, y1, x2, y2 = (int(v) for v in remainder)
             region = (x1, y1, x2, y2)
             step = SequenceStep(x=0, y=0, delay_before=0.0,
                                 screenshot_only=True, screenshot_region=region,
@@ -1309,43 +1309,43 @@ class _PhaseEditor:
         Ein eigener Punkt statt des Klickziels, weil die Wirkung meist woanders
         sichtbar wird (Fenster geht auf, Zähler springt).
         """
-        teile = user_input.split()
-        if len(teile) < 3:
+        parts = user_input.split()
+        if len(parts) < 3:
             print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
             print(f"     {hint('prueft NACH der Aktion, ob sie gewirkt hat')}")
             return
-        step = self._get_step_by_num(teile[1])
+        step = self._get_step_by_num(parts[1])
         if step is None:
             return
-        ziel = teile[2].lower()
-        until_gone = len(teile) > 3 and teile[3].lower() in ("gone", "weg")
+        target = parts[2].lower()
+        until_gone = len(parts) > 3 and parts[3].lower() in ("gone", "weg")
 
-        if ziel in ("off", "aus", "none"):
+        if target in ("off", "aus", "none"):
             step.verify_condition = None
             print(ok("Nachprüfung entfernt"))
             return
 
-        if ziel in ("maus", "mouse"):
+        if target in ("maus", "mouse"):
             px, py, color = capture_pixel_color()
             if color is None:
                 return
             punkt_id = self._punkt_fuer(px, py, color, "Nachprüfung")
         else:
             try:
-                punkt_id = int(ziel)
+                punkt_id = int(target)
             except ValueError:
                 print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
                 return
             with self.state.lock:
-                punkt = get_point_by_id(self.state, punkt_id)
-            if not punkt:
+                point = get_point_by_id(self.state, punkt_id)
+            if not point:
                 print(f"  -> Punkt #{punkt_id} nicht gefunden! {hint('(siehe points)')}")
                 return
-            if not punkt.color:
+            if not point.color:
                 print(warn(f"  -> Punkt #{punkt_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
                 print(hint("     Im Punkte-Menü mit 'walk' die Farbe nachtragen."))
                 return
-            px, py = punkt.x, punkt.y
+            px, py = point.x, point.y
 
         step.verify_condition = WaitCondition(point_id=punkt_id, pixel=(px, py),
                                               until_gone=until_gone)

@@ -137,11 +137,11 @@ finally:
 section("Haltepunkt: aus dem Studio gestartet, im Studio beantwortet")
 # =============================================================================
 
-def _studio_gate(st, schritt):
+def _studio_gate(st, step):
     """Das Gate in einem Thread, bis die Tafel im Laufstatus steht."""
     erg = {}
     t = threading.Thread(target=lambda: erg.setdefault(
-        "wert", _dbg.step_gate(st, schritt, "LOOP", 1, 2)))
+        "wert", _dbg.step_gate(st, step, "LOOP", 1, 2)))
     t.start()
     frist = time.time() + 1.0
     while not _status._zustand.get("manuell") and time.time() < frist:
@@ -162,7 +162,7 @@ try:
           _tafel.get("aktiv") is True and _tafel.get("haltepunkt") is True
           and _tafel.get("block") == 1)
     # Die Antwort kommt als Briefkasten-Befehl — auch ohne Schrittmodus.
-    _hnd.command_manual_action(_st, {"aktion": "step"})
+    _hnd.command_manual_action(_st, {"action": "step"})
     _t.join(1.5)
     check("'ab hier schrittweise' aus dem Studio fuehrt aus und schaltet um",
           _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is True
@@ -173,7 +173,7 @@ try:
     _t, _erg = _studio_gate(_st, _halt)
     check("im Schrittmodus traegt die Tafel keine Haltepunkt-Marke",
           (_status._zustand.get("manuell") or {}).get("haltepunkt") is False)
-    _hnd.command_manual_action(_st, {"aktion": "continue"})
+    _hnd.command_manual_action(_st, {"action": "continue"})
     _t.join(1.5)
     check("'Normal weiter' schaltet den Schrittmodus wieder aus",
           _erg.get("wert") == _dbg.GATE_RUN and _st.step_mode is False)
@@ -182,10 +182,10 @@ try:
     # beim naechsten Halt nach.
     _st.step_command = ""
     _st.step_command_event.clear()
-    _hnd.command_manual_action(_st, {"aktion": "run"})
+    _hnd.command_manual_action(_st, {"action": "run"})
     check("ohne wartendes Gate wird kein Befehl vorgemerkt",
           _st.step_command == "" and not _st.step_command_event.is_set())
-    _hnd.command_manual_action(_st, {"aktion": "kaputt"})
+    _hnd.command_manual_action(_st, {"action": "kaputt"})
     check("ein unbekannter Befehl wird abgewiesen", _st.step_command == "")
 finally:
     _dbg.read_command = _orig_read

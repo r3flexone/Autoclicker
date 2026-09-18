@@ -53,32 +53,32 @@ def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
     verschwinden darf es trotzdem nicht.
     """
     from ..utils import hint, warn
-    schluessel = f"{wo}:{feld}"
-    if schluessel in _ALT_GEMELDET:
+    key_name = f"{wo}:{feld}"
+    if key_name in _ALT_GEMELDET:
         return
-    _ALT_GEMELDET.add(schluessel)
+    _ALT_GEMELDET.add(key_name)
     print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
                f"in sequence.json."))
     print(hint(f"       {was_tun}."))
 
 
-def _is_default(wert, default) -> bool:
+def _is_default(value, default) -> bool:
     """Trägt das Feld seinen Standardwert?
 
     In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"scroll": 0` als
     False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
     (0 vs 0.0) sollen dagegen als gleich zählen.
     """
-    if isinstance(wert, bool) != isinstance(default, bool):
+    if isinstance(value, bool) != isinstance(default, bool):
         return False
-    if isinstance(wert, (int, float)) and isinstance(default, (int, float)):
-        return wert == default
-    return type(wert) is type(default) and wert == default
+    if isinstance(value, (int, float)) and isinstance(default, (int, float)):
+        return value == default
+    return type(value) is type(default) and value == default
 
 
-def _without_defaults(daten: dict, defaults: dict) -> dict:
+def _without_defaults(data: dict, defaults: dict) -> dict:
     """Entfernt alle Felder, die ihren Standardwert tragen."""
-    return {k: v for k, v in daten.items()
+    return {k: v for k, v in data.items()
             if not (defaults.get(k, _NO_DEFAULT) is not _NO_DEFAULT
                     and _is_default(v, defaults[k]))}
 
@@ -134,12 +134,12 @@ def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
     """
     if not isinstance(data, dict):
         raise TypeError("Slot muss ein JSON-Objekt sein")
-    farbe = data.get("slot_color")
+    color = data.get("slot_color")
     return ItemSlot(
         name=name,
         scan_region=tuple(data["scan_region"]),
         click_pos=tuple(data["click_pos"]),
-        slot_color=tuple(farbe) if farbe else None,
+        slot_color=tuple(color) if color else None,
         # Nur ein echtes JSON-`false` schaltet aus. Kaputte oder alte Werte
         # fallen auf den sicheren bisherigen Standard „an" zurück.
         enabled=data.get("enabled", True) is not False,
@@ -297,17 +297,17 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     items_data = data.get("items", {})
     if not isinstance(slots_data, dict) or not isinstance(items_data, dict):
         raise TypeError("slots/items müssen Objekte sein")
-    fenster_rechteck = data.get("capture_window_rect")
-    if not isinstance(fenster_rechteck, (list, tuple)) or len(fenster_rechteck) != 4:
-        fenster_rechteck = None
+    window_rect = data.get("capture_window_rect")
+    if not isinstance(window_rect, (list, tuple)) or len(window_rect) != 4:
+        window_rect = None
     else:
         try:
-            fenster_rechteck = tuple(int(wert) for wert in fenster_rechteck)
-            if (fenster_rechteck[2] <= fenster_rechteck[0]
-                    or fenster_rechteck[3] <= fenster_rechteck[1]):
-                fenster_rechteck = None
+            window_rect = tuple(int(value) for value in window_rect)
+            if (window_rect[2] <= window_rect[0]
+                    or window_rect[3] <= window_rect[1]):
+                window_rect = None
         except (TypeError, ValueError):
-            fenster_rechteck = None
+            window_rect = None
     fenster_titel = data.get("capture_window_title")
     if not isinstance(fenster_titel, str) or not fenster_titel.strip():
         fenster_titel = None
@@ -319,17 +319,17 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         fenster_index = 0
     return ItemScanConfig(
         name=data["name"],
-        slots=[_slot_from_dict(str(name), wert)
-               for name, wert in slots_data.items()],
-        items=[_item_from_dict(wert, str(name))
-               for name, wert in items_data.items()],
+        slots=[_slot_from_dict(str(name), value)
+               for name, value in slots_data.items()],
+        items=[_item_from_dict(value, str(name))
+               for name, value in items_data.items()],
         color_tolerance=data.get("color_tolerance", 40),
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
         use_catalog=data.get("use_catalog", False),
         capture_window_title=fenster_titel,
         capture_window_index=fenster_index,
-        capture_window_rect=fenster_rechteck,
+        capture_window_rect=window_rect,
     )
 
 

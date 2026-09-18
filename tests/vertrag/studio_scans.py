@@ -1693,13 +1693,13 @@ try:
             }
             return _b
 
-        def _durchlauf_an(b, daten, schritte=None):
+        def _durchlauf_an(b, data, schritte=None):
             """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
 
             `schritte` bricht nach so vielen ab — genau das, was der
             Abbrechen-Knopf im Arbeits-Kasten tut.
             """
-            erg = b.scan_autoname_start(daten)
+            erg = b.scan_autoname_start(data)
             if not getattr(b, "_autoname", None):
                 return erg                      # abgelehnt, die Meldung sagt warum
             n = 0
@@ -1760,7 +1760,7 @@ try:
         # --- Der Grund, warum die Kategorie nie kam ---------------------------
         # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
         # macht Kleinbuchstaben und Unterstriche: aus "Godlike Bow" wurde
-        # `godlike_bow` — und `Catalog.treffer()` vergleicht `casefold()`, nicht
+        # `godlike_bow` — und `Catalog.match()` vergleicht `casefold()`, nicht
         # Unterstriche. Der Name kam also woertlich aus dem Katalog und fand
         # sich darin trotzdem nicht wieder; Kategorie und Prioritaet blieben
         # IMMER aus. Ein Test, der nur den Namen prueft, sieht das nicht — es

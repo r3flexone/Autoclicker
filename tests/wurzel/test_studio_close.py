@@ -31,19 +31,19 @@ class StudioCloseTest(unittest.TestCase):
     def _bruecke(self):
         seq = Sequence("test", init_steps=[SequenceStep(point_id=7)],
                        points=[ClickPoint(10, 20, "Ziel", 7)])
-        pfad = Path("sequences/test/sequence.json")
-        self.assertTrue(save_sequence_file(seq, pfad))
-        return StudioBridge(seq, pfad, "sequences")
+        path = Path("sequences/test/sequence.json")
+        self.assertTrue(save_sequence_file(seq, path))
+        return StudioBridge(seq, path, "sequences")
 
     def test_rettung_ist_am_gemeldeten_pfad_vollstaendig_ladbar(self):
         bridge = self._bruecke()
         original = bridge.filepath.read_bytes()
         bridge.points[0].x = 123
         bridge._dirty = True
-        pfad = bridge.rettung_schreiben()
-        self.assertIsNotNone(pfad)
-        self.assertTrue(pfad.is_file())
-        seq = load_sequence_file(pfad)
+        path = bridge.rettung_schreiben()
+        self.assertIsNotNone(path)
+        self.assertTrue(path.is_file())
+        seq = load_sequence_file(path)
         self.assertEqual([(p.id, p.x, p.y) for p in seq.points], [(7, 123, 20)])
         self.assertFalse(seq.init_steps[0].unresolved)
         self.assertEqual(seq.init_steps[0].x, 123)
@@ -51,9 +51,9 @@ class StudioCloseTest(unittest.TestCase):
 
     def test_umbenennen_prueft_fremdaenderung_vor_dem_verschieben(self):
         bridge = self._bruecke()
-        daten = json.loads(bridge.filepath.read_text(encoding="utf-8"))
-        daten["points"][0]["x"] = 999
-        bridge.filepath.write_text(json.dumps(daten), encoding="utf-8")
+        data = json.loads(bridge.filepath.read_text(encoding="utf-8"))
+        data["points"][0]["x"] = 999
+        bridge.filepath.write_text(json.dumps(data), encoding="utf-8")
         os.utime(bridge.filepath, (2000000000, 2000000000))
         bridge.board.name = "neu"
         bridge._dirty = True
@@ -117,7 +117,7 @@ class StudioCloseTest(unittest.TestCase):
             nachklick_beim_schliessen=Mock(),
             rettung_schreiben=Mock(return_value=None),
         )
-        with patch("autoclicker.befehl.send_command") as send_command:
+        with patch("autoclicker.mailbox.send_command") as send_command:
             _on_close(bridge, False)
             send_command.assert_not_called()
             _on_close(bridge, True)

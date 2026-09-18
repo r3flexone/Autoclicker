@@ -442,7 +442,7 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
     """Der Rumpf von `_execute_wait_for_color` — ausgelagert nur wegen des `finally`."""
     # Das zuletzt aufgenommene Bild wird weitergereicht, statt jedes Mal neu
     # aufgenommen zu werden: sonst hinge die Anzeige an der Schleifenfrequenz.
-    letztes_bild, bild = 0.0, None
+    letztes_bild, image = 0.0, None
     while not state.stop_event.is_set():
         if state.skip_step_event.is_set():
             state.skip_step_event.clear()
@@ -490,9 +490,9 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
         # beantwortet die nächste Frage: was ist da statt dessen zu sehen?
         jetzt = time.time()
         if jetzt - letztes_bild >= _LIVE_INTERVAL:
-            letztes_bild, bild = jetzt, _pixel_crop(wc.pixel[0], wc.pixel[1])
+            letztes_bild, image = jetzt, _pixel_crop(wc.pixel[0], wc.pixel[1])
         status.waiting_for(state, _color_wait_status(state, step, wc, current_color, dist,
-                                               start_time, timeout, bild))
+                                               start_time, timeout, image))
 
         elapsed = time.time() - start_time
         if timeout > 0 and elapsed >= timeout:
@@ -537,10 +537,10 @@ def _pixel_crop(x: int, y: int):
 
 def _color_wait_status(state: AutoClickerState, step: SequenceStep, wc,
                       current_color, dist, start_time: float, timeout: float,
-                      bild=None) -> dict:
+                      image=None) -> dict:
     """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.wartet`)."""
     return {
-        "bild": bild,
+        "bild": image,
         "art": "farbe",
         "seit": start_time,
         "bis": (start_time + timeout) if timeout > 0 else None,
@@ -712,12 +712,12 @@ def _execute_click(state: AutoClickerState, step: SequenceStep,
         # In Detail-Stufe steht Name und Ziel schon in der Kopfzeile darüber - die
         # Ergebnis-Zeile trägt dann nur noch bei, DASS geklickt wurde, und den Zähler.
         if is_detail_debug(state):
-            ergebnis = f"geklickt | Gesamt: {total_now}"
+            result = f"geklickt | Gesamt: {total_now}"
         else:
-            ergebnis = f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}"
+            result = f"Klick auf '{name}' ({step.x}, {step.y}) | Gesamt: {total_now}"
         _step_status(debug, phase, step_num, total_steps,
                      f"Klick '{name}' ({step.x},{step.y}) | Gesamt: {total_now}",
-                     ergebnis)
+                     result)
 
         if limit_reached:
             print(f"\n{info(f'Maximum von {max_clicks} Klicks erreicht.')}")
@@ -790,8 +790,8 @@ _SCAN_FIELDS = (
 def _scan_without_name(step: SequenceStep) -> "str | None":
     """Beschriftung der Scan-Art, wenn deren Name gesetzt aber leer ist."""
     for feld, beschriftung in _SCAN_FIELDS:
-        wert = getattr(step, feld, None)
-        if wert is not None and not str(wert).strip():
+        value = getattr(step, feld, None)
+        if value is not None and not str(value).strip():
             return beschriftung
     return None
 

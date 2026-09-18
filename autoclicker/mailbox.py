@@ -43,7 +43,7 @@ COMMAND_PATH = Path(COMMAND_FILE)
 MAX_AGE = 30.0
 
 
-def send_command(befehl: str, **argumente) -> bool:
+def send_command(command: str, **arguments) -> bool:
     """Legt einen Befehl für den Hauptprozess ab. True, wenn geschrieben.
 
     Wird aus dem Studio-Subprozess gerufen. Ein bereits liegender Befehl wird
@@ -52,9 +52,9 @@ def send_command(befehl: str, **argumente) -> bool:
     """
     try:
         atomic_write(COMMAND_PATH, compact_json({
-            "befehl": str(befehl),
-            "argumente": dict(argumente),
-            "stand": time.time(),
+            "command": str(command),
+            "arguments": dict(arguments),
+            "sent_at": time.time(),
         }))
         return True
     except (OSError, TypeError, ValueError):
@@ -76,7 +76,7 @@ def fetch_command(max_alter: float = MAX_AGE) -> Optional[dict]:
     except OSError:
         return None
     try:
-        roh = genommen.read_text(encoding="utf-8")
+        raw = genommen.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return None
     finally:
@@ -85,20 +85,20 @@ def fetch_command(max_alter: float = MAX_AGE) -> Optional[dict]:
         except OSError:
             pass
     try:
-        daten = json.loads(roh)
+        data = json.loads(raw)
     except ValueError:
         return None
-    if not isinstance(daten, dict) or not daten.get("befehl"):
+    if not isinstance(data, dict) or not data.get("command"):
         return None
     try:
-        alter = time.time() - float(daten.get("stand") or 0)
+        alter = time.time() - float(data.get("sent_at") or 0)
     except (TypeError, ValueError):
         return None
     if alter > max_alter:
         return None
-    argumente = daten.get("argumente")
-    daten["argumente"] = argumente if isinstance(argumente, dict) else {}
-    return daten
+    arguments = data.get("arguments")
+    data["arguments"] = arguments if isinstance(arguments, dict) else {}
+    return data
 
 
 def discard_command() -> None:

@@ -193,8 +193,8 @@ class MarktwegTest(unittest.TestCase):
     def test_ohne_jeden_weg_kommt_ein_grund(self):
         weg = pricing.effective_sell_price(500, MARKT, INFO)
         self.assertEqual(weg.preis, 0.0)
-        self.assertIn("CanNotBeTraded", weg.grund)
-        self.assertIn("CanNotBeSoldToGameShop", weg.grund)
+        self.assertIn("CanNotBeTraded", weg.reason)
+        self.assertIn("CanNotBeSoldToGameShop", weg.reason)
 
     def test_vergleich_laeuft_netto_gegen_netto(self):
         """Spielergebot verliert Steuer, der NPC nicht – sonst wäre der Vergleich schief."""
@@ -226,19 +226,19 @@ class ZutatenpreisTest(unittest.TestCase):
         self.assertFalse(bekannt)
 
     def test_goldkosten_landen_in_der_summe(self):
-        bild = pricing.kosten_pro_aktion(
+        image = pricing.kosten_pro_aktion(
             [{"Item": 100, "Amount": 1}, {"Item": GOLD_ITEM_ID, "Amount": 250}],
             MARKT, item_info_map=INFO)
-        self.assertTrue(bild.vollstaendig)
-        self.assertAlmostEqual(bild.kosten, 90 + 250)
+        self.assertTrue(image.vollstaendig)
+        self.assertAlmostEqual(image.kosten, 90 + 250)
 
     def test_fehlende_zutat_macht_die_kosten_unvollstaendig(self):
-        bild = pricing.kosten_pro_aktion(
+        image = pricing.kosten_pro_aktion(
             [{"Item": 100, "Amount": 1}, {"Item": 999, "Amount": 2}],
             MARKT, item_info_map=INFO)
-        self.assertFalse(bild.vollstaendig)
-        self.assertEqual(bild.fehlende, ("item_999",))
-        self.assertAlmostEqual(bild.kosten, 90)       # nur die bekannte Zeile
+        self.assertFalse(image.vollstaendig)
+        self.assertEqual(image.fehlende, ("item_999",))
+        self.assertAlmostEqual(image.kosten, 90)       # nur die bekannte Zeile
 
 
 class KettenTest(unittest.TestCase):
@@ -310,13 +310,13 @@ class KettenTest(unittest.TestCase):
 
     def test_auto_cook_abschaltbar(self):
         """Ohne den Schalter steht wieder die alte, pessimistische Rechnung da."""
-        alt = pricing.AUTO_COOK_SELL_RAW_REST
+        old = pricing.AUTO_COOK_SELL_RAW_REST
         try:
             pricing.AUTO_COOK_SELL_RAW_REST = False
             k = pricing.resolve_chain(201, MARKT, self.rezepte, self.fisch, INFO)
             self.assertEqual(k.nebenertrag, 0.0)
         finally:
-            pricing.AUTO_COOK_SELL_RAW_REST = alt
+            pricing.AUTO_COOK_SELL_RAW_REST = old
 
     def test_zyklus_bricht_die_rekursion(self):
         rezepte = {
@@ -362,12 +362,12 @@ class HistorieTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def _zeile(self, item="oak", **rest):
+    def _zeile(self, item="oak", **remainder):
         basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
                  "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                  "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
                  "warnungen": ""}
-        basis.update(rest)
+        basis.update(remainder)
         return basis
 
     def test_lauf_speichert_zeitpunkt_version_und_confighash(self):
@@ -407,15 +407,15 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(ids, {0, 1})
 
     def test_alte_details_werden_zu_tageswerten_und_verschwinden(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile(gold_h=1000)])
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile(gold_h=2000)])
 
-        bericht = history.aufraeumen(self.conn)
-        self.assertEqual(bericht["verdichtet"], 1)
-        self.assertEqual(bericht["items"], 1)
+        report = history.aufraeumen(self.conn)
+        self.assertEqual(report["verdichtet"], 1)
+        self.assertEqual(report["items"], 1)
         tage = self.conn.execute("SELECT tag, gold_h FROM daily").fetchall()
         self.assertEqual(len(tage), 1)
         self.assertAlmostEqual(tage[0]["gold_h"], 1000)
@@ -423,8 +423,8 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0], 1)
 
     def test_verdichten_ist_wiederholbar(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
         grenze = (datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS)).strftime("%Y-%m-%d")
         history.verdichte_bis(self.conn, grenze)
@@ -432,8 +432,8 @@ class HistorieTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0], 1)
 
     def test_alte_orderbuecher_verschwinden_frueher_als_details(self):
-        alt = datetime.now() - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS + 2)
-        with history.lauf(self.conn, zeitpunkt=alt) as run_id:
+        old = datetime.now() - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS + 2)
+        with history.lauf(self.conn, zeitpunkt=old) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
             history.schreibe_orderbuch(
                 self.conn, run_id,
@@ -447,25 +447,25 @@ class HistorieTest(unittest.TestCase):
             with history.lauf(self.conn) as run_id:
                 history.schreibe_items(self.conn, run_id, [self._zeile()])
         history.aufraeumen(self.conn)
-        anzahl = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-        self.assertEqual(anzahl, cfg.HISTORY_RUN_LIMIT)
+        count = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+        self.assertEqual(count, cfg.HISTORY_RUN_LIMIT)
 
     def test_verlauf_liest_details_und_tageswerte(self):
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id, [self._zeile()])
-        eintraege = history.verlauf(self.conn, "oak")
-        self.assertEqual(len(eintraege), 1)
-        self.assertEqual(eintraege[0]["quelle"], "detail")
-        self.assertAlmostEqual(eintraege[0]["gold_h"], 1000)
+        entries = history.verlauf(self.conn, "oak")
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["quelle"], "detail")
+        self.assertAlmostEqual(entries[0]["gold_h"], 1000)
 
     def test_leere_werte_bleiben_leer(self):
         """Ein fehlendes Gold/h ist nicht 0 – auch nicht in der Datenbank."""
         with history.lauf(self.conn) as run_id:
             history.schreibe_items(self.conn, run_id,
                                    [self._zeile(gold_h=None, gold_h_real=float("nan"))])
-        zeile = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
-        self.assertIsNone(zeile["gold_h"])
-        self.assertIsNone(zeile["gold_h_real"])
+        line = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
+        self.assertIsNone(line["gold_h"])
+        self.assertIsNone(line["gold_h_real"])
 
 
 class ExtendedJsonTest(unittest.TestCase):
@@ -484,21 +484,21 @@ class ExtendedJsonTest(unittest.TestCase):
            ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
 
     def test_bekannte_huellen_werden_uebersetzt(self):
-        daten, hinweise = extended_json.laden(self.ROH)
-        self.assertEqual(daten["_id"], "61e2b1b0")
-        self.assertEqual(daten["n"], 0)
-        self.assertEqual(daten["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
-        self.assertEqual(daten["d"], 1.5)
-        self.assertIsNone(daten["leer"])
+        data, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(data["_id"], "61e2b1b0")
+        self.assertEqual(data["n"], 0)
+        self.assertEqual(data["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
+        self.assertEqual(data["d"], 1.5)
+        self.assertIsNone(data["leer"])
 
     def test_konstrukt_im_string_bleibt_text(self):
-        daten, _ = extended_json.laden(self.ROH)
-        self.assertEqual(daten["t"], 'nutze ObjectId("x") hier')
+        data, _ = extended_json.laden(self.ROH)
+        self.assertEqual(data["t"], 'nutze ObjectId("x") hier')
 
     def test_unbekanntes_ueberlebt_und_wird_gemeldet(self):
-        daten, hinweise = extended_json.laden(self.ROH)
-        self.assertEqual(daten["u"], 3)                    # ein Skalar bleibt der Skalar
-        self.assertEqual(daten["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
+        data, hinweise = extended_json.laden(self.ROH)
+        self.assertEqual(data["u"], 3)                    # ein Skalar bleibt der Skalar
+        self.assertEqual(data["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
         self.assertEqual(len(hinweise), 2)
         self.assertIn("NumberFoo", hinweise[0])
         self.assertIn("Timestamp", hinweise[1])
@@ -509,11 +509,11 @@ class ExtendedJsonTest(unittest.TestCase):
 
     def test_der_echte_achievement_block(self):
         """Wortlaut der Zeile, an der der Lauf am 12.09.2026 abbrach."""
-        roh = ('{"Achievements": [{"Name": "achievement_tutorial_completed", '
+        raw = ('{"Achievements": [{"Name": "achievement_tutorial_completed", '
                '"CriteriaThreshold" : NumberLong(0), "CriteriaTaskIds" : [], '
                '"CriteriaValue" : NumberLong(100)}]}')
-        daten, hinweise = extended_json.laden(roh)
-        self.assertEqual(daten["Achievements"][0]["CriteriaValue"], 100)
+        data, hinweise = extended_json.laden(raw)
+        self.assertEqual(data["Achievements"][0]["CriteriaValue"], 100)
         self.assertEqual(hinweise, [])
 
     def test_unparsbares_wirft_weiterhin(self):
@@ -542,11 +542,11 @@ class MessungsRangfolgeTest(unittest.TestCase):
     """
 
     @staticmethod
-    def _empfehlung(zeilen):
+    def _empfehlung(lines):
         spalten = ["Rang", "Item", "Skills", "Gold/h", "Verkauf an", "NPC-Preis",
                    "Stück/h", "Erlös pro Stück", "Spieler-Gebot (brutto)",
                    "Verlässlichkeit", "Warnung"]
-        df = _pd.DataFrame([dict(zip(spalten, z)) for z in zeilen])
+        df = _pd.DataFrame([dict(zip(spalten, z)) for z in lines])
         df["Gold/h gewichtet"] = df["Gold/h"] * df["Verlässlichkeit"]
         return df
 
@@ -557,39 +557,39 @@ class MessungsRangfolgeTest(unittest.TestCase):
             (3, "c", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
             (4, "d", "Mining", -50, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
         ])
-        alt = _analyse.REASON_CANDIDATES
+        old = _analyse.REASON_CANDIDATES
         try:
             _analyse.REASON_CANDIDATES = 0
             self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a", "b"])
             _analyse.REASON_CANDIDATES = 1
             self.assertEqual(list(_analyse.reason_kandidaten(df)["Item"]), ["a"])
         finally:
-            _analyse.REASON_CANDIDATES = alt
+            _analyse.REASON_CANDIDATES = old
 
     def test_jede_messung_kommt_in_die_empfehlung(self):
         """Zwoelf gemessen -> zwoelf Werte im Blatt, nicht die ersten zehn.
 
         Mehr als zehn, weil genau dort der alte `.head(REASON_TOP_N)` schnitt."""
-        namen = [f"item{i:02d}" for i in range(1, 13)]
+        names = [f"item{i:02d}" for i in range(1, 13)]
         df_rec = self._empfehlung([
             (i, name, "Mining", 200 - i, "NPC-Vendor", 2 - i / 100, 100, 2, None, 1.0, None)
-            for i, name in enumerate(namen, start=1)] + [
+            for i, name in enumerate(names, start=1)] + [
             (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
-        df_chain = _pd.DataFrame({"Item": namen + ["nichts"], "ItemID": range(1, 14),
+        df_chain = _pd.DataFrame({"Item": names + ["nichts"], "ItemID": range(1, 14),
                                   "RawMaterialCost/h": 0.0, "Nebenertrag/h": 0.0})
-        alt = _analyse.fetch_orderbook_depth
+        old = _analyse.fetch_orderbook_depth
         try:
             _analyse.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
             df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
         finally:
-            _analyse.fetch_orderbook_depth = alt
+            _analyse.fetch_orderbook_depth = old
         self.assertEqual(len(df_reason), 12)
         raus = _analyse.sortiere_nach_messung(df_rec, df_reason)
-        quelle = dict(zip(raus["Item"], raus["Gold/h Quelle"]))
-        self.assertEqual(sum(q == _analyse.QUELLE_ORDERBUCH for q in quelle.values()), 12)
+        source = dict(zip(raus["Item"], raus["Gold/h Quelle"]))
+        self.assertEqual(sum(q == _analyse.QUELLE_ORDERBUCH for q in source.values()), 12)
         # Das Ungemessene steht trotzdem da - mit Papier-Wert und als solches markiert.
         self.assertEqual(int(raus["Gold/h realistisch"].notna().sum()), 13)
-        self.assertEqual(quelle["nichts"], _analyse.QUELLE_PAPIER)
+        self.assertEqual(source["nichts"], _analyse.QUELLE_PAPIER)
         self.assertEqual(list(raus["Item"][:2]), ["item01", "item02"])
         self.assertEqual(list(raus["Item"])[-1], "nichts")
         self.assertEqual(list(raus["Rang"]), list(range(1, 14)))
@@ -626,12 +626,12 @@ class MessungsRangfolgeTest(unittest.TestCase):
         ])
         df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
                                   "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
-        alt = _analyse.fetch_orderbook_depth
+        old = _analyse.fetch_orderbook_depth
         try:
             _analyse.fetch_orderbook_depth = lambda item_id: None
             df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
         finally:
-            _analyse.fetch_orderbook_depth = alt
+            _analyse.fetch_orderbook_depth = old
         self.assertEqual(list(df_reason["Item"]), ["oak", "papaya"])
         self.assertEqual(list(df_reason["Rang"]), [1, 2])
         # Der WERT bleibt ungewichtet - abgewertet wird nur der Rang.

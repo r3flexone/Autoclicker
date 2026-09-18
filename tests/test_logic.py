@@ -1501,7 +1501,7 @@ _st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True,
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
 
 _ber = check_setup(_st6, mit_sequenzen=False)
-_texte = [f"{b.bereich}: {b.text}" for b in _ber.befunde]
+_texte = [f"{b.area}: {b.text}" for b in _ber.befunde]
 
 
 def _hat(teil):
@@ -1518,7 +1518,7 @@ check("Scan nur mit ausgeschaltetem Slot wird gefunden",
 check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
 check("Fehler und Hinweise sind getrennt",
       len(_ber.errors) >= 3 and len(_ber.hints) >= 2
-      and all(b.stufe in (LEVEL_ERROR, LEVEL_HINT) for b in _ber.befunde))
+      and all(b.level in (LEVEL_ERROR, LEVEL_HINT) for b in _ber.befunde))
 
 # **Der Fallback-Scan ist die fuenfte Referenz auf einen Scan-Namen** - und die
 # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
@@ -1536,7 +1536,7 @@ _st_fb.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra", template="t.png"
                                 default_scan="inv")}
 _fb = check_setup(_st_fb, mit_sequenzen=False)
 check("ein Fallback-Scan, den es GIBT, wird nicht gemeldet",
-      not any("Fallback-Scan" in f"{b.bereich}: {b.text}" for b in _fb.befunde))
+      not any("Fallback-Scan" in f"{b.area}: {b.text}" for b in _fb.befunde))
 
 # Ein sauberes Setup darf NICHTS melden - sonst gewoehnt man sich das Ignorieren an
 _st7 = _ACS()
@@ -1613,10 +1613,10 @@ def _farbschritt(trifft, else_cfg, check_only=True):
     st.config.pixel_wait_timeout = 0.05
     st.config.pixel_check_interval = 0.01
     st.config.pixel_max_consecutive_timeouts = 0
-    schritt = _SS(x=1, y=2, delay_before=0, name="Ziel",
+    step = _SS(x=1, y=2, delay_before=0, name="Ziel",
                   wait_condition=_WCx(pixel=(5, 5), color=(10, 10, 10), check_only=check_only),
                   else_config=else_cfg)
-    r = _RS.execute_step(st, schritt, 1, 3, "T")
+    r = _RS.execute_step(st, step, 1, 3, "T")
     return r, [k for k in _klicks if k[2] == "Ziel"], list(_tasten)
 
 try:
@@ -1679,7 +1679,7 @@ _IS.take_screenshot = lambda region=None: object()
 _IS._park_mouse_for_scan = lambda p: None
 _IS.safe_click = lambda st, x, y, label="": (_geklickt.append(label), True)[1]
 
-def _immediate_lauf(items, slots, treffer):
+def _immediate_lauf(items, slots, match):
     """treffer: dict slot_name -> item_name (was in diesem Slot erkannt wird)."""
     _geklickt.clear()
     st = AutoClickerState(); st.config = _AC2()
@@ -1694,7 +1694,7 @@ def _immediate_lauf(items, slots, treffer):
     _orig_exec = _IS.execute_item_scan
     def _prof(profile, img, tol, state, debug, label="gefunden",
               return_score=False):
-        passt = treffer.get(zustand["slot"]) == profile.name
+        passt = match.get(zustand["slot"]) == profile.name
         return (passt, 1.0 if passt else 0.0) if return_score else passt
     _IS._check_profile_match = _prof
     def _exec(state, name, mode="all", slots_override=None):
@@ -1703,8 +1703,8 @@ def _immediate_lauf(items, slots, treffer):
     _IS.execute_item_scan = _exec
     _RS.execute_item_scan = _exec
     try:
-        schritt = _SS(x=0, y=0, delay_before=0, name="S", item_scan="inv")
-        _RS.execute_step(st, schritt, 1, 1, "T")
+        step = _SS(x=0, y=0, delay_before=0, name="S", item_scan="inv")
+        _RS.execute_step(st, step, 1, 1, "T")
     finally:
         _IS.execute_item_scan = _orig_exec
         _RS.execute_item_scan = _orig_exec
@@ -1796,7 +1796,7 @@ _RS.safe_scroll = _RA.safe_scroll = lambda st, c, x=None, y=None, label="": (_ak
 _RS.PILLOW_AVAILABLE = True
 _RS.check_failsafe = lambda st: False
 
-def _mit_trigger(schritt, trifft):
+def _mit_trigger(step, trifft):
     for v in _akt.values():
         v.clear()
     _shots.clear()
@@ -1808,7 +1808,7 @@ def _mit_trigger(schritt, trifft):
     st.config.pixel_wait_timeout = 0.05
     st.config.pixel_check_interval = 0.01
     st.config.pixel_max_consecutive_timeouts = 0
-    _RS.execute_step(st, schritt, 1, 2, "T")
+    _RS.execute_step(st, step, 1, 2, "T")
     return len(_shots) > 0, {k: list(v) for k, v in _akt.items()}
 
 try:
@@ -1916,8 +1916,8 @@ _RS.take_screenshot = lambda region=None: _Pix2((200, 200, 200))
 def _else_feuert(**kw):
     """Baut einen Schritt, haengt 'else <99,99>' an und prueft, ob es klickt."""
     _else_klicks.clear()
-    schritt = _SS(x=1, y=2, delay_before=0, name="s", **kw)
-    schritt.else_config = _EC2(action="click", x=99, y=99, name="E")
+    step = _SS(x=1, y=2, delay_before=0, name="s", **kw)
+    step.else_config = _EC2(action="click", x=99, y=99, name="E")
     st = AutoClickerState(); st.config = _AC2()
     st.config.pixel_wait_timeout = 0.05
     st.config.pixel_check_interval = 0.01
@@ -1925,7 +1925,7 @@ def _else_feuert(**kw):
     st.config.llm_watcher_max_scans = 1
     st.boss_scans = {"X": _BSC(name="X")} if (kw.get("boss_scan") or kw.get("boss_watcher")) else {}
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _RS.execute_step(st, schritt, 1, 2, "T")
+        _RS.execute_step(st, step, 1, 2, "T")
     return (99, 99) in _else_klicks
 
 try:
@@ -2529,7 +2529,7 @@ check("walk: unbekannte Taste bleibt stehen",
 
 # 'n' setzt den Punkt auf die aktuelle Mausposition — damit repariert man eine Sequenz,
 # ohne Wartezeiten/else/Scans anzufassen: Schritte mit point_id ziehen automatisch nach.
-def _walk_setzen(tasten, maus, farbe=(9, 9, 9)):
+def _walk_setzen(tasten, maus, color=(9, 9, 9)):
     """Gibt die Punkte nach dem Durchgang zurueck."""
     st = AutoClickerState()
     st.points = [_WCP(x=10, y=10, name="P1", id=1, color=(1, 2, 3)),
@@ -2543,7 +2543,7 @@ def _walk_setzen(tasten, maus, farbe=(9, 9, 9)):
     _DBG.read_command = lambda *a, **k: folge.pop(0) if folge else "q"
     _DBG.set_cursor_pos = lambda x, y: None
     _DBG.get_cursor_pos = lambda: maus
-    _IMG.get_pixel_color = lambda x, y: farbe
+    _IMG.get_pixel_color = lambda x, y: color
     _PERS.save_points = lambda s: None
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
@@ -2577,7 +2577,7 @@ check("walk 'n' ohne Mausbewegung aendert nichts",
       (_pk[0].x, _pk[0].y) == (10, 10))
 
 # 'f' liest nur die Farbe neu, die Position bleibt
-_pk = _walk_setzen(["f", "q"], maus=(77, 88), farbe=(4, 5, 6))
+_pk = _walk_setzen(["f", "q"], maus=(77, 88), color=(4, 5, 6))
 check("walk 'f': nur die Farbe wird neu gelesen",
       _pk[0].color == (4, 5, 6) and (_pk[0].x, _pk[0].y) == (10, 10))
 
@@ -2586,16 +2586,16 @@ from autoclicker.runtime.debug import (GATE_RUN as _GR, GATE_SKIP as _GS,
                                        GATE_STOP as _GT)
 
 
-def _step_gate_mit(taste):
+def _step_gate_mit(key):
     st = AutoClickerState()
     st.step_mode = True
-    schritt = _SS(x=5, y=5, delay_before=0, name="s")
+    step = _SS(x=5, y=5, delay_before=0, name="s")
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
-    _DBG.read_command = lambda *a, **k: taste
+    _DBG.read_command = lambda *a, **k: key
     _DBG.set_cursor_pos = lambda x, y: None
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
-            return _DBG.step_gate(st, schritt, "L", 1, 1), st
+            return _DBG.step_gate(st, step, "L", 1, 1), st
     finally:
         _DBG.read_command, _DBG.set_cursor_pos = _o_read, _o_cursor
 
@@ -3493,16 +3493,16 @@ check("Unsinn mit Strich -> None", _bp("a-b", 10) is None)
 check("zu viele Teile -> None", _bp("1-2-3", 10) is None)
 
 
-def _auswahl(eingaben, eintraege=None, vorgewaehlt=(), **kw):
+def _auswahl(eingaben, entries=None, vorgewaehlt=(), **kw):
     """Fuettert mehrfach_auswahl mit einer Tastenfolge."""
-    eintraege = list(eintraege if eintraege is not None else ["A", "B", "C", "D"])
+    entries = list(entries if entries is not None else ["A", "B", "C", "D"])
     folge = list(eingaben)
     _o = _ISE.safe_input
     _ISE.safe_input = lambda _p="": folge.pop(0) if folge else "cancel"
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return _ISE.mehrfach_auswahl(
-                "> ", eintraege, list(vorgewaehlt),
+                "> ", entries, list(vorgewaehlt),
                 lambda i, n, an: f"{i} {n} {an}", **kw)
     finally:
         _ISE.safe_input = _o
@@ -3529,21 +3529,21 @@ check("ohne leer_fehler ist eine leere Auswahl erlaubt", _auswahl(["done"]) == [
 
 # Der 'new'-Befehl haengt einen Eintrag an UND waehlt ihn aus
 _neu_liste = ["A", "B"]
-_ergebnis = _auswahl(["new 1", "done"], eintraege=_neu_liste,
-                     extra_praefix="new", extra_fn=lambda roh: "Frisch")
+_ergebnis = _auswahl(["new 1", "done"], entries=_neu_liste,
+                     extra_praefix="new", extra_fn=lambda raw: "Frisch")
 check("'new' waehlt den neuen Eintrag gleich mit", _ergebnis == ["Frisch"])
 check("'new' bekommt die Roh-Eingabe (Slot-Nummer bleibt lesbar)",
       _auswahl(["new 3", "done"], extra_praefix="new",
-               extra_fn=lambda roh: roh) == ["new 3"])
+               extra_fn=lambda raw: raw) == ["new 3"])
 check("'new' ohne Ergebnis aendert nichts",
       _auswahl(["new 1", "done"], extra_praefix="new",
-               extra_fn=lambda roh: None) == [])
+               extra_fn=lambda raw: None) == [])
 
 # Regression: '1-5' darf nicht als unbekannter Befehl durchfallen, und 'new' nicht
 # als Bereich gelesen werden (beides stand vorher in derselben elif-Kette)
 check("'new' wird nicht als Bereich missverstanden",
       _auswahl(["new-quatsch", "1", "done"], extra_praefix="new",
-               extra_fn=lambda roh: None) == ["A"])
+               extra_fn=lambda raw: None) == ["A"])
 
 
 
@@ -3613,8 +3613,8 @@ check("und wird gemeldet", any("Nachpruefung" in m for m in _meld))
 
 # --- Laufzeit: wiederholen bis es wirkt, dann aufgeben ---
 class _FakeImg:
-    def __init__(self, farbe): self.farbe = farbe
-    def getpixel(self, _): return self.farbe
+    def __init__(self, color): self.color = color
+    def getpixel(self, _): return self.color
 
 def _lauf(wirkt_ab_klick, retries, else_cfg=None):
     """Fuehrt einen Schritt mit Nachpruefung aus. Gibt (ergebnis, klicks, shots) zurueck.
@@ -3894,9 +3894,9 @@ check("ohne Frist wird wie bisher genau einmal geschaut",
 import struct as _struct12
 
 
-def _symbolpixel12(bits, kante, x, y):
+def _symbolpixel12(bits, edge, x, y):
     """(B, G, R, A) an (x, y) mit Ursprung OBEN links - die Datei steht kopf."""
-    versatz = 40 + ((kante - 1 - y) * kante + x) * 4
+    versatz = 40 + ((edge - 1 - y) * edge + x) * 4
     return tuple(bits[versatz:versatz + 4])
 
 
@@ -4145,22 +4145,22 @@ from autoclicker.models import ItemProfile as _IP6
 # stehen, woher die Datei kommt - eine Abhaengigkeit ist erst ein import.
 import ast as _ast6
 
-def _importierte_module(ordner: Path, muster: str) -> list[str]:
-    treffer = []
-    for _p in sorted(ordner.rglob("*.py")):
+def _importierte_module(folder: Path, pattern: str) -> list[str]:
+    match = []
+    for _p in sorted(folder.rglob("*.py")):
         try:
             baum = _ast6.parse(_p.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
         for _n in _ast6.walk(baum):
-            namen = []
+            names = []
             if isinstance(_n, _ast6.Import):
-                namen = [a.name for a in _n.names]
+                names = [a.name for a in _n.names]
             elif isinstance(_n, _ast6.ImportFrom) and _n.module:
-                namen = [_n.module]
-            if any(nm == muster or nm.startswith(muster + ".") for nm in namen):
-                treffer.append(f"{_p.name}:{_n.lineno}")
-    return treffer
+                names = [_n.module]
+            if any(nm == pattern or nm.startswith(pattern + ".") for nm in names):
+                match.append(f"{_p.name}:{_n.lineno}")
+    return match
 
 _wurzel6 = Path(__file__).resolve().parent.parent
 _ma_dir = _wurzel6 / "market_analysis"
@@ -4280,9 +4280,9 @@ def _namen8(b, phase):
     return [s.name for s in b.board.lanes[phase].steps]
 
 
-def _waehle8(b, phase, *zeilen):
-    for i, zeile in enumerate(zeilen):
-        b.waehlen({"phase": phase, "zeile": zeile, "modus": "einzeln" if i == 0 else "dazu"})
+def _waehle8(b, phase, *lines):
+    for i, line in enumerate(lines):
+        b.waehlen({"phase": phase, "zeile": line, "modus": "einzeln" if i == 0 else "dazu"})
 
 
 def _zieh8(b, von_phase, von_zeile, nach_phase, nach_zeile):
@@ -4639,7 +4639,7 @@ section("Der Briefkasten zwischen Studio und Hauptprozess")
 # hier legt das Studio ab, was passieren soll. Die Regeln, an denen alles haengt:
 # genau einmal ausfuehren, und niemals einen Befehl von frueher nachfeuern - ein
 # vergessenes "starte" wuerde sonst irgendwann spaeter unerwartet klicken.
-import autoclicker.befehl as _bf13
+import autoclicker.mailbox as _bf13
 
 _sand13 = _tf5.mkdtemp(prefix="befehl_")
 _cwd13 = _os.getcwd()
@@ -4649,20 +4649,20 @@ try:
 
     check("ohne Briefkasten kommt nichts zurueck", _bf13.fetch_command() is None)
 
-    _bf13.send_command("start", datei="sequences/x.json", sequenz="X")
+    _bf13.send_command("start", file="sequences/x.json", sequence="X")
     _auftrag13 = _bf13.fetch_command()
     check("ein gesendeter Befehl kommt an",
-          _auftrag13 is not None and _auftrag13["befehl"] == "start")
+          _auftrag13 is not None and _auftrag13["command"] == "start")
     check("mit seinen Argumenten",
-          _auftrag13["argumente"] == {"datei": "sequences/x.json", "sequenz": "X"})
+          _auftrag13["arguments"] == {"file": "sequences/x.json", "sequence": "X"})
     check("und der Briefkasten ist danach leer",
           not _bf13.COMMAND_PATH.exists() and _bf13.fetch_command() is None)
 
     # Ein Befehl von frueher darf NICHT nachfeuern. Das ist die gefaehrlichste
     # Stelle des ganzen Kanals: er loest Klicks aus.
-    _bf13.send_command("start", datei="sequences/x.json")
+    _bf13.send_command("start", file="sequences/x.json")
     _alt13 = json.loads(_bf13.COMMAND_PATH.read_text(encoding="utf-8"))
-    _alt13["stand"] = _alt13["stand"] - (_bf13.MAX_AGE + 5)
+    _alt13["sent_at"] = _alt13["sent_at"] - (_bf13.MAX_AGE + 5)
     _bf13.COMMAND_PATH.write_text(json.dumps(_alt13), encoding="utf-8")
     check("ein zu alter Befehl wird verworfen", _bf13.fetch_command() is None)
     check("und liegt danach auch nicht mehr da", not _bf13.COMMAND_PATH.exists())
@@ -4679,7 +4679,7 @@ try:
     # Zweimal senden staut nichts an: wer zweimal stoppt, meint einmal stoppen.
     _bf13.send_command("stop")
     _bf13.send_command("stop")
-    check("der zweite Befehl ueberschreibt den ersten", _bf13.fetch_command()["befehl"] == "stop")
+    check("der zweite Befehl ueberschreibt den ersten", _bf13.fetch_command()["command"] == "stop")
     check("und danach ist Ruhe", _bf13.fetch_command() is None)
 finally:
     _os.chdir(_cwd13)
@@ -4714,7 +4714,7 @@ try:
     _auftrag14 = _bf13.fetch_command()
     check("und schickt genau diese Datei mit",
           _auftrag14 is not None
-          and Path(_auftrag14["argumente"]["datei"]) == Path("sequences/lauf/sequence.json"))
+          and Path(_auftrag14["arguments"]["file"]) == Path("sequences/lauf/sequence.json"))
     check("die Aenderung steht in der Datei, nicht nur im Speicher",
           json.loads(Path("sequences/lauf/sequence.json").read_text(encoding="utf-8"))
           .get("total_cycles") == 7)
@@ -4731,17 +4731,17 @@ try:
     # die Datei.
     _b14.board.name = "Lauf"
     _b14.lauf_befehl({"befehl": "stop"})
-    check("Stopp braucht kein Speichern", _bf13.fetch_command()["befehl"] == "stop")
+    check("Stopp braucht kein Speichern", _bf13.fetch_command()["command"] == "stop")
     # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
     _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
     _b14.waehlen({"phase": 1, "zeile": 0})
     _b14.punkt_zeigen()
     _zeig14 = _bf13.fetch_command()
     check("die Probe schickt Stelle, Punkt und Farbe mit",
-          _zeig14 is not None and _zeig14["befehl"] == "zeigen"
-          and _zeig14["argumente"]["x"] == 10 and _zeig14["argumente"]["y"] == 20
-          and _zeig14["argumente"]["punkt"] == 1
-          and _zeig14["argumente"]["farbe"] == [1, 2, 3])
+          _zeig14 is not None and _zeig14["command"] == "zeigen"
+          and _zeig14["arguments"]["x"] == 10 and _zeig14["arguments"]["y"] == 20
+          and _zeig14["arguments"]["point"] == 1
+          and _zeig14["arguments"]["color"] == [1, 2, 3])
     # Ein Block ohne Stelle hat nichts zu zeigen - und schickt deshalb nichts.
     _b14.board.add_step(_b14.board.lanes[1], _SS(delay_before=0, key_press="a"))
     _b14.waehlen({"phase": 1, "zeile": 1})
@@ -5254,10 +5254,10 @@ _os.chdir(_st16)
 try:
     Path("sequences").mkdir()
 
-    def _schreib16(datei, daten):
-        ziel = Path("sequences") / Path(datei).stem / "sequence.json"
-        ziel.parent.mkdir(parents=True, exist_ok=True)
-        ziel.write_text(json.dumps(daten), encoding="utf-8")
+    def _schreib16(file, data):
+        target = Path("sequences") / Path(file).stem / "sequence.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(data), encoding="utf-8")
 
     _schreib16("gross.json", {
         "name": "gross", "schema_version": 4, "total_cycles": 3,
@@ -5375,7 +5375,7 @@ try:
     # --- "Stelle zeigen" gibt es fuer jede Stelle des Blocks ---
     # Klick, Pruef-Pixel und ELSE-Klick sind drei verschiedene Orte; die Frage
     # "sitzt das noch?" stellt sich bei allen.
-    from autoclicker import befehl as _bf19
+    from autoclicker import mailbox as _bf19
     _b20 = _SB8(_SEQ8(name="Z", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(x=1, y=1, delay_before=0, point_id=1,
             wait_condition=_WCx(point_id=2, pixel=(2, 2), color=(1, 2, 3)),
@@ -5391,7 +5391,7 @@ try:
         _b20.punkt_zeigen({"welche": _welche20})
         _auftrag20 = _bf19.fetch_command()
         check(f"'{_welche20}' zeigt auf die richtige Stelle",
-              (_auftrag20 or {}).get("argumente", {}).get("x") == _soll20)
+              (_auftrag20 or {}).get("arguments", {}).get("x") == _soll20)
     _bf19.discard_command()
 
     # --- Stelle mit der Maus setzen ---
@@ -6006,9 +6006,9 @@ check("und SLOT_FARBE deckt genau die Zustaende ab",
 def _js_rumpf18(name: str) -> str:
     """Der Text einer JS-Funktion bis zur naechsten auf Spaltenebene 0."""
     start = _html18.index(f"function {name}(")
-    rest = _html18[start + 10:]
-    ende = _re13.search(r"\n(?:async )?function ", rest)
-    return rest[:ende.start()] if ende else rest
+    remainder = _html18[start + 10:]
+    ende = _re13.search(r"\n(?:async )?function ", remainder)
+    return remainder[:ende.start()] if ende else remainder
 
 _neuaufbau18 = ("zeichne", "zeichneScans", "zeichneEinstellungen")
 _ohne_fokus18 = [n for n in _neuaufbau18
@@ -6146,9 +6146,9 @@ check("und der Katalog laesst sich im Fenster holen",
       _aktionen17.get("scan_catalog_file", ("",))[0] == "katalog_holen")
 
 check("jede Art gibt es auch als Bedienelement",
-      all(m.art in _ARTEN17 for m in _META17.values()))
+      all(m.kind in _ARTEN17 for m in _META17.values()))
 check("Kacheln nur bei enum - und enum nie ohne Kacheln",
-      all(bool(m.optionen) == (m.art == "enum") for m in _META17.values()))
+      all(bool(m.optionen) == (m.kind == "enum") for m in _META17.values()))
 
 # --- Abhaengigkeiten zeigen auf Felder, die es gibt ---
 # Ein `dep` ins Leere macht das Feld dauerhaft blass: es waere sichtbar,
@@ -6240,10 +6240,10 @@ try:
 
     # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
     # einem Neustart, obwohl die Datei schon neu ist.
-    import autoclicker.befehl as _bf17
+    import autoclicker.mailbox as _bf17
     _auftrag17 = _bf17.fetch_command()
     check("der Hauptprozess bekommt Bescheid",
-          _auftrag17 is not None and _auftrag17["befehl"] == "config")
+          _auftrag17 is not None and _auftrag17["command"] == "config")
 
     # Eine Korrektur wird gemeldet statt still hingenommen.
     _antwort17 = _b17.config_schreiben({"werte": {"scan_min_confidence": 1.5}})
@@ -6474,8 +6474,8 @@ import tests.vertrag.konsolen_editoren     # noqa: F401,E402
 import tests.vertrag.persistenz_basis      # noqa: F401,E402
 import tests.vertrag.nachklick            # noqa: F401,E402
 import tests.vertrag.studio_teilen        # noqa: F401,E402
-import tests.vertrag.bericht              # noqa: F401,E402
-import tests.vertrag.punkte               # noqa: F401,E402
+import tests.vertrag.report              # noqa: F401,E402
+import tests.vertrag.points               # noqa: F401,E402
 import tests.vertrag.sequenz_loeschen     # noqa: F401,E402
 import tests.vertrag.katalog               # noqa: F401,E402
 import tests.vertrag.haltepunkt            # noqa: F401,E402

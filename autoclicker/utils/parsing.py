@@ -199,11 +199,11 @@ def without_counter(name: str) -> str:
     den vollen Namen und erst danach diesen hier — was im Katalog steht,
     gewinnt.
     """
-    roh = str(name or "").rstrip()
-    teile = roh.rsplit(" ", 1)
-    if len(teile) == 2 and teile[0].strip() and teile[1].isdigit():
-        return teile[0].strip()
-    return roh
+    raw = str(name or "").rstrip()
+    parts = raw.rsplit(" ", 1)
+    if len(parts) == 2 and parts[0].strip() and parts[1].isdigit():
+        return parts[0].strip()
+    return raw
 
 
 def clean_item_name(name: str) -> str:
@@ -212,7 +212,7 @@ def clean_item_name(name: str) -> str:
     **Hier stand `sanitize_filename()`, und das war die falsche Funktion.** Sie
     macht Kleinbuchstaben und ersetzt Leerzeichen durch Unterstriche: aus
     "Godlike Bow" wurde `godlike_bow`. Der Name ist aber der Schluessel, unter
-    dem der Katalog nachgeschlagen wird, und `Catalog.treffer()` vergleicht
+    dem der Katalog nachgeschlagen wird, und `Catalog.match()` vergleicht
     `casefold()` — nicht Unterstriche. Kategorie und Prioritaet blieben deshalb
     IMMER aus, ausgerechnet bei einem Namen, der woertlich aus dem Katalog
     kommt und nur noch zugeordnet werden musste.
@@ -221,8 +221,8 @@ def clean_item_name(name: str) -> str:
     eine Datei wird (`_apply_item_rename`), laeuft `sanitize_filename()` eine
     Ebene tiefer noch einmal darueber.
     """
-    roh = " ".join(str(name or "").split())
-    sauber = "".join(c for c in roh if c.isalnum() or c in _NAME_EXTRA)
+    raw = " ".join(str(name or "").split())
+    sauber = "".join(c for c in raw if c.isalnum() or c in _NAME_EXTRA)
     return " ".join(sauber.split()).strip(" .,")
 
 
@@ -301,8 +301,8 @@ def compact_json(data, indent: int = 2) -> str:
     `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
     """
     json_str = json.dumps(data, indent=indent, ensure_ascii=False)
-    for muster, ersatz in _COMPACT:
-        json_str = muster.sub(ersatz, json_str)
+    for pattern, ersatz in _COMPACT:
+        json_str = pattern.sub(ersatz, json_str)
     return json_str
 
 

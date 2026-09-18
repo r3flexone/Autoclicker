@@ -81,10 +81,10 @@ def load_all_icon_scans(state: AutoClickerState) -> None:
     """Lädt alle Icon-Scan Konfigurationen."""
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-    geladen = {}
+    loaded = {}
     if owner:
-        ordner = str(_icon_scans_dir(owner))
-        load_all_scans(ordner, lambda pfad: load_icon_scan_file(pfad, owner),
-                       geladen, "Icon-Scan")
+        folder = str(_icon_scans_dir(owner))
+        load_all_scans(folder, lambda path: load_icon_scan_file(path, owner),
+                       loaded, "Icon-Scan")
     with state.lock:
-        state.icon_scans = geladen
+        state.icon_scans = loaded

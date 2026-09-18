@@ -29,21 +29,21 @@ from autoclicker.symbol import pixel_rows          # noqa: E402
 GROESSEN = (16, 32, 48, 64, 128, 256)
 
 
-def png_bytes(kante: int) -> bytes:
+def png_bytes(edge: int) -> bytes:
     """Ein PNG mit Alphakanal, ohne Pillow zusammengesetzt."""
-    roh = bytearray()
-    for zeile in pixel_rows(kante):
-        roh.append(0)                              # Filter 0 = keiner
-        for r, g, b, a in zeile:
-            roh += bytes((r, g, b, a))
+    raw = bytearray()
+    for line in pixel_rows(edge):
+        raw.append(0)                              # Filter 0 = keiner
+        for r, g, b, a in line:
+            raw += bytes((r, g, b, a))
 
-    def stueck(art: bytes, daten: bytes) -> bytes:
-        return (struct.pack(">I", len(daten)) + art + daten
-                + struct.pack(">I", zlib.crc32(art + daten) & 0xFFFFFFFF))
+    def stueck(kind: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
 
     return (b"\x89PNG\r\n\x1a\n"
-            + stueck(b"IHDR", struct.pack(">IIBBBBB", kante, kante, 8, 6, 0, 0, 0))
-            + stueck(b"IDAT", zlib.compress(bytes(roh), 9))
+            + stueck(b"IHDR", struct.pack(">IIBBBBB", edge, edge, 8, 6, 0, 0, 0))
+            + stueck(b"IDAT", zlib.compress(bytes(raw), 9))
             + stueck(b"IEND", b""))
 
 
@@ -57,12 +57,12 @@ def ico_bytes(groessen=GROESSEN) -> bytes:
     bilder = [png_bytes(k) for k in groessen]
     kopf = struct.pack("<HHH", 0, 1, len(bilder))
     versatz = len(kopf) + 16 * len(bilder)
-    verzeichnis = b""
-    for kante, bild in zip(groessen, bilder):
-        verzeichnis += struct.pack("<BBBBHHII", kante % 256, kante % 256, 0, 0,
-                                   1, 32, len(bild), versatz)
-        versatz += len(bild)
-    return kopf + verzeichnis + b"".join(bilder)
+    directory = b""
+    for edge, image in zip(groessen, bilder):
+        directory += struct.pack("<BBBBHHII", edge % 256, edge % 256, 0, 0,
+                                   1, 32, len(image), versatz)
+        versatz += len(image)
+    return kopf + directory + b"".join(bilder)
 
 
 def main() -> int:
@@ -81,13 +81,13 @@ def main() -> int:
         print("Grössen zwischen 8 und 1024 angeben.")
         return 2
 
-    ziel = Path(args.ziel)
-    ziel.mkdir(parents=True, exist_ok=True)
-    for kante in groessen:
-        datei = ziel / f"autoclicker-{kante}.png"
-        datei.write_bytes(png_bytes(kante))
-        print(f"  {datei}")
-    ico = ziel / "autoclicker.ico"
+    target = Path(args.target)
+    target.mkdir(parents=True, exist_ok=True)
+    for edge in groessen:
+        file = target / f"autoclicker-{edge}.png"
+        file.write_bytes(png_bytes(edge))
+        print(f"  {file}")
+    ico = target / "autoclicker.ico"
     ico.write_bytes(ico_bytes(tuple(k for k in groessen if k <= 256)))
     print(f"  {ico}")
     print("\nVerknüpfung: Rechtsklick -> Eigenschaften -> Anderes Symbol -> "

@@ -20,7 +20,7 @@ FREMD = "item_7"
 
 
 
-def mini_png(ziel: Path) -> None:
+def mini_png(target: Path) -> None:
     """Eine winzige, GUELTIGE Vorlage.
 
     Der Durchgang oeffnet die Datei wirklich — mit kaputten Bytes zaehlte jedes
@@ -30,7 +30,7 @@ def mini_png(ziel: Path) -> None:
     und dann lange sucht.
     """
     from PIL import Image
-    Image.new("RGB", (8, 8), (200, 60, 60)).save(ziel)
+    Image.new("RGB", (8, 8), (200, 60, 60)).save(target)
 
 
 def aufbau():
@@ -39,15 +39,15 @@ def aufbau():
     from autoclicker import config as cfgmod
 
     sandkasten("rauch_katalog_")
-    bild, _ecken = inventar()
-    stelle_bildschirm(bild)
+    image, _ecken = inventar()
+    stelle_bildschirm(image)
 
-    datei = Path("katalog.json").resolve()
-    datei.write_text(json.dumps({"items": {
+    file = Path("katalog.json").resolve()
+    file.write_text(json.dumps({"items": {
         "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
         "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
     }}), encoding="utf-8")
-    cfgmod.CONFIG.scan_catalog_file = str(datei)
+    cfgmod.CONFIG.scan_catalog_file = str(file)
 
     # **Beide LLM-Schalter, und keiner davon aus der echten config.json.** Der
     # Sammel-Knopf haengt am Modul-CONFIG (`llm_an` in der Momentaufnahme), der
@@ -60,7 +60,7 @@ def aufbau():
     # „↺ Standard"-Knopf ueberhaupt hervor — den, dessen Beschriftung hier
     # geprueft wird.
     Path("config.json").write_text(
-        json.dumps({"llm_enabled": True, "scan_catalog_file": str(datei)}),
+        json.dumps({"llm_enabled": True, "scan_catalog_file": str(file)}),
         encoding="utf-8")
 
     b = StudioBridge(Sequence(name="Rauch"),
@@ -111,7 +111,7 @@ def lauf():
         schalter = f.seite.locator("#scan-insp label", has_text="Item-Katalog benutzen")
         pruefe(schalter.count() == 1,
                "der Katalog-Schalter fehlt in den Scan-Einstellungen")
-        f.bild("katalog_schalter")
+        f.image("katalog_schalter")
         schalter.locator("input").click()
         f.ruhe()
         pruefe(b.scans["Inventar"].use_catalog is True,
@@ -119,7 +119,7 @@ def lauf():
 
         pruefe(knoepfe(f) == 1,
                "der Katalog-Knopf fehlt, obwohl der Scan den Katalog benutzt")
-        f.bild("katalog_knopf")
+        f.image("katalog_knopf")
 
         f.klick_text("#scan-insp button", "Aus Katalog einordnen")
 
@@ -140,7 +140,7 @@ def lauf():
         status = f.status()
         pruefe("eingeordnet" in status,
                f"die Statuszeile sagt nichts vom Einordnen: {status!r}")
-        f.bild("katalog_eingeordnet")
+        f.image("katalog_eingeordnet")
 
         # --- Die Ueberschrift benennt die Kategorie um ----------------------
         # Ein Eingabefeld IN einer Ueberschrift ist die Stelle, an der ein
@@ -159,7 +159,7 @@ def lauf():
                and b.items["Centaurs Helmet"].category == "Kopfschutz",
                "das Umbenennen kam nicht in der Bruecke an: "
                + str([(n, i.category) for n, i in b.items.items()]))
-        f.bild("kategorie_umbenannt")
+        f.image("kategorie_umbenannt")
 
         # --- Und der Katalog laesst sich HIER holen ------------------------
         # Der Knopf haengt an `meta.aktion` aus `config_meta.py`. Wuerde
@@ -174,7 +174,7 @@ def lauf():
                                 has_text="Katalog aus der Spiel-API holen")
         pruefe(knopf.count() == 1,
                "der Knopf zum Holen fehlt am Katalog-Feld")
-        f.bild("katalog_einstellungen")
+        f.image("katalog_einstellungen")
 
         # Ein Rauchtest geht nicht ins Netz: die Spieldaten kommen gestellt,
         # der Weg von der Seite bis in die Datei ist trotzdem der echte.
@@ -197,7 +197,7 @@ def lauf():
         pruefe(stempel.count() >= 1 and "1 Items" in (stempel.first.inner_text() or ""),
                "der Stand des Katalogs fehlt am Feld: "
                + (stempel.first.inner_text() if stempel.count() else "(nichts)"))
-        f.bild("katalog_geholt")
+        f.image("katalog_geholt")
 
         # --- Und nichts laeuft aus der Spalte -----------------------------
         # **Der Standard-Knopf trug den Standard-WERT im Namen**, und bei
@@ -238,7 +238,7 @@ def lauf():
             '#cfg-felder .cfg-standard')].map((k) => (k.textContent || '').trim())
             .filter((t) => t.length > 40)""")
         pruefe(not lang, f"die Standard-Beschriftung ist ein Satz: {lang}")
-        f.bild("cfg_spaltenbreite")
+        f.image("cfg_spaltenbreite")
 
         # --- Der Benenn-Durchgang laesst sich abbrechen --------------------
         # **Die Schleife steht in der Ansicht**, damit es ein Abbrechen gibt —
@@ -321,7 +321,7 @@ def lauf():
         # Was bis dahin benannt wurde, bleibt stehen.
         pruefe("Citadel Helmet" in b.items,
                "der Abbruch hat das schon Benannte weggeworfen")
-        f.bild("autoname_abgebrochen")
+        f.image("autoname_abgebrochen")
 
     return fehler
 

@@ -37,20 +37,20 @@ def last_edited() -> "Path | None":
     """
     verfuegbar = list_available_sequences()
     neueste, zeit = None, -1
-    for _, pfad in verfuegbar:
+    for _, path in verfuegbar:
         try:
-            m = pfad.stat().st_mtime_ns
+            m = path.stat().st_mtime_ns
         except OSError:
             continue
         if m > zeit:
-            neueste, zeit = pfad, m
+            neueste, zeit = path, m
 
     marker = Path(STUDIO_LAST_SEQUENCE_FILE)
     try:
-        daten = json.loads(marker.read_text(encoding="utf-8"))
-        ordner = str(daten.get("ordner") or "") if isinstance(daten, dict) else ""
-        gemerkt = next((pfad for _, pfad in verfuegbar
-                        if pfad.parent.name == ordner), None)
+        data = json.loads(marker.read_text(encoding="utf-8"))
+        folder = str(data.get("ordner") or "") if isinstance(data, dict) else ""
+        gemerkt = next((path for _, path in verfuegbar
+                        if path.parent.name == folder), None)
         if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
             return gemerkt
     except (OSError, ValueError, TypeError):
@@ -58,14 +58,14 @@ def last_edited() -> "Path | None":
     return neueste
 
 
-def remember_last_used(pfad) -> bool:
+def remember_last_used(path) -> bool:
     """Merkt eine vorhandene Sequenz als zuletzt geöffnet/gespeichert."""
-    pfad = Path(pfad)
-    if not pfad.is_file():
+    path = Path(path)
+    if not path.is_file():
         return False
     try:
         atomic_write(Path(STUDIO_LAST_SEQUENCE_FILE), compact_json({
-            "ordner": pfad.parent.name,
+            "ordner": path.parent.name,
         }))
         return True
     except OSError:
@@ -136,15 +136,15 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
         pass
     _save_scans_on_close(bridge)
 
-    ziel = bridge.rettung_schreiben()
-    if ziel is not None:
-        print(f"\nUngespeicherte Aenderungen gesichert: {ziel}")
+    target = bridge.rettung_schreiben()
+    if target is not None:
+        print(f"\nUngespeicherte Aenderungen gesichert: {target}")
         print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
     if beenden_mit_fenster and not getattr(bridge, "_beenden_gesendet", False):
         # Nur das automatisch gestartete Hauptfenster besitzt den Hauptprozess.
         # Ein per Hotkey zusätzlich geöffnetes Studio darf ihn beim Schliessen
         # nicht überraschend mitnehmen.
-        from .befehl import send_command
+        from .mailbox import send_command
         bridge._beenden_gesendet = True
         send_command("programm_beenden")
 

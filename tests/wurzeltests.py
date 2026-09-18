@@ -22,10 +22,10 @@ MODULE = Path(__file__).resolve().parent / "wurzel"
 def sammeln(wurzel: Path, ohne_vertrag: bool = False) -> unittest.TestSuite:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
-    for datei in sorted(wurzel.glob("test_*.py")):
-        if ohne_vertrag and datei.name == "test_regression.py":
+    for file in sorted(wurzel.glob("test_*.py")):
+        if ohne_vertrag and file.name == "test_regression.py":
             continue
-        suite.addTests(loader.discover(str(wurzel), pattern=datei.name))
+        suite.addTests(loader.discover(str(wurzel), pattern=file.name))
     return suite
 
 

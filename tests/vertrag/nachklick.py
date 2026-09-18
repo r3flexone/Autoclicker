@@ -35,13 +35,13 @@ from autoclicker.models import (
 )
 
 
-def _punkt(pid, x, y, farbe=None, name=""):
-    return _CP(id=pid, x=x, y=y, name=name or f"P{pid}", color=farbe)
+def _punkt(pid, x, y, color=None, name=""):
+    return _CP(id=pid, x=x, y=y, name=name or f"P{pid}", color=color)
 
 
-def _aktiv(state, seq, punkte, zielfenster=""):
+def _aktiv(state, seq, points, zielfenster=""):
     """Bindet den sequenz-eigenen Pool zugleich als Laufzeit-Arbeitsansicht."""
-    seq.points = punkte
+    seq.points = points
     state.active_sequence = seq
     state.points = seq.points
     state.config.window_focus_title = zielfenster
@@ -499,7 +499,7 @@ _aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
        [_punkt(1, 100, 100), _punkt(2, 200, 200)])
 _ruesten(_s11)
 _klick(_s11, 700, 700, None)
-_bns(_s11, {"verwerfen": "1", "grund": "fenster"})
+_bns(_s11, {"discard": "1", "reason": "fenster"})
 check("der Studio-Abbruch verwirft", (_s11.points[0].x, _s11.points[0].y) == (100, 100))
 check("und beendet die Runde", _s11.reclick_active is False)
 
@@ -512,7 +512,7 @@ import io as _io_nk
 import contextlib as _cl_nk
 
 
-def _verwerf_text(grund):
+def _verwerf_text(reason):
     st = _ST()
     _aktiv(st, _SEQ(name="Grund", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
@@ -520,7 +520,7 @@ def _verwerf_text(grund):
     _ruesten(st)
     puffer = _io_nk.StringIO()
     with _cl_nk.redirect_stdout(puffer):
-        _bns(st, dict({"verwerfen": "1"}, **({"grund": grund} if grund else {})))
+        _bns(st, dict({"discard": "1"}, **({"reason": reason} if reason else {})))
     return puffer.getvalue()
 
 

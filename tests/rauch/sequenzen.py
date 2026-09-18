@@ -51,10 +51,10 @@ def lauf():
         if not bedingung:
             fehler.append(text)
 
-    with Fenster(b, breite=1300, hoehe=560) as f:
+    with Fenster(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
         f.reiter("sequenzen")
-        karten = f.anzahl(".seq-karte")
+        karten = f.count(".seq-karte")
         pruefe(karten == 3, f"3 Karten erwartet, da: {karten}")
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
         # rutschte alles darunter hoch: der Phasenbalken der einen lag auf Höhe
@@ -71,7 +71,7 @@ def lauf():
         pfad_overflow = f.seite.eval_on_selector_all(
             ".seq-fuss .wachse",
             "ns => ns.map(n => getComputedStyle(n).overflowX)")
-        pruefe(pfad_overflow and all(wert != "visible" for wert in pfad_overflow),
+        pruefe(pfad_overflow and all(value != "visible" for value in pfad_overflow),
                f"Sequenzpfade laufen aus ihren Karten: {pfad_overflow}")
         knopf_in_karte = f.seite.eval_on_selector_all(
             ".seq-karte",
@@ -79,17 +79,17 @@ def lauf():
             "if (!b) return true; const kr=k.getBoundingClientRect(); "
             "const br=b.getBoundingClientRect(); return br.right <= kr.right + 1; })")
         pruefe(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
-        f.bild("sequenzen_karten")
+        f.image("sequenzen_karten")
 
         # ------------------------------------------------------------- Editor
         f.reiter("editor")
-        pruefe(f.anzahl("#btn-aufnahme") == 1,
+        pruefe(f.count("#btn-aufnahme") == 1,
                "Verweis auf das Aufnahme-Werkzeug fehlt")
         kopf = ".seite.links .abschnitt.klebt"
-        pruefe(f.anzahl(kopf) == 1, "kein klebender Abschnitt in der linken Spalte")
-        pruefe(f.anzahl(kopf + " #btn-aufnahme") == 1,
+        pruefe(f.count(kopf) == 1, "kein klebender Abschnitt in der linken Spalte")
+        pruefe(f.count(kopf + " #btn-aufnahme") == 1,
                "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
-        pruefe(f.anzahl("#aufnahme-info, .aufnahme-zeile .info") == 0,
+        pruefe(f.count("#aufnahme-info, .aufnahme-zeile .info") == 0,
                "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
         feldhoehen = f.seite.eval_on_selector_all(
             "#seq-zyklen, #seq-bloecke",
@@ -113,7 +113,7 @@ def lauf():
         pruefe(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
         pruefe(vorher == nachher,
                f"der Block scrollt mit: {vorher} -> {nachher}")
-        f.bild("sequenzen_editor")
+        f.image("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
         f.reiter("editor")
@@ -129,7 +129,7 @@ def lauf():
         # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
         # Werkzeugzeile stehen nur die beiden Felder, die die Phase
         # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
-        pruefe(f.anzahl(".phase-werkzeug button") == 0,
+        pruefe(f.count(".phase-werkzeug button") == 0,
                "in der Eigenschaften-Zeile der Phase steht ein Knopf")
         # **Beide Zeilen liegen auf demselben Raster.** Vorher war oben ein
         # `flex` mit fest getippten 70/74 px und unten ein `knopfpaar`: die
@@ -170,7 +170,7 @@ def lauf():
         kopftext = f.text(".phase-kopf.loop")
         for wort in ("Läufe je Zyklus", "Start ab Uhrzeit"):
             pruefe(wort in kopftext, f"'{wort}' fehlt im Phasenkopf: {kopftext!r}")
-        f.bild("sequenzen_phasenkopf")
+        f.image("sequenzen_phasenkopf")
 
         # ------------------------------------------- Die Auswahl gilt ueberall
         # **Welche Sequenz offen ist, gilt in JEDEM Reiter.** Sie war frueher

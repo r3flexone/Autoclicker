@@ -237,7 +237,7 @@ def _debug_an() -> bool:
         return False
 
 
-def _debug_print(zeilen: list) -> None:
+def _debug_print(lines: list) -> None:
     """Ein Block, EIN Schreibvorgang — dieselbe Regel wie bei `status_line()`.
 
     Je Zeile einzeln geschrieben stand vor jeder ein `clear_line()`, und das
@@ -252,7 +252,7 @@ def _debug_print(zeilen: list) -> None:
         marke = dbg("[LLM]")
     except Exception:
         marke = "[LLM]"
-    print("\n".join(f"{marke} {z}" for z in zeilen), flush=True)
+    print("\n".join(f"{marke} {z}" for z in lines), flush=True)
 
 
 def _debug_request(provider: str, model: str, endpoint: str, prompt: str,
@@ -264,13 +264,13 @@ def _debug_request(provider: str, model: str, endpoint: str, prompt: str,
     Modell frei raet oder aus dem Katalog auswaehlt — genau die Stelle, an der
     man sich fragt, warum eine Antwort deutsch ist.
     """
-    groesse = getattr(img, "size", None)
-    zeilen = [f"-> {provider} · {model} · {endpoint}",
-              f"   Bild: {groesse[0]}×{groesse[1]}" if groesse else "   Bild: (unbekannt)"]
+    size = getattr(img, "size", None)
+    lines = [f"-> {provider} · {model} · {endpoint}",
+              f"   Bild: {size[0]}×{size[1]}" if size else "   Bild: (unbekannt)"]
     if system_prompt:
-        zeilen.append(f"   System: {system_prompt!r}")
-    zeilen.append(f"   Prompt: {prompt!r}")
-    _debug_print(zeilen)
+        lines.append(f"   System: {system_prompt!r}")
+    lines.append(f"   Prompt: {prompt!r}")
+    _debug_print(lines)
 
 
 def _debug_response(result: dict, text: str, duration_ms: float) -> None:
@@ -282,19 +282,19 @@ def _debug_response(result: dict, text: str, duration_ms: float) -> None:
     kaputter Aufruf.
     """
     from .utils import warn
-    roh = json.dumps(result, ensure_ascii=False, indent=2)
-    rest = max(0, len(roh) - _DEBUG_RAW_MAX)
-    zeilen = [f"<- {duration_ms:.0f} ms, roh:"]
-    zeilen += ["   " + z for z in roh[:_DEBUG_RAW_MAX].splitlines()]
-    if rest:
-        zeilen.append(f"   … ({rest} weitere Zeichen abgeschnitten)")
+    raw = json.dumps(result, ensure_ascii=False, indent=2)
+    remainder = max(0, len(raw) - _DEBUG_RAW_MAX)
+    lines = [f"<- {duration_ms:.0f} ms, roh:"]
+    lines += ["   " + z for z in raw[:_DEBUG_RAW_MAX].splitlines()]
+    if remainder:
+        lines.append(f"   … ({remainder} weitere Zeichen abgeschnitten)")
     if text.strip():
-        zeilen.append(f"   gelesen: {text!r}")
+        lines.append(f"   gelesen: {text!r}")
     else:
-        zeilen.append("   gelesen: (leer) " + warn(
+        lines.append("   gelesen: (leer) " + warn(
             "Modell ohne Bild-Faehigkeit, falscher Modellname, leeres Bild "
             "oder alle Tokens im Reasoning verbraucht"))
-    _debug_print(zeilen)
+    _debug_print(lines)
 
 
 def _debug_error(text: str, duration_ms: float) -> None:
@@ -572,8 +572,8 @@ def _closest_candidate(name: str, candidates: list[str]) -> Optional[str]:
     zieht Kategorie und Prioritaet mit sich.
     """
     import difflib
-    treffer = difflib.get_close_matches(name, candidates, n=1, cutoff=0.85)
-    return treffer[0] if treffer else None
+    match = difflib.get_close_matches(name, candidates, n=1, cutoff=0.85)
+    return match[0] if match else None
 
 
 def _name_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
@@ -662,8 +662,8 @@ def suggest_item_name_with_reason(
         max_tokens=_name_tokens(max_tokens, reasoning, bool(candidates)),
     )
     if not success:
-        grund = TIMEOUT if is_timeout(response) else str(response)
-        return None, grund
+        reason = TIMEOUT if is_timeout(response) else str(response)
+        return None, reason
     name = clean_boss_name(_strip_reasoning_tags(response))
     if not name or name.lower() in ("unbekannt", "unknown", "none", "n/a"):
         return None, ""
@@ -685,10 +685,10 @@ def _model_known(modell: str, modelle: list) -> bool:
     """
     if not modell:
         return True
-    ziel = modell.casefold()
-    for vorhanden in modelle:
-        da = str(vorhanden or "").casefold()
-        if da == ziel or da.split(":", 1)[0] == ziel:
+    target = modell.casefold()
+    for existing in modelle:
+        da = str(existing or "").casefold()
+        if da == target or da.split(":", 1)[0] == target:
             return True
     return False
 

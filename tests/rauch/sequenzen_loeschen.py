@@ -65,8 +65,8 @@ def lauf():
 
     with Fenster(b) as f:
         f.reiter("sequenzen")
-        pruefe(f.anzahl(".seq-karte") == 2,
-               f"2 Karten erwartet, da: {f.anzahl('.seq-karte')}")
+        pruefe(f.count(".seq-karte") == 2,
+               f"2 Karten erwartet, da: {f.count('.seq-karte')}")
 
         # **Gleiche Spalten heisst gleiche BREITE.** Genau dafuer ist der
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
@@ -84,7 +84,7 @@ def lauf():
             ".seq-karte .knopfpaar",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().width))")
         pruefe(len(set(paare)) == 1, f"die Knopfpaare sind verschieden breit: {paare}")
-        f.bild("sequenzen_loeschen")
+        f.image("sequenzen_loeschen")
 
         # Der Dialog muss sagen, WAS weggeht — der Umfang ist der halbe Grund
         # fuer die Rueckfrage.
@@ -95,24 +95,24 @@ def lauf():
         pruefe("Item-Scan" in text and "Vorlage" in text,
                f"der Umfang fehlt im Dialog: {text!r}")
         pruefe("backups" in text, "der Dialog verschweigt, dass es eine Sicherung gibt")
-        f.bild("sequenzen_loeschen_dialog")
+        f.image("sequenzen_loeschen_dialog")
 
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
         f.klick("#dialog-ab")
-        pruefe(f.anzahl(".seq-karte") == 2, "Abbrechen hat trotzdem geloescht")
+        pruefe(f.count(".seq-karte") == 2, "Abbrechen hat trotzdem geloescht")
         pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
         f.klick_text(".seq-karte:nth-of-type(2) .knopfpaar .btn", "Löschen")
         f.klick("#dialog-weg")
-        pruefe(f.anzahl(".seq-karte") == 1,
-               f"nach dem Loeschen 1 Karte erwartet, da: {f.anzahl('.seq-karte')}")
+        pruefe(f.count(".seq-karte") == 1,
+               f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-karte')}")
         pruefe(not ordner_raid.exists(), "der Ordner steht noch")
         # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
         sicherung = Path("backups/sequences") / ordner_raid.name
         pruefe((sicherung / "templates/erz.png").exists(),
                "die Vorlage fehlt in der Sicherung")
         pruefe("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")
-        f.bild("sequenzen_geloescht")
+        f.image("sequenzen_geloescht")
 
         fehler.extend(f.fehler)
     return fehler

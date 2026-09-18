@@ -32,17 +32,17 @@ _k = Catalog({
 
 check("kennt seine Items", len(_k) == 4 and bool(_k))
 check("leerer Katalog ist falsy", not Catalog() and not EMPTY)
-check("Kategorie ueber den Namen", _k.kategorie("Citadel Helmet") == "Helm")
+check("Kategorie ueber den Namen", _k.category("Citadel Helmet") == "Helm")
 # Ein Modell antwortet mal so, mal so — und zwei Schreibweisen desselben Namens
 # ergaeben ueber `_kategorie_normalisieren` zwei Kategorien mit demselben Wort.
-check("Schreibweise egal beim Nachschlagen", _k.kategorie("citadel HELMET") == "Helm")
-check("zurueck kommt die Katalog-Schreibweise", _k.treffer("citadel helmet") == "Citadel Helmet")
-check("Leerraum stoert nicht", _k.treffer("  Citadel Helmet  ") == "Citadel Helmet")
-check("unbekannter Name -> None", _k.kategorie("Gibtsnicht") is None)
-check("unbekannter Name hat keinen Wert", _k.wert("Gibtsnicht") is None)
-check("Wert kommt als Zahl", _k.wert("Godlike Pickaxe") == 500000.0)
+check("Schreibweise egal beim Nachschlagen", _k.category("citadel HELMET") == "Helm")
+check("zurueck kommt die Katalog-Schreibweise", _k.match("citadel helmet") == "Citadel Helmet")
+check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet")
+check("unbekannter Name -> None", _k.category("Gibtsnicht") is None)
+check("unbekannter Name hat keinen Wert", _k.value("Gibtsnicht") is None)
+check("Wert kommt als Zahl", _k.value("Godlike Pickaxe") == 500000.0)
 check("Gegner stehen bereit", _k.gegner == ["Black Dragon", "Banshee"])
-check("namen() ist die geschlossene Liste", "Godlike Pickaxe" in _k.namen() and len(_k.namen()) == 4)
+check("names() ist die geschlossene Liste", "Godlike Pickaxe" in _k.names() and len(_k.names()) == 4)
 
 # Der Rang gilt INNERHALB des Scans und dicht. Ein globaler Rang aus dem Katalog
 # waere unbrauchbar: der beste Bogen eines Bestands bekaeme P49, weil 48 teurere
@@ -88,12 +88,12 @@ _gut.write_text(json.dumps({
     "gegner": ["Black Dragon", ""],
 }), encoding="utf-8")
 _gl = load_catalog(str(_gut))
-check("gute Eintraege kommen an", _gl.kategorie("Citadel Helmet") == "Helm")
+check("gute Eintraege kommen an", _gl.category("Citadel Helmet") == "Helm")
 # Ein kaputter Eintrag darf den Katalog nicht mitnehmen — dieselbe Haltung wie
 # bei der Marktwert-Datei: einzeln raus, nicht alles weg.
-check("kaputter Eintrag fliegt einzeln raus", _gl.treffer("Kaputt") is None)
-check("fehlender Wert wird 0", _gl.wert("Ohne Wert") == 0.0)
-check("unbrauchbarer Wert wird 0", _gl.wert("Wert ist Text") == 0.0)
+check("kaputter Eintrag fliegt einzeln raus", _gl.match("Kaputt") is None)
+check("fehlender Wert wird 0", _gl.value("Ohne Wert") == 0.0)
+check("unbrauchbarer Wert wird 0", _gl.value("Wert ist Text") == 0.0)
 check("leerer Gegnername faellt weg", _gl.gegner == ["Black Dragon"])
 check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
       load_catalog(str(_gut)) is _gl)
@@ -152,7 +152,7 @@ _rund = _sand / "rund.json"
 _rund.write_text(json.dumps(_gebaut), encoding="utf-8")
 _rl = load_catalog(str(_rund))
 check("was tools/katalog.py schreibt, liest autoclicker/katalog.py",
-      _rl.kategorie("Godlike Bow") == "Bow" and _rl.wert("Bronze Helmet") == 32.0)
+      _rl.category("Godlike Bow") == "Bow" and _rl.value("Bronze Helmet") == 32.0)
 
 
 # =============================================================================

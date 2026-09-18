@@ -82,11 +82,11 @@ def _argument_ende(text: str, start: int) -> int:
 
 def _als_zahl(inneres: str) -> str | None:
     """`5`, `"5"`, `"1.5"` -> `5` bzw. `1.5`; sonst None."""
-    roh = inneres.strip()
-    if len(roh) >= 2 and roh[0] == '"' and roh[-1] == '"':
-        roh = roh[1:-1].strip()
-    if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", roh):
-        return roh
+    raw = inneres.strip()
+    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+        raw = raw[1:-1].strip()
+    if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", raw):
+        return raw
     return None
 
 
@@ -120,37 +120,37 @@ def bereinigen(text: str) -> tuple[str, dict[str, int]]:
     werden konnte — leer, wenn alles bekannt war.
     """
     unbekannt: dict[str, int] = {}
-    teile: list[str] = []
+    parts: list[str] = []
     i = 0
     n = len(text)
     while i < n:
         c = text[i]
         if c == '"':
             ende = _string_ende(text, i)
-            teile.append(text[i:ende])
+            parts.append(text[i:ende])
             i = ende
             continue
-        treffer = _AUFRUF.match(text, i)
-        if treffer is None:
-            teile.append(c)
+        match = _AUFRUF.match(text, i)
+        if match is None:
+            parts.append(c)
             i += 1
             continue
-        ende = _argument_ende(text, treffer.end())
+        ende = _argument_ende(text, match.end())
         if ende < 0:
-            teile.append(text[i:treffer.end()])
-            i = treffer.end()
+            parts.append(text[i:match.end()])
+            i = match.end()
             continue
-        teile.append(_ersatz(treffer.group(1), text[treffer.end():ende - 1], unbekannt))
+        parts.append(_ersatz(match.group(1), text[match.end():ende - 1], unbekannt))
         i = ende
-    return "".join(teile), unbekannt
+    return "".join(parts), unbekannt
 
 
 def hinweise(unbekannt: dict[str, int]) -> list[str]:
     """Die Meldungen zu unbekannten Konstrukten — eine je Name, mit Anzahl."""
-    return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {anzahl}× — Wert "
+    return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {count}× — Wert "
             f"uebernommen, nicht uebersetzt. Falls es eine Zahl oder ein Text ist: "
             f"in extended_json.ZAHL_HUELLEN bzw. TEXT_HUELLEN eintragen."
-            for name, anzahl in sorted(unbekannt.items())]
+            for name, count in sorted(unbekannt.items())]
 
 
 def laden(text: str) -> tuple[object, list[str]]:

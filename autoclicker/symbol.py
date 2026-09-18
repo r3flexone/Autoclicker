@@ -29,56 +29,56 @@ _ROTATION = re.compile(
     r"\s*rotate\(\s*([-+\d.]+)(?:[\s,]+([-+\d.]+)[\s,]+([-+\d.]+))?\s*\)\s*")
 
 
-def _path_polygons(daten: str) -> tuple[tuple[tuple[float, float], ...], ...]:
+def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
     """Flacht einen SVG-Pfad aus M/L/C/Z zu geschlossenen Polygonen ab."""
-    teile = _TOKEN.findall(daten)
+    parts = _TOKEN.findall(data)
     polygone: list[tuple[tuple[float, float], ...]] = []
     polygon: list[tuple[float, float]] = []
-    befehl = None
+    command = None
     position = (0.0, 0.0)
     start = (0.0, 0.0)
     i = 0
 
     def number() -> float:
         nonlocal i
-        if i >= len(teile) or teile[i].isalpha():
+        if i >= len(parts) or parts[i].isalpha():
             raise ValueError("Unvollständiger SVG-Pfad im Studio-Logo")
-        wert = float(teile[i])
+        value = float(parts[i])
         i += 1
-        return wert
+        return value
 
-    while i < len(teile):
-        if teile[i].isalpha():
-            befehl = teile[i]
+    while i < len(parts):
+        if parts[i].isalpha():
+            command = parts[i]
             i += 1
-            if befehl in "Zz":
+            if command in "Zz":
                 if len(polygon) >= 3:
                     polygone.append(tuple(polygon))
                 polygon = []
                 position = start
-                befehl = None
+                command = None
                 continue
-            if befehl not in {"M", "L", "C"}:
-                raise ValueError(f"SVG-Befehl {befehl!r} wird im Studio-Logo nicht unterstützt")
-        if befehl is None:
+            if command not in {"M", "L", "C"}:
+                raise ValueError(f"SVG-Befehl {command!r} wird im Studio-Logo nicht unterstützt")
+        if command is None:
             raise ValueError("Koordinate ohne SVG-Befehl im Studio-Logo")
 
-        if befehl == "M":
+        if command == "M":
             if len(polygon) >= 3:
                 polygone.append(tuple(polygon))
             position = (number(), number())
             start = position
             polygon = [position]
             # Weitere Paare nach M sind laut SVG normale Linien.
-            befehl = "L"
-        elif befehl == "L":
+            command = "L"
+        elif command == "L":
             position = (number(), number())
             polygon.append(position)
         else:  # C: kubische Bézier-Kurve
             x0, y0 = position
             x1, y1, x2, y2, x3, y3 = (number() for _ in range(6))
-            for schritt in range(1, CURVE_STEPS + 1):
-                t = schritt / CURVE_STEPS
+            for step in range(1, CURVE_STEPS + 1):
+                t = step / CURVE_STEPS
                 u = 1.0 - t
                 polygon.append((
                     u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3,
@@ -96,17 +96,17 @@ def _path_polygons(daten: str) -> tuple[tuple[tuple[float, float], ...], ...]:
 def _rotator(transform: str):
     """Liefert die Punktabbildung für die im Logo verwendete SVG-Rotation."""
     if not transform:
-        return lambda punkt: punkt
-    treffer = _ROTATION.fullmatch(transform)
-    if not treffer:
+        return lambda point: point
+    match = _ROTATION.fullmatch(transform)
+    if not match:
         raise ValueError(f"Unbekannte SVG-Transformation im Studio-Logo: {transform!r}")
-    winkel = math.radians(float(treffer.group(1)))
-    cx = float(treffer.group(2) or 0.0)
-    cy = float(treffer.group(3) or 0.0)
+    winkel = math.radians(float(match.group(1)))
+    cx = float(match.group(2) or 0.0)
+    cy = float(match.group(3) or 0.0)
     cosinus, sinus = math.cos(winkel), math.sin(winkel)
 
-    def rotate(punkt):
-        x, y = punkt[0] - cx, punkt[1] - cy
+    def rotate(point):
+        x, y = point[0] - cx, point[1] - cy
         return (cx + x * cosinus - y * sinus,
                 cy + x * sinus + y * cosinus)
 
@@ -131,7 +131,7 @@ def _logo_geometry():
     farbtext = farb_rect.attrib.get("fill", "").lstrip("#")
     if len(farbtext) != 6:
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
-    farbe = tuple(int(farbtext[i:i + 2], 16) for i in (0, 2, 4))
+    color = tuple(int(farbtext[i:i + 2], 16) for i in (0, 2, 4))
 
     maske = next((e for e in wurzel.iter() if _tag(e) == "mask"), None)
     gruppe = (next((e for e in maske.iter() if _tag(e) == "g"), None)
@@ -140,16 +140,16 @@ def _logo_geometry():
         raise ValueError("Pfadgruppe in der Maske des Studio-Logos fehlt")
     rotate = _rotator(gruppe.attrib.get("transform", ""))
 
-    grund = []
+    reason = []
     aussparungen = []
-    for pfad in (e for e in gruppe.iter() if _tag(e) == "path"):
-        ziel = grund if pfad.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
+    for path in (e for e in gruppe.iter() if _tag(e) == "path"):
+        target = reason if path.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
             else aussparungen
-        for polygon in _path_polygons(pfad.attrib.get("d", "")):
-            ziel.append(tuple(rotate(punkt) for punkt in polygon))
-    if not grund or not aussparungen:
+        for polygon in _path_polygons(path.attrib.get("d", "")):
+            target.append(tuple(rotate(point) for point in polygon))
+    if not reason or not aussparungen:
         raise ValueError("Grund oder transparente Aussparung im Studio-Logo fehlt")
-    return farbe, viewbox, tuple(grund), tuple(aussparungen)
+    return color, viewbox, tuple(reason), tuple(aussparungen)
 
 
 def _intervals(polygone, y: float):
@@ -157,57 +157,57 @@ def _intervals(polygone, y: float):
     for polygon in polygone:
         schnitte = []
         vorher = polygon[-1]
-        for punkt in polygon:
+        for point in polygon:
             x1, y1 = vorher
-            x2, y2 = punkt
+            x2, y2 = point
             if (y1 > y) != (y2 > y):
                 schnitte.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
-            vorher = punkt
+            vorher = point
         schnitte.sort()
         for i in range(0, len(schnitte) - 1, 2):
             yield schnitte[i], schnitte[i + 1]
 
 
-def _paint(zeile: bytearray, intervalle, wert: int,
-          links: float, schritt: float) -> None:
+def _paint(line: bytearray, intervalle, value: int,
+          left: float, step: float) -> None:
     """Setzt Subpixel, deren Mittelpunkt in einem der Intervalle liegt."""
-    breite = len(zeile)
-    fuellung = bytes((wert,))
+    width = len(line)
+    fuellung = bytes((value,))
     for anfang, ende in intervalle:
-        von = max(0, math.ceil((anfang - links) / schritt - 0.5))
-        bis = min(breite, math.ceil((ende - links) / schritt - 0.5))
+        von = max(0, math.ceil((anfang - left) / step - 0.5))
+        bis = min(width, math.ceil((ende - left) / step - 0.5))
         if bis > von:
-            zeile[von:bis] = fuellung * (bis - von)
+            line[von:bis] = fuellung * (bis - von)
 
 
-def pixel_rows(kante: int, proben: int = SAMPLES):
+def pixel_rows(edge: int, proben: int = SAMPLES):
     """Liefert das Logo von oben nach unten als Zeilen mit RGBA-Pixeln.
 
     Kleine Windows-Symbole erhalten vier Subpixel je Achse. Bei großen Exporten
     reichen weniger Proben, weil ein Bildpixel dort bereits deutlich kleiner als
     die Kurven des 256er-SVGs ist.
     """
-    if kante <= 0 or proben <= 0:
+    if edge <= 0 or proben <= 0:
         raise ValueError("Kantenlänge und Probenzahl müssen positiv sein")
-    if kante >= 512:
+    if edge >= 512:
         proben = min(proben, 1)
-    elif kante >= 128:
+    elif edge >= 128:
         proben = min(proben, 2)
 
-    farbe, (links, oben, breite, hoehe), grund, aussparungen = _logo_geometry()
-    sub_breite = kante * proben
-    x_schritt = breite / sub_breite
-    y_schritt = hoehe / (kante * proben)
-    gesamt = proben * proben
+    color, (left, top, width, height), reason, aussparungen = _logo_geometry()
+    sub_breite = edge * proben
+    x_schritt = width / sub_breite
+    y_schritt = height / (edge * proben)
+    total = proben * proben
 
-    for zy in range(kante):
-        deckung = [0] * kante
+    for zy in range(edge):
+        deckung = [0] * edge
         for py in range(proben):
-            y = oben + (zy * proben + py + 0.5) * y_schritt
+            y = top + (zy * proben + py + 0.5) * y_schritt
             subpixel = bytearray(sub_breite)
-            _paint(subpixel, _intervals(grund, y), 1, links, x_schritt)
-            _paint(subpixel, _intervals(aussparungen, y), 0, links, x_schritt)
-            for zx in range(kante):
+            _paint(subpixel, _intervals(reason, y), 1, left, x_schritt)
+            _paint(subpixel, _intervals(aussparungen, y), 0, left, x_schritt)
+            for zx in range(edge):
                 von = zx * proben
                 deckung[zx] += sum(subpixel[von:von + proben])
-        yield [farbe + (round(255 * anteil / gesamt),) for anteil in deckung]
+        yield [color + (round(255 * anteil / total),) for anteil in deckung]

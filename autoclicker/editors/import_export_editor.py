@@ -499,13 +499,13 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     print()
 
     with state.lock:
-        punkte = list(state.points)
-    if not punkte:
+        points = list(state.points)
+    if not points:
         print(f"  {err('Keine Punkte vorhanden — es gibt nichts zu kalibrieren.')}")
         return
 
     # --- Referenzpunkt 1: Verschiebung ------------------------------------------
-    ref1 = _kalib_referenz(state, punkte, "Referenzpunkt")
+    ref1 = _kalib_referenz(state, points, "Referenzpunkt")
     if ref1 is None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
@@ -517,12 +517,12 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     print(f"  Verschiebung: {col(versatz, 'yellow')}")
 
     # --- Referenzpunkt 2 (optional): Skalierung ---------------------------------
-    if len(punkte) > 1:
+    if len(points) > 1:
         print()
         print("  Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht —")
         print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
         if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
-            ref2 = _kalib_referenz(state, punkte, "Zweiter Referenzpunkt",
+            ref2 = _kalib_referenz(state, points, "Zweiter Referenzpunkt",
                                    ausser=p_alt)
             if ref2 is None:
                 print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
@@ -550,12 +550,12 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     vorschau = calibration_preview(state, transform)
     print()
     print(col("  VORSCHAU (Auszug):", 'bold'))
-    for label, alt, neu in vorschau[:12]:
-        print(f"    {label:<34} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+    for label, old, new in vorschau[:12]:
+        print(f"    {label:<34} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
     if len(vorschau) > 12:
         print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
 
-    draussen = _ausserhalb_der_monitore([neu for _, _, neu in vorschau])
+    draussen = _ausserhalb_der_monitore([new for _, _, new in vorschau])
     if draussen:
         print()
         print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
@@ -611,9 +611,9 @@ def run_kalibrierung(state: AutoClickerState) -> None:
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
                     "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
-    for schluessel, anzahl in number.items():
-        if anzahl:
-            print(f"    {anzahl:>4}  {beschriftung[schluessel]}")
+    for key_name, count in number.items():
+        if count:
+            print(f"    {count:>4}  {beschriftung[key_name]}")
     if mit_sequenzen:
         print()
         print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
@@ -644,29 +644,29 @@ def _versatz_anpassen(transform: dict) -> dict | None:
     print(f"  {info('Enter = uebernehmen. Stimmt eine Achse schon, hier 0 eintragen —')}")
     print(f"  {info('das ist genauer als die Maus-Messung.')}")
 
-    neu = []
-    for achse, wert in (("X", vx), ("Y", vy)):
+    new = []
+    for achse, value in (("X", vx), ("Y", vy)):
         while True:
-            eingabe = safe_input(f"    {achse}-Versatz (Enter = {wert:+d}): ").strip()
+            eingabe = safe_input(f"    {achse}-Versatz (Enter = {value:+d}): ").strip()
             if is_cancel(eingabe):
                 return None
             if not eingabe:
-                neu.append(wert)
+                new.append(value)
                 break
             try:
-                neu.append(int(round(float(eingabe.replace(",", ".")))))
+                new.append(int(round(float(eingabe.replace(",", ".")))))
                 break
             except ValueError:
                 # Wiederholen statt abbrechen — wie in den anderen Editoren
                 print(f"    {err('Bitte eine ganze Zahl, z.B. 0 oder -25.')}")
 
-    if (neu[0], neu[1]) != (vx, vy):
-        print(f"  {ok(f'Versatz von Hand gesetzt: {neu[0]:+d} X, {neu[1]:+d} Y')}")
+    if (new[0], new[1]) != (vx, vy):
+        print(f"  {ok(f'Versatz von Hand gesetzt: {new[0]:+d} X, {new[1]:+d} Y')}")
     return {"scale_x": 1.0, "scale_y": 1.0,
-            "offset_x": neu[0], "offset_y": neu[1]}
+            "offset_x": new[0], "offset_y": new[1]}
 
 
-def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
+def _kalib_referenz(state: AutoClickerState, points: list, titel: str,
                     ausser: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
@@ -674,7 +674,7 @@ def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
     """
     from ..winapi import set_cursor_pos
 
-    auswahl = [p for p in punkte if ausser is None or (p.x, p.y) != ausser]
+    auswahl = [p for p in points if ausser is None or (p.x, p.y) != ausser]
     if not auswahl:
         return None
 
@@ -684,18 +684,18 @@ def _kalib_referenz(state: AutoClickerState, punkte: list, titel: str,
     idx = interactive_select(beschriftung, default=0)
     if idx < 0:
         return None
-    punkt = auswahl[idx]
+    point = auswahl[idx]
 
     # Maus dorthin, wo der Punkt AKTUELL zeigt — dann sieht man die Abweichung
-    set_cursor_pos(punkt.x, punkt.y)
-    print(f"  Die Maus steht jetzt auf der GESPEICHERTEN Position ({punkt.x}, {punkt.y}).")
+    set_cursor_pos(point.x, point.y)
+    print(f"  Die Maus steht jetzt auf der GESPEICHERTEN Position ({point.x}, {point.y}).")
     print("  Bewege sie dorthin, wo dieser Punkt WIRKLICH hingehört, dann Enter.")
     print(f"  {info('(x = abbrechen)')}")
     if is_cancel(safe_input("    > ").strip()):
         return None
-    neu = get_cursor_pos()
-    print(f"    -> ({neu[0]}, {neu[1]})")
-    return (punkt.x, punkt.y), neu
+    new = get_cursor_pos()
+    print(f"    -> ({new[0]}, {new[1]})")
+    return (point.x, point.y), new
 
 
 def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
@@ -704,6 +704,6 @@ def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
     rect = _virtueller_desktop()
     if rect is None:
         return 0
-    links, oben, rechts, unten = rect
+    left, top, right, bottom = rect
     return sum(1 for x, y in ziele
-               if not (links <= x < rechts and oben <= y < unten))
+               if not (left <= x < right and top <= y < bottom))

@@ -107,16 +107,16 @@ def _chromium() -> str:
     Nur fuer ein Image, das den Browser schon mitbringt (CI). Ist nichts
     gesetzt, bleibt der Rueckgabewert leer und Playwright nimmt seinen eigenen.
     """
-    roh = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
-    if not roh:
+    raw = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not raw:
         return ""
-    basis = Path(roh)
+    basis = Path(raw)
     if not basis.is_dir():
         return ""
     # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
-    for muster in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
+    for pattern in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
                    "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
-        for kandidat in sorted(basis.glob(muster)):
+        for kandidat in sorted(basis.glob(pattern)):
             return str(kandidat)
     direkt = basis / "chromium"
     return str(direkt) if direkt.exists() else ""
@@ -142,10 +142,10 @@ class Fenster:
     Reiter, der leer bleibt, und genau danach wird hier gesucht.
     """
 
-    def __init__(self, bruecke, breite: int = 1500, hoehe: int = 900):
+    def __init__(self, bruecke, width: int = 1500, height: int = 900):
         self.bruecke = bruecke
         self.fehler: list[str] = []
-        self._groesse = (breite, hoehe)
+        self._groesse = (width, height)
         self._pw = None
         self._browser = None
         self.seite = None
@@ -153,9 +153,9 @@ class Fenster:
     def __enter__(self):
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
-        pfad = _chromium()
+        path = _chromium()
         self._browser = self._pw.chromium.launch(
-            **({"executable_path": pfad} if pfad else {}))
+            **({"executable_path": path} if path else {}))
         self.seite = self._browser.new_page(
             viewport={"width": self._groesse[0], "height": self._groesse[1]})
         self.seite.on("pageerror", lambda e: self.fehler.append(f"pageerror: {e}"))
@@ -174,7 +174,7 @@ class Fenster:
             self._pw.stop()
         return False
 
-    def _ruf(self, name: str, daten):
+    def _ruf(self, name: str, data):
         """Ein Aufruf der Seite an die Bruecke. Unbekannte Namen sind ein Fehler.
 
         Die Seite bekaeme sonst `null` und zeichnete eine leere Ansicht - also
@@ -184,7 +184,7 @@ class Fenster:
         if fn is None or not callable(fn):
             self.fehler.append(f"Bruecke kennt '{name}' nicht")
             return None
-        return fn(daten)
+        return fn(data)
 
     # ---------------------------------------------------------------- Bedienen
 
@@ -231,13 +231,13 @@ class Fenster:
         # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
         letzter = None
         for _ in range(3):
-            treffer = [k for k in self.seite.query_selector_all(wahl)
+            match = [k for k in self.seite.query_selector_all(wahl)
                        if text in (k.inner_text() or "")]
-            if not treffer:
+            if not match:
                 self.seite.wait_for_timeout(150)
                 continue
             try:
-                treffer[0].click()
+                match[0].click()
             except Exception as fehler:      # noqa: BLE001 - erneut versuchen
                 letzter = fehler
                 self.seite.wait_for_timeout(150)
@@ -253,13 +253,13 @@ class Fenster:
     def status(self) -> str:
         return self.seite.inner_text("#status")
 
-    def anzahl(self, wahl: str) -> int:
+    def count(self, wahl: str) -> int:
         return len(self.seite.query_selector_all(wahl))
 
-    def bild(self, name: str):
-        ziel = Path(tempfile.gettempdir()) / f"rauchtest_{name}.png"
-        self.seite.screenshot(path=str(ziel))
-        return ziel
+    def image(self, name: str):
+        target = Path(tempfile.gettempdir()) / f"rauchtest_{name}.png"
+        self.seite.screenshot(path=str(target))
+        return target
 
 
 def haupt(name: str, lauf) -> int:
@@ -273,9 +273,9 @@ def haupt(name: str, lauf) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
-    da, grund = playwright_da()
+    da, reason = playwright_da()
     if not da:
-        print(f"UEBERSPRUNGEN  {name}: {grund}")
+        print(f"UEBERSPRUNGEN  {name}: {reason}")
         return 0
     cwd = os.getcwd()
     try:

@@ -78,7 +78,7 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
     )
 
     abweichend = []   # (name, alt_xy, punkt_xy)
-    fehlend = set()
+    missing = set()
 
     for step in all_steps:
         # Schritte MIT Referenz regelt resolve_point_references beim Start - und meldet
@@ -88,7 +88,7 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
             if step.name and (step.x != 0 or step.y != 0):
                 lp = local_by_name.get(step.name)
                 if lp is None:
-                    fehlend.add(step.name)
+                    missing.add(step.name)
                 elif (step.x, step.y) != (lp.x, lp.y):
                     abweichend.append((step.name, (step.x, step.y), (lp.x, lp.y)))
 
@@ -97,26 +97,26 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
             lp = local_by_name.get(ec.name)
             if lp is None:
                 if ec.x != 0 or ec.y != 0:
-                    fehlend.add(ec.name)
+                    missing.add(ec.name)
             elif (ec.x, ec.y) != (lp.x, lp.y):
                 abweichend.append((f"{ec.name} (else)", (ec.x, ec.y), (lp.x, lp.y)))
 
-    if fehlend:
-        print(f"\n{warn(f'{len(fehlend)} Punktname(n) gibt es lokal nicht:')}")
-        for name in sorted(fehlend):
+    if missing:
+        print(f"\n{warn(f'{len(missing)} Punktname(n) gibt es lokal nicht:')}")
+        for name in sorted(missing):
             print(f"    - '{name}'")
         print(f"    {hint('Die Schritte klicken auf ihre eigenen Koordinaten - oft völlig ok.')}")
 
     if abweichend:
-        namen = {a[0] for a in abweichend}
-        print(f"\n{info(f'{len(namen)} Schritt-Name(n) liegen woanders als der gleichnamige Punkt:')}")
+        names = {a[0] for a in abweichend}
+        print(f"\n{info(f'{len(names)} Schritt-Name(n) liegen woanders als der gleichnamige Punkt:')}")
         gezeigt = set()
-        for name, alt, neu in abweichend:
+        for name, old, new in abweichend:
             if name in gezeigt:
                 continue
             gezeigt.add(name)
             if len(gezeigt) > _MAX_HINWEISE:
-                print(f"    ... und {len(namen) - _MAX_HINWEISE} weitere")
+                print(f"    ... und {len(names) - _MAX_HINWEISE} weitere")
                 break
-            print(f"    '{name}': Schritt {alt}, Punkt {neu}")
+            print(f"    '{name}': Schritt {old}, Punkt {new}")
         print(f"    {hint('Nichts wurde geändert. Verknüpfen: Editor -> link (über Koordinaten).')}")

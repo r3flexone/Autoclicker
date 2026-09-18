@@ -44,7 +44,7 @@ class M:
     Information. Ausgeblendete Felder sucht man in der Datei.
     """
     label: str
-    art: str
+    kind: str
     hilfe: str = ""
     einheit: str = ""
     # Für CONTROL_ENUM: (Wert, Beschriftung). Der Wert ist der, der in der Datei
@@ -66,22 +66,22 @@ class M:
 
     def as_dict(self) -> dict:
         """Als JSON-Werte für die Brücke — leere Felder fallen weg."""
-        daten = {"label": self.label, "art": self.art}
+        data = {"label": self.label, "art": self.kind}
         if self.hilfe:
-            daten["hilfe"] = self.hilfe
+            data["hilfe"] = self.hilfe
         if self.einheit:
-            daten["einheit"] = self.einheit
+            data["einheit"] = self.einheit
         if self.optionen:
-            daten["optionen"] = [{"wert": w, "text": t} for w, t in self.optionen]
+            data["optionen"] = [{"wert": w, "text": t} for w, t in self.optionen]
         if self.leer:
-            daten["leer"] = self.leer
+            data["leer"] = self.leer
         if self.aktion:
-            daten["aktion"] = {"befehl": self.aktion[0], "text": self.aktion[1]}
+            data["aktion"] = {"befehl": self.aktion[0], "text": self.aktion[1]}
         for name in ("dep", "dep_nicht", "dep_min"):
-            wert = getattr(self, name)
-            if wert:
-                daten[name] = wert
-        return daten
+            value = getattr(self, name)
+            if value:
+                data[name] = value
+        return data
 
 
 META: dict = {

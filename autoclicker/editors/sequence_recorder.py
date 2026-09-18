@@ -71,11 +71,11 @@ def aufnahme_datei(seq_name: str):
     return sequence_file(seq_name)
 
 
-def _farbtext(farbe) -> str:
+def _farbtext(color) -> str:
     """Farbname ohne Konsolensteuerzeichen für die Weboberfläche."""
-    if not farbe:
+    if not color:
         return ""
-    text = _ANSI.sub("", describe_color(farbe)).strip()
+    text = _ANSI.sub("", describe_color(color)).strip()
     return text[1:].strip() if text.startswith("█") else text
 
 
@@ -97,12 +97,12 @@ def _status_ereignisse(events: list) -> list[dict]:
 
 
 def _status_schreiben(state: AutoClickerState, events: list | None = None,
-                       aktiv: bool | None = None) -> None:
+                       active: bool | None = None) -> None:
     """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören."""
     try:
         with state.lock:
             liste = list(state.recording_events) if events is None else list(events)
-            laeuft = state.recording_active if aktiv is None else aktiv
+            laeuft = state.recording_active if active is None else active
             pausiert = state.recording_paused
             name = state.recording_ui_name
         atomic_write(_AUFNAHME_STATUS, compact_json({
@@ -119,9 +119,9 @@ def _status_schreiben(state: AutoClickerState, events: list | None = None,
 
 def _melde(ereignis: RecordEvent, idx: int, delay: float | None) -> None:
     """Eine Zeile pro aufgezeichnetem Ereignis — der Nutzer sieht nur die Konsole."""
-    farbe = f" {describe_color(ereignis.color)}" if ereignis.color else ""
+    color = f" {describe_color(ereignis.color)}" if ereignis.color else ""
     zeit = "sofort" if delay is None else f"+{delay:.2f}s"
-    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}  {zeit}{farbe}")
+    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}  {zeit}{color}")
 
 
 def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
@@ -261,11 +261,11 @@ def merke_beobachten(state: AutoClickerState) -> None:
     if not _aufnahme_laeuft(state):
         return
     x, y = get_cursor_pos()
-    farbe = get_pixel_color(x, y)
-    if farbe is None:
+    color = get_pixel_color(x, y)
+    if color is None:
         print(f"\n{err('Farbe an der Mausposition nicht lesbar — nichts aufgezeichnet.')}")
         return
-    _anhaengen(state, RecordEvent(REC_WATCH, time.monotonic(), x, y, farbe))
+    _anhaengen(state, RecordEvent(REC_WATCH, time.monotonic(), x, y, color))
 
 
 def merke_phase(state: AutoClickerState) -> None:
@@ -299,14 +299,14 @@ def verwirf_letztes(state: AutoClickerState) -> None:
     """
     with state.lock:
         entfernt = state.recording_events.pop() if state.recording_events else None
-        rest = len(state.recording_events)
+        remainder = len(state.recording_events)
         events = list(state.recording_events)
     if entfernt is None:
         print(f"\n{col('[UNDO]', 'yellow')} Nichts aufgezeichnet, nichts zurückzunehmen.")
         return
     _status_schreiben(state, events)
     print(f"\n{col('[UNDO]', 'yellow')} Verworfen: {entfernt}  "
-          f"{hint(f'({rest} übrig)')}")
+          f"{hint(f'({remainder} übrig)')}")
 
 
 def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
@@ -340,8 +340,8 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Aufgezeichnet: {arten}")
-        for taste, aktion, label in AUFNAHME_HOTKEYS:
-            print(f"  {aktion + ':':24} {col(taste, 'yellow')} "
+        for key, aktion, label in AUFNAHME_HOTKEYS:
+            print(f"  {aktion + ':':24} {col(key, 'yellow')} "
                   f"{hint('(' + label + ')')}")
         if not tasten:
             print(f"  {warn('Tastatur-Hook nicht installierbar — Tastendrücke fehlen.')}")
@@ -363,7 +363,7 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
             state.recording_ui_description = ""
         print(f"\n{err('Maus-Hook konnte nicht installiert werden!')}")
         print("  Mögliche Ursache: Administratorrechte erforderlich.")
-        _status_schreiben(state, [], aktiv=False)
+        _status_schreiben(state, [], active=False)
 
 
 def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
@@ -394,20 +394,20 @@ def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
     """
     from ..persistence.sequences import point_at_position
     punkt_id_fuer: dict[int, int] = {}
-    punkte: list[ClickPoint] = []
+    points: list[ClickPoint] = []
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
-        treffer = point_at_position(punkte, ev.x, ev.y, ev.color)
-        if treffer is not None:
-            punkt_id_fuer[i] = treffer.id
+        match = point_at_position(points, ev.x, ev.y, ev.color)
+        if match is not None:
+            punkt_id_fuer[i] = match.id
             continue
-        pid = max((p.id for p in punkte), default=0) + 1
-        punkt = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
+        pid = max((p.id for p in points), default=0) + 1
+        point = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
                            color=ev.color, source="Aufnahme")
-        punkte.append(punkt)
+        points.append(point)
         punkt_id_fuer[i] = pid
-    return punkt_id_fuer, punkte
+    return punkt_id_fuer, points
 
 
 def bereiche_zusammenfassen(events: list) -> tuple[list, int]:
@@ -579,7 +579,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     remove_mouse_hook()
     remove_keyboard_hook()
-    _status_schreiben(state, events, aktiv=False)
+    _status_schreiben(state, events, active=False)
 
     if not events:
         print(f"\n{col('[AUFNAHME]', 'yellow')} Gestoppt — nichts aufgezeichnet.")
@@ -688,7 +688,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
             description = ""
 
     # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
-    punkt_id_fuer, punkte = punkte_fuer_events(events)
+    punkt_id_fuer, points = punkte_fuer_events(events)
 
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
     steps = schritte_aus_events(events, punkt_id_fuer)
@@ -696,7 +696,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
     # nur einmal laufen soll. Das steht im Studio an der Phase.
     loop_phases = phasen_bauen(steps, grenzen)
     seq = Sequence(name=seq_name, loop_phases=loop_phases, total_cycles=total_cycles,
-                   description=description, points=punkte)
+                   description=description, points=points)
 
     # Speichern
     ensure_sequences_dir()
@@ -723,8 +723,8 @@ def stop_recording(state: AutoClickerState) -> str | None:
             print(f"  {aufteilung}  |  Zyklen: {cycles_str}")
         else:
             print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
-        if punkte:
-            print(f"  {len(punkte)} Punkt(e) in dieser Sequenz gespeichert "
+        if points:
+            print(f"  {len(points)} Punkt(e) in dieser Sequenz gespeichert "
                   f"{hint('(im Editor + Studio-Palette nutzbar)')}")
         print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
         print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")

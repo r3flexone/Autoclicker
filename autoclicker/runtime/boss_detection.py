@@ -405,10 +405,10 @@ def _execute_detection_action(state: AutoClickerState, *, subject: str, action: 
         # gültiger Punkt sein und ist deshalb kein Kennzeichen für einen Fehler.
         with state.lock:
             seq = state.active_sequence
-            punkt = next((p for p in seq.points if p.id == point_id), None) if seq else None
-            if punkt is not None:
-                x, y = punkt.x, punkt.y
-        if punkt is None:
+            point = next((p for p in seq.points if p.id == point_id), None) if seq else None
+            if point is not None:
+                x, y = point.x, point.y
+        if point is None:
             print(err(f"{subject}: Klick entfällt — Zielpunkt fehlt."))
             return True
 

@@ -208,8 +208,8 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
             # weitere Variante an - fuer ein Item, das laengst eine hatte.
             if item is not None and not _item_has_compatible_template(
                     item, template_img, active_templates_dir(state)):
-                breite, hoehe = template_img.size
-                safe_name = sanitize_filename(f"{matched_item}_{breite}x{hoehe}")
+                width, height = template_img.size
+                safe_name = sanitize_filename(f"{matched_item}_{width}x{height}")
                 template_file = f"{safe_name}.png"
                 nummer = 2
                 while (active_templates_dir(state) / template_file).exists():
@@ -222,7 +222,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                     item.template_variants.append(template_file)
                 variant_count += 1
                 print(f"VARIANTE -> '{matched_item}' kann jetzt auch "
-                      f"{breite}x{hoehe}-Slots")
+                      f"{width}x{height}-Slots")
             else:
                 print(f"BEREITS VORHANDEN -> '{matched_item}' (übersprungen)")
                 duplicate_count += 1

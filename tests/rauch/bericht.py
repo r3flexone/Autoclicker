@@ -15,12 +15,12 @@ from ._bruecke import Fenster, main, sandkasten
 SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
 
-def _log(pfad: Path, zeilen: list) -> None:
-    pfad.parent.mkdir(parents=True, exist_ok=True)
-    with open(pfad, "w", newline="", encoding="utf-8") as f:
+def _log(path: Path, lines: list) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(SPALTEN)
-        w.writerows(zeilen)
+        w.writerows(lines)
 
 
 def aufbau():
@@ -74,42 +74,42 @@ def lauf():
     with Fenster(b) as f:
         f.reiter("bericht")
 
-        links = f.text("#ber-links")
-        pruefe("Alle zusammen" in links, f"links fehlt die Sammelzeile: {links!r}")
-        pruefe(f.anzahl(".ber-sitzung") == 3,
-               f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.anzahl('.ber-sitzung')}")
+        left = f.text("#ber-links")
+        pruefe("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
+        pruefe(f.count(".ber-sitzung") == 3,
+               f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.count('.ber-sitzung')}")
 
-        mitte = f.text("#ber-mitte")
-        pruefe("TIMEOUTS" in mitte, f"die Timeout-Liste fehlt: {mitte[:120]!r}")
-        pruefe("Bank oeffnen" in mitte, "der haengende Schritt wird nicht genannt")
+        center = f.text("#ber-mitte")
+        pruefe("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
+        pruefe("Bank oeffnen" in center, "der haengende Schritt wird nicht genannt")
         # Fuenf Kennzahlen-Kacheln, dieselben wie im Werkzeuge-Reiter.
-        pruefe(f.anzahl("#ber-mitte .wz-kennzahl") == 5,
-               f"5 Kennzahlen erwartet, da: {f.anzahl('#ber-mitte .wz-kennzahl')}")
+        pruefe(f.count("#ber-mitte .wz-kennzahl") == 5,
+               f"5 Kennzahlen erwartet, da: {f.count('#ber-mitte .wz-kennzahl')}")
         # Jede Rangzeile hat ihren Balken — sonst steht die Liste ohne
         # Verhaeltnis da, und genau das ist der Unterschied zur Konsole.
-        pruefe(f.anzahl("#ber-mitte .ber-rang") == f.anzahl("#ber-mitte .ber-balken"),
+        pruefe(f.count("#ber-mitte .ber-rang") == f.count("#ber-mitte .ber-balken"),
                "nicht jede Rangzeile hat einen Balken")
 
-        rechts = f.text("#ber-rechts")
-        pruefe("ERTRAG" in rechts, f"rechts steht kein Ertrag: {rechts[:120]!r}")
+        right = f.text("#ber-rechts")
+        pruefe("ERTRAG" in right, f"rechts steht kein Ertrag: {right[:120]!r}")
         # 2x Erz a 100 = 200 Gold. Die Tausendertrennung macht daraus nichts
         # anderes, solange es unter 1000 bleibt.
-        pruefe("200" in rechts, f"die Goldsumme fehlt: {rechts[:200]!r}")
-        pruefe("Obergrenze" in rechts,
+        pruefe("200" in right, f"die Goldsumme fehlt: {right[:200]!r}")
+        pruefe("Obergrenze" in right,
                "der Vorbehalt fehlt — die Zahl waere sonst eine Behauptung")
-        f.bild("bericht")
+        f.image("bericht")
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.
         f.klick(".ber-sitzung:nth-of-type(2)")
-        pruefe(f.anzahl(".ber-sitzung.an") == 1,
+        pruefe(f.count(".ber-sitzung.an") == 1,
                "genau eine Sitzung muss markiert sein")
-        mitte = f.text("#ber-mitte")
-        pruefe("Keine Timeouts" in mitte,
-               f"die gewaehlte Sitzung hat keine Timeouts: {mitte[:160]!r}")
-        pruefe(f.anzahl(".ber-sitzung") == 3,
+        center = f.text("#ber-mitte")
+        pruefe("Keine Timeouts" in center,
+               f"die gewaehlte Sitzung hat keine Timeouts: {center[:160]!r}")
+        pruefe(f.count(".ber-sitzung") == 3,
                "die Liste links muss vollstaendig bleiben")
-        f.bild("bericht_eine")
+        f.image("bericht_eine")
 
         # Und zurueck auf alles zusammen.
         f.klick(".ber-sitzung:nth-of-type(1)")

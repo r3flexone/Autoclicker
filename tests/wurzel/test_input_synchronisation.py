@@ -21,8 +21,8 @@ class EingabeSynchronisationTest(unittest.TestCase):
         self._fokus_pause(stoppen=True)
 
     def _fokus_pause(self, stoppen):
-        for art, argumente in (("click", (10, 20)), ("key", ("a",)), ("scroll", (1,))):
-            with self.subTest(art=art), ExitStack() as mocks:
+        for kind, arguments in (("click", (10, 20)), ("key", ("a",)), ("scroll", (1,))):
+            with self.subTest(kind=kind), ExitStack() as mocks:
                 state = AutoClickerState()
                 state.config.humanize_enabled = False
                 state.config.window_focus_check = True
@@ -65,7 +65,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
 
                 def ausfuehren():
                     try:
-                        ergebnisse.append(getattr(actions, "safe_" + art)(state, *argumente))
+                        ergebnisse.append(getattr(actions, "safe_" + kind)(state, *arguments))
                     except BaseException as exc:
                         fehler.append(exc)
                         entschieden.set()

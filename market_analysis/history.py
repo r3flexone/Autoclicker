@@ -113,23 +113,23 @@ def code_version() -> str:
     nutzlose Antwort - dann taugt der Fingerabdruck der Dateien genauso: er aendert
     sich, wenn jemand am Code dreht, und genau darum geht es.
     """
-    ordner = os.path.dirname(os.path.abspath(__file__))
+    folder = os.path.dirname(os.path.abspath(__file__))
     try:
-        raus = subprocess.run(["git", "-C", ordner, "rev-parse", "--short", "HEAD"],
+        raus = subprocess.run(["git", "-C", folder, "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, timeout=5)
         if raus.returncode == 0 and raus.stdout.strip():
             return raus.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
-    teile = []
-    for name in sorted(os.listdir(ordner)):
+    parts = []
+    for name in sorted(os.listdir(folder)):
         if name.endswith(".py"):
-            pfad = os.path.join(ordner, name)
+            path = os.path.join(folder, name)
             try:
-                teile.append(f"{name}:{os.path.getmtime(pfad):.0f}")
+                parts.append(f"{name}:{os.path.getmtime(path):.0f}")
             except OSError:
                 continue
-    return "dat-" + hashlib.sha256("|".join(teile).encode()).hexdigest()[:8]
+    return "dat-" + hashlib.sha256("|".join(parts).encode()).hexdigest()[:8]
 
 
 def config_hash(modul=cfg) -> str:
@@ -139,32 +139,32 @@ def config_hash(modul=cfg) -> str:
     aendern keine einzige Zahl. Was drin steht, entscheidet der Anwender ueber
     CONFIG_HASH_KEYS - so bleibt sichtbar, WAS als vergleichbar gilt.
     """
-    werte = {name: _hashbar(getattr(modul, name, None)) for name in cfg.CONFIG_HASH_KEYS}
-    roh = json.dumps(werte, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(roh.encode()).hexdigest()[:12]
+    values = {name: _hashbar(getattr(modul, name, None)) for name in cfg.CONFIG_HASH_KEYS}
+    raw = json.dumps(values, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
-def _hashbar(wert):
+def _hashbar(value):
     """Floats runden, damit 0.6749999 und 0.675 nicht zwei Konfigurationen sind."""
-    if isinstance(wert, bool) or wert is None:
-        return wert
-    if isinstance(wert, float):
-        return round(wert, 9)
-    if isinstance(wert, (list, tuple)):
-        return [_hashbar(w) for w in wert]
-    return wert
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, float):
+        return round(value, 9)
+    if isinstance(value, (list, tuple)):
+        return [_hashbar(w) for w in value]
+    return value
 
 
 # ---------------------------------------------------------------
 # Verbindung
 # ---------------------------------------------------------------
 
-def oeffne(pfad: str | None = None) -> sqlite3.Connection:
+def oeffne(path: str | None = None) -> sqlite3.Connection:
     """Datenbank oeffnen und Schema sicherstellen. `:memory:` ist erlaubt (Tests)."""
-    pfad = pfad or cfg.HISTORY_PATH
-    if pfad != ":memory:":
-        os.makedirs(os.path.dirname(os.path.abspath(pfad)), exist_ok=True)
-    conn = sqlite3.connect(pfad)
+    path = path or cfg.HISTORY_PATH
+    if path != ":memory:":
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
@@ -201,22 +201,22 @@ def lauf(conn: sqlite3.Connection, notiz: str = "", zeitpunkt: datetime | None =
 # Schreiben
 # ---------------------------------------------------------------
 
-def schreibe_items(conn: sqlite3.Connection, run_id: int, zeilen: list) -> int:
+def schreibe_items(conn: sqlite3.Connection, run_id: int, lines: list) -> int:
     """Eine Zeile je Item: Preise, Volumen, NPC-Preis, Kosten, Gold/h, Weg, Rang, Warnungen."""
-    if not zeilen:
+    if not lines:
         return 0
     tag = _tag_von_lauf(conn, run_id)
-    daten = [
+    data = [
         (run_id, tag) + tuple(_zahl(z.get(s)) if s not in ("item", "skill", "verkaufsweg", "warnungen")
                               else _text(z.get(s)) for s in ITEM_SPALTEN)
-        for z in zeilen
+        for z in lines
     ]
     platzhalter = ",".join("?" * (len(ITEM_SPALTEN) + 2))
     conn.executemany(
         f"INSERT INTO items (run_id, tag, {','.join(ITEM_SPALTEN)}) VALUES ({platzhalter})",
-        daten,
+        data,
     )
-    return len(daten)
+    return len(data)
 
 
 def schreibe_orderbuch(conn: sqlite3.Connection, run_id: int, buecher: list,
@@ -231,17 +231,17 @@ def schreibe_orderbuch(conn: sqlite3.Connection, run_id: int, buecher: list,
     """
     grenze = cfg.HISTORY_ORDERBOOK_TOP_N if top_n is None else top_n
     tag = _tag_von_lauf(conn, run_id)
-    daten = []
+    data = []
     for buch in buecher[:max(0, grenze)]:
         for seite in ("kauf", "verkauf"):
-            for stufe, (preis, menge) in enumerate(buch.get(seite) or [], 1):
-                daten.append((run_id, tag, int(buch["item_id"]), _text(buch.get("item")),
-                              seite, stufe, float(preis), float(menge)))
-    if daten:
+            for level, (preis, menge) in enumerate(buch.get(seite) or [], 1):
+                data.append((run_id, tag, int(buch["item_id"]), _text(buch.get("item")),
+                              seite, level, float(preis), float(menge)))
+    if data:
         conn.executemany(
             "INSERT INTO orderbook (run_id, tag, item_id, item, seite, stufe, preis, menge) "
-            "VALUES (?,?,?,?,?,?,?,?)", daten)
-    return len(daten)
+            "VALUES (?,?,?,?,?,?,?,?)", data)
+    return len(data)
 
 
 # ---------------------------------------------------------------
@@ -302,7 +302,7 @@ def _begrenze_laeufe(conn: sqlite3.Connection, limit: int) -> int:
 
 def verlauf(conn: sqlite3.Connection, item: str, tage: int = 30) -> list:
     """Gold/h und Preise eines Items ueber die Zeit - Details und Tageswerte zusammen."""
-    zeilen = conn.execute("""
+    lines = conn.execute("""
         SELECT tag, bid, ask, npc_preis, kosten_h, gold_h, gold_h_real, 'detail' AS quelle
         FROM items WHERE item = ?
         UNION ALL
@@ -310,30 +310,30 @@ def verlauf(conn: sqlite3.Connection, item: str, tage: int = 30) -> list:
         FROM daily WHERE item = ?
         ORDER BY tag DESC LIMIT ?
     """, (item, item, max(1, tage))).fetchall()
-    return [dict(z) for z in zeilen]
+    return [dict(z) for z in lines]
 
 
-def letzte_laeufe(conn: sqlite3.Connection, anzahl: int = 5) -> list:
-    zeilen = conn.execute(
-        "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (max(1, anzahl),)).fetchall()
-    return [dict(z) for z in zeilen]
+def letzte_laeufe(conn: sqlite3.Connection, count: int = 5) -> list:
+    lines = conn.execute(
+        "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (max(1, count),)).fetchall()
+    return [dict(z) for z in lines]
 
 
 def _tag_von_lauf(conn: sqlite3.Connection, run_id: int) -> str:
-    zeile = conn.execute("SELECT tag FROM runs WHERE id = ?", (run_id,)).fetchone()
-    return zeile["tag"] if zeile else datetime.now().strftime("%Y-%m-%d")
+    line = conn.execute("SELECT tag FROM runs WHERE id = ?", (run_id,)).fetchone()
+    return line["tag"] if line else datetime.now().strftime("%Y-%m-%d")
 
 
-def _zahl(wert):
+def _zahl(value):
     """None bleibt None - eine 0 waere hier eine Behauptung."""
-    if wert is None:
+    if value is None:
         return None
     try:
-        number = float(wert)
+        number = float(value)
     except (TypeError, ValueError):
         return None
     return None if number != number else number      # NaN faellt raus
 
 
-def _text(wert) -> str:
-    return "" if wert is None else str(wert)
+def _text(value) -> str:
+    return "" if value is None else str(value)

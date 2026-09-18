@@ -559,12 +559,12 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     (andere Reihenfolge, ein Slot mehr erkannt, halb verdeckt) — dann lieber nichts
     tun als 20 Regionen falsch überschreiben.
     """
-    meldungen = []
+    messages = []
     if len(neue_rects) != len(alte_slots):
-        meldungen.append(
+        messages.append(
             f"{len(neue_rects)} Slot(s) erkannt, aber {len(alte_slots)} gespeichert — "
             f"die Zuordnung waere geraten.")
-        return [], None, meldungen
+        return [], None, messages
 
     ox, oy = offset
     paare = []
@@ -574,8 +574,8 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
         paare.append((slot, neue_region))
 
     # Einzelversaetze: bei einer reinen Verschiebung sind alle gleich
-    versaetze = [(neu[0] - slot.scan_region[0], neu[1] - slot.scan_region[1])
-                 for slot, neu in paare]
+    versaetze = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
+                 for slot, new in paare]
     xs = [v[0] for v in versaetze]
     ys = [v[1] for v in versaetze]
     streuung = max(max(xs) - min(xs), max(ys) - min(ys))
@@ -583,28 +583,28 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     # Groessen muessen ebenfalls passen — sonst hat sich die Aufloesung geaendert
     # und eine reine Verschiebung waere die falsche Antwort.
     groessen_diff = 0
-    for slot, neu in paare:
+    for slot, new in paare:
         alt_b = slot.scan_region[2] - slot.scan_region[0]
         alt_h = slot.scan_region[3] - slot.scan_region[1]
         groessen_diff = max(groessen_diff,
-                            abs((neu[2] - neu[0]) - alt_b),
-                            abs((neu[3] - neu[1]) - alt_h))
+                            abs((new[2] - new[0]) - alt_b),
+                            abs((new[3] - new[1]) - alt_h))
 
     if groessen_diff > _REPAIR_MAX_GROESSEN_DIFF:
-        meldungen.append(
+        messages.append(
             f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
             f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
     if streuung > _REPAIR_MAX_STREUUNG:
-        meldungen.append(
+        messages.append(
             f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
             f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
 
-    if meldungen:
-        return [], None, meldungen
+    if messages:
+        return [], None, messages
 
     # Mittlerer Versatz nur zur Anzeige/Weitergabe
     versatz = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
-    return paare, versatz, meldungen
+    return paare, versatz, messages
 
 
 _REPAIR_MAX_STREUUNG = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
@@ -668,12 +668,12 @@ def slot_repair(state: AutoClickerState) -> bool:
     print(f"  {len(neue_rects)} Slot(s) erkannt.")
 
     inset = state.config.scan_slot_inset
-    paare, versatz, meldungen = _zuordnung_pruefen(
+    paare, versatz, messages = _zuordnung_pruefen(
         alte_slots, neue_rects, inset, (region[0], region[1]))
 
     if not paare:
         print()
-        for m in meldungen:
+        for m in messages:
             print(f"  {err(m)}")
         print(f"  {info('Nichts geaendert.')}")
         print(f"  {hint('Tipp: Bereich enger markieren, oder die Slots muessen alle')}")
@@ -682,8 +682,8 @@ def slot_repair(state: AutoClickerState) -> bool:
 
     print()
     print(col("  VORSCHAU:", 'bold'))
-    for slot, neu in paare[:12]:
-        print(f"    {slot.name:<18} {slot.scan_region}  ->  {neu}")
+    for slot, new in paare[:12]:
+        print(f"    {slot.name:<18} {slot.scan_region}  ->  {new}")
     if len(paare) > 12:
         print(f"    {info(f'... und {len(paare) - 12} weitere')}")
     print()
@@ -705,9 +705,9 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
     with state.lock:
-        for slot, neu in paare:
-            slot.scan_region = neu
-            slot.click_pos = ((neu[0] + neu[2]) // 2, (neu[1] + neu[3]) // 2)
+        for slot, new in paare:
+            slot.scan_region = new
+            slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
     save_global_slots(state)
@@ -731,8 +731,8 @@ def slot_repair(state: AutoClickerState) -> bool:
         vorschau = calibration_preview(state, t)
         print()
         print(col("  VORSCHAU (Auszug):", 'bold'))
-        for label, alt, neu in vorschau[:8]:
-            print(f"    {label:<32} ({alt[0]:>5}, {alt[1]:>5})  ->  ({neu[0]:>5}, {neu[1]:>5})")
+        for label, old, new in vorschau[:8]:
+            print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
         if len(vorschau) > 8:
             print(f"    {info(f'... und {len(vorschau) - 8} weitere')}")
         draussen = _ausserhalb_der_monitore([n for _, _, n in vorschau])

@@ -32,12 +32,12 @@ FAELLE = {
         "autoclicker.runtime.actions", "_input_allowed",
         "if not state.pause_event.is_set():", "if True:",
         "test_input_synchronisation.EingabeSynchronisationTest"),
-    **{f"stopp-nach-delay-{art}": (
-        "autoclicker.runtime.actions", f"safe_{art}",
+    **{f"stopp-nach-delay-{kind}": (
+        "autoclicker.runtime.actions", f"safe_{kind}",
         "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
         "_humanize_delay(state)",
         RUNTIME + "test_stopp_im_mikrodelay_verhindert_jede_eingabe")
-       for art in ("click", "key", "scroll")},
+       for kind in ("click", "key", "scroll")},
     "worker-laufstatus": (
         "autoclicker.runtime.worker", "sequence_worker",
         "state.is_running = False", "state.is_running = True",
@@ -64,34 +64,34 @@ def pruefen(name: str, mutiert: bool) -> int:
     for _pfad in (WURZEL, WURZEL / "tests" / "wurzel"):
         if str(_pfad) not in sys.path:
             sys.path.insert(0, str(_pfad))
-    modul, pfad, alt, neu, test = FAELLE[name]
+    modul, path, old, new, test = FAELLE[name]
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
     funktion = importlib.import_module(modul)
-    for teil in pfad.split("."):
+    for teil in path.split("."):
         funktion = getattr(funktion, teil)
     original = funktion.__code__
     try:
         if mutiert:
-            quelle = textwrap.dedent(inspect.getsource(funktion))
-            if quelle.count(alt) != 1:
+            source = textwrap.dedent(inspect.getsource(funktion))
+            if source.count(old) != 1:
                 raise ValueError(f"Mutationsstelle nicht mehr eindeutig: {name}")
             namensraum = dict(funktion.__globals__)
-            exec(compile(quelle.replace(alt, neu), f"<Gegenprobe {name}>", "exec"), namensraum)
+            exec(compile(source.replace(old, new), f"<Gegenprobe {name}>", "exec"), namensraum)
             # Auch zuvor importierte Funktionsreferenzen sehen den Mutanten.
             funktion.__code__ = namensraum[funktion.__name__].__code__
         ausgabe = io.StringIO()
-        ergebnis = unittest.TextTestRunner(stream=ausgabe).run(suite)
+        result = unittest.TextTestRunner(stream=ausgabe).run(suite)
     finally:
         funktion.__code__ = original
-    if not ergebnis.testsRun or ergebnis.errors or ergebnis.skipped:
+    if not result.testsRun or result.errors or result.skipped:
         print(ausgabe.getvalue())
         return 2
     if mutiert:
-        if ergebnis.failures:
+        if result.failures:
             return 0
         print("LÜCKE: Der eingeschleuste Fehler bleibt grün.")
         return 1
-    if not ergebnis.wasSuccessful():
+    if not result.wasSuccessful():
         print(ausgabe.getvalue())
         return 2
     return 0

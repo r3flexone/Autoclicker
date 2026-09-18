@@ -117,7 +117,7 @@ class Verkaufsweg(NamedTuple):
     an_npc: bool
     spieler_netto: float   # was der Player-Markt netto braechte (0 = kein Weg)
     npc_preis: float
-    grund: str             # leer, solange ueberhaupt ein Weg existiert
+    reason: str             # leer, solange ueberhaupt ein Weg existiert
 
 
 def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
@@ -182,10 +182,10 @@ def zutat_preis(item_id, market_map: dict) -> Zutatenpreis:
     """
     if item_id == GOLD_ITEM_ID:
         return Zutatenpreis(GOLD_ITEM_PRICE, True)
-    eintrag = market_map.get(item_id)
-    if not eintrag:
+    entry = market_map.get(item_id)
+    if not entry:
         return Zutatenpreis(0.0, False)
-    preis = eintrag.get("sell", 0) or 0.0
+    preis = entry.get("sell", 0) or 0.0
     if preis <= 0:
         return Zutatenpreis(0.0, False)
     return Zutatenpreis(float(preis), True)
@@ -239,9 +239,9 @@ def kosten_pro_aktion(costs: list, market_map: dict, aktionen_pro_stunde: float 
 
 def _zutat_name(item_id, item_info_map: dict | None) -> str:
     if item_info_map:
-        eintrag = item_info_map.get(item_id)
-        if eintrag and eintrag.get("name"):
-            return str(eintrag["name"])
+        entry = item_info_map.get(item_id)
+        if entry and entry.get("name"):
+            return str(entry["name"])
     return f"item_{item_id}"
 
 
@@ -306,11 +306,11 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
 
     # Kein eigenes Recipe -> am Markt kaufen
     if item_id not in recipe_by_output:
-        eintrag = market_map.get(item_id)
+        entry = market_map.get(item_id)
         preis, bekannt = zutat_preis(item_id, market_map)
-        sell_vol = eintrag.get("sellVol", 0) if eintrag else 0
+        sell_vol = entry.get("sellVol", 0) if entry else 0
         ratio = (qty_needed / sell_vol) if sell_vol > 0 else 0.0
-        if not valid_buy_market(eintrag):
+        if not valid_buy_market(entry):
             ratio = max(ratio, 999.0)   # erzwingt LiquidityWarning
         return _leer(preis * qty_needed, ratio, False, bekannt,
                      () if bekannt else (_zutat_name(item_id, item_info_map),))

@@ -1,7 +1,7 @@
 """Der Reiter „Bericht": Session-Logs lesen und bewerten.
 
 Zwei Dinge werden hier gemessen, und das erste ist das wichtigere: **die
-Auswertung gibt Daten zurück und druckt nichts.** Sie ist aus `bericht()`
+Auswertung gibt Daten zurück und druckt nichts.** Sie ist aus `report()`
 herausgeschnitten worden, damit die Brücke sie benutzen kann — bleibt eine
 `print`-Zeile darin stehen, landet sie in der Konsole des Studios statt in
 seinem Reiter, und dort sieht sie niemand.
@@ -32,19 +32,19 @@ _web = studio_web_source()
 _WURZEL = str(Path(__file__).resolve().parents[2])
 if _WURZEL not in sys.path:
     sys.path.insert(0, _WURZEL)
-from tools.log_report import auswerten as _auswerten, bericht as _bericht  # noqa: E402
+from tools.log_report import auswerten as _auswerten, report as _bericht  # noqa: E402
 
 
 _SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
 
-def _log(pfad: Path, zeilen: list) -> Path:
-    pfad.parent.mkdir(parents=True, exist_ok=True)
-    with open(pfad, "w", newline="", encoding="utf-8") as f:
+def _log(path: Path, lines: list) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(_SPALTEN)
-        w.writerows(zeilen)
-    return pfad
+        w.writerows(lines)
+    return path
 
 
 section("Bericht: die Auswertung rechnet, sie druckt nicht")
