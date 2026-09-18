@@ -480,7 +480,7 @@ def _ask_filepath() -> str | None:
 # KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
 # =============================================================================
 
-def run_kalibrierung(state: AutoClickerState) -> None:
+def run_calibration(state: AutoClickerState) -> None:
     """Rechnet alle gespeicherten Koordinaten auf ein geändertes Bildschirm-Layout um.
 
     Der Nutzer setzt einen bekannten Punkt neu; die Differenz gilt für alles andere.
@@ -505,7 +505,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         return
 
     # --- Referenzpunkt 1: Verschiebung ------------------------------------------
-    ref1 = _kalib_referenz(state, points, "Referenzpunkt")
+    ref1 = _calibration_reference(state, points, "Referenzpunkt")
     if ref1 is None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
@@ -522,7 +522,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print("  Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht —")
         print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
         if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
-            ref2 = _kalib_referenz(state, points, "Zweiter Referenzpunkt",
+            ref2 = _calibration_reference(state, points, "Zweiter Referenzpunkt",
                                    ausser=p_alt)
             if ref2 is None:
                 print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
@@ -537,7 +537,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
     # stimmt, ist eine erzwungene 0 genauer als jede Messung.
     if transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0:
-        transform = _versatz_anpassen(transform)
+        transform = _adjust_offset(transform)
         if transform is None:
             print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
             return
@@ -555,7 +555,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
     if len(vorschau) > 12:
         print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
 
-    draussen = _ausserhalb_der_monitore([new for _, _, new in vorschau])
+    draussen = _outside_all_monitors([new for _, _, new in vorschau])
     if draussen:
         print()
         print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
@@ -628,7 +628,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  Pixelgenau macht es {col('Item-Scan -> Slots -> repair', 'yellow')}.")
 
 
-def _versatz_anpassen(transform: dict) -> dict | None:
+def _adjust_offset(transform: dict) -> dict | None:
     """Lässt den gemessenen Versatz je Achse von Hand korrigieren.
 
     Der Grund: mit der Maus trifft man den Zielpixel nicht exakt. Steht da
@@ -666,7 +666,7 @@ def _versatz_anpassen(transform: dict) -> dict | None:
             "offset_x": new[0], "offset_y": new[1]}
 
 
-def _kalib_referenz(state: AutoClickerState, points: list, titel: str,
+def _calibration_reference(state: AutoClickerState, points: list, titel: str,
                     ausser: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
@@ -698,7 +698,7 @@ def _kalib_referenz(state: AutoClickerState, points: list, titel: str,
     return (point.x, point.y), new
 
 
-def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
+def _outside_all_monitors(ziele: list[tuple[int, int]]) -> int:
     """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
     from ..diagnose import _virtueller_desktop
     rect = _virtueller_desktop()

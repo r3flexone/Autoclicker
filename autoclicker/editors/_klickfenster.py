@@ -4,13 +4,13 @@ Beide laufen aus dem Maus-Hook und müssen dieselbe Frage beantworten: gehört
 dieser Klick zum Spiel oder zu einem anderen Fenster? Die Antwort stand zweimal
 im Baum, und die beiden Fassungen waren **verschieden** — die Klick-Runde
 fragte das Fenster unter dem Zeiger, die Aufnahme den Vordergrund. Genau daran
-fehlte in jeder Studio-Aufnahme der erste Klick (s. `geklicktes_fenster`).
+fehlte in jeder Studio-Aufnahme der erste Klick (s. `clicked_window`).
 """
 
 from ..winapi import get_foreground_window_title, get_window_title_at
 
 
-def geklicktes_fenster(x: int, y: int) -> str:
+def clicked_window(x: int, y: int) -> str:
     """Der Titel des Fensters, in das GEKLICKT wurde — "" wenn unbekannt.
 
     **Nicht der Vordergrund.** Windows liefert den Button-Down an das Fenster

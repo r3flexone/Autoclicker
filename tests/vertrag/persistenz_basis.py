@@ -334,8 +334,8 @@ if _ungleich:
 section("Alle Aufnahme-Marker liegen auf derselben Ebene")
 
 # CTRL+ALT+SHIFT (MOD_REC) bedeutet im Projekt: wirkt nur waehrend einer
-# laufenden Aufnahme. `merke_farbe()` und `merke_screenshot()` pruefen als
-# Erstes `_aufnahme_laeuft()` und lagen trotzdem auf der Basis-Ebene — man
+# laufenden Aufnahme. `mark_color()` und `mark_screenshot()` pruefen als
+# Erstes `_recording_running()` und lagen trotzdem auf der Basis-Ebene — man
 # musste sich merken, welcher Marker SHIFT braucht und welcher nicht.
 #
 # Start/Stopp, Pause und Zuruecknehmen bleiben ausdruecklich auf der Basis:

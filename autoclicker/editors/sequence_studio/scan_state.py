@@ -203,7 +203,7 @@ class ScanStateMixin:
         """Liest Slots, Items und Scans neu von Platte.
 
         **Ungespeichertes wird nicht kommentarlos verworfen.** Der erste Druck
-        meldet nur, der zweite (mit `verwerfen`) lädt — dieselbe Zwei-Schritt-
+        meldet nur, der zweite (mit `discard`) lädt — dieselbe Zwei-Schritt-
         Regel wie überall, wo hier etwas verloren gehen kann.
         """
         if self._scan_dirty and not (data or {}).get("verwerfen"):

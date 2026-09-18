@@ -137,12 +137,12 @@ def handle_undo(state: AutoClickerState) -> None:
         recording = state.recording_active
         nachklick = state.reclick_active
     if nachklick:
-        from .editors.nachklick import nachklick_zurueck
-        nachklick_zurueck(state)
+        from .editors.nachklick import reclick_back
+        reclick_back(state)
         return
     if recording:
-        from .editors.sequence_recorder import verwirf_letztes
-        verwirf_letztes(state)
+        from .editors.sequence_recorder import discard_last
+        discard_last(state)
         return
 
     with state.lock:
@@ -416,8 +416,8 @@ def handle_show(state: AutoClickerState) -> None:
                 # Maus-Hook, und der braucht die Message-Pump des Main-Threads;
                 # ein blockierendes input() hier bekaeme keinen einzigen Klick zu
                 # sehen. Dieselbe Regel wie bei der Aufnahme.
-                from .editors.nachklick import start_nachklick
-                if start_nachklick(state):
+                from .editors.nachklick import start_reclick
+                if start_reclick(state):
                     return
                 continue
 
@@ -435,8 +435,8 @@ def handle_show(state: AutoClickerState) -> None:
                 continue
 
             if user_input.lower() in ("fix", "kalib", "kalibrieren"):
-                from .editors.import_export_editor import run_kalibrierung
-                run_kalibrierung(state)
+                from .editors.import_export_editor import run_calibration
+                run_calibration(state)
                 print_points(state)
                 continue
 
@@ -927,7 +927,7 @@ def command_reclick(state: AutoClickerState, arguments: dict) -> None:
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
-    pumpt. `start_nachklick()` installiert ihn und kehrt zurueck - der Befehl
+    pumpt. `start_reclick()` installiert ihn und kehrt zurueck - der Befehl
     blockiert also nicht, wie es die Briefkasten-Schleife verlangt.
 
     **Die Sequenz kommt mit, wird aber nicht geladen.** Aus ihr kommt nur die
@@ -938,7 +938,7 @@ def command_reclick(state: AutoClickerState, arguments: dict) -> None:
     Hauptprozess hat womoeglich eine ganz andere geladen als die im Studio
     offene, und man klickt eine Runde lang fremde Punkte nach.
     """
-    from .editors.nachklick import start_nachklick
+    from .editors.nachklick import start_reclick
     if _block_if_recording(state) or _block_if_running(state):
         return
 
@@ -954,7 +954,7 @@ def command_reclick(state: AutoClickerState, arguments: dict) -> None:
               f"{hint('(im Studio gespeichert?)')}")
         return
 
-    start_nachklick(state, seq)
+    start_reclick(state, seq)
 
 
 def command_recording(state: AutoClickerState, arguments: dict) -> None:
@@ -1006,11 +1006,11 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     Studio, und wer es zumacht, hat sie nicht uebernommen. Geschrieben wird
     ausschliesslich auf ausdrueckliches Uebernehmen.
 
-    `stop_nachklick()` meldet selbst, was passiert ist; laeuft gar keine Runde,
+    `stop_reclick()` meldet selbst, was passiert ist; laeuft gar keine Runde,
     kehrt es wortlos zurueck - deshalb sagt es hier jemand.
     """
-    from .editors.nachklick import stop_nachklick
-    verwerfen = str(arguments.get("discard") or "") in ("1", "true", "True")
+    from .editors.nachklick import stop_reclick
+    discard = str(arguments.get("discard") or "") in ("1", "true", "True")
     # **Der Grund kommt vom Aufrufer.** Hier stand fuer JEDES Verwerfen die
     # Meldung „Studio geschlossen — Runde verworfen" — auch dann, wenn das
     # Fenster offen stand und jemand einfach auf „Verwerfen" gedrueckt hatte.
@@ -1021,14 +1021,14 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     with state.lock:
         laeuft = state.reclick_active
     if not laeuft:
-        if not verwerfen:
+        if not discard:
             print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
-    if verwerfen:
-        stop_nachklick(state, DISCARD_REASON.get(reason, DISCARD_REASON["knopf"]),
+    if discard:
+        stop_reclick(state, DISCARD_REASON.get(reason, DISCARD_REASON["knopf"]),
                        apply_config=False)
     else:
-        stop_nachklick(state, "aus dem Studio übernommen")
+        stop_reclick(state, "aus dem Studio übernommen")
 
 
 def command_step_test(state: AutoClickerState, arguments: dict) -> None:
@@ -1139,8 +1139,8 @@ def handle_skip(state: AutoClickerState) -> None:
     with state.lock:
         nachklick = state.reclick_active
     if nachklick:
-        from .editors.nachklick import nachklick_ueberspringen
-        nachklick_ueberspringen(state)
+        from .editors.nachklick import reclick_skip
+        reclick_skip(state)
         return
     with state.lock:
         if not state.is_running:
@@ -1328,8 +1328,8 @@ def handle_record_sequence(state: AutoClickerState) -> None:
     with state.lock:
         nachklick = state.reclick_active
     if nachklick:
-        from .editors.nachklick import stop_nachklick
-        stop_nachklick(state, "übernommen")
+        from .editors.nachklick import stop_reclick
+        stop_reclick(state, "übernommen")
         return
     from .editors.sequence_recorder import handle_record_sequence as _rec
     _rec(state)
@@ -1340,8 +1340,8 @@ def handle_record_pause(state: AutoClickerState) -> None:
     with state.lock:
         nachklick = state.reclick_active
     if nachklick:
-        from .editors.nachklick import nachklick_pause
-        nachklick_pause(state)
+        from .editors.nachklick import reclick_pause
+        reclick_pause(state)
         return
     from .editors.sequence_recorder import handle_record_pause as _pause
     _pause(state)
@@ -1349,32 +1349,32 @@ def handle_record_pause(state: AutoClickerState) -> None:
 
 def handle_record_color(state: AutoClickerState) -> None:
     """Setzt während der Aufnahme einen Warte-Marker an der Mausposition."""
-    from .editors.sequence_recorder import merke_farbe
-    merke_farbe(state)
+    from .editors.sequence_recorder import mark_color
+    mark_color(state)
 
 
 def handle_record_screenshot(state: AutoClickerState) -> None:
     """Setzt während der Aufnahme einen Screenshot-Marker an dieser Stelle im Ablauf."""
-    from .editors.sequence_recorder import merke_screenshot
-    merke_screenshot(state)
+    from .editors.sequence_recorder import mark_screenshot
+    mark_screenshot(state)
 
 
 def handle_rec_region(state: AutoClickerState) -> None:
     """Setzt während der Aufnahme eine Bereichs-Ecke (zwei davon = ein Rechteck)."""
-    from .editors.sequence_recorder import merke_bereich
-    merke_bereich(state)
+    from .editors.sequence_recorder import mark_region
+    mark_region(state)
 
 
 def handle_rec_watch(state: AutoClickerState) -> None:
     """Setzt während der Aufnahme einen Beobachtungs-Marker (warten ohne Klick)."""
-    from .editors.sequence_recorder import merke_beobachten
-    merke_beobachten(state)
+    from .editors.sequence_recorder import mark_watch
+    mark_watch(state)
 
 
 def handle_rec_phase(state: AutoClickerState) -> None:
     """Setzt während der Aufnahme eine Phasengrenze (INIT | LOOP | END)."""
-    from .editors.sequence_recorder import merke_phase
-    merke_phase(state)
+    from .editors.sequence_recorder import mark_phase
+    mark_phase(state)
 
 
 def handle_sequence_studio(state: AutoClickerState,
@@ -1444,8 +1444,8 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
         # dahin gesetzt war — und damit landeten in einer echten Runde drei
         # Klicks auf Fensterdekoration dauerhaft in sequence.json. Wer übernehmen
         # will, drückt CTRL+ALT+J; alles andere lässt die Punkte in Ruhe.
-        from .editors.nachklick import stop_nachklick
-        stop_nachklick(state, "beim Beenden verworfen", apply_config=False)
+        from .editors.nachklick import stop_reclick
+        stop_reclick(state, "beim Beenden verworfen", apply_config=False)
     if was_recording:
         from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()

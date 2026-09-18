@@ -55,7 +55,7 @@ class BridgeWerkzeugeMixin:
         Geht deshalb über `frage()` und nicht über `ruf()`: eine Antwort von hier
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
-        from ..sequence_recorder import AUFNAHME_HOTKEYS
+        from ..sequence_recorder import RECORDING_HOTKEYS
         self._scan_laden()
         return {
             "punkte": [{"id": p.id, "name": p.name or f"Punkt #{p.id}",
@@ -70,7 +70,7 @@ class BridgeWerkzeugeMixin:
             "warte_timeout": WARTE_TIMEOUT,
             "umfang": [{"schluessel": k, "text": t, "vorgabe": v}
                        for k, t, v in KALIB_UMFANG],
-            "aufnahme_tasten": [list(line) for line in AUFNAHME_HOTKEYS],
+            "aufnahme_tasten": [list(line) for line in RECORDING_HOTKEYS],
             # Welche Sequenz offen ist, gehoert hierher: die Kopfleiste blendet
             # ihre Bedienelemente in diesem Reiter aus (er bearbeitet andere
             # Dateien), und ohne diese Angabe weiss man bei der Klick-Runde
@@ -421,7 +421,7 @@ class BridgeWerkzeugeMixin:
 
         Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
         stimmt, ist eine erzwungene 0 genauer als jede Messung — dasselbe
-        Zugeständnis macht der Konsolen-Weg mit `_versatz_anpassen()`.
+        Zugeständnis macht der Konsolen-Weg mit `_adjust_offset()`.
         """
         if not self._kalib.get("transform"):
             return {"ok": False, "meldung": "Es läuft keine Kalibrierung."}
@@ -589,17 +589,17 @@ class BridgeWerkzeugeMixin:
         sehr wohl eine Runde läuft.
         """
         from ...mailbox import send_command
-        verwerfen = bool((data or {}).get("verwerfen"))
+        discard = bool((data or {}).get("verwerfen"))
         # Warum verworfen wurde, weiss nur der Aufrufer — der Hauptprozess kann
         # den Knopf nicht vom geschlossenen Fenster unterscheiden.
         reason = str((data or {}).get("grund") or "knopf")
-        if not send_command("nachklick_stop", discard="1" if verwerfen else "0",
+        if not send_command("nachklick_stop", discard="1" if discard else "0",
                      reason=reason):
             return {"ok": False, "meldung": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
         return {"ok": True,
                 "meldung": ("Verworfen — sequence.json bleibt, wie sie war."
-                            if verwerfen else
+                            if discard else
                             "Übernommen — was gesetzt wurde, steht im "
                             "Konsolenfenster.")}
 

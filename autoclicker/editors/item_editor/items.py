@@ -17,7 +17,7 @@ from ...utils import (
     confirm, info, is_cancel, next_free_name, safe_input,
     sanitize_filename,
 )
-from .._item_felder import frage_bestaetigungsklick, frage_prioritaet
+from .._item_felder import ask_confirm_click, ask_priority
 
 
 def select_category(state: AutoClickerState, show_explanation: bool = True) -> Optional[str]:
@@ -105,10 +105,10 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
         print("         Installieren mit: pip install opencv-python")
 
     category = select_category(state)
-    priority = frage_prioritaet(state, category)
+    priority = ask_priority(state, category)
 
     print("\n  Bestätigungs-Punkt? (z.B. für Popup-Bestätigung)")
-    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+    confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay, frage="  Punkt-ID (Enter = keiner): ")
 
     return ItemProfile(
@@ -195,7 +195,7 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                 print("  -> OpenCV nicht installiert!")
         elif choice == 4:  # Bestätigungs-Punkt
             print("  Neuer Bestätigungs-Punkt?")
-            new_confirm_id, new_confirm_delay = frage_bestaetigungsklick(
+            new_confirm_id, new_confirm_delay = ask_confirm_click(
                 state, new_confirm_delay,
                 frage="  Punkt-ID (Enter = entfernen): ")
             print("  -> Bestätigung gesetzt" if new_confirm_id is not None

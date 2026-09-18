@@ -16,13 +16,13 @@ from pathlib import Path
 
 from ._harness import check, section
 from autoclicker.editors.nachklick import (
-    klickpunkte as _klickpunkte,
-    nachklick_pause as _pause,
-    nachklick_ueberspringen as _skip,
-    nachklick_zurueck as _zurueck,
-    ruesten as _ruesten,
-    stop_nachklick as _stop,
-    _setze_punkt as _klick,
+    click_points as _klickpunkte,
+    reclick_pause as _pause,
+    reclick_skip as _skip,
+    reclick_back as _zurueck,
+    prepare_reclick as _ruesten,
+    stop_reclick as _stop,
+    _set_point as _klick,
 )
 from autoclicker.models import (
     AutoClickerState as _ST,
@@ -216,8 +216,8 @@ section("Nachklicken: der Zeiger steht auf der Stelle, bevor man klickt")
 import autoclicker.editors.nachklick as _nk
 
 _gesprungen = []
-_echt_springe = _nk._springe
-_nk._springe = lambda x, y, verzoegert=False: _gesprungen.append((x, y, verzoegert))
+_echt_springe = _nk._jump
+_nk._jump = lambda x, y, verzoegert=False: _gesprungen.append((x, y, verzoegert))
 try:
     _s2 = _ST()
     _aktiv(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
@@ -226,7 +226,7 @@ try:
     _ruesten(_s2)
 
     _gesprungen.clear()
-    _nk._zeige_aktuellen(_s2)
+    _nk._show_current(_s2)
     check("der erste Punkt wird angefahren", _gesprungen == [(100, 100, False)])
 
     # Der Fall, um den es geht: NACH einem echten Klick muss der Zeiger auf den
@@ -252,17 +252,17 @@ try:
           _gesprungen and _gesprungen[0][2] is False)
     _stop(_s2, "Test")
 finally:
-    _nk._springe = _echt_springe
+    _nk._jump = _echt_springe
 
 # Die Frist selbst: ohne sie waere die Trennung oben eine Behauptung.
 check("die Sprung-Frist ist gesetzt und kurz",
-      0 < _nk.SPRUNG_VERZOEGERUNG <= 1.0)
+      0 < _nk.JUMP_DELAY <= 1.0)
 _gesetzt = []
 _echt_cursor = _nk.set_cursor_pos
 _nk.set_cursor_pos = lambda x, y: _gesetzt.append((x, y))
 try:
-    _nk._springe(5, 6)
-    check("ohne Frist setzt _springe den Zeiger direkt", _gesetzt == [(5, 6)])
+    _nk._jump(5, 6)
+    check("ohne Frist setzt _jump den Zeiger direkt", _gesetzt == [(5, 6)])
 finally:
     _nk.set_cursor_pos = _echt_cursor
 
@@ -432,7 +432,7 @@ check("die Stelle bleibt exakt stehen",
 check("und die Farbe wird nicht überschrieben",
       _s8.points[0].color == (33, 140, 116))
 check("die Toleranz ist winzig — eine gewollte Korrektur ist nie so klein",
-      _nk.PASST_TOLERANZ <= 2)
+      _nk.MATCH_TOLERANCE <= 2)
 # Gegenprobe: eine echte Korrektur geht durch.
 _klick(_s8, 900, 950, None)
 check("eine echte Korrektur wird erfasst und am Ende geschrieben",
@@ -545,9 +545,9 @@ _appjs = (Path(_nk.__file__).resolve().parent
 _js_block = _appjs[_appjs.index("const WZ_TASTEN"):_appjs.index("const WZ_SCHRITTE")]
 _js_tasten = _re_nk.findall(r'\["(CTRL\+ALT\+\w)",\s*"([^"]+)"', _js_block)
 check("das Studio nennt dieselben vier Tasten in derselben Reihenfolge",
-      _js_tasten == [(t_[0], t_[1]) for t_ in _nk.TASTEN])
+      _js_tasten == [(t_[0], t_[1]) for t_ in _nk.KEYS])
 check("und CTRL+ALT+J ist das Übernehmen",
-      _nk.TASTEN[-1][0] == "CTRL+ALT+J" and "übernehm" in _nk.TASTEN[-1][1])
+      _nk.KEYS[-1][0] == "CTRL+ALT+J" and "übernehm" in _nk.KEYS[-1][1])
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +596,7 @@ try:
           and _st1["verlauf"][0]["neu"] == [150, 160])
 
     # **Das ist der Grund fuer `reclick_history`**: ein bestaetigter Punkt
-    # (innerhalb PASST_TOLERANZ) landet bewusst NICHT in `reclick_set`.
+    # (innerhalb MATCH_TOLERANCE) landet bewusst NICHT in `reclick_set`.
     # Ableiten liesse sich "passt" also nicht — im Fenster saehe er genauso aus
     # wie ein uebersprungener, und das ist die eine Auskunft, die zaehlt.
     _klick(_s12, 200, 200, None)

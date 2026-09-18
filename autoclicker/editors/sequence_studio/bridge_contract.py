@@ -167,7 +167,7 @@ def scan_warnungen(board: SequenceBoard) -> list[str]:
     OFFENE Sequenz noch einen leeren Scan?" (Meldung beim Speichern) und
     „hat DIESE Datei welche?" (Übersicht). Zweimal dieselbe Regel getrennt
     hinzuschreiben hiesse, dass eine Korrektur an der einen an der anderen
-    vorbeigeht — dieselbe Begründung wie bei `mehrfach_auswahl()`.
+    vorbeigeht — dieselbe Begründung wie bei `multi_select()`.
     """
     raus = []
     for lane in board.lanes:

@@ -13,7 +13,7 @@ from ...persistence import save_global_items, active_templates_dir
 from ...utils import (
     col, confirm, err, header, hint, safe_input, sanitize_filename,
 )
-from .._item_felder import frage_bestaetigungsklick
+from .._item_felder import ask_confirm_click
 from ..scan_services import crop_screen_region
 from .items import select_category
 from .markers import (
@@ -77,7 +77,7 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     auto_priority = prio_choice != "2"
 
     # Bestätigungs-Punkt
-    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+    confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
         frage="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
 

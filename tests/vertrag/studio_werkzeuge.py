@@ -282,10 +282,10 @@ try:
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
           all(wort in _js for wort in ("wzAufnahmeStarten", "wzAufnahmeStoppen",
                                        "wzAufnahmeBeobachten")))
-    from autoclicker.editors.sequence_recorder import AUFNAHME_HOTKEYS
+    from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
           _b.werkzeug_daten()["aufnahme_tasten"] ==
-          [list(line) for line in AUFNAHME_HOTKEYS])
+          [list(line) for line in RECORDING_HOTKEYS])
 finally:
     _os.chdir(_cwd)
 
@@ -430,7 +430,7 @@ try:
         _rec.remove_keyboard_hook = _alt_tasten_weg
     check("die UI-Vorgaben speichern ohne safe_input", _gespeichert == "aufnahme_ui")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
-    _geladen = _load_sequence_file(_rec.aufnahme_datei("aufnahme_ui"))
+    _geladen = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
     check("die Aufnahme wird wirklich zur Sequenz", _geladen is not None)
     check("Zyklen und Notiz kommen aus dem UI",
           _geladen.total_cycles == 2 and _geladen.description == "ohne Konsole")
@@ -490,7 +490,7 @@ try:
         _RE(_RC, 4.61, 12, 22, (123, 51, 65)),
         _RE(_RC, 7.22, 1378, 756, (123, 51, 65)),
     ]
-    _live = _rec._status_ereignisse(_live_events)
+    _live = _rec._status_events(_live_events)
     check("die Live-Ausgabe behaelt genau die letzten drei", len(_live) == 3)
     check("ihre laufenden Nummern bleiben erhalten",
           [z["nummer"] for z in _live] == [2, 3, 4])
@@ -499,7 +499,7 @@ try:
           _live[-1]["text"] == "Klick (1378, 756)" and
           "Dunkelrot (123,51,65)" in _live[-1]["farbtext"])
     _live_state = _State(recording_active=True, recording_events=_live_events)
-    _rec._status_schreiben(_live_state)
+    _rec._write_status(_live_state)
     _gelesen = _b.aufnahme_status()
     check("die Bruecke liefert denselben ueberschriebenen Live-Stand",
           _gelesen["anzahl"] == 4 and len(_gelesen["ereignisse"]) == 3)
@@ -560,8 +560,8 @@ try:
         _gestartet["name"] = seq.name if seq is not None else None
         return True
 
-    _echt = _nk.start_nachklick
-    _nk.start_nachklick = _fake_start
+    _echt = _nk.start_reclick
+    _nk.start_reclick = _fake_start
     try:
         _farm_pfad = str(dict(list_available_sequences())["Farm"])
         _bn(_st2, {"file": _farm_pfad})
@@ -583,7 +583,7 @@ try:
         _bn(_st2, {"file": "sequences/gibtsnicht/sequence.json"})
         check("und eine unlesbare Datei startet auch keine", not _gestartet)
     finally:
-        _nk.start_nachklick = _echt
+        _nk.start_reclick = _echt
 finally:
     _os.chdir(_cwd)
 
@@ -659,8 +659,8 @@ try:
     import autoclicker.editors.nachklick as _nk
     _st3 = _ST()
     _gestoppt = {}
-    _echt = _nk.stop_nachklick
-    _nk.stop_nachklick = lambda state, reason="beendet": _gestoppt.setdefault("grund", reason)
+    _echt = _nk.stop_reclick
+    _nk.stop_reclick = lambda state, reason="beendet": _gestoppt.setdefault("grund", reason)
     try:
         _bns(_st3, {})
         check("ohne laufende Runde passiert nichts", not _gestoppt)
@@ -668,7 +668,7 @@ try:
         _bns(_st3, {})
         check("mit laufender Runde wird gestoppt", "grund" in _gestoppt)
     finally:
-        _nk.stop_nachklick = _echt
+        _nk.stop_reclick = _echt
 finally:
     _os.chdir(_cwd)
 

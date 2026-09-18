@@ -1896,7 +1896,7 @@ section("'else' im Editor erlauben genau dort, wo die Runtime es auswertet")
 # else-Aktion ausfuehrt. Dieser Test misst BEIDE Seiten und vergleicht sie, statt die
 # Liste nur abzuschreiben: erlaubt der Editor else, muss die Aktion auch feuern.
 from autoclicker.editors.sequence_editor.helpers import (
-    apply_else_to_step as _apply_else, _kann_else)
+    apply_else_to_step as _apply_else, _can_else)
 import io as _io2, contextlib as _cl2
 
 _orig_c4, _orig_shot4 = _RS.safe_click, _RS.take_screenshot
@@ -1940,7 +1940,7 @@ try:
     }
     for _name, _kw in _faelle.items():
         _schritt = _SS(x=1, y=2, delay_before=0, name="s", **_kw)
-        _editor_erlaubt = _kann_else(_schritt)
+        _editor_erlaubt = _can_else(_schritt)
         _runtime_wertet_aus = _else_feuert(**_kw)
         check(f"{_name}: Editor-Regel deckt sich mit der Runtime",
               _editor_erlaubt == _runtime_wertet_aus)
@@ -2323,7 +2323,7 @@ try:
 
     # Versatz von Hand nachziehen: mit der Maus trifft man den Pixel nicht genau.
     # Weiss man, dass eine Achse stimmt, ist eine eingetippte 0 genauer.
-    from autoclicker.editors.import_export_editor import _versatz_anpassen as _va
+    from autoclicker.editors.import_export_editor import _adjust_offset as _va
     import autoclicker.editors.import_export_editor as _IEE
 
     def _anpassen_mit(eingaben):
@@ -2381,7 +2381,7 @@ section("Slot-Reparatur uebernimmt nur eine eindeutige Zuordnung")
 # Eine Maus-Position trifft den Pixel nie genau; bei einer Scan-Region zaehlt das.
 # Die Reparatur misst die Slots deshalb neu — darf die neuen Koordinaten aber nur
 # uebernehmen, wenn die Zuordnung alt->neu zweifelsfrei ist.
-from autoclicker.editors.slot_editor import _zuordnung_pruefen as _zp
+from autoclicker.editors.slot_editor import _check_assignment as _zp
 
 _INSET = 2
 _BASIS = [(100, 100, 150, 150), (160, 100, 210, 150),
@@ -2698,8 +2698,8 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 # gibt es point_id. Der Recorder legte frueher beides unabhaengig an: Schritte ohne
 # Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
 # Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
-from autoclicker.editors.sequence_recorder import punkte_fuer_events as _pfe
-from autoclicker.editors.sequence_recorder import aufnahme_datei as _aufnahme_datei
+from autoclicker.editors.sequence_recorder import points_for_events as _pfe
+from autoclicker.editors.sequence_recorder import recording_file as _aufnahme_datei
 from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
                                 REC_KEY as _R_KEY, REC_SCROLL as _R_SCROLL,
                                 REC_WAIT_COLOR as _R_WAIT)
@@ -2724,7 +2724,7 @@ check("beide Klicks auf dieselbe Stelle teilen sich die ID",
 # (dieselbe Bauart wie beim geloeschten `scan_reverse`).
 import inspect as _insp_rec
 _sig_pfe = list(_insp_rec.signature(_pfe).parameters)
-check("punkte_fuer_events nimmt nur die Ereignisse", _sig_pfe == ["events"])
+check("points_for_events nimmt nur die Ereignisse", _sig_pfe == ["events"])
 check("kein state in der Signatur - der Pool KANN nicht hineinlecken",
       "state" not in _sig_pfe)
 _map2, _punkte2 = _pfe(_events)
@@ -2882,8 +2882,8 @@ if _ohne_ref:
 section("Aufnahme schneidet mehr mit als nur Linksklicks")
 
 from autoclicker.editors.sequence_recorder import (
-    schritte_aus_events as _sae, _anhaengen as _anh, _SCROLL_MERGE_GAP as _SMG,
-    verwirf_letztes as _verwirf, marker_pruefen as _mpr)
+    steps_from_events as _sae, _append_event as _anh, _SCROLL_MERGE_GAP as _SMG,
+    discard_last as _verwirf, check_markers as _mpr)
 
 # Eine Aufnahme, die alle vier Arten enthaelt. Der Marker wird 2s nach dem ersten
 # Klick gedrueckt (bis dahin lief normal etwas ab — das bleibt Wartezeit), und erst
@@ -2980,7 +2980,7 @@ check("Marker vor einem Scroll bleibt (Scroll hat eine Stelle)", _v5 == 0)
 # er trotzdem nicht: beim Druecken parkt die Maus irgendwo, ein Punkt darauf waere
 # derselbe Muell, den der Warte-Marker frueher in points.json geschrieben hat.
 from autoclicker.models import REC_SCREENSHOT as _R_SHOT
-from autoclicker.editors.sequence_recorder import merke_screenshot as _mshot
+from autoclicker.editors.sequence_recorder import mark_screenshot as _mshot
 
 _ev_shot = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_SHOT, 1.5),
@@ -3047,8 +3047,8 @@ section("Aufnahme kann Bereich, Beobachten und Phasengrenze")
 from autoclicker.models import (REC_REGION as _R_REG, REC_WATCH as _R_WATCH,
                                 REC_PHASE as _R_PHASE)
 from autoclicker.editors.sequence_recorder import (
-    bereiche_zusammenfassen as _bz, phasen_grenzen as _pg,
-    phasen_bauen as _pb, merke_bereich as _mber, merke_phase as _mph)
+    merge_regions as _bz, phase_boundaries as _pg,
+    build_phases as _pb, mark_region as _mber, mark_phase as _mph)
 
 # --- Bereich: zwei Ecken werden EIN Screenshot mit Rechteck ---
 _ev_ber = [_RE(_R_CLICK, 0.0, 1, 1),
@@ -3482,7 +3482,7 @@ section("Mehrfachauswahl im Item-Scan-Assistenten")
 # Schritt 1 (Slots) und Schritt 2 (Items) hatten dieselbe Schleife zweimal
 # ausgeschrieben. Jetzt eine — und die ist testbar, weil sie nur safe_input braucht.
 import autoclicker.editors.item_scan_editor as _ISE
-from autoclicker.editors.item_scan_editor import bereich_parsen as _bp
+from autoclicker.editors.item_scan_editor import parse_range as _bp
 
 check("Bereich '1-5' wird gelesen", _bp("1-5", 10) == (1, 5))
 check("Bereich rueckwaerts wird normalisiert", _bp("5-1", 10) == (1, 5))
@@ -3494,14 +3494,14 @@ check("zu viele Teile -> None", _bp("1-2-3", 10) is None)
 
 
 def _auswahl(eingaben, entries=None, vorgewaehlt=(), **kw):
-    """Fuettert mehrfach_auswahl mit einer Tastenfolge."""
+    """Fuettert multi_select mit einer Tastenfolge."""
     entries = list(entries if entries is not None else ["A", "B", "C", "D"])
     folge = list(eingaben)
     _o = _ISE.safe_input
     _ISE.safe_input = lambda _p="": folge.pop(0) if folge else "cancel"
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
-            return _ISE.mehrfach_auswahl(
+            return _ISE.multi_select(
                 "> ", entries, list(vorgewaehlt),
                 lambda i, n, an: f"{i} {n} {an}", **kw)
     finally:

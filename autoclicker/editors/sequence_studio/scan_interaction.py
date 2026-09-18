@@ -371,7 +371,7 @@ class ScanInteractionMixin:
     def _bestehende_slot_groesse(self) -> Optional[tuple]:
         """Zielgrösse für neu gefundene Slots, wenn schon welche im Scan liegen.
 
-        `erkenne_slots_im_bild()` normalisiert je Durchgang auf den Median — ein
+        `detect_slots_in_image()` normalisiert je Durchgang auf den Median — ein
         zweiter Lauf weicht deshalb ein paar Pixel ab, obwohl die Slots gleich gross
         sind. Bezug ist der offene Scan, nie der Bestand: zwei Bedienflächen
         desselben Spiels sind wirklich verschieden hoch. Leerer Scan = kein Bezug.

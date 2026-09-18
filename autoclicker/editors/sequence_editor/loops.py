@@ -13,7 +13,7 @@ from ...utils import (
     cancel_hint, confirm, hint, is_cancel, next_free_name, safe_input,
     suggest_command,
 )
-from .helpers import parse_uhrzeit
+from .helpers import parse_clock_time
 from .steps import edit_phase
 
 
@@ -102,7 +102,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 print(hint("  (Phase wird nur zur angegebenen Uhrzeit ausgeführt, sonst übersprungen)"))
                 time_input = safe_input("  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
                 if time_input:
-                    scheduled_start = parse_uhrzeit(time_input)  # None bei Tippfehler = sofort
+                    scheduled_start = parse_clock_time(time_input)  # None bei Tippfehler = sofort
 
                 loop_phases.append(LoopPhase(loop_name, steps, repeat, scheduled_start=scheduled_start))
                 time_info = f", Start: {scheduled_start}" if scheduled_start else ""
@@ -138,7 +138,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                         if time_input == "0":
                             lp.scheduled_start = None
                         elif time_input:
-                            parsed = parse_uhrzeit(time_input)
+                            parsed = parse_clock_time(time_input)
                             if parsed:
                                 lp.scheduled_start = parsed
                         print(f"  + {lp.name} aktualisiert")
@@ -201,7 +201,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                             lp.scheduled_start = None
                             print(f"  + Startzeit für '{lp.name}' entfernt")
                         elif time_input:
-                            parsed = parse_uhrzeit(time_input)
+                            parsed = parse_clock_time(time_input)
                             if parsed:
                                 lp.scheduled_start = parsed
                                 print(f"  + '{lp.name}' startet ab jetzt um {parsed}")

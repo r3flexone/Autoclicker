@@ -26,7 +26,7 @@ from ...persistence.sequences import active_templates_dir, sequence_dir
 from ...utils import atomic_write, sanitize_filename
 
 
-class _ItemTransaktion:
+class _ItemTransaction:
     """Sichert Scan und Vorlagen auch über zwischendurch speichernde Befehle.
 
     Preset-Exporte sind ausdrücklich eigene Aktionen. Gesichert werden der
@@ -46,7 +46,7 @@ class _ItemTransaktion:
         self.dateien = {p: p.read_bytes() for p in self.folder.rglob("*") if p.is_file()}
         self.dateien[self.file] = self.file.read_bytes() if self.file.exists() else None
 
-    def verwerfen(self, state):
+    def discard(self, state):
         # Dateien zuerst: schlägt die Wiederherstellung fehl, bleibt die
         # Sitzung offen und dieselbe Sicherung steht zum Wiederholen bereit.
         for path, content in self.dateien.items():
@@ -65,9 +65,9 @@ class _ItemTransaktion:
                 state.global_items = {item.name: item for item in cfg.items}
 
 
-def _abbrechen(state, transaktion) -> bool:
+def _cancel(state, transaktion) -> bool:
     try:
-        transaktion.verwerfen(state)
+        transaktion.discard(state)
     except OSError as e:
         print(err(f"Abbruch konnte nicht vollständig zurückgesetzt werden: {e}"))
         return False
@@ -86,7 +86,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
         return
 
     try:
-        transaktion = _ItemTransaktion(state)
+        transaktion = _ItemTransaction(state)
     except (OSError, ValueError) as e:
         print(err(f"Item-Editor konnte nicht vorbereitet werden: {e}"))
         return
@@ -109,7 +109,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 print(ok("Item-Editor beendet."))
                 return
             elif is_cancel(cmd):
-                if _abbrechen(state, transaktion):
+                if _cancel(state, transaktion):
                     return
                 continue
             elif cmd == "":
@@ -123,7 +123,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
         except (KeyboardInterrupt, EOFError):
-            if _abbrechen(state, transaktion):
+            if _cancel(state, transaktion):
                 return
         except OSError as e:
             print(err(f"Dateioperation fehlgeschlagen: {e}"))

@@ -181,7 +181,7 @@ check("eine alte Datei ohne das Feld bekommt den Default",
 _editor_src = (_repo / "autoclicker" / "editors" / "item_scan_editor.py").read_text(encoding="utf-8")
 check("der Konsolen-Editor reicht use_catalog durch",
       "use_catalog=use_catalog," in _editor_src)
-check("und fragt danach", "_schritt_katalog(" in _editor_src)
+check("und fragt danach", "_step_catalog(" in _editor_src)
 
 # Der Schalter darf NICHT in der Config landen — sonst gaelte er fuer alle Spiele
 # gleichzeitig, genau der Fehler, wegen dem `scan_reverse` einmal umgezogen ist.

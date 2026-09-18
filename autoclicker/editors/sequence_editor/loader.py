@@ -43,7 +43,7 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
 
 # Wie viele abweichende Schritte einzeln gezeigt werden, bevor nur noch gezählt wird.
-_MAX_HINWEISE = 5
+_MAX_HINTS = 5
 
 
 def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> None:
@@ -115,8 +115,8 @@ def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> Non
             if name in gezeigt:
                 continue
             gezeigt.add(name)
-            if len(gezeigt) > _MAX_HINWEISE:
-                print(f"    ... und {len(names) - _MAX_HINWEISE} weitere")
+            if len(gezeigt) > _MAX_HINTS:
+                print(f"    ... und {len(names) - _MAX_HINTS} weitere")
                 break
             print(f"    '{name}': Schritt {old}, Punkt {new}")
         print(f"    {hint('Nichts wurde geändert. Verknüpfen: Editor -> link (über Koordinaten).')}")

@@ -4,7 +4,7 @@ Geteilte Helfer für den Sequenz-Editor.
 apply_else_to_step + parse_else_condition werden überall dort gebraucht wo ein
 Step einen optionalen `else <Bedingung>`-Suffix haben kann (scan, boss, watcher,
 wait, pixel-click). capture_pixel_color liest die aktuelle Maus-Position+Farbe
-und parse_uhrzeit parst eine HH:MM-Eingabe. Bewusst NICHT parse_time_input wie in
+und parse_clock_time parst eine HH:MM-Eingabe. Bewusst NICHT parse_time_input wie in
 utils/parsing.py: die heisst gleich, nimmt auch einen String, gibt aber ein Tripel
 (Sekunden, Text, Zeitstempel) fuer den Countdown zurueck. Zwei Vertraege, zwei Namen.
 """
@@ -31,8 +31,8 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
     """
     if not else_parts:
         return
-    if not _kann_else(step):
-        print(warn(f"  -> 'else' hat hier keine Wirkung: {_warum_kein_else(step)}"))
+    if not _can_else(step):
+        print(warn(f"  -> 'else' hat hier keine Wirkung: {_why_no_else(step)}"))
         return
     else_result = parse_else_condition(else_parts, state)
     if else_result:
@@ -47,7 +47,7 @@ def apply_else_to_step(step: SequenceStep, else_parts: list, state: AutoClickerS
         )
 
 
-def _kann_else(step: SequenceStep) -> bool:
+def _can_else(step: SequenceStep) -> bool:
     """True, wenn die Runtime für diesen Schritt-Typ eine else-Aktion auswertet.
 
     Ein 'else' braucht etwas, das danebengehen kann: eine Farb-Bedingung oder
@@ -59,7 +59,7 @@ def _kann_else(step: SequenceStep) -> bool:
                 or step.icon_scan)
 
 
-def _warum_kein_else(step: SequenceStep) -> str:
+def _why_no_else(step: SequenceStep) -> str:
     """Erklärt, warum 'else' an diesem Schritt nichts tut."""
     if step.boss_watcher:
         return ("ein Watcher wartet, bis ein Boss erscheint — er kann nicht "
@@ -91,7 +91,7 @@ def capture_pixel_color() -> tuple:
     return x, y, color
 
 
-def parse_uhrzeit(time_str: str) -> Optional[str]:
+def parse_clock_time(time_str: str) -> Optional[str]:
     """Parst eine Uhrzeit-Eingabe (z.B. '12:30', '9:05') und gibt 'HH:MM' zurück oder None."""
     match = re.match(r'^(\d{1,2}):(\d{2})$', time_str.strip())
     if match:

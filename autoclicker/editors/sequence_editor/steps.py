@@ -774,7 +774,7 @@ class _PhaseEditor:
             if color is None:
                 return
             step.wait_condition = WaitCondition(
-                point_id=self._punkt_fuer(px, py, color, "Prüf-Pixel"),
+                point_id=self._point_for(px, py, color, "Prüf-Pixel"),
                 pixel=(px, py), color=color,
                 until_gone=until_gone,
             )
@@ -894,7 +894,7 @@ class _PhaseEditor:
             if color is None:
                 return False
             pixel = (px, py)
-            punkt_id = self._punkt_fuer(px, py, color, "Prüf-Pixel")
+            punkt_id = self._point_for(px, py, color, "Prüf-Pixel")
         step.wait_condition = WaitCondition(point_id=punkt_id, pixel=pixel, color=color,
                                             until_gone=until_gone)
         return True
@@ -1329,7 +1329,7 @@ class _PhaseEditor:
             px, py, color = capture_pixel_color()
             if color is None:
                 return
-            punkt_id = self._punkt_fuer(px, py, color, "Nachprüfung")
+            punkt_id = self._point_for(px, py, color, "Nachprüfung")
         else:
             try:
                 punkt_id = int(target)
@@ -1362,7 +1362,7 @@ class _PhaseEditor:
         print(hint(f"       Bleibt sie aus, wird die Aktion {n}× wiederholt "
                    f"(config: verify_retries), dann greift else."))
 
-    def _punkt_fuer(self, x, y, color, name):
+    def _point_for(self, x, y, color, name):
         """Punkt-ID für eine frisch abgegriffene Stelle - legt sie notfalls an.
 
         Jede Stelle, die ein Editor erzeugt, muss als Punkt existieren; sonst hätte
@@ -1386,7 +1386,7 @@ class _PhaseEditor:
             return (point.x, point.y), point.color, point.id, until_gone
         px, py, color = capture_pixel_color()
         if color:
-            return (px, py), color, self._punkt_fuer(px, py, color, "Prüf-Pixel"), until_gone
+            return (px, py), color, self._point_for(px, py, color, "Prüf-Pixel"), until_gone
         return None, None, None, until_gone
 
     def _parse_point_options(self, main_parts: list[str], point):

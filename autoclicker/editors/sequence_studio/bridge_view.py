@@ -84,7 +84,7 @@ class BridgeViewMixin:
             "else_aktionen": ELSE_AKTIONEN,
             "ohne_else": self._ohne_else(),
             "phasen": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
-            "punkte": [self._punkt_json(p) for p in self.points],
+            "punkte": [self._point_json(p) for p in self.points],
             "auswahl": self._auswahl_json(),
             "block": self._block_detail(),
         }
@@ -150,7 +150,7 @@ class BridgeViewMixin:
             return None
         return self.board.lanes.index(self.sel_lane)
 
-    def _punkt_json(self, p: PalettePoint) -> dict:
+    def _point_json(self, p: PalettePoint) -> dict:
         return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
                 "farbe": _hex(p.color), "quelle": p.source}
 

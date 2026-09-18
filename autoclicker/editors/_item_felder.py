@@ -29,12 +29,12 @@ from ..utils import is_cancel, parse_non_negative_float, safe_input
 # ist `None` als Punkt-ID ein gültiges Ergebnis („kein Bestätigungs-Klick"), also
 # taugt es nicht zugleich als Abbruch-Zeichen. Deshalb ein eigener Wert statt
 # eines zweiten `None`.
-ABBRUCH = object()
+CANCELLED = object()
 
 
-def frage_prioritaet(state: AutoClickerState, category: Optional[str],
+def ask_priority(state: AutoClickerState, category: Optional[str],
                      vorgabe: int = 1, *, abbrechbar: bool = False):
-    """Fragt die Priorität ab. Gibt die Zahl zurück — oder `ABBRUCH`.
+    """Fragt die Priorität ab. Gibt die Zahl zurück — oder `CANCELLED`.
 
     `0` heisst „beste": das Item bekommt Priorität 1 und alle anderen derselben
     Kategorie rutschen einen Platz nach hinten. Ohne Kategorie ergibt das keinen
@@ -47,7 +47,7 @@ def frage_prioritaet(state: AutoClickerState, category: Optional[str],
     eingabe = safe_input(
         f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
     if abbrechbar and is_cancel(eingabe):
-        return ABBRUCH
+        return CANCELLED
     if not eingabe:
         return priority
     try:
@@ -63,7 +63,7 @@ def frage_prioritaet(state: AutoClickerState, category: Optional[str],
     return 1
 
 
-def frage_bestaetigungsklick(state: AutoClickerState, vorgabe_delay: float, *,
+def ask_confirm_click(state: AutoClickerState, vorgabe_delay: float, *,
                              frage: str = "  Bestätigungs-Punkt-ID (Enter = keiner): ",
                              abbrechbar: bool = False):
     """Fragt Punkt-ID und Wartezeit eines Bestätigungs-Klicks ab.
@@ -73,7 +73,7 @@ def frage_bestaetigungsklick(state: AutoClickerState, vorgabe_delay: float, *,
 
     Rückgabe `(punkt_id, wartezeit)` — `punkt_id` ist `None`, wenn keiner gesetzt
     werden soll (leere Eingabe, unbekannte ID, Zahlensalat). Bei Abbruch
-    `ABBRUCH`.
+    `CANCELLED`.
 
     **Der Punkt wird unter `state.lock` gesucht.** `get_point_by_id()` läuft über
     `state.points`, und die Liste kann sich unter einem laufenden Worker ändern.
@@ -81,7 +81,7 @@ def frage_bestaetigungsklick(state: AutoClickerState, vorgabe_delay: float, *,
     wartezeit = vorgabe_delay
     eingabe = safe_input(frage).strip()
     if abbrechbar and is_cancel(eingabe):
-        return ABBRUCH
+        return CANCELLED
     if not eingabe:
         return None, wartezeit
     try:

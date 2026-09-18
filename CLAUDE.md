@@ -401,7 +401,7 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 - **Vor Editoren mit Konsolen-Input**: `_block_if_recording(state)` + `_block_if_running(state)` aus `handlers.py` (sonst kollidiert Konsolen-Input mit Worker/Recorder). Beide melden selbst und geben `True` zurück, wenn der Handler abbrechen soll.
 - **Feedback-Bausteine** aus `utils/console.py` nutzen: `ok/err/warn/info/hint`, `header`, `breadcrumb`, `cmd_hint`, `describe_color` — keine rohen ANSI-Strings.
 - **Geteilte Feld-Abfragen** stehen in `editors/_item_felder.py`:
-  `frage_prioritaet()` und `frage_bestaetigungsklick()`. Sie standen vier- bzw.
+  `ask_priority()` und `ask_confirm_click()`. Sie standen vier- bzw.
   sechsmal ausgeschrieben da (`items.py`, `learn.py`, `autoscan.py`,
   `item_scan_editor.py`) — die staerkste gemessene Duplikation des Repos, und
   sie war schon auseinandergelaufen: **`get_point_by_id()` sperrt nicht selbst,
@@ -413,18 +413,18 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 
   **Abbruch ist nicht `None`.** Beim Bestaetigungs-Klick ist `None` als Punkt-ID
   ein gueltiges Ergebnis („kein Klick danach"), taugt also nicht zugleich als
-  Abbruch-Zeichen — dafuer gibt es `ABBRUCH`.
-- **Mehrfachauswahl aus einer Liste**: `mehrfach_auswahl()` aus `editors/item_scan_editor.py`
+  Abbruch-Zeichen — dafuer gibt es `CANCELLED`.
+- **Mehrfachauswahl aus einer Liste**: `multi_select()` aus `editors/item_scan_editor.py`
   (`<Nr>`, `<Von>-<Bis>`, `all`, `clear`, `show`, `done`, `cancel`, optional ein eigener
   Befehl wie `new <Slot-Nr>`). Sie stand vorher zweimal ausgeschrieben da — für Slots und
   für Items —, und eine Korrektur an der einen ging an der anderen vorbei.
 
 **Assistenten in Stufen zerlegen, nicht am Stück schreiben.** `edit_item_scan()` war
-450 Zeilen mit 125 Verzweigungen; jetzt ruft sie `_schritt_presets` → Auswahl → Auswahl →
-`_schritt_toleranz` → `_schritt_auto_lernen` und speichert. Jede Stufe gibt ihr Ergebnis
+450 Zeilen mit 125 Verzweigungen; jetzt ruft sie `_step_presets` → Auswahl → Auswahl →
+`_step_tolerance` → `_step_auto_learn` und speichert. Jede Stufe gibt ihr Ergebnis
 zurück oder signalisiert Abbruch (`None` bzw. `False`). Das ist auch der einzige Weg, an
 Editor-Code überhaupt Tests zu bekommen: was nur `safe_input` braucht, lässt sich mit
-einer Tastenfolge füttern — `mehrfach_auswahl` hat so 24 Tests, wo vorher keiner war.
+einer Tastenfolge füttern — `multi_select` hat so 24 Tests, wo vorher keiner war.
 
 ### Referenzen statt Kopien
 Überall dort, wo früher eine Kopie lag und deshalb still veraltete, gilt jetzt dasselbe
@@ -492,7 +492,7 @@ Regeln beim Erweitern:
 
   **„Dieselbe Stelle" ist eine eigene Regel, und sie steht an einer Stelle**:
   `point_at_position()` in `persistence/sequences.py`. Editor und Aufnahme
-  (`punkte_fuer_events`) stellten dieselbe Frage und verglichen beide die
+  (`points_for_events`) stellten dieselbe Frage und verglichen beide die
   Koordinaten **exakt** — daran entstanden die Doppelten: denselben Knopf trifft
   man nie zweimal pixelgenau. In einer echten Aufnahme lagen so vier Punkte auf
   einem einzigen grünen Knopf (`#2/#13/#24/#40`, 1,4–6,7 px auseinander, Farbe
@@ -1317,7 +1317,7 @@ es die Marker-Farben.
   - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
     GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
   - `web/`: HTML, CSS, JavaScript und Logo.
-- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_klickfenster.py` (`geklicktes_fenster`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
+- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_klickfenster.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
 - `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `nachklick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
@@ -2281,9 +2281,9 @@ Auswahl und nur, wenn er wirklich draussen liegt**: eine Bühne, die bei jedem
 Neuzeichnen springt, nimmt einem die Stelle weg, die man gerade ansieht.
 
 **Die Slot-Erkennung ist dieselbe wie im Konsolen-Editor** —
-`detect_slots_in_image()` aus `editors/scan_services.py`. Der Konsolen-Editor
-ruft sie über seinen deutschen Namen `erkenne_slots_im_bild()`, den auch
-`repair` benutzt; das Studio nimmt den Dienst direkt. Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
+`detect_slots_in_image()` aus `editors/scan_services.py`, gerufen von
+`slot_auto_detect`, `repair` und dem Studio (der Konsolen-Editor hatte dafür
+einmal einen eigenen deutschen Namen — eine reine Weiterleitung, gelöscht). Modus `finden`: zwei Ecken um das Inventar, dann ein Klick auf einen
 leeren Slot-Hintergrund, und alle liegen da; ein volles Inventar von Hand wären
 90 Klicks. Zwei Erkennungen wären zwei Ergebnisse.
 
@@ -2407,7 +2407,7 @@ der Erkennung sucht, obwohl sie funktioniert hat. `_slot_an_stelle()` gibt
 deshalb den **Namen** zurück statt ja/nein, und der Durchgang zählt drei Sorten
 getrennt: angelegt, aufgenommen, war schon dabei.
 
-**Ein zweiter Suchlauf rät die Grösse nicht neu.** `erkenne_slots_im_bild()`
+**Ein zweiter Suchlauf rät die Grösse nicht neu.** `detect_slots_in_image()`
 normalisiert auf den Median **eines** Durchgangs — ein zweiter Lauf über
 demselben Raster bekommt seinen eigenen und weicht ein paar Pixel ab, obwohl die
 Slots im Spiel gleich gross sind. Ein Fund innerhalb von `_GROESSE_TOLERANZ`
@@ -2573,10 +2573,10 @@ Drei Regeln dazu:
 - **Der Verlauf ist ein eigenes Feld, kein abgeleiteter Wert**
   (`state.reclick_history`, Einträge `(Punkt-ID, Art)`). Naheliegend wäre,
   ihn aus `reclick_set` zu rechnen — das geht nicht: ein **bestätigter**
-  Punkt (innerhalb `PASST_TOLERANZ`) landet dort bewusst nicht, und im Fenster
+  Punkt (innerhalb `MATCH_TOLERANCE`) landet dort bewusst nicht, und im Fenster
   sähe er damit genauso aus wie ein übersprungener. Beide ändern nichts, aber
   nur einer heisst „ich habe hingesehen".
-- **Die Zusammenfassung wird eingesammelt, BEVOR `stop_nachklick()` die Listen
+- **Die Zusammenfassung wird eingesammelt, BEVOR `stop_reclick()` die Listen
   leert.** Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde
   — ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
   Dieselbe Regel und derselbe Grund wie bei `status.finish_run()`.
@@ -3335,7 +3335,7 @@ Drei Regeln, an denen die Aufnahme hängt:
   ein Punkt, zweimal referenziert (`point_id` + `wait_point_id`), exakt das, was
   `color <Nr>` im Editor baut. Die beim Klick erfasste Farbe ist die richtige: geklickt
   wird ja erst, wenn das Erwartete zu sehen ist. Folgt dem Marker kein Klick (sondern
-  eine Taste oder gar nichts), wird er verworfen und gemeldet — `marker_pruefen()`.
+  eine Taste oder gar nichts), wird er verworfen und gemeldet — `check_markers()`.
 - **Der Marker hält nur die Uhr an.** Die Zeit *bis* zu seinem Drücken bleibt echte
   Wartezeit, die Zeit *danach* fällt weg — sie ist genau das Warten, das die Bedingung
   ersetzt. Bliebe sie stehen, würde die Sequenz erst auf die Farbe warten UND danach
@@ -3364,22 +3364,22 @@ Maus irgendwo, deshalb wird sie verworfen (ein früher Entwurf legte dort einen 
 — in einer echten Aufnahme stand dann `Warte auf Farbe bei (4483, 1038) Schwarz` in
 points.json). Bei Bereichs-Ecke und Beobachten fährt der Nutzer die Stelle *an* und
 drückt dort — dieselbe Geste, aber bewusst, also darf sie verwendet werden. Wer einen
-neuen Marker baut, beantwortet zuerst diese Frage; sie entscheidet über `punkte_fuer_events`.
+neuen Marker baut, beantwortet zuerst diese Frage; sie entscheidet über `points_for_events`.
 
 **Aufbereitet wird in fester Reihenfolge**, jede Stufe entfernt eine Sonderform, damit
 die nächste sie nicht mehr kennen muss:
 
-1. `bereiche_zusammenfassen()` — zwei `REC_REGION`-Ecken → **ein** `REC_SCREENSHOT`
+1. `merge_regions()` — zwei `REC_REGION`-Ecken → **ein** `REC_SCREENSHOT`
    mit Rechteck. Danach existiert `REC_REGION` nicht mehr. Eine einzelne Ecke wird
    verworfen und gemeldet, **nicht** still zu Vollbild degradiert — das wäre etwas
    anderes als das Gewollte.
-2. `phasen_grenzen()` — Grenzen **raus** aus dem Strom, gemerkt als Schritt-Indizes.
+2. `phase_boundaries()` — Grenzen **raus** aus dem Strom, gemerkt als Schritt-Indizes.
    Sie zu überspringen statt zu entfernen reichte nicht: eine Grenze wäre dann das
    „vorherige Ereignis" des nächsten Schritts, und dessen Wartezeit würde ab dem
    Tastendruck statt ab der letzten echten Aktion gemessen (aus 6 s würde 1 s).
-3. `marker_pruefen()` — haltlose Warte-Marker weg.
+3. `check_markers()` — haltlose Warte-Marker weg.
 
-Danach ist `schritte_aus_events()` frei von Sonderfällen, und `phasen_bauen()`
+Danach ist `steps_from_events()` frei von Sonderfällen, und `build_phases()`
 schneidet die fertige Liste an den gemerkten Grenzen in Loop-Phasen.
 
 **Die Aufnahme erfindet keine Zeit und wirft keine weg.** Die Sekunden zwischen den
@@ -3394,7 +3394,7 @@ Schritt in eine *andere* Phase zu verschieben, gibt es nicht. Nachträglich auft
 hiesse löschen und neu anlegen — bei 50 aufgenommenen Schritten fällt das aus. Ohne
 Marker bleibt alles in einer Loop-Phase, also im bisherigen Verhalten.
 
-**Jeder Druck macht eine neue Loop-Phase auf, ohne Obergrenze** (`phasen_bauen()`).
+**Jeder Druck macht eine neue Loop-Phase auf, ohne Obergrenze** (`build_phases()`).
 Vorher trennte der erste Druck INIT von LOOP und der zweite LOOP von END; beim
 dritten stand da „mehr Phasen kann die Aufnahme nicht", und wer vier Abschnitte
 gespielt hatte, zog sie hinterher im Studio von Hand auseinander — also genau die
@@ -3439,7 +3439,7 @@ weiter — eine Aufnahme ohne Klicks wäre dagegen sinnlos. Beide Hooks werden a
 Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weiter.
 
 **Der Klick auf einen Studio-Knopf ist keine Spielaktion — und welches Fenster
-den Klick bekam, sagt `geklicktes_fenster()`** (`editors/_klickfenster.py`, geteilt
+den Klick bekam, sagt `clicked_window()`** (`editors/_klickfenster.py`, geteilt
 mit der Klick-Runde). Start und Stopp sind im Studio echte Knöpfe; ihr Klick darf
 nicht als Block in der Sequenz landen. Gefiltert wird deshalb, was im
 Studio-Fenster ankommt — und zwar am Fenster **unter dem Zeiger**, nicht am
@@ -3476,7 +3476,7 @@ Das Rad lässt sich per `record_scroll: false` (Config) ganz abschalten — für
 denen es nur die Ansicht dreht und solche Drehungen die Sequenz bloss aufblähen.
 Abgeschaltet gibt `_on_wheel_factory()` **`None`** zurück, und `install_mouse_hook`
 ignoriert das Rad schon in der Hook-Prozedur. Absichtlich dort und nicht in
-`_anhaengen`: ein Callback, der jedes Ereignis nur entgegennimmt, um es wegzuwerfen,
+`_append_event`: ein Callback, der jedes Ereignis nur entgegennimmt, um es wegzuwerfen,
 liefe bei jeder Radbewegung mit — auch wenn gerade niemand aufnimmt.
 
 ### Boss-Scan vs. Boss-Watcher
@@ -3550,14 +3550,14 @@ hinter jedem Klick steht die neue Stelle im Punkt.
 **Die Runde arbeitet auf PUNKTEN, nicht auf einer Sequenz.** Aus der Sequenz
 kommt genau eine Sache: die Reihenfolge, in der ihre Punkte geklickt werden.
 Danach ist sie uninteressant — die Datei wird nicht angefasst, und die im
-Hauptprozess **geladene** Sequenz wechselt ausdrücklich nicht (`ruesten(state,
+Hauptprozess **geladene** Sequenz wechselt ausdrücklich nicht (`prepare_reclick(state,
 seq)` nimmt sie als Argument). Sie zu aktivieren hiesse, dass ein Druck auf
 `CTRL+ALT+S` nach der Runde etwas anderes startet als vorher.
 
 **Geschrieben wird erst am Schluss, und nur auf ausdrückliches Übernehmen**
 (`CTRL+ALT+J`, „Übernehmen" im Studio). Bis dahin stehen die neuen Stellen in
 `state.reclick_set` und die Punkte sind unverändert — auch im Speicher.
-Damit ist ein Abbruch folgenlos: `stop_nachklick(..., uebernehmen=False)` wirft
+Damit ist ein Abbruch folgenlos: `stop_reclick(..., uebernehmen=False)` wirft
 die Liste weg, es gibt nichts zurückzudrehen. Verworfen wird beim Schliessen des
 Studio-Fensters (`nachklick_beim_schliessen()` — die Runde gehört dem Fenster,
 das sie gestartet hat) und beim Beenden des Programms.
@@ -3574,7 +3574,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
 - **Jeder Punkt einmal, in der Reihenfolge des Laufs** (INIT → Loop-Phasen →
   END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
   zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
-- **Was sie nicht erreicht, sagt sie** (`klickpunkte()` gibt zwei Listen
+- **Was sie nicht erreicht, sagt sie** (`click_points()` gibt zwei Listen
   zurück): beobachtete Pixel, ELSE-Klicks, Nachprüfungen und Rad-Schritte kommen
   in einem normalen Durchlauf nicht vor. Dafür bleibt `walk`. Wer beides ist —
   erst beobachtet, später geklickt — zählt als Klick; deshalb sammelt die
@@ -3589,7 +3589,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   wegwirft, sähe aus wie ein kaputter Hook.
 
   **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist**
-  (`geklicktes_fenster()` in `editors/_klickfenster.py`: `get_window_title_at()`,
+  (`clicked_window()` in `editors/_klickfenster.py`: `get_window_title_at()`,
   Rückfall auf den Vordergrund — dieselbe Funktion, die die Aufnahme benutzt,
   seit ihr an genau dieser Frage der erste Klick fehlte). Windows liefert den
   Button-Down an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
@@ -3606,7 +3606,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   **Mehrere Fenster desselben Spiels sind ausdrücklich in Ordnung.** Geprüft
   wird der Titel, und drei Instanzen tragen denselben; welche gemeint ist,
   entscheidet der Nutzer mit dem Klick.
-- **Ein Pixel Abweichung ist keine Korrektur** (`PASST_TOLERANZ`). Der Zeiger wird
+- **Ein Pixel Abweichung ist keine Korrektur** (`MATCH_TOLERANCE`). Der Zeiger wird
   von uns auf die Stelle gesetzt, und trotzdem kommt der Klick gelegentlich einen
   Pixel daneben zurück (DPI-Skalierung). Ohne die Toleranz schriebe jede
   Bestätigung den Punkt um einen Pixel um und zählte als Änderung — Rauschen in
@@ -3616,7 +3616,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   an, und der Hook sähe keinen Klick), deshalb sind alle weiteren Griffe globale
   Hotkeys — und deshalb wird **im Hook nicht auf Platte geschrieben**: ein
   Low-Level-Hook, der zu lange braucht, wird von Windows ausgehängt, und dann
-  fehlen Klicks mitten in der Runde. Gespeichert wird am Ende (`stop_nachklick`,
+  fehlen Klicks mitten in der Runde. Gespeichert wird am Ende (`stop_reclick`,
   auch beim Beenden des Programms).
 - **Die vier Hotkeys sind geliehen, nicht neu**: `CTRL+ALT+J` beendet (dieselbe
   Bedeutung wie bei der Aufnahme), `CTRL+ALT+H` pausiert (navigieren, ohne einen
@@ -3625,7 +3625,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
   Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
-  `TASTEN` in `editors/nachklick.py`; das Studio zeigt sie als **Tabelle**
+  `KEYS` in `editors/nachklick.py`; das Studio zeigt sie als **Tabelle**
   (`WZ_TASTEN` in `app.js`), und ein Test hält beide gegeneinander. Was man
   mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
   Lesen von vorn, und dann liest ihn niemand.
@@ -3640,18 +3640,18 @@ Hier stand einmal das Gegenteil („springt **nicht** nach einem echten Klick"),
 und der Grund war nicht falsch: der Hook meldet den **Druck**, das Loslassen
 kommt erst danach — dazwischen die Maus wegzuziehen macht aus dem Klick ein
 Ziehen. Nur war die Antwort darauf falsch. Statt gar nicht zu springen, springt
-er nach `SPRUNG_VERZOEGERUNG` (0,25 s, `_springe(..., verzoegert=True)`); die
+er nach `JUMP_DELAY` (0,25 s, `_jump(..., verzoegert=True)`); die
 alte Fassung liess die Stelle als Zahlenpaar in der Konsole stehen, und man
 musste sie auf dem Schirm suchen, statt sie zu sehen.
 
 **Und es läuft nichts von selbst.** Ein Start während der Runde wird abgelehnt —
 `handle_toggle()` prüft `reclick_active` genau wie `recording_active`, und
-`ruesten()` lehnt umgekehrt ab, solange ein Countdown gestellt ist. Der Grund ist
+`prepare_reclick()` lehnt umgekehrt ab, solange ein Countdown gestellt ist. Der Grund ist
 derselbe wie bei der Aufnahme, eine Stufe schlimmer: **der Maus-Hook kann die
 Klicks des Workers nicht von Handgriffen unterscheiden.** Lief eine Sequenz mit,
 verbrauchte sie die Punkte der Runde selbst und schrieb ihre eigenen Ziele
 hinein — von aussen sah das aus, als sei die Sequenz „von allein weitergelaufen",
-und beim nächsten Start standen die Punkte woanders. `_setze_punkt()` ignoriert
+und beim nächsten Start standen die Punkte woanders. `_set_point()` ignoriert
 zusätzlich jeden Klick, solange `is_running` steht; die zweite Tür kostet nichts
 und fängt das Rennen zwischen Worker-Ende und Hook.
 

@@ -392,15 +392,6 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     )
 
 
-def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
-                          verbose: bool = False, sv_toleranz: int = 50):
-    """Kompatibilitätsname für den gemeinsamen Scan-Service."""
-    return detect_slots_in_image(
-        img, slot_color_rgb, hsv_toleranz, verbose=verbose,
-        sv_tolerance=sv_toleranz,
-    )
-
-
 def slot_auto_detect(state: AutoClickerState) -> bool:
     """Automatische Slot-Erkennung mit OpenCV. Gibt True zurück wenn erfolgreich."""
     if not OPENCV_AVAILABLE:
@@ -447,7 +438,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     r, g, b = slot_color_rgb
     print(f"  Farbe: RGB({r}, {g}, {b})")
 
-    detected_slots, img_bgr = erkenne_slots_im_bild(
+    detected_slots, img_bgr = detect_slots_in_image(
         img, slot_color_rgb, state.config.scan_slot_hsv_tolerance, verbose=True)
 
     if not detected_slots:
@@ -547,7 +538,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
 # REPARATUR (Slots neu vermessen, Identität behalten)
 # =============================================================================
 
-def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
+def _check_assignment(alte_slots: list, neue_rects: list[tuple],
                        inset: int, offset: tuple[int, int]) -> tuple:
     """Prüft, ob die neu erkannten Rechtecke zu den bestehenden Slots passen.
 
@@ -590,11 +581,11 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
                             abs((new[2] - new[0]) - alt_b),
                             abs((new[3] - new[1]) - alt_h))
 
-    if groessen_diff > _REPAIR_MAX_GROESSEN_DIFF:
+    if groessen_diff > _REPAIR_MAX_SIZE_DIFF:
         messages.append(
             f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
             f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
-    if streuung > _REPAIR_MAX_STREUUNG:
+    if streuung > _REPAIR_MAX_SPREAD:
         messages.append(
             f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
             f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
@@ -607,8 +598,8 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     return paare, versatz, messages
 
 
-_REPAIR_MAX_STREUUNG = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
-_REPAIR_MAX_GROESSEN_DIFF = 4     # px, die die Slot-Groesse abweichen darf
+_REPAIR_MAX_SPREAD = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
+_REPAIR_MAX_SIZE_DIFF = 4     # px, die die Slot-Groesse abweichen darf
 
 
 def slot_repair(state: AutoClickerState) -> bool:
@@ -663,12 +654,12 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {err('Screenshot fehlgeschlagen!')}")
         return False
 
-    neue_rects, _ = erkenne_slots_im_bild(img, slot_color,
+    neue_rects, _ = detect_slots_in_image(img, slot_color,
                                           state.config.scan_slot_hsv_tolerance)
     print(f"  {len(neue_rects)} Slot(s) erkannt.")
 
     inset = state.config.scan_slot_inset
-    paare, versatz, messages = _zuordnung_pruefen(
+    paare, versatz, messages = _check_assignment(
         alte_slots, neue_rects, inset, (region[0], region[1]))
 
     if not paare:
@@ -721,7 +712,7 @@ def slot_repair(state: AutoClickerState) -> bool:
     if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
         from ..import_export import (transform_from_offset, calibrate_inventory,
                                      calibration_preview)
-        from .import_export_editor import _ausserhalb_der_monitore
+        from .import_export_editor import _outside_all_monitors
         t = transform_from_offset((0, 0), versatz)
 
         # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
@@ -735,7 +726,7 @@ def slot_repair(state: AutoClickerState) -> bool:
             print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
         if len(vorschau) > 8:
             print(f"    {info(f'... und {len(vorschau) - 8} weitere')}")
-        draussen = _ausserhalb_der_monitore([n for _, _, n in vorschau])
+        draussen = _outside_all_monitors([n for _, _, n in vorschau])
         if draussen:
             print(f"  {warn(f'{draussen} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
             print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")

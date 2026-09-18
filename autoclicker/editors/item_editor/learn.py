@@ -18,7 +18,7 @@ from ...utils import (
     safe_input, sanitize_filename,
 )
 from .._item_felder import (
-    ABBRUCH, frage_bestaetigungsklick, frage_prioritaet,
+    CANCELLED, ask_confirm_click, ask_priority,
 )
 from .items import select_category
 from .markers import collect_marker_colors
@@ -67,7 +67,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
         category = select_category(state, show_explanation=False)
 
         # Bestätigungs-Punkt einmal für alle abfragen
-        confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+        confirm_point_id, confirm_delay = ask_confirm_click(
             state, state.config.scan_confirm_delay,
             frage="  Bestätigungs-Punkt-ID für alle (Enter = keiner): ")
 
@@ -199,8 +199,8 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
 
     category = select_category(state)
 
-    priority = frage_prioritaet(state, category, abbrechbar=True)
-    if priority is ABBRUCH:
+    priority = ask_priority(state, category, abbrechbar=True)
+    if priority is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()
         return True
@@ -208,10 +208,10 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     # Bestätigungs-Klick abfragen
     print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
-    bestaetigung = frage_bestaetigungsklick(
+    bestaetigung = ask_confirm_click(
         state, state.config.scan_confirm_delay,
         frage="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
-    if bestaetigung is ABBRUCH:
+    if bestaetigung is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()
         return True

@@ -716,7 +716,7 @@ REC_WAIT_COLOR = "wait"
 REC_SCREENSHOT = "screenshot"
 # Bereichs-Ecke: zwei davon ergeben EIN Rechteck. Ein Rechteck aufzuziehen braucht
 # zwei Stellen, und mehr als einen Tastendruck gibt es waehrend der Aufnahme nicht —
-# also zweimal derselbe Druck an zwei Mauspositionen. `bereiche_zusammenfassen()`
+# also zweimal derselbe Druck an zwei Mauspositionen. `merge_regions()`
 # faltet die Paare zu REC_SCREENSHOT-Ereignissen; danach existiert diese Art nicht mehr.
 REC_REGION = "region"
 # Beobachten ohne Klick: "warte, bis die Farbe UNTER der Maus da ist" — und dann NICHT
@@ -921,7 +921,7 @@ class AutoClickerState:
     # Was die Runde GETAN hat: (Punkt-ID, Art) je erledigtem Punkt, in der
     # Reihenfolge des Durchgangs. Art ist "passt", "gesetzt", "uebersprungen"
     # oder "fehlt". Ableiten liesse sich das NICHT: ein bestaetigter Punkt
-    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `reclick_set`,
+    # (innerhalb MATCH_TOLERANCE) landet bewusst nicht in `reclick_set`,
     # und ohne diese Liste saehe er im Fenster genauso aus wie ein
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
     # `reclick_set`.
