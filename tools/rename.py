@@ -70,10 +70,14 @@ _JS_REGEX_BEFORE = {"(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";",
 class Renamer:
     """Ein Durchgang mit einer Tabelle alt -> neu."""
 
-    def __init__(self, table: dict, strings: bool = False, keys: bool = False) -> None:
+    def __init__(self, table: dict, strings: bool = False, keys: bool = False,
+                 py_idents: bool = True) -> None:
         self.table = dict(table)
         self.strings = strings
         self.keys = keys
+        # `--keys --no-py-idents`: ein JSON-Schluessel heisst in Python oft auch
+        # als Lokale so (`treffer`, `ziel`) — die gehoeren zu ihrer eigenen Phase.
+        self.py_idents = py_idents
         # Drei Sorten Eintrag: `.karte=.card` ist eine Klasse OHNE Bindestrich
         # (nur in Selektoren und Klassenlisten, denn `karte` ist auch ein Wort),
         # `scan-marke=scan-badge` eine mit (ueberall mit Wortgrenze — so ein
@@ -184,7 +188,7 @@ class Renamer:
             raise ValueError(f"nicht tokenisierbar: {e}")
         for tok in tokens:
             (r1, c1), (r2, c2) = tok.start, tok.end
-            if tok.type == tokenize.NAME and tok.string in self.ident:
+            if tok.type == tokenize.NAME and tok.string in self.ident and self.py_idents:
                 edits.append((r1, c1, r2, c2, self.ident[tok.string]))
             elif tok.type == tokenize.COMMENT:
                 neu = self._doc_rule(tok.string)
@@ -496,8 +500,9 @@ def identifiers_in(path: Path, src: str) -> set:
 
 
 def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
-        out=sys.stdout, python_only: bool = False, keys: bool = False) -> int:
-    renamer = Renamer(table, strings=strings, keys=keys)
+        out=sys.stdout, python_only: bool = False, keys: bool = False,
+        py_idents: bool = True) -> int:
+    renamer = Renamer(table, strings=strings, keys=keys, py_idents=py_idents)
     # newline="" laesst CRLF unangetastet — sonst schriebe der Durchgang jede
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
     quellen = [(f, _read(f)) for f in files(root, python_only)]
@@ -570,6 +575,9 @@ def main(argv=None) -> int:
     p.add_argument("--keys", action="store_true",
                    help="JSON-Schluessel: Strings nur, wenn sie GENAU der Schluessel sind "
                         "(nicht als Pfad-Glied wie bei --strings), JS-Identifier wie immer")
+    p.add_argument("--no-py-idents", action="store_true",
+                   help="Python-Bezeichner in Ruhe lassen — nur Strings (und JS). Fuer --keys, "
+                        "wenn der Schluessel in Python auch eine Lokale ist")
     p.add_argument("--python-only", action="store_true",
                    help="nur .py anfassen — fuer Lokale, deren Namen zugleich JSON-Schluessel "
                         "der Bruecke sind (die Seite folgt erst mit den Schluesseln)")
@@ -598,7 +606,8 @@ def main(argv=None) -> int:
             p.error(f"'{neu}' ist kein gueltiger Bezeichner")
         table[alt] = neu
     return run(Path(args.root), table, args.strings, args.dry_run, args.force,
-               python_only=args.python_only, keys=args.keys)
+               python_only=args.python_only, keys=args.keys,
+               py_idents=not args.no_py_idents)
 
 
 if __name__ == "__main__":
