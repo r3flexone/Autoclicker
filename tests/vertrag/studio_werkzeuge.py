@@ -104,24 +104,24 @@ try:
     check("und die Antwort aendert sich mit", _b.tool_data()["open"] is True)
     _b._dirty = False
     check("und der Umfang kommt aus der Tabelle",
-          [u["key"] for u in _d["umfang"]] == [k for k, _, _ in KALIB_UMFANG])
+          [u["key"] for u in _d["scope"]] == [k for k, _, _ in KALIB_UMFANG])
     # Die Ansicht zeigt dieselben Schalter; laufen sie auseinander, schaltet ein
     # Haken etwas anderes als beschriftet.
     check("Slots sind standardmaessig AUS",
-          {u["key"]: u["vorgabe"] for u in _d["umfang"]}["mit_slots"] is False)
+          {u["key"]: u["default_value"] for u in _d["scope"]}["mit_slots"] is False)
 
     _sauber = _b.tool_check()
-    check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["befunde"])
+    check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["findings"])
     check("und sagt trotzdem, was geprueft wurde", len(_sauber["checked"]) > 0)
 
     # Jetzt absichtlich kaputt: ein lokaler Scan ohne Slot und Erkennung.
     save_item_scan(_ISC(name="Inventar", owner_sequence="Farm"))
     _kaputt = _b.tool_check()
-    _texte = " | ".join(f"{x['area']} {x['text']}" for x in _kaputt["befunde"])
+    _texte = " | ".join(f"{x['area']} {x['text']}" for x in _kaputt["findings"])
     check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texte)
     check("ein Scan ohne Erkennung ebenso", "keine aktiven Items" in _texte)
     check("Fehler und Hinweise werden getrennt gezaehlt",
-          _kaputt["fehler"] >= 1 and _kaputt["hints"] >= 1)
+          _kaputt["errors"] >= 1 and _kaputt["hints"] >= 1)
     # Gelesen wird von PLATTE, nicht aus dem, was die Reiter offen haben - sonst
     # meldete die Pruefung "sauber", weil sie die halben Daten gar nicht kennt.
     check("gelesen wird vom gespeicherten Stand", _kaputt["ok"])
@@ -139,9 +139,9 @@ try:
 
     _erg = _b.calib_reference({"number": 1, "point_id": 1})
     check("der Referenzpunkt laesst sich anfahren", _erg["ok"])
-    _K = _b.tool_data()["kalibrierung"]
+    _K = _b.tool_data()["calibration"]
     check("und ergibt den gemessenen Versatz",
-          _K["versatz"] == {"x": 40.0, "y": 30.0})
+          _K["offset"] == {"x": 40.0, "y": 30.0})
     check("die Vorschau zeigt, was sich aendern wuerde", len(_K["preview"]) == 3)
 
     # Der zweite Punkt muss ein anderer sein - sonst waere die Skalierung eine
@@ -153,7 +153,7 @@ try:
     check("der Versatz laesst sich von Hand setzen",
           _b.calib_offset({"x": 50, "y": 0})["ok"])
     check("und steht dann so da",
-          _b.tool_data()["kalibrierung"]["versatz"] == {"x": 50.0, "y": 0.0})
+          _b.tool_data()["calibration"]["offset"] == {"x": 50.0, "y": 0.0})
     check("Buchstaben statt Zahlen werden abgelehnt",
           _b.calib_offset({"x": "viel"})["ok"] is False)
 
@@ -161,7 +161,7 @@ try:
                               "mit_slots": False})
     check("angewendet wird mit Meldung", _erg["ok"] and "Kalibriert" in _erg["message"])
     check("und es entsteht eine Sicherung vorher",
-          bool(_erg["sicherung"]) and _P(_erg["sicherung"]).exists())
+          bool(_erg["backup"]) and _P(_erg["backup"]).exists())
 
     _punkte = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["points"]}
     check("jeder Punkt ist um den Versatz gewandert",
@@ -176,7 +176,7 @@ try:
     check("die Slots bleiben stehen, wenn ihr Haken aus ist",
           tuple(_slot["scan_region"]) == (10, 20, 70, 80))
     check("nach dem Anwenden laeuft keine Kalibrierung mehr",
-          _b.tool_data()["kalibrierung"] == {})
+          _b.tool_data()["calibration"] == {})
 finally:
     _os.chdir(_cwd)
 
@@ -191,7 +191,7 @@ try:
     check("ein Transform ohne Wirkung wird abgelehnt",
           _b.calib_apply({})["ok"] is False)
     check("und die Ansicht sagt es vorher",
-          _b.tool_data()["kalibrierung"]["identity"] is True)
+          _b.tool_data()["calibration"]["identity"] is True)
 
     # Abbrechen darf nichts geschrieben haben - bis dahin steht alles nur im Kopf.
     _sequenzdatei = _P("sequences/farm/sequence.json")
@@ -201,7 +201,7 @@ try:
     check("abbrechen raeumt die Kalibrierung weg", _b.calib_cancel()["ok"])
     check("und hat nichts geschrieben",
           _sequenzdatei.read_text(encoding="utf-8") == _vorher)
-    check("danach ist der Stand leer", _b.tool_data()["kalibrierung"] == {})
+    check("danach ist der Stand leer", _b.tool_data()["calibration"] == {})
 
     # Ein unbekannter Punkt ist kein Grund, irgendetwas zu rechnen.
     check("ein Punkt, den es nicht gibt, wird abgelehnt",
@@ -224,7 +224,7 @@ section("Studio-Werkzeuge: die Vorschau zaehlt keine Stelle doppelt")
 try:
     _sand, _b = _sandkasten()
     _b.calib_reference({"number": 1, "point_id": 1})
-    _was = [z["was"] for z in _b.tool_data()["kalibrierung"]["preview"]]
+    _was = [z["what"] for z in _b.tool_data()["calibration"]["preview"]]
     # Die Sequenz hat zwei Klick-Schritte, beide ueber `point_id`. Ihre x/y sind
     # abgeleitet und werden NICHT einzeln umgerechnet - sie hier zu listen hiesse,
     # dieselbe Aenderung zweimal zu versprechen.
@@ -258,14 +258,14 @@ try:
                                "description": "sichtbar"})["ok"])
     _auftrag = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
-          _auftrag is not None and _auftrag["command"] == "aufnahme")
+          _auftrag is not None and _auftrag["command"] == "recording")
     check("alle Angaben stehen vor dem Spielen fest",
           _auftrag["arguments"] == {"name": "aufnahme_ui", "cycles": 3,
                                      "description": "sichtbar"})
     check("auch Stoppen geht sichtbar im Studio", _b.recording_stop()["ok"])
     _stopp = _bf.fetch_command()
     check("und sendet den eigenen Stopp-Befehl",
-          _stopp is not None and _stopp["command"] == "aufnahme_stop")
+          _stopp is not None and _stopp["command"] == "recording_stop")
     _html = (_web / "index.html").read_text(encoding="utf-8")
     check("der sichtbare Knopf steht unter Notiz und ueber den Punkten",
           _html.index('id="seq-info"') < _html.index('id="btn-recording"') <
@@ -284,7 +284,7 @@ try:
                                        "wzWatchRecording")))
     from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
-          _b.tool_data()["aufnahme_tasten"] ==
+          _b.tool_data()["recording_keys"] ==
           [list(line) for line in RECORDING_HOTKEYS])
 finally:
     _os.chdir(_cwd)
@@ -334,7 +334,7 @@ try:
           _auftrag and _auftrag["command"] == "block_test"
           and _auftrag["arguments"]["phase"] == "loop"
           and _auftrag["arguments"]["block"] == 0)
-    _erg = _b.run_command({"befehl": "skip_step"})
+    _erg = _b.run_command({"command": "skip_step"})
     _auftrag = _bf.fetch_command()
     check("der echte Block-Skip wird ohne KeyError abgelegt und bestätigt",
           _auftrag and _auftrag["command"] == "skip_step"
@@ -348,7 +348,7 @@ from autoclicker.handlers import COMMANDS as _BEFEHLE_NEU
 check("Studio und Hauptprozess kennen dieselben Befehle",
       sorted(_SB.ALL_COMMANDS) == sorted(_BEFEHLE_NEU))
 check("Warte- und Block-Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
-      {"skip", "skip_step", "finish", "start_manuell", "manuell_aktion", "zeitplan"}
+      {"skip", "skip_step", "finish", "start_manual", "manual_action", "schedule"}
       <= set(_SB.RUN_COMMANDS))
 check("alle Laufentscheidungen haben sichtbare Knöpfe",
       all(text in _app for text in ("Warten überspringen", "Block überspringen",
@@ -392,7 +392,7 @@ _inspektor_ui = _app[_app.index("function renderInspector"):
 # ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann — und ein
 # Punkt, den andere Blöcke mitbenutzen (wer, nicht warum; das steht im ⓘ).
 check("alle Block-Typen haben nur noch sechs begründete offene Zustandsmeldungen",
-      _inspektor_ui.count('ziel.appendChild(el("p", {class: "hint') == 6)
+      _inspektor_ui.count('target.appendChild(el("p", {class: "hint') == 6)
 check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
       all(text in _inspektor_ui for text in (
           "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",
@@ -513,7 +513,7 @@ try:
     check("gestartet wird ueber den Briefkasten", _b.reclick_start()["ok"])
     _auftrag = _bf.fetch_command()
     check("und der Befehl heisst 'nachklick'",
-          _auftrag is not None and _auftrag["command"] == "nachklick")
+          _auftrag is not None and _auftrag["command"] == "reclick")
     # DIE Sache, die hier schiefgehen kann: der Hauptprozess hat womoeglich eine
     # ganz andere Sequenz geladen. Ohne die Datei klickt man eine Runde lang die
     # Punkte einer fremden Sequenz nach - und merkt es nicht, weil jeder Klick
@@ -602,17 +602,17 @@ try:
     check("gesetzt wird erst mal nichts", _erg["ok"] is False)
     check("stattdessen kommt eine Rueckfrage", _erg.get("confirm") is True)
     check("mit beiden Farben zum Vergleich",
-          _erg["expected"] == [10, 200, 30] and _erg["gemessen"] == [200, 10, 30])
+          _erg["expected"] == [10, 200, 30] and _erg["measured"] == [200, 10, 30])
     check("und dem Abstand samt erlaubter Toleranz",
-          _erg["abstand"] == 190 and _erg["tolerance"] >= 0)
-    check("die Kalibrierung ist noch leer", _b.tool_data()["kalibrierung"] == {})
+          _erg["gap"] == 190 and _erg["tolerance"] >= 0)
+    check("die Kalibrierung ist noch leer", _b.tool_data()["calibration"] == {})
 
     # Bestaetigt gilt der Punkt trotzdem - manchmal hat sich das Spiel geaendert.
     _erg = _b.calib_reference({"number": 1, "point_id": 1, "confirmed": True})
     check("bestaetigt wird er gesetzt", _erg["ok"])
     check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["message"])
     check("jetzt steht die Kalibrierung",
-          _b.tool_data()["kalibrierung"]["versatz"] == {"x": 40.0, "y": 30.0})
+          _b.tool_data()["calibration"]["offset"] == {"x": 40.0, "y": 30.0})
 finally:
     _os.chdir(_cwd)
 
@@ -651,8 +651,8 @@ try:
     _bf.COMMAND_PATH = _P("befehl.json")
     check("beenden geht ueber den Briefkasten", _b.reclick_end()["ok"])
     _auftrag = _bf.fetch_command()
-    check("und heisst 'nachklick_stop'",
-          _auftrag is not None and _auftrag["command"] == "nachklick_stop")
+    check("und heisst 'reclick_stop'",
+          _auftrag is not None and _auftrag["command"] == "reclick_stop")
 
     # Der Hauptprozess sagt, was er vorgefunden hat - hier wird nicht geraten.
     from autoclicker.handlers import command_reclick_stop as _bns

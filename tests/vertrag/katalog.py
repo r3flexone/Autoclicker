@@ -235,18 +235,18 @@ try:
     _a = _b.scan_catalog_apply()
     check("bei ausgeschaltetem Schalter wird der Schalter genannt",
           "benutzt den Katalog nicht" in _a["status"]["text"])
-    check("und die Momentaufnahme sagt: Katalog aus", _b.scan_data()["katalog_an"] is False)
+    check("und die Momentaufnahme sagt: Katalog aus", _b.scan_data()["catalog_on"] is False)
 
     _b.scan_set({"name": "Inv", "field": "use_catalog", "value": True})
     check("der Schalter laesst sich setzen", _b.scans["Inv"].use_catalog is True)
-    check("und die Momentaufnahme zieht mit", _b.scan_data()["katalog_an"] is True)
+    check("und die Momentaufnahme zieht mit", _b.scan_data()["catalog_on"] is True)
 
     # 3. Schalter an, aber keine Datei eingetragen.
     _cfgmod.CONFIG.scan_catalog_file = ""
     _a = _b.scan_catalog_apply()
     check("ohne Datei wird die Datei genannt", "Katalog-Datei" in _a["status"]["text"])
     check("ohne Datei ist der Knopf in der Ansicht aus",
-          _b.scan_data()["katalog_an"] is False)
+          _b.scan_data()["catalog_on"] is False)
 
     # --- Jetzt greift es ---
     _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)

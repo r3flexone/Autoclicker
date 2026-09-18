@@ -224,7 +224,7 @@ def coord_context(x: int, y: int) -> str:
     elif y < screen_h * 0.66:
         v_pos = "mitte"
     else:
-        v_pos = "unten"
+        v_pos = "bottom"
 
     if v_pos == "mitte" and h_pos == "mitte":
         pos_str = "Mitte"

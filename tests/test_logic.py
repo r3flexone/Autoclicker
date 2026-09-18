@@ -1783,7 +1783,7 @@ section("Farb-Bedingung an Taste/Scroll (nicht nur am Klick)")
 _orig_c3, _orig_k3 = _RS.safe_click, _RS.safe_key
 _orig_s3, _orig_shot3 = _RS.safe_scroll, _RS.take_screenshot
 _orig_p3, _orig_f3 = _RS.PILLOW_AVAILABLE, _RS.check_failsafe
-_akt = {"klick": [], "taste": [], "scroll": []}
+_akt = {"klick": [], "action_key": [], "scroll": []}
 _shots = []
 
 class _Pix2:
@@ -1791,7 +1791,7 @@ class _Pix2:
     def getpixel(self, _xy): return self._rgb
 
 _RS.safe_click = _RA.safe_click = lambda st, x, y, label="": (_akt["klick"].append((x, y)), True)[1]
-_RS.safe_key = _RA.safe_key = lambda st, k, label="": (_akt["taste"].append(k), True)[1]
+_RS.safe_key = _RA.safe_key = lambda st, k, label="": (_akt["action_key"].append(k), True)[1]
 _RS.safe_scroll = _RA.safe_scroll = lambda st, c, x=None, y=None, label="": (_akt["scroll"].append(c), True)[1]
 _RS.PILLOW_AVAILABLE = True
 _RS.check_failsafe = lambda st: False
@@ -1818,7 +1818,7 @@ try:
     for _name, _schritt, _feld in [
         ("Klick", _SS(x=1, y=2, delay_before=0, name="K", wait_condition=_wc3()), "klick"),
         ("Taste", _SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
-                      wait_condition=_wc3()), "taste"),
+                      wait_condition=_wc3()), "action_key"),
         ("Scroll", _SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
                        wait_condition=_wc3()), "scroll"),
     ]:
@@ -1829,7 +1829,7 @@ try:
     # Trifft zu -> Aktion laeuft
     _, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
                                wait_condition=_wc3()), trifft=True)
-    check("Taste-Schritt: Aktion laeuft bei Treffer", _was["taste"] == ["enter"])
+    check("Taste-Schritt: Aktion laeuft bei Treffer", _was["action_key"] == ["enter"])
     _, _was = _mit_trigger(_SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
                                wait_condition=_wc3()), trifft=True)
     check("Scroll-Schritt: Aktion laeuft bei Treffer", _was["scroll"] == [-3])
@@ -1840,7 +1840,7 @@ try:
                                else_config=_EC2(action="click", x=99, y=99, name="E")),
                            trifft=False)
     check("Taste-Schritt: else greift und ersetzt die Taste",
-          _was["taste"] == [] and _was["klick"] == [(99, 99)])
+          _was["action_key"] == [] and _was["klick"] == [(99, 99)])
 
     # Ein Scan-Block, dessen Konfiguration noch fehlt ("" statt None), darf NICHT
     # bis zum Klick durchfallen. Genau das tat er: alle Scan-Zweige des Dispatchers
@@ -1859,7 +1859,7 @@ try:
     _geprueft, _was = _mit_trigger(_SS(x=0, y=0, delay_before=0, name="T",
                                        key_press="enter"), trifft=True)
     check("Taste ohne Bedingung: kein Screenshot, Taste laeuft",
-          not _geprueft and _was["taste"] == ["enter"])
+          not _geprueft and _was["action_key"] == ["enter"])
 
     # Anzeige muss die Bedingung zeigen, sonst ist sie im Editor unsichtbar
     check("Anzeige: Taste-Schritt zeigt die Farb-Bedingung",
@@ -3343,7 +3343,7 @@ _mit = _Mitschnitt()
 _echt_out = sys.stdout
 try:
     sys.stdout = _mit
-    _sl("kurz")
+    _sl("short")
     _sl("[Loop] Schritt 2/50 | " + "X" * 90)     # laenger als die alten 80 Spalten
     _sl("danach wieder kurz")
 finally:
@@ -3439,11 +3439,11 @@ try:
     _esd2()
     # Die Sequenz ist eine Besitzeinheit: sequence.json in ihrem eigenen Ordner,
     # Punkte im Feld `points` derselben Datei.
-    _aordner = Path(_SQD2) / "aufnahme"
+    _aordner = Path(_SQD2) / "recording"
     _aordner.mkdir(parents=True, exist_ok=True)
     _adatei = _aordner / "sequence.json"
     _adatei.write_text(json.dumps({
-        "name": "aufnahme", "total_cycles": 1,
+        "name": "recording", "total_cycles": 1,
         "points": [{"id": 5, "x": 100, "y": 200, "name": "Bank"}],
         "init_steps": [], "end_steps": [],
         "loop_phases": [{"name": "Loop", "repeat": 1, "steps": [
@@ -4282,7 +4282,7 @@ def _namen8(b, phase):
 
 def _waehle8(b, phase, *lines):
     for i, line in enumerate(lines):
-        b.select({"phase": phase, "row": line, "modus": "einzeln" if i == 0 else "dazu"})
+        b.select({"phase": phase, "row": line, "mode": "einzeln" if i == 0 else "dazu"})
 
 
 def _zieh8(b, von_phase, from_row, nach_phase, to_row):
@@ -4419,17 +4419,17 @@ check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
 # nicht mehr eindeutig - deshalb faengt ein Klick in einer anderen Spalte neu an.
 _b8 = _bruecke8()
 _waehle8(_b8, LOOP8, 0, 1)
-_b8.select({"phase": INIT8, "row": 0, "modus": "dazu"})
+_b8.select({"phase": INIT8, "row": 0, "mode": "dazu"})
 check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
       _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
 
 # --- Auswahl muss sich ebenso leicht wieder abwählen lassen ---
 _b8 = _bruecke8()
-_b8.select({"phase": LOOP8, "row": 1, "modus": "einzeln"})
-_b8.select({"phase": LOOP8, "row": 3, "modus": "area"})
+_b8.select({"phase": LOOP8, "row": 1, "mode": "einzeln"})
+_b8.select({"phase": LOOP8, "row": 3, "mode": "area"})
 check("Umschalt-Klick waehlt den Bereich ab dem festen Anker",
       _b8.sel_rows == {1, 2, 3})
-_b8.select({"phase": LOOP8, "row": 3, "modus": "area"})
+_b8.select({"phase": LOOP8, "row": 3, "mode": "area"})
 check("derselbe Umschalt-Klick waehlt den Bereich wieder ab",
       _b8.sel_lane is None and _b8.sel_rows == set())
 
@@ -4447,7 +4447,7 @@ check("eine Wartezeit lässt sich für die Auswahl gemeinsam setzen",
       == [0.5, 0, 0.5, 0, 0.5])
 check("der Snapshot liefert den gemeinsamen Wert für den Sammel-Inspektor",
       _b8.snapshot()["selection"]["delay_before"] == 0.5
-      and not _b8.snapshot()["selection"]["delay_before_gemischt"])
+      and not _b8.snapshot()["selection"]["delay_before_mixed"])
 
 
 
@@ -4479,7 +4479,7 @@ def _bruecke9():
 # --- Farb-Trigger setzen und wieder wegnehmen ---
 _b9, _s9 = _bruecke9()
 check("ohne Bedingung meldet die Auswahl 'kein Trigger'", _tn8(_s9.wait_condition) == _TKEIN8)
-_b9.block_trigger({"wahl": _TDA8})
+_b9.block_trigger({"choice": _TDA8})
 check("'warte bis Farbe DA' legt die Bedingung an", _s9.wait_condition is not None)
 check("und nimmt Stelle UND Farbe aus dem Punkt des Schritts",
       _s9.wait_condition.point_id == 1
@@ -4487,13 +4487,13 @@ check("und nimmt Stelle UND Farbe aus dem Punkt des Schritts",
       and _s9.wait_condition.color == (1, 2, 3))
 check("die Momentaufnahme zeigt denselben Zustand an",
       _b9.snapshot()["block"]["trigger"] == _TDA8)
-_b9.block_trigger({"wahl": _TWEG8})
+_b9.block_trigger({"choice": _TWEG8})
 check("Umschalten auf WEG dreht nur die Richtung",
       _s9.wait_condition.until_gone is True and _s9.wait_condition.point_id == 1)
-_b9.block_trigger({"wahl": _TWEG8, "pruefen": True})
+_b9.block_trigger({"choice": _TWEG8, "pruefen": True})
 check("'nur pruefen' ist eine eigene Eigenschaft, kein vierter Zustand",
       _s9.wait_condition.check_only is True and _s9.wait_condition.until_gone is True)
-_b9.block_trigger({"wahl": _TKEIN8})
+_b9.block_trigger({"choice": _TKEIN8})
 check("'kein Trigger' entfernt die Bedingung wieder", _s9.wait_condition is None)
 
 # --- Ohne Punkt gibt es nichts zu pruefen ---
@@ -4501,14 +4501,14 @@ check("'kein Trigger' entfernt die Bedingung wieder", _s9.wait_condition is None
 # gegen die es auch keinen Rueckfallwert bei point_id gibt.
 _b9, _s9 = _bruecke9()
 _s9.point_id = None
-_zustand9 = _b9.block_trigger({"wahl": _TDA8})
+_zustand9 = _b9.block_trigger({"choice": _TDA8})
 check("ohne Punkt entsteht KEINE Bedingung auf (0,0)", _s9.wait_condition is None)
 check("und die Ablehnung wird begruendet",
       "Punkt" in _zustand9["status"]["text"] and _zustand9["status"]["kind"] == "warn")
 
 # --- Die Nachpruefung ist dieselbe Bedingung, nur danach ---
 _b9, _s9 = _bruecke9()
-_b9.block_trigger({"welche": "verify", "wahl": _TDA8})
+_b9.block_trigger({"which": "verify", "choice": _TDA8})
 check("die Nachpruefung laesst sich genauso setzen",
       _s9.verify_condition is not None and _s9.verify_condition.point_id == 1)
 check("und laesst den Vor-Trigger in Ruhe", _s9.wait_condition is None)
@@ -4564,7 +4564,7 @@ _b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
 _fehler10, _typen10 = [], []
 for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["typ"])
+        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["type_key"])
     except Exception as _e10:                                    # noqa: BLE001
         _fehler10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
 check("jeder Block-Typ laesst sich anzeigen", _fehler10 == [])
@@ -4578,8 +4578,8 @@ check("und wird als das erkannt, was er ist",
 _b10.select({"phase": 1, "row": 0})
 _fehler10b = []
 for _t10 in [t["key"] for t in _b10.snapshot()["types"]]:
-    _z10 = _b10.block_set_type({"typ": _t10})
-    if _z10["block"]["typ"] != _t10:
+    _z10 = _b10.block_set_type({"type_key": _t10})
+    if _z10["block"]["type_key"] != _t10:
         _fehler10b.append(_t10)
 check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 
@@ -4590,8 +4590,8 @@ check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 # den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
 # block_trigger schon hatte.
 _b10.select({"phase": 1, "row": 0})
-_b10.block_set_type({"typ": "click"})
-_b10.block_set_type({"typ": "wait_click"})
+_b10.block_set_type({"type_key": "click"})
+_b10.block_set_type({"type_key": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
 check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
       _wc10 is not None and _wc10.point_id == 1)
@@ -4600,11 +4600,11 @@ check("gespeichert wird auch hier die Referenz, keine Farb-Kopie",
       _d10b.get("wait_point_id") == 1 and _d10b.get("wait_pixel") is None
       and _d10b.get("wait_color") is None)
 _b10.select({"phase": 1, "row": 1})            # Taste, ohne Punkt
-_b10.block_set_type({"typ": "click"})
-_zustand10 = _b10.block_set_type({"typ": "wait_click"})
+_b10.block_set_type({"type_key": "click"})
+_zustand10 = _b10.block_set_type({"type_key": "wait_click"})
 check("ohne Punkt wird FARBE+KLICK abgelehnt",
       _seq10.loop_phases[0].steps[1].wait_condition is None
-      and _zustand10["block"]["typ"] == "click")
+      and _zustand10["block"]["type_key"] == "click")
 check("und auch das wird begruendet",
       _zustand10["status"]["kind"] == "warn" and "Punkt" in _zustand10["status"]["text"])
 
@@ -4708,7 +4708,7 @@ try:
     _b14 = _SB8(_seq14, Path("sequences/lauf/sequence.json"), "sequences")
     _b14.board.total_cycles = 7          # ungespeicherte Aenderung
     _b14._dirty = True
-    _zustand14 = _b14.run_command({"befehl": "start"})
+    _zustand14 = _b14.run_command({"command": "start"})
     check("der Start speichert die offene Sequenz zuerst",
           _b14._dirty is False and Path("sequences/lauf/sequence.json").exists())
     _auftrag14 = _bf13.fetch_command()
@@ -4723,14 +4723,14 @@ try:
     # Scheitert das Speichern, wird NICHT gestartet: sonst liefe die alte Fassung.
     _b14.board.name = ""
     _b14._dirty = True
-    _zustand14b = _b14.run_command({"befehl": "start"})
+    _zustand14b = _b14.run_command({"command": "start"})
     check("ohne Sequenz-Namen faellt der Start aus",
           _zustand14b["status"]["kind"] == "err" and _bf13.fetch_command() is None)
 
     # Stopp und Pause gehen ohne Speichern durch - sie betreffen den Lauf, nicht
     # die Datei.
     _b14.board.name = "Lauf"
-    _b14.run_command({"befehl": "stop"})
+    _b14.run_command({"command": "stop"})
     check("Stopp braucht kein Speichern", _bf13.fetch_command()["command"] == "stop")
     # --- Die Probe: Maus auf die Stelle des gewaehlten Blocks ---
     _b14.points = [_PP8(id=1, x=10, y=20, name="Bank", color=(1, 2, 3))]
@@ -4738,7 +4738,7 @@ try:
     _b14.point_show()
     _zeig14 = _bf13.fetch_command()
     check("die Probe schickt Stelle, Punkt und Farbe mit",
-          _zeig14 is not None and _zeig14["command"] == "zeigen"
+          _zeig14 is not None and _zeig14["command"] == "show"
           and _zeig14["arguments"]["x"] == 10 and _zeig14["arguments"]["y"] == 20
           and _zeig14["arguments"]["point"] == 1
           and _zeig14["arguments"]["color"] == [1, 2, 3])
@@ -4750,7 +4750,7 @@ try:
           _bf13.fetch_command() is None and _zustand14d["status"]["kind"] == "warn")
     _b14.select({"phase": 1, "row": 0})
 
-    _zustand14c = _b14.run_command({"befehl": "tanzen"})
+    _zustand14c = _b14.run_command({"command": "tanzen"})
     check("ein erfundener Befehl wird abgelehnt",
           _zustand14c["status"]["kind"] == "err" and _bf13.fetch_command() is None)
 
@@ -4758,7 +4758,7 @@ try:
     # leert den Kasten. Liegt der Befehl noch, hoert niemand zu - dann darf im
     # Studio nicht "gestartet" stehen bleiben.
     check("ein geleerter Briefkasten heisst: angekommen", _b14.command_pending() is False)
-    _b14.run_command({"befehl": "pause"})
+    _b14.run_command({"command": "pause"})
     check("ein liegengebliebener Befehl ist erkennbar", _b14.command_pending() is True)
     _bf13.fetch_command()
     check("und nach dem Abholen wieder nicht", _b14.command_pending() is False)
@@ -4795,25 +4795,25 @@ check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
 # er weg. Was die Chips koennen, steht hier - denn daran haengt, dass der zweite
 # Weg entbehrlich ist.
 _b13, _s13 = _bruecke9()
-_b13.block_trigger({"wahl": _TDA8})
+_b13.block_trigger({"choice": _TDA8})
 check("Ausgangslage: Farbe+Klick mit Trigger",
-      _b13.snapshot()["block"]["typ"] == "wait_click")
+      _b13.snapshot()["block"]["type_key"] == "wait_click")
 
-_b13.block_set_type({"typ": "wait"})
+_b13.block_set_type({"type_key": "wait"})
 check("der Chip WARTEN macht daraus einen Warte-Block",
-      _b13.snapshot()["block"]["typ"] == "wait"
+      _b13.snapshot()["block"]["type_key"] == "wait"
       and _b13.snapshot()["block"]["wait_only"] is True)
 check("und laesst den Farb-Trigger stehen", _s13.wait_condition is not None)
 
-_b13.block_set_type({"typ": "wait_click"})
+_b13.block_set_type({"type_key": "wait_click"})
 check("der Chip FARBE+KLICK ist der verlustfreie Weg zurueck",
-      _b13.snapshot()["block"]["typ"] == "wait_click"
+      _b13.snapshot()["block"]["type_key"] == "wait_click"
       and _s13.wait_condition is not None and _s13.wait_condition.point_id == 1)
 
 # KLICK verliert den Trigger - das ist keine Nebenwirkung, sondern die Bedeutung
 # von KLICK. Nur deshalb braucht es FARBE+KLICK als zweiten Rueckweg.
-_b13.block_set_type({"typ": "wait"})
-_b13.block_set_type({"typ": "click"})
+_b13.block_set_type({"type_key": "wait"})
+_b13.block_set_type({"type_key": "click"})
 check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is None)
 
 # Die Bruecke konnte das alles schon vorher - der Fehler sass in der ANSICHT, und
@@ -4981,13 +4981,13 @@ try:
     check("ein Scan ohne Konfiguration verhindert das Speichern NICHT",
           _b12.filepath.exists())
     check("Speichern merkt die zuletzt verwendete Sequenz",
-          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
+          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["folder"]
           == _b12.filepath.parent.name)
     check("gemeldet wird er trotzdem", _zustand12["status"]["kind"] == "warn")
     check("und die Meldung nennt die Scan-Art",
           "ITEM-SCAN" in _zustand12["status"]["text"])
     check("die Karte warnt weiterhin",
-          _zustand12["phases"][1]["blocks"][0]["warnung"] == "Name fehlt")
+          _zustand12["phases"][1]["blocks"][0]["warning"] == "Name fehlt")
 
     # Der leere Name muss die Datei ueberleben - sonst waere der Block beim
     # naechsten Oeffnen ein Klick-Block und die Stelle im Ablauf falsch.
@@ -5285,21 +5285,21 @@ try:
 
     check("die Uebersicht findet jede Datei", len(_liste16) == 3)
     check("auch die kaputte - als kaputt, nicht als fehlend",
-          any(e.get("defekt") for e in _liste16))
+          any(e.get("broken") for e in _liste16))
     check("die Kennzahlen stimmen mit der Datei ueberein",
-          _nach16["gross"]["schritte"] == 4 and _nach16["gross"]["init"] == 1
+          _nach16["gross"]["steps"] == 4 and _nach16["gross"]["init"] == 1
           and len(_nach16["gross"]["phases"]) == 2)
     check("Wiederholungen und Startzeit stehen an der Phase",
-          _nach16["gross"]["phases"][0]["wiederholungen"] == 5
+          _nach16["gross"]["phases"][0]["repeat"] == 5
           and _nach16["gross"]["phases"][1]["start"] == "08:30")
     check("die offene Sequenz ist als offen markiert",
           _nach16["gross"]["open"] is True and _nach16["klein"]["open"] is False)
     # Der Scan ohne Konfiguration ist die eine Warnung, die man in der Uebersicht
     # sehen will - sonst sucht man den Block hinterher in vier Phasen.
     check("ein Scan ohne Konfiguration wird gemeldet",
-          len(_nach16["gross"]["warnungen"]) == 1
-          and "ITEM-SCAN" in _nach16["gross"]["warnungen"][0])
-    check("und eine saubere Sequenz meldet nichts", _nach16["klein"]["warnungen"] == [])
+          len(_nach16["gross"]["warnings"]) == 1
+          and "ITEM-SCAN" in _nach16["gross"]["warnings"][0])
+    check("und eine saubere Sequenz meldet nichts", _nach16["klein"]["warnings"] == [])
     check("eine kaputte Datei bringt die Uebersicht nicht um",
           Path(_nach16["kaputt"]["file"]) == _kaputt16)
 
@@ -5310,10 +5310,10 @@ try:
                  Path("sequences") / "gross" / "sequence.json", "sequences")
     _b16b.load({"name": "gross"})
     check("Laden merkt die zuletzt verwendete Sequenz",
-          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["ordner"]
+          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["folder"]
           == "gross")
     check("Speichern und Uebersicht benutzen dieselbe Regel",
-          _b16b._scan_without_name() == _nach16["gross"]["warnungen"][0])
+          _b16b._scan_without_name() == _nach16["gross"]["warnings"][0])
     check("und ohne leeren Scan sagen beide nichts",
           _sw16(_s2b16(_SEQ8(name="x"))) == [] and _b16._scan_without_name() is None)
 
@@ -5335,7 +5335,7 @@ try:
         {"active": True, "sequence": "S", "stamp": _time16.time() - 60}), encoding="utf-8")
     _verwaist16 = _b16.run_status()
     check("ein alter Stand gilt als verwaist",
-          _verwaist16 == {"active": False, "verwaist": True})
+          _verwaist16 == {"active": False, "orphaned": True})
 
     # --- Die Phasen-Uebersicht: alle Phasen, nicht nur die laufende ---
     # Die Liste steht im Laufstatus, weil die Ansicht sie sonst aus der GEOEFFNETEN
@@ -5390,9 +5390,9 @@ try:
                    _PP8(id=3, x=33, y=33, name="C", color=None)]
     _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
     _b20.select({"phase": _lane20, "row": 0})
-    for _welche20, _soll20 in (("klick", 11), ("trigger", 22), ("else", 33)):
+    for _welche20, _soll20 in (("click", 11), ("trigger", 22), ("else", 33)):
         _bf19.discard_command()
-        _b20.point_show({"welche": _welche20})
+        _b20.point_show({"which": _welche20})
         _auftrag20 = _bf19.fetch_command()
         check(f"'{_welche20}' zeigt auf die richtige Stelle",
               (_auftrag20 or {}).get("arguments", {}).get("x") == _soll20)
@@ -5485,16 +5485,16 @@ try:
         _SS(delay_before=0, boss_scan="drache")])]), Path("sequences/F.json"), "sequences")
     _karte16 = [b for p in _b16c.snapshot()["phases"] for b in p["blocks"]][0]
     check("die Live-Ansicht faerbt wie das Board",
-          _laufend16.get("block_farbe") == _karte16["color"] is not None)
+          _laufend16.get("block_color") == _karte16["color"] is not None)
     check("und traegt dieselbe Marke",
-          _laufend16.get("block_marke") == _karte16["label"] == "BOSS-SCAN")
+          _laufend16.get("block_badge") == _karte16["label"] == "BOSS-SCAN")
 
     # Ohne Typ wird keine Farbe erfunden - eine Statusdatei aus einer aelteren
     # Fassung hat das Feld nicht.
     Path(_rsf16).write_text(json.dumps(
         {"active": True, "sequence": "S", "stamp": _time16.time()}), encoding="utf-8")
     check("ohne Typ bleibt die Kopfzeile neutral",
-          "block_farbe" not in _b16.run_status())
+          "block_color" not in _b16.run_status())
 
     # Und die Klassifikation ist EINE: die Laufzeit schreibt genau den Schluessel,
     # den das Studio faerbt. Zwei Kopien der Regel waeren zwei Stellen, an denen
@@ -5546,7 +5546,7 @@ try:
     check("der zweite Schreiber loescht den ersten nicht",
           _gelesen16.get("phase") == "A" and _gelesen16.get("block") == 3)
     check("die Zaehler kommen aus dem State",
-          _gelesen16.get("counters", {}).get("klicks") == 7)
+          _gelesen16.get("counters", {}).get("clicks") == 7)
 
     # Die Drossel wirft den SCHREIBVORGANG weg, nicht die Information: sonst zeigte
     # der naechste Schreibvorgang einen Block, der laengst durch ist.
@@ -5662,7 +5662,7 @@ try:
     _cfg16 = _lc16()
     _oe16 = _b16._without_else()
     check("das Studio nennt den Timeout aus der Config",
-          _oe16.get("sekunden") == _cfg16.pixel_wait_timeout)
+          _oe16.get("seconds") == _cfg16.pixel_wait_timeout)
 
     class _StCfg16:
         config = _cfg16
@@ -5672,7 +5672,7 @@ try:
     # eine neue Timeout-Aktion vergessen werden kann - und die eine davon sagte
     # dem Nutzer dann etwas anderes, als die Sequenz spaeter tut.
     check("Editor und Laufzeit nennen dieselbe Folge",
-          _oe16.get("folge") == _stp16._timeout_consequence(_StCfg16(), SequenceStep(x=1, y=2)))
+          _oe16.get("consequence") == _stp16._timeout_consequence(_StCfg16(), SequenceStep(x=1, y=2)))
     check("jede Timeout-Aktion hat einen Text",
           all(a in _TT16 for a in ("skip_cycle", "restart", "stop")))
 
@@ -5680,7 +5680,7 @@ try:
     # ELSE ist die Antwort auf eine NICHT ERFUELLTE Bedingung. Ein reiner Klick
     # hat keine: er klickt, und danach geht es weiter. Ein ELSE daran ist eine
     # Zusage, die nichts einloest - deshalb sagt es die Oberflaeche.
-    from autoclicker.editors.sequence_studio.bridge import else_greift as _eg16
+    from autoclicker.editors.sequence_studio.bridge import else_applies as _eg16
     _faelle16 = {
         "Klick": (SequenceStep(x=1, y=2, delay_before=0), False),
         "Taste": (SequenceStep(delay_before=0, key_press="a"), False),
@@ -5711,7 +5711,7 @@ try:
         print("        falsch beurteilt: " + ", ".join(_falsch16))
 
     # Gegenprobe an der Laufzeit: JEDE Stelle, die else ausloest, muss zu einem
-    # Schritt gehoeren, den else_greift() als ausloesefaehig kennt. Geprueft am
+    # Schritt gehoeren, den else_applies() als ausloesefaehig kennt. Geprueft am
     # Quelltext - die Handler selbst laufen nur mit echtem Windows.
     _quelle16 = _insp16.getsource(_stp16)
     _ausloeser16 = _quelle16.count("execute_else_action(state, step") + \
@@ -5732,25 +5732,25 @@ try:
     _lane17 = next(i for i, ln in enumerate(_b17.board.lanes) if ln.steps)
     _b17.select({"phase": _lane17, "row": 0})
     _schritt17 = _b17.board.lanes[_lane17].steps[0]
-    _z17 = _b17.block_set_type({"typ": "click"})
+    _z17 = _b17.block_set_type({"type_key": "click"})
     check("Typwechsel ohne Ausloeser raeumt das ELSE weg",
           _schritt17.else_config is None)
     check("und sagt es", "ELSE entfernt" in _z17["status"]["text"])
     # Zurueck: der Abschnitt ist wieder da, aber leer - frisch auswaehlbar.
-    _b17.block_set_type({"typ": "wait_click"})
+    _b17.block_set_type({"type_key": "wait_click"})
     check("zurueckgestellt ist der Ausloeser wieder da",
           _schritt17.wait_condition is not None)
     check("...aber ohne ELSE", _b17._block_detail()["else_action"] == "")
 
     # Dasselbe ueber den Trigger-Schalter statt ueber den Typ.
     _b17.block_else({"action": "skip"})
-    _b17.block_trigger({"wahl": _TKEIN8})
+    _b17.block_trigger({"choice": _TKEIN8})
     check("Trigger entfernen raeumt das ELSE ebenfalls weg",
           _schritt17.else_config is None)
 
     # Ein ELSE, das weiterhin ausgeloest werden kann, bleibt unangetastet -
     # sonst raeumte der Aufraeumer genau das weg, wofuer er da ist.
-    _b17.block_trigger({"wahl": _TDA8})
+    _b17.block_trigger({"choice": _TDA8})
     _b17.block_else({"action": "restart"})
     _b17.block_set({"field": "name", "value": "neu"})
     check("ein wirksames ELSE bleibt", _schritt17.else_config is not None)
@@ -5768,8 +5768,8 @@ try:
     check("sie ist nicht mehr aktiv", _ende16.get("active") is False)
     check("nennt den Grund", _ende16.get("reason") == "alle Zyklen durchgelaufen")
     check("die gelaufenen Zyklen und die Dauer",
-          _ende16.get("gelaufen") == 12 and _ende16.get("duration") == 90.5)
-    check("die Zaehler", _ende16.get("counters", {}).get("klicks") == 7)
+          _ende16.get("elapsed_cycles") == 12 and _ende16.get("duration") == 90.5)
+    check("die Zaehler", _ende16.get("counters", {}).get("clicks") == 7)
     check("und die Sequenz", _ende16.get("sequence") == "S")
     # Wo Schluss war, bleibt drin; was einen MOMENT beschreibt, nicht: ein
     # "wartet auf Farbe" in einer Zusammenfassung waere eine Behauptung ueber
@@ -5788,7 +5788,7 @@ try:
     Path(_rsf16).write_text(json.dumps({"active": True, "sequence": "S",
                                         "stamp": _time16.time() - 600}), encoding="utf-8")
     check("ein alter AKTIVER Lauf gilt weiter als verwaist",
-          _b16.run_status().get("verwaist") is True)
+          _b16.run_status().get("orphaned") is True)
 
     # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
     # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
@@ -6160,7 +6160,7 @@ check("Kacheln nur bei enum - und enum nie ohne Kacheln",
 _bools17 = {f.name for f in _felder17(_AC17) if isinstance(f.default, bool)}
 _kaputt17 = []
 for _k17, _m17 in _META17.items():
-    for _feld17, _erwartet17 in ((_m17.dep, _bools17), (_m17.dep_nicht, _bools17),
+    for _feld17, _erwartet17 in ((_m17.dep, _bools17), (_m17.dep_not, _bools17),
                                  (_m17.dep_min, set(_namen17) - _bools17)):
         if _feld17 and _feld17 not in _erwartet17:
             _kaputt17.append(f"{_k17} -> {_feld17}")
@@ -6220,8 +6220,8 @@ try:
     # Ohne Datei: Standardwerte, kein Fehler, und der Pfad ist absolut.
     _gelesen17 = _b17.config_read()
     check("ohne config.json kommen die Standardwerte",
-          _gelesen17["values"]["click_per_point"] == 1 and not _gelesen17["fehler"])
-    check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["pfad"]))
+          _gelesen17["values"]["click_per_point"] == 1 and not _gelesen17["error"])
+    check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["path"]))
     check("die Beschreibungen kommen mit",
           _gelesen17["meta"]["click_per_point"]["label"] == "Klicks pro Punkt")
 
@@ -6238,7 +6238,7 @@ try:
     check("und der fremde Wert ist unangetastet",
           _datei17["window_focus_title"] == "Idle Clans X"
           and _datei17["scan_marker_count"] == 9)
-    check("nichts wurde korrigiert", _antwort17["korrekturen"] == [])
+    check("nichts wurde korrigiert", _antwort17["corrections"] == [])
     check("die Reihenfolge in der Datei folgt den Abschnitten",
           list(_datei17) == [k for _, keys in _gruppen17 for k in keys])
 
@@ -6252,8 +6252,8 @@ try:
     # Eine Korrektur wird gemeldet statt still hingenommen.
     _antwort17 = _b17.config_write({"values": {"scan_min_confidence": 1.5}})
     check("eine Korrektur wird zurueckgemeldet",
-          [k["key"] for k in _antwort17["korrekturen"]] == ["scan_min_confidence"]
-          and _antwort17["korrekturen"][0]["wurde"] == 0.8)
+          [k["key"] for k in _antwort17["corrections"]] == ["scan_min_confidence"]
+          and _antwort17["corrections"][0]["became"] == 0.8)
     check("und die Datei traegt den korrigierten Wert",
           json.loads(Path("config.json").read_text(encoding="utf-8"))["scan_min_confidence"] == 0.8)
 
@@ -6261,7 +6261,7 @@ try:
     # eine 600.0 daraus macht.
     _antwort17 = _b17.config_write({"values": {"pixel_show_delay": 1}})
     check("eine ganze Zahl in einem Kommafeld ist keine Korrektur",
-          _antwort17["korrekturen"] == [])
+          _antwort17["corrections"] == [])
 
     # Nichts zu tun ist kein Fehler, aber auch kein Schreibvorgang.
     check("ohne Werte wird nicht geschrieben", _b17.config_write({"values": {}})["ok"] is False)
@@ -6273,7 +6273,7 @@ try:
     check("eine unlesbare config.json wird nicht ueberschrieben",
           not _antwort17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
     check("und der Leser meldet sie statt Standardwerte zu behaupten",
-          bool(_b17.config_read()["fehler"]))
+          bool(_b17.config_read()["error"]))
 finally:
     _os.chdir(_cwd17)
 

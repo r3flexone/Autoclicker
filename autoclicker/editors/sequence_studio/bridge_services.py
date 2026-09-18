@@ -53,27 +53,27 @@ class BridgeServicesMixin:
                 # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
-                raus.append({"name": gespeicherter_name, "file": str(path), "defekt": True,
+                raus.append({"name": gespeicherter_name, "file": str(path), "broken": True,
                              "changed": changed, "open": path == self.filepath,
-                             "umfang": self._sequence_extent(path.parent)})
+                             "scope": self._sequence_extent(path.parent)})
                 continue
             raus.append({
                 "name": seq.name,
                 "file": str(path),
-                "defekt": False,
+                "broken": False,
                 "description": seq.description,
                 "cycles": seq.total_cycles,
                 "init": len(seq.init_steps),
                 "end": len(seq.end_steps),
-                "phases": [{"name": lp.name, "schritte": len(lp.steps),
-                            "wiederholungen": lp.repeat,
+                "phases": [{"name": lp.name, "steps": len(lp.steps),
+                            "repeat": lp.repeat,
                             "start": lp.scheduled_start or ""}
                            for lp in seq.loop_phases],
-                "schritte": seq.total_steps(),
+                "steps": seq.total_steps(),
                 "changed": changed,
                 "open": path == self.filepath,
-                "umfang": self._sequence_extent(path.parent),
-                "warnungen": scan_warnungen(sequence_to_board(seq)),
+                "scope": self._sequence_extent(path.parent),
+                "warnings": scan_warnungen(sequence_to_board(seq)),
             })
         return raus
 
@@ -106,7 +106,7 @@ class BridgeServicesMixin:
             except OSError:
                 n = 0
             if n:
-                raus.append({"kind": unter, "wort": eins if n == 1 else viele,
+                raus.append({"kind": unter, "word": eins if n == 1 else viele,
                              "count": n})
         return raus
 
@@ -222,30 +222,30 @@ class BridgeServicesMixin:
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
         # Farbe wartet, geht durch `execute_step`.
         if time.time() - float(zustand.get("stamp") or 0) > 5:
-            return {"active": False, "verwaist": True}
+            return {"active": False, "orphaned": True}
         # Typ → Farbe und Marke: die Laufzeit schreibt nur den Schlüssel, weil
         # `runtime/` die Ansicht nicht kennen darf. Übersetzt wird hier, damit
         # der laufende Block dieselbe Farbe trägt wie seine Karte im Board — die
         # Farbe ist die Legende, und sie muss in beiden Ansichten dieselbe sein.
         typ = zustand.get("block_set_type")
         if typ in BLOCK_COLORS:
-            zustand["block_farbe"] = _hex(BLOCK_COLORS[typ])
-            zustand["block_marke"] = BLOCK_LABELS[typ]
+            zustand["block_color"] = _hex(BLOCK_COLORS[typ])
+            zustand["block_badge"] = BLOCK_LABELS[typ]
         return zustand
 
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `COMMANDS`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
     # auseinander, tut ein Knopf einfach nichts und niemand merkt es.
-    RUN_COMMANDS = ("start", "start_manuell", "stop", "pause", "skip", "skip_step", "finish",
-                    "manual", "manuell_aktion", "zeitplan")
+    RUN_COMMANDS = ("start", "start_manual", "stop", "pause", "skip", "skip_step", "finish",
+                    "manual", "manual_action", "schedule")
     # Alles, was das Studio dem Hauptprozess sagen darf. „zeigen" steuert keinen
     # Lauf, geht aber denselben Weg — der Test haelt DIESE Liste gegen `COMMANDS`.
     # „nachklick" ist der Werkzeuge-Reiter: die Klick-Runde braucht einen
     # systemweiten Maus-Hook und muss deshalb drueben laufen.
-    ALL_COMMANDS = RUN_COMMANDS + ("zeigen", "config", "daten", "aufnahme",
-                                   "aufnahme_stop",
-                                   "programm_beenden",
-                                   "nachklick", "nachklick_stop", "block_test")
+    ALL_COMMANDS = RUN_COMMANDS + ("show", "config", "data_reload", "recording",
+                                   "recording_stop",
+                                   "quit_program",
+                                   "reclick", "reclick_stop", "block_test")
 
     def recording_start(self, data: Optional[dict] = None) -> dict:
         """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
@@ -275,7 +275,7 @@ class BridgeServicesMixin:
             Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
         except OSError:
             pass
-        if not send_command("aufnahme", name=sicher, cycles=cycles,
+        if not send_command("recording", name=sicher, cycles=cycles,
                      description=str(data.get("description") or "").strip()):
             return {"ok": False, "message": "Aufnahme konnte nicht gestartet werden."}
         return {"ok": True, "name": sicher,
@@ -284,7 +284,7 @@ class BridgeServicesMixin:
     def recording_stop(self, data: Optional[dict] = None) -> dict:
         """Beendet die Aufnahme; der Hauptprozess baut und speichert die Blöcke."""
         from ...mailbox import send_command
-        if not send_command("aufnahme_stop"):
+        if not send_command("recording_stop"):
             return {"ok": False, "message": "Stopp konnte nicht gesendet werden."}
         return {"ok": True, "message": "Aufnahme wird beendet und gespeichert."}
 
@@ -296,10 +296,10 @@ class BridgeServicesMixin:
             with open(RECORD_STATUS_FILE, "r", encoding="utf-8") as f:
                 status = json.load(f)
         except (OSError, ValueError):
-            return {"active": False, "pausiert": False, "count": 0,
+            return {"active": False, "paused": False, "count": 0,
                     "events": []}
         return status if isinstance(status, dict) else {
-            "active": False, "pausiert": False, "count": 0, "events": []}
+            "active": False, "paused": False, "count": 0, "events": []}
 
     def run_command(self, data: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -312,12 +312,12 @@ class BridgeServicesMixin:
         schlimmer als keiner.
         """
         from ...mailbox import send_command
-        command = (data or {}).get("befehl") or ""
+        command = (data or {}).get("command") or ""
         if command not in self.RUN_COMMANDS:
             return self._report(f"Unbekannter Lauf-Befehl '{command}'.", "err")
 
         arguments: dict = {}
-        if command in ("start", "start_manuell", "zeitplan"):
+        if command in ("start", "start_manual", "schedule"):
             if self._dirty:
                 zustand = self.save()
                 if zustand["status"]["kind"] == "err":
@@ -325,12 +325,12 @@ class BridgeServicesMixin:
             if not self.filepath.exists():
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
             arguments = {"file": str(self.filepath), "sequence": self.board.name}
-        if command == "zeitplan":
+        if command == "schedule":
             zeit = str((data or {}).get("zeit") or "").strip()
             if not zeit:
                 return self._report("Bitte eine Startzeit eingeben.", "warn")
             arguments["time"] = zeit
-        if command == "manuell_aktion":
+        if command == "manual_action":
             action = str((data or {}).get("action") or "")
             if action not in ("run", "skip", "continue", "stop"):
                 return self._report("Unbekannte manuelle Aktion.", "err")
@@ -339,15 +339,15 @@ class BridgeServicesMixin:
         if not send_command(command, **arguments):
             return self._report("Befehl konnte nicht abgelegt werden.", "err")
         text = {"start": f"'{self.board.name}' gestartet.",
-                "start_manuell": f"'{self.board.name}' im Schrittmodus gestartet.",
+                "start_manual": f"'{self.board.name}' im Schrittmodus gestartet.",
                 "stop": "Stopp geschickt.",
                 "pause": "Pause umgeschaltet.",
                 "skip": "Aktuelle Wartezeit wird übersprungen.",
                 "skip_step": "Aktueller Block wird vollständig übersprungen.",
                 "finish": "Zyklus wird sauber abgeschlossen.",
                 "manual": "Manueller Modus umgeschaltet.",
-                "manuell_aktion": "Entscheidung geschickt.",
-                "zeitplan": f"Start für '{self.board.name}' geplant."}[command]
+                "manual_action": "Entscheidung geschickt.",
+                "schedule": f"Start für '{self.board.name}' geplant."}[command]
         return self._report(text)
 
     def point_show(self, data: Optional[dict] = None) -> dict:
@@ -363,7 +363,7 @@ class BridgeServicesMixin:
         # Ein Block hat bis zu drei Stellen, und die Frage „sitzt das noch?"
         # stellt sich bei allen dreien: der Klick, der Prüf-Pixel des Triggers
         # und der ELSE-Klick. Welche gemeint ist, sagt der Aufrufer.
-        welche = (data or {}).get("welche") or "klick"
+        welche = (data or {}).get("which") or "click"
         source = {
             "trigger": lambda: step.wait_condition,
             "verify": lambda: step.verify_condition,
@@ -374,7 +374,7 @@ class BridgeServicesMixin:
             return self._report("Diese Stelle hat keinen Punkt zum Zeigen.", "warn")
 
         from ...mailbox import send_command
-        if not send_command("zeigen", x=point.x, y=point.y, point=point.id,
+        if not send_command("show", x=point.x, y=point.y, point=point.id,
                      name=point.name or "", color=list(point.color) if point.color else None):
             return self._report("Befehl konnte nicht abgelegt werden.", "err")
         return self._report(f"Maus zu #{point.id} ({point.x},{point.y}) — im Spiel nachsehen.")
@@ -436,9 +436,9 @@ class BridgeServicesMixin:
         from ...config_meta import META
         raw, fehler = self._config_file()
         return {
-            "pfad": str(Path(CONFIG_FILE).resolve()),
+            "path": str(Path(CONFIG_FILE).resolve()),
             "values": AppConfig.from_dict(raw).to_dict(),
-            "standard": AppConfig().to_dict(),
+            "defaults": AppConfig().to_dict(),
             "sections": [{"title": t, "keys": list(k)} for t, k in config_sections()],
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
@@ -448,7 +448,7 @@ class BridgeServicesMixin:
             # alt sie ist, und genau das ist die Frage, die man an eine
             # geholte Liste hat.
             "states": self._config_states(),
-            "fehler": fehler,
+            "error": fehler,
         }
 
     @staticmethod
@@ -517,7 +517,7 @@ class BridgeServicesMixin:
 
         new = AppConfig.from_dict({**raw, **values})
         fertig = new.to_dict()
-        korrekturen = [{"key": k, "sent": v, "wurde": fertig.get(k)}
+        korrekturen = [{"key": k, "sent": v, "became": fertig.get(k)}
                        for k, v in values.items()
                        if k in fertig and not _gleicher_wert(v, fertig[k])]
         save_config(new)
@@ -545,7 +545,7 @@ class BridgeServicesMixin:
         # Was ohne ELSE passiert, steht in derselben Datei — der gemerkte
         # Zeitstempel ist damit veraltet.
         self._cfg_stand = -1.0
-        return {"ok": True, "values": fertig, "korrekturen": korrekturen}
+        return {"ok": True, "values": fertig, "corrections": korrekturen}
 
     def catalog_fetch(self, data: Optional[dict] = None) -> dict:
         """Holt den Item-Katalog aus der Spiel-API und traegt den Pfad ein.
@@ -614,9 +614,9 @@ class BridgeServicesMixin:
                                    f"Pfad liess sich nicht eintragen: "
                                    f"{erg.get('message', '')}"}
             return {"ok": True, "kind": kind, "message": f"{message}. Eingetragen: {target}",
-                    "pfad": str(target)}
+                    "path": str(target)}
         return {"ok": True, "kind": kind, "message": f"{message}. Aktualisiert: {target}",
-                "pfad": str(target)}
+                "path": str(target)}
 
     def command_pending(self, data: Optional[dict] = None) -> bool:
         """Liegt der letzte Befehl noch im Briefkasten?
@@ -635,12 +635,12 @@ class BridgeServicesMixin:
         name = (data or {}).get("name") or ""
         if not name:
             return self._report("Keine Sequenz gewählt.", "warn")
-        if self._dirty and not (data or {}).get("verwerfen"):
-            self._ask = {"kind": "load", "ziel": name,
+        if self._dirty and not (data or {}).get("discard"):
+            self._ask = {"kind": "load", "target": name,
                            "title": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Laden speichern?",
-                           "weiter": "Verwerfen", "save": True}
+                           "proceed_label": "Verwerfen", "save": True}
             return self.snapshot()
         path = next((p for n, p in list_available_sequences() if n == name), None)
         seq = load_sequence_file(path) if path else None
@@ -663,12 +663,12 @@ class BridgeServicesMixin:
 
     def new(self, data: Optional[dict] = None) -> dict:
         """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
-        if self._dirty and not (data or {}).get("verwerfen"):
-            self._ask = {"kind": "neu", "ziel": "",
+        if self._dirty and not (data or {}).get("discard"):
+            self._ask = {"kind": "neu", "target": "",
                            "title": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Anlegen speichern?",
-                           "weiter": "Verwerfen", "save": True}
+                           "proceed_label": "Verwerfen", "save": True}
             return self.snapshot()
         basis = f"Sequenz_{int(time.time())}"
         # Mit einer Loop-Phase, nicht nur INIT und END: fast jede Sequenz braucht
@@ -737,7 +737,7 @@ class BridgeServicesMixin:
                 "title": "Ausserhalb geändert",
                 "text": f"{foreign} wurde geändert, seit diese Sequenz geöffnet ist — "
                         "vermutlich vom Hauptprozess. Speichern überschreibt das.",
-                "weiter": "Trotzdem speichern",
+                "proceed_label": "Trotzdem speichern",
                 "save": False,
             }
             return self.snapshot()

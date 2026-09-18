@@ -1,11 +1,11 @@
 """Stabiles Protokoll zwischen Scan-Logik, Brücke und Weboberfläche."""
 
-MODUS_WAHL = "wahl"
+MODUS_WAHL = "choice"
 MODUS_SLOT = "slot"
-MODUS_MESSEN = "messen"
-MODUS_KLICK = "klick"
+MODUS_MESSEN = "measure"
+MODUS_KLICK = "click"
 MODUS_BEREICH = "area"
-MODUS_FINDEN = "finden"
+MODUS_FINDEN = "find"
 MODI = (
     MODUS_WAHL,
     MODUS_FINDEN,

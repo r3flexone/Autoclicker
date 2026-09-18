@@ -37,7 +37,7 @@ from .bridge_contract import (
     _hex,
     _stelle,
     _wartetext,
-    else_greift,
+    else_applies,
     trigger_name,
 )
 from .model import (
@@ -114,9 +114,9 @@ class BridgeViewMixin:
             else:
                 action = raw.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
                 self._cfg_info = {
-                    "sekunden": raw.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
-                    "folge": TIMEOUT_TEXT.get(action, action),
-                    "notbremse": raw.get("pixel_max_consecutive_timeouts",
+                    "seconds": raw.get("pixel_wait_timeout", CONFIG.pixel_wait_timeout),
+                    "consequence": TIMEOUT_TEXT.get(action, action),
+                    "emergency_stop": raw.get("pixel_max_consecutive_timeouts",
                                          CONFIG.pixel_max_consecutive_timeouts)}
         return self._cfg_info
 
@@ -159,7 +159,7 @@ class BridgeViewMixin:
             "index": index,
             "kind": lane.kind,
             "name": lane.name,
-            "wiederholungen": lane.repeat,
+            "repeat": lane.repeat,
             "start": lane.scheduled_start or "",
             "deletable": lane.kind == LANE_LOOP,
             "blocks": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
@@ -184,9 +184,9 @@ class BridgeViewMixin:
             "phase": self._sel_index(),
             "rows": rows,
             "delay_before": delay_before,
-            "delay_before_gemischt": before_gemischt,
+            "delay_before_mixed": before_gemischt,
             "delay_max": delay_max,
-            "delay_max_gemischt": max_gemischt,
+            "delay_max_mixed": max_gemischt,
         }
 
     def _block_json(self, lane: Lane, row: int, step: SequenceStep) -> dict:
@@ -197,7 +197,7 @@ class BridgeViewMixin:
         point = self._point(step.point_id)
         block = {
             "row": row,
-            "typ": typ,
+            "type_key": typ,
             "label": BLOCK_LABELS[typ],
             "color": _hex(BLOCK_COLORS[typ]),
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
@@ -219,10 +219,10 @@ class BridgeViewMixin:
             "color_text": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
             # Ein ELSE, das nie feuern kann, steht sonst als Zusage auf der Karte.
-            "else_greift": else_greift(step),
+            "else_applies": else_applies(step),
             # Ein Scan ohne Namen wird beim Speichern abgelehnt — die Karte sagt
             # das schon vorher, sonst sucht man den Block hinterher in vier Phasen.
-            "warnung": ("Name fehlt" if field and not (getattr(step, field) or "").strip()
+            "warning": ("Name fehlt" if field and not (getattr(step, field) or "").strip()
                         else None),
         }
         return block
@@ -260,7 +260,7 @@ class BridgeViewMixin:
 
     def _trigger_text(self, wc: WaitCondition) -> str:
         was = "prüft" if wc.check_only else "wartet bis"
-        wohin = "weg" if wc.until_gone else "da"
+        wohin = "weg" if wc.until_gone else "present"
         return f"{was} RGB{tuple(wc.color)} {wohin}"
 
     def _else_text(self, step: SequenceStep) -> str:
@@ -295,7 +295,7 @@ class BridgeViewMixin:
         return {
             "phase": self.board.lanes.index(lane),
             "row": row,
-            "typ": typ,
+            "type_key": typ,
             "label": BLOCK_LABELS[typ],
             "color": _hex(BLOCK_COLORS[typ]),
             "name": step.name or "",
@@ -331,9 +331,9 @@ class BridgeViewMixin:
             "verify": trigger_name(vc),
             "verify_point": vc.point_id if vc else None,
             "else_action": ec.action if ec else "",
-            "else_greift": else_greift(step),
+            "else_applies": else_applies(step),
             "else_point": ec.point_id if ec else None,
-            "else_taste": (ec.key or "") if ec else "",
+            "else_key": (ec.key or "") if ec else "",
             "else_delay": ec.delay if ec else 0,
         }
 

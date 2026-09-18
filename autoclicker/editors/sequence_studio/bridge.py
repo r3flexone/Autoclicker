@@ -26,7 +26,7 @@ from .bridge_contract import (
     _rgb,
     _stelle,
     _wartetext,
-    else_greift,
+    else_applies,
     scan_warnungen,
     trigger_name,
 )
@@ -57,7 +57,7 @@ __all__ = [
     "_rgb",
     "_stelle",
     "_wartetext",
-    "else_greift",
+    "else_applies",
     "scan_warnungen",
     "trigger_name",
 ]

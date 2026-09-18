@@ -27,9 +27,9 @@ _state: dict = {}
 def _counters(state) -> dict:
     """Die Zähler aus dem State — unter Lock gelesen, wie überall."""
     with state.lock:
-        return {"klicks": state.total_clicks, "items": state.items_found,
-                "tasten": state.key_presses, "timeouts": state.timeouts,
-                "skipped": state.skipped_cycles, "neustarts": state.restarts}
+        return {"clicks": state.total_clicks, "items": state.items_found,
+                "keys": state.key_presses, "timeouts": state.timeouts,
+                "skipped": state.skipped_cycles, "restarts": state.restarts}
 
 
 def write_status(state, teil: dict, sofort: bool = False) -> None:
@@ -94,7 +94,7 @@ def schedule_run(sequence: str, zielzeit: float) -> None:
             "active": False,
             "countdown": True,
             "sequence": sequence,
-            "zielzeit": float(zielzeit),
+            "target_time": float(zielzeit),
             "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError):
@@ -119,7 +119,7 @@ def end_schedule() -> None:
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
 _MOMENT_FIELDS = ("block", "blocks", "block_title", "block_label", "block_set_type",
-                  "block_seit", "waiting", "durchlauf", "manual")
+                  "block_since", "waiting", "pass_index", "manual")
 
 
 def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:
@@ -153,7 +153,7 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
             "active": False,
             "end": time.time(),
             "reason": reason,
-            "gelaufen": cycles,
+            "elapsed_cycles": cycles,
             "duration": duration,
             "counters": _counters(state),
             "stamp": time.time(),

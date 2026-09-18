@@ -255,7 +255,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
     from .utils import atomic_write, compact_json
 
     number = {"points": 0, "slots": 0, "items": 0, "item_scans": 0,
-            "boss_scans": 0, "icon_scans": 0, "bosse": 0, "sequences": 0}
+            "boss_scans": 0, "icon_scans": 0, "bosses": 0, "sequences": 0}
 
     # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
     with state.lock:
@@ -296,7 +296,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
 
             for b in state.global_bosses:
                 b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-                number["bosse"] += 1
+                number["bosses"] += 1
 
             for cfg in state.icon_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:

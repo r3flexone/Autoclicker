@@ -610,7 +610,7 @@ def run_calibration(state: AutoClickerState) -> None:
     beschriftung = {"points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-                    "bosse": "globale Bosse", "sequences": "Sequenzdateien"}
+                    "bosses": "globale Bosse", "sequences": "Sequenzdateien"}
     for key_name, count in number.items():
         if count:
             print(f"    {count:>4}  {beschriftung[key_name]}")

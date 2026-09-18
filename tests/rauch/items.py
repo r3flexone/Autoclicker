@@ -19,7 +19,7 @@ def aufbau():
     b.scan_new({"name": "Inventar"})
     b.scan_screenshot()
     for sx, sy in ecken:
-        b.scan_mode_set({"modus": "slot"})
+        b.scan_mode_set({"mode": "slot"})
         b.scan_click({"x": sx, "y": sy})
         b.scan_click({"x": sx + 62, "y": sy + 60})
     b.scan_learn_preview({"scope": "alle"})
@@ -347,21 +347,21 @@ def lauf():
         # die Stelle erreicht zu haben, um die es geht.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         for key, name in (("f", "STRG+F"), ("b", "STRG+B"), ("s", "STRG+S")):
-            f.seite.evaluate("callScan('scan_mode_set', {modus:'wahl', art:'item'})")
+            f.seite.evaluate("callScan('scan_mode_set', {mode:'choice', kind:'item'})")
             f.ruhe()
             f.seite.keyboard.press(f"Control+{key}")
             f.ruhe()
-            modus = f.seite.evaluate("SC.modus")
-            pruefe(modus == "wahl", f"{name} wechselt den Modus auf '{modus}'")
+            modus = f.seite.evaluate("SC.mode")
+            pruefe(modus == "choice", f"{name} wechselt den Modus auf '{modus}'")
         # Ohne Modifikator muss der Buchstabe weiterhin greifen — sonst hat der
         # Riegel das Werkzeug gleich mit abgeschaltet. Erst aus dem Textfeld
         # heraus: in einem Eingabefeld ist „F“ ein Buchstabe und kein Werkzeug.
         f.seite.evaluate("document.activeElement && document.activeElement.blur()")
         f.seite.keyboard.press("f")
         f.ruhe()
-        pruefe(f.seite.evaluate("SC.modus") == "messen",
+        pruefe(f.seite.evaluate("SC.mode") == "measure",
                "„F“ allein schaltet nicht mehr auf „Hintergrundfarbe“")
-        f.seite.evaluate("callScan('scan_mode_set', {modus:'wahl', art:'item'})")
+        f.seite.evaluate("callScan('scan_mode_set', {mode:'choice', kind:'item'})")
         f.ruhe()
 
         # **Was getippt und noch nicht gemeldet ist, ueberlebt das

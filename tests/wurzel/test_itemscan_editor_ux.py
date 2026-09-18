@@ -77,16 +77,16 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("ganze Zahl", state["status"]["text"])
 
     def test_one_shot_tool_and_pin(self):
-        self.bridge.scan_mode_set({"modus": MODUS_SLOT})
+        self.bridge.scan_mode_set({"mode": MODUS_SLOT})
         self.bridge.scan_click({"x": 65, "y": 10})
         state = self.bridge.scan_click({"x": 115, "y": 60})
-        self.assertEqual(state["modus"], MODUS_WAHL)
+        self.assertEqual(state["mode"], MODUS_WAHL)
 
-        self.bridge.scan_mode_set({"modus": MODUS_SLOT, "fixiert": True})
+        self.bridge.scan_mode_set({"mode": MODUS_SLOT, "fixiert": True})
         self.bridge.scan_click({"x": 65, "y": 15})
         state = self.bridge.scan_click({"x": 115, "y": 65})
-        self.assertEqual(state["modus"], MODUS_SLOT)
-        self.assertTrue(state["werkzeug_fixiert"])
+        self.assertEqual(state["mode"], MODUS_SLOT)
+        self.assertTrue(state["tool_pinned"])
 
     def test_learning_review_does_not_mutate_until_confirmed(self):
         state = self.bridge.scan_learn_preview({"scope": "alle"})
@@ -124,10 +124,10 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 (row["name"], row["category"], row["priority"]),
                 ("Bogen", "Waffen", 4))
             self.assertEqual(row["existing"], "Bogen")
-            self.assertEqual(row["neu_name"], "Item 1")
+            self.assertEqual(row["new_name"], "Item 1")
             self.assertFalse(row["can_add"])
             self.assertTrue(row["ticked"])
-            self.assertTrue(row["im_scan"])
+            self.assertTrue(row["in_scan"])
 
             state = self.bridge.scan_learn_preview_apply({"rows": [{
                 "slot": row["slot"], "ticked": True,
@@ -139,7 +139,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(self.bridge.scans["Inventar"].item_names, ["Bogen"])
         self.assertEqual(self.bridge.items["Bogen"].category, "Fernkampf")
         self.assertEqual(self.bridge.items["Bogen"].priority, 2)
-        self.assertEqual(state["wahl"], {"kind": "item", "name": "Bogen"})
+        self.assertEqual(state["choice"], {"kind": "item", "name": "Bogen"})
         self.assertIn("bearbeitet", state["status"]["text"])
 
         with matcher, compatible, patch.object(self.bridge, "_has_opencv", return_value=True):
@@ -147,8 +147,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
             row = state["review"]["rows"][0]
             self.assertEqual(row["name"], "Bogen")
             self.assertEqual((row["category"], row["priority"]), ("Fernkampf", 2))
-            self.assertTrue(row["im_scan"])
-            self.assertNotIn("gesperrt", row)
+            self.assertTrue(row["in_scan"])
+            self.assertNotIn("locked", row)
             self.assertTrue(row["ticked"])
 
             state = self.bridge.scan_learn_preview_apply({"rows": [{
@@ -170,8 +170,8 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("wird nicht gelernt oder geändert", js)
         self.assertNotIn("wird aus diesem Scan entfernt", js)
         self.assertIn("als_anders: n.dataset.alsAnderes", js)
-        self.assertIn("kat.sperren(bestehend && !normalerTreffer)", js)
-        self.assertIn('name.value = z.neu_name || "Item"', js)
+        self.assertIn("kat.lock(bestehend && !normalerTreffer)", js)
+        self.assertIn('name.value = z.new_name || "Item"', js)
 
     def test_repeated_recognized_item_has_one_shared_scan_membership(self):
         slot = ItemSlot(
@@ -222,7 +222,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.bridge._treffer = {
             "Slot 1": {"name": "Bekannt", "foreign": False},
         }
-        result = self.bridge.scan_data()["ergebnis"]
+        result = self.bridge.scan_data()["result"]
         self.assertEqual(result["foreign"], 0)
         self.assertEqual(result["total"], 1)
         self.assertIn("Bekannt", self.bridge.scans["Inventar"].item_names)
@@ -373,7 +373,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 return_value=None):
             state = self.bridge.scan_learn_preview({"scope": "alle"})
         row = state["review"]["rows"][0]
-        self.assertIn("Roter Helm", state["review"]["itemnamen"])
+        self.assertIn("Roter Helm", state["review"]["item_names"])
 
         self.bridge.scan_learn_preview_apply({"rows": [{
             "slot": row["slot"], "ticked": True,

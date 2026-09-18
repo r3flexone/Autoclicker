@@ -47,7 +47,7 @@ TYP_REIHENFOLGE = [
 WARTE_TIMEOUT = 60.0
 
 TRIGGER_KEIN = "kein"
-TRIGGER_DA = "da"
+TRIGGER_DA = "present"
 TRIGGER_WEG = "weg"
 
 SCAN_MODES = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
@@ -121,7 +121,7 @@ def _stelle(step: SequenceStep) -> str:
 _ELSE_SCANS = ("item_scan", "boss_scan", "icon_scan")
 
 
-def else_greift(step: SequenceStep) -> bool:
+def else_applies(step: SequenceStep) -> bool:
     """Kann ELSE bei diesem Schritt überhaupt feuern?"""
     if step.wait_condition is not None or step.verify_condition is not None:
         return True

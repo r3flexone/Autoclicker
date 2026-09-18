@@ -83,7 +83,7 @@ class StudioCloseTest(unittest.TestCase):
         bridge = SimpleNamespace(
             _scan_dirty=True,
             scan_save=Mock(return_value={
-                "status": {"kind": "ok", "text": "gespeichert"},
+                "status": {"kind": "ok", "text": "saved"},
             }),
         )
 
@@ -122,7 +122,7 @@ class StudioCloseTest(unittest.TestCase):
             send_command.assert_not_called()
             _on_close(bridge, True)
             _on_close(bridge, True)
-            send_command.assert_called_once_with("programm_beenden")
+            send_command.assert_called_once_with("quit_program")
 
 
 if __name__ == "__main__":

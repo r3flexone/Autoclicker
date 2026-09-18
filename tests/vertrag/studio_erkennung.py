@@ -123,9 +123,9 @@ try:
     check("und faengt mit 'ueberspringen' an — erkannt, aber noch nichts entschieden",
           _boss.action == "skip")
 
-    _z = _b.boss_set({"field": "konfidenz", "value": 0.85})
+    _z = _b.boss_set({"field": "confidence", "value": 0.85})
     check("die Konfidenz laesst sich einzeln setzen", _boss.min_confidence == 0.85)
-    _z = _b.boss_set({"field": "konfidenz", "value": 1.4})
+    _z = _b.boss_set({"field": "confidence", "value": 1.4})
     check("eine Konfidenz ueber 1 wird abgelehnt", _boss.min_confidence == 0.85)
     check("und begruendet", _z["status"]["kind"] == "err")
     _z = _b.boss_set({"field": "action", "value": "gibtsnicht"})
@@ -188,12 +188,12 @@ try:
           _M_REGION not in _MODI and _M_AKTION not in _MODI)
     check("angenommen werden sie trotzdem",
           _M_REGION in _MODI_ALLE and _M_AKTION in _MODI_ALLE)
-    _z = _b.scan_mode_set({"modus": _M_REGION})
+    _z = _b.scan_mode_set({"mode": _M_REGION})
     check("ohne Ziel schaltet der Buchstabe nicht scharf", _b.scan_modus != _M_REGION)
     check("und sagt, was fehlt", _z["status"]["kind"] == "warn")
 
     # Ohne Bild gibt es nichts anzuklicken — dann bleibt das Werkzeug aus.
-    _z = _b.region_mode({"kind": "icon", "modus": _M_REGION})
+    _z = _b.region_mode({"kind": "icon", "mode": _M_REGION})
     check("ohne Screenshot kein Aufziehen", _b.scan_modus == _M_WAHL)
     check("und es steht dabei, warum", "Screenshot" in _z["status"]["text"])
 
@@ -233,27 +233,27 @@ try:
 
             # --- Region aus zwei Klicks ---
             _b.icon_scan_open({"name": "Mission nicht machbar"})
-            _z = _b.region_mode({"kind": "icon", "modus": _M_REGION})
+            _z = _b.region_mode({"kind": "icon", "mode": _M_REGION})
             check("mit Bild und Ziel schaltet das Werkzeug scharf",
-                  _z["modus"] == _M_REGION)
+                  _z["mode"] == _M_REGION)
             check("und die Bruecke merkt sich, WORAUF es wirkt",
-                  _z["region_ziel"] == ["icon", "Mission nicht machbar"])
+                  _z["region_target"] == ["icon", "Mission nicht machbar"])
             _z = _b.scan_click({"x": 300, "y": 200})
             check("die erste Ecke legt noch nichts an",
-                  _z["ecke"] == [300, 200]
+                  _z["corner"] == [300, 200]
                   and _b.icon_scans["Mission nicht machbar"].scan_region
                       == (100, 100, 158, 158))
             _z = _b.scan_click({"x": 340, "y": 240})
             check("die zweite Ecke setzt die Region",
                   _b.icon_scans["Mission nicht machbar"].scan_region == (300, 200, 340, 240))
-            check("und das Werkzeug faellt ins Auswaehlen zurueck", _z["modus"] == _M_WAHL)
+            check("und das Werkzeug faellt ins Auswaehlen zurueck", _z["mode"] == _M_WAHL)
             check("das Ziel ist danach weg — es gehoerte zu diesem einen Durchgang",
-                  _z["region_ziel"] is None)
+                  _z["region_target"] is None)
 
             # --- Der Ausschnitt zeigt, was der Scan sieht ---
             _ic = [c for c in _z["icon_scans"] if c["name"] == "Mission nicht machbar"][0]
             check("der offene Icon-Scan bringt seinen Ausschnitt mit",
-                  _ic["ausschnitt"].startswith("data:image/png;base64,"))
+                  _ic["crop_image"].startswith("data:image/png;base64,"))
 
             # --- Marker messen und testen ---
             _z = _b.marker_measure({"kind": "icon"})
@@ -266,7 +266,7 @@ try:
             _z = _b.icon_test({})
             _t = _z["icon"]["test"]
             check("der Test erkennt das Icon", _t["ok"] is True)
-            check("er nennt die Methode", _t["methode"] == "Marker")
+            check("er nennt die Methode", _t["method"] == "Marker")
             check("und er zaehlt die Marker", _t["marker_total"] == len(_ic.marker_colors))
             # **Testen ist folgenlos.** Ein Testknopf, der im Editor eines
             # Autoclickers wirklich klickt, ist die schlechteste denkbare
@@ -294,7 +294,7 @@ try:
 
             # --- Klickpunkt ueber einen Punkt, nie ueber Zahlen ---
             _b.icon_set({"field": "action", "value": "click"})
-            _b.region_mode({"kind": "icon", "modus": _M_AKTION})
+            _b.region_mode({"kind": "icon", "mode": _M_AKTION})
             _z = _b.scan_click({"x": 500, "y": 320})
             _ic = _b.icon_scans["Mission nicht machbar"]
             check("der Klick legt einen Punkt an", len(_b.points) == 1)
@@ -308,7 +308,7 @@ try:
             _b.boss_scan_open({"name": "Bossfarm"})
             _b.boss_new({"name": "Hydra"})
             _b.boss_set({"field": "action", "value": "click"})
-            _b.region_mode({"kind": "boss", "modus": _M_AKTION})
+            _b.region_mode({"kind": "boss", "mode": _M_AKTION})
             _b.scan_click({"x": 500, "y": 320})
             check("ein zweiter Klick auf dieselbe Stelle legt keinen zweiten Punkt an",
                   len(_b.points) == 1)
@@ -449,7 +449,7 @@ check("die Werkzeugleiste kennt das Region-Werkzeug",
       'data-erk-tool="region"' in _web)
 check("und den Klickpunkt", 'data-erk-tool="aktion"' in _web)
 check("beide sind bei der Item-Art versteckt statt umgedeutet",
-      "knopf.hidden = item;" in _web)
+      "button.hidden = item;" in _web)
 
 # **Jede Stelle, die die Seite anspricht, muss es auch geben.** `$("x")` auf ein
 # fehlendes Element ergibt `null`, und der naechste Zugriff darauf reisst den

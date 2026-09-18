@@ -41,7 +41,7 @@ check("bricht das Schreiben ab, steht die alte Datei unveraendert da",
       _ziel.read_text(encoding="utf-8") == '{"a": 2}')
 
 # Und wenn das Umbenennen selbst scheitert, ebenso.
-_pmod.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("gesperrt"))
+_pmod.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("locked"))
 try:
     _aw(_ziel, '{"a": 4}')
 except OSError:

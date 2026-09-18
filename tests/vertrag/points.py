@@ -362,7 +362,7 @@ _seq_gp = _SEQ(name="Geteilt", loop_phases=[
         _STEP(x=99, y=99, delay_before=0, point_id=2),
         _STEP(x=10, y=10, delay_before=0, point_id=1),          # derselbe Knopf
     ]),
-], points=[_CP(10, 10, "knopf", 1, color=(32, 135, 111)),
+], points=[_CP(10, 10, "button", 1, color=(32, 135, 111)),
            _CP(99, 99, "anderer", 2, color=(1, 2, 3))])
 _br_gp = _SB(_seq_gp, Path("sequences/geteilt.json"), "sequences")
 _br_gp._points_apply()

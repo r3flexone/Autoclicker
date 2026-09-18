@@ -48,7 +48,7 @@ def last_edited() -> "Path | None":
     marker = Path(STUDIO_LAST_SEQUENCE_FILE)
     try:
         data = json.loads(marker.read_text(encoding="utf-8"))
-        folder = str(data.get("ordner") or "") if isinstance(data, dict) else ""
+        folder = str(data.get("folder") or "") if isinstance(data, dict) else ""
         gemerkt = next((path for _, path in available
                         if path.parent.name == folder), None)
         if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
@@ -65,7 +65,7 @@ def remember_last_used(path) -> bool:
         return False
     try:
         atomic_write(Path(STUDIO_LAST_SEQUENCE_FILE), compact_json({
-            "ordner": path.parent.name,
+            "folder": path.parent.name,
         }))
         return True
     except OSError:
@@ -146,7 +146,7 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
         # nicht überraschend mitnehmen.
         from .mailbox import send_command
         bridge._beenden_gesendet = True
-        send_command("programm_beenden")
+        send_command("quit_program")
 
 
 def _attach_close_handler(window, bridge,

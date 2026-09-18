@@ -39,7 +39,7 @@ CONTROLS = (CONTROL_BOOL, CONTROL_INT, CONTROL_FLOAT, CONTROL_RATIO, CONTROL_TEX
 class M:
     """Ein Feld, wie die Oberfläche es zeigt.
 
-    `dep`/`dep_nicht`/`dep_min` machen ein Feld **grau, nicht unsichtbar**: dass
+    `dep`/`dep_not`/`dep_min` machen ein Feld **grau, nicht unsichtbar**: dass
     es unter `llm_enabled` dreizehn weitere Felder gibt, ist die halbe
     Information. Ausgeblendete Felder sucht man in der Datei.
     """
@@ -61,7 +61,7 @@ class M:
     # Datei im Feld sieht, soll sie dort auch holen koennen.
     action: tuple = ()
     dep: str = ""            # wirkt nur, wenn dieses bool-Feld AN ist
-    dep_nicht: str = ""      # wirkt nur, wenn dieses bool-Feld AUS ist
+    dep_not: str = ""      # wirkt nur, wenn dieses bool-Feld AUS ist
     dep_min: str = ""        # wirkt nur, wenn dieses Zahlfeld > 0 ist
 
     def as_dict(self) -> dict:
@@ -76,8 +76,8 @@ class M:
         if self.empty:
             data["empty"] = self.empty
         if self.action:
-            data["action"] = {"befehl": self.action[0], "text": self.action[1]}
-        for name in ("dep", "dep_nicht", "dep_min"):
+            data["action"] = {"command": self.action[0], "text": self.action[1]}
+        for name in ("dep", "dep_not", "dep_min"):
             value = getattr(self, name)
             if value:
                 data[name] = value
@@ -211,7 +211,7 @@ META: dict = {
     "scan_min_markers_required": M(
         "Marker mindestens", CONTROL_INT,
         "Wie viele der gelernten Farben vorkommen müssen.",
-        dep_nicht="scan_require_all_markers"),
+        dep_not="scan_require_all_markers"),
     "scan_marker_min_pixels": M(
         "Pixel je Marker", CONTROL_INT,
         "Wie viele abgetastete Pixel eine Marker-Farbe treffen müssen. Über 1 "

@@ -107,7 +107,7 @@ def _write_status(state: AutoClickerState, events: list | None = None,
             name = state.recording_ui_name
         atomic_write(_RECORDING_STATUS, compact_json({
             "active": bool(running),
-            "pausiert": bool(pausiert and running),
+            "paused": bool(pausiert and running),
             "name": name,
             "count": len(liste),
             "events": _status_events(liste),

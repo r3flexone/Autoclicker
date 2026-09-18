@@ -38,7 +38,7 @@ def lauf():
 
     # Erst ein Buendel schreiben, damit der Reiter etwas zu zeigen hat.
     z = b.share_data()
-    z = b.export_start({"teile": {k: True for k in z["bestand"]}, "name": "probe"})
+    z = b.export_start({"parts": {k: True for k in z["inventory"]}, "name": "probe"})
     pruefe(z["status"]["kind"] == "ok", f"Export: {z['status']}")
 
     with Fenster(b) as f:

@@ -99,8 +99,8 @@ def _status_data(state: AutoClickerState) -> dict:
         placed = {entry[0]: entry for entry in state.reclick_set}
         seq = state.reclick_sequence
         pool = list(seq.points if seq is not None else state.points)
-        data = {"active": active, "pausiert": state.reclick_paused and active,
-                 "name": state.reclick_name, "ziel": state.reclick_target,
+        data = {"active": active, "paused": state.reclick_paused and active,
+                 "name": state.reclick_name, "target": state.reclick_target,
                  "others": state.reclick_other}
     points = {p.id: p for p in pool}
     data["index"] = i
@@ -412,8 +412,8 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
     # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
     if abschluss is not None:
-        abschluss.update({"active": False, "pausiert": False, "point": {},
-                          "reason": reason, "uebernommen": bool(apply_config),
+        abschluss.update({"active": False, "paused": False, "point": {},
+                          "reason": reason, "applied": bool(apply_config),
                           "stamp": time.time()})
         try:
             atomic_write(_STATUS_PATH, compact_json(abschluss))
@@ -564,7 +564,7 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
                 or state.reclick_points[state.reclick_index] != point_id):
             return
         if point is None:
-            state.reclick_history.append((point_id, "fehlt"))
+            state.reclick_history.append((point_id, "missing"))
             state.reclick_index += 1
             fertig = state.reclick_index >= len(state.reclick_points)
             name, old, gleich = "", None, False

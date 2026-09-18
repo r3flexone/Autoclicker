@@ -38,10 +38,10 @@ class BridgeTeilenMixin:
         """Was der Reiter zeichnet. Fragt nur — ändert nichts."""
         text, kind = self._teilen_status
         return {
-            "teile": [{"key": k, "text": t} for k, t in TEILE],
-            "bestand": self._inventory_count(),
+            "parts": [{"key": k, "text": t} for k, t in TEILE],
+            "inventory": self._inventory_count(),
             "window": self._window_layout(),
-            "exporte": self._export_list(),
+            "exports": self._export_list(),
             "import": self._teilen_import,
             # Was im Fenster noch nicht gespeichert ist, liegt nicht auf Platte
             # und landet deshalb auch nicht im Bündel.
@@ -71,9 +71,9 @@ class BridgeTeilenMixin:
         except Exception:                                        # noqa: BLE001
             rechteck = None
         if not rechteck:
-            return {"title": title, "gefunden": False}
+            return {"title": title, "found": False}
         l, o, r, u = rechteck
-        return {"title": title, "gefunden": True, "rechteck": [l, o, r, u],
+        return {"title": title, "found": True, "rect": [l, o, r, u],
                 "width": r - l, "height": u - o}
 
     @staticmethod
@@ -127,7 +127,7 @@ class BridgeTeilenMixin:
     @staticmethod
     def _selected_parts(data: dict) -> dict:
         """Welche Teile angehakt sind — fehlende gelten als gewählt."""
-        raw = (data or {}).get("teile")
+        raw = (data or {}).get("parts")
         if not isinstance(raw, dict):
             return {k: True for k, _ in TEILE}
         return {k: bool(raw.get(k, True)) for k, _ in TEILE}
@@ -147,7 +147,7 @@ class BridgeTeilenMixin:
             return self._share_report("Nichts ausgewählt.", "warn")
 
         lage = self._window_layout()
-        window = tuple(lage["rechteck"]) if lage and lage.get("gefunden") else None
+        window = tuple(lage["rect"]) if lage and lage.get("found") else None
         if window:
             ref1, ref2 = (window[0], window[1]), (window[2], window[3])
         else:
@@ -203,11 +203,11 @@ class BridgeTeilenMixin:
         if not wahl:
             return self.share_data()
         path = wahl[0] if isinstance(wahl, (list, tuple)) else wahl
-        return self.import_check({"pfad": path})
+        return self.import_check({"path": path})
 
     def import_check(self, data: Optional[dict] = None) -> dict:
         """Liest das Manifest und sagt, was drinsteht und wie umgerechnet wird."""
-        path = str((data or {}).get("pfad") or "").strip().strip('"')
+        path = str((data or {}).get("path") or "").strip().strip('"')
         if not path:
             self._teilen_import = None
             return self.share_data()
@@ -219,13 +219,13 @@ class BridgeTeilenMixin:
 
         source = result.get("source_window")
         lage = self._window_layout()
-        target = lage["rechteck"] if lage and lage.get("gefunden") else None
+        target = lage["rect"] if lage and lage.get("found") else None
         content = result.get("contents", {}) or {}
         self._teilen_import = {
-            "pfad": path,
+            "path": path,
             "file": Path(path).name,
-            "erstellt": result.get("created", ""),
-            "inhalt": {k: self._content_number(content.get(k)) for k, _ in TEILE},
+            "created": result.get("created", ""),
+            "content": {k: self._content_number(content.get(k)) for k, _ in TEILE},
             "source_window": list(source) if source else None,
             "target_window": list(target) if target else None,
             # Automatisch geht nur, wenn beide Seiten ihr Fenster kennen.
@@ -251,7 +251,7 @@ class BridgeTeilenMixin:
             return self._share_report("Nichts ausgewählt.", "warn")
 
         transform = None
-        if str(data.get("modus") or "auto") == "auto" and self._teilen_import["auto"]:
+        if str(data.get("mode") or "auto") == "auto" and self._teilen_import["auto"]:
             from ...import_export import transform_from_windows
             transform = transform_from_windows(
                 tuple(self._teilen_import["source_window"]),
@@ -260,7 +260,7 @@ class BridgeTeilenMixin:
         from ...import_export import import_bundle
         state = self._inventory()
         erfolg, result = import_bundle(
-            state, self._teilen_import["pfad"], transform=transform,
+            state, self._teilen_import["path"], transform=transform,
             import_points=parts["sequences"], import_sequences=parts["sequences"],
             import_slots=parts["sequences"], import_items=parts["sequences"],
             import_item_scans=parts["sequences"],
@@ -283,7 +283,7 @@ class BridgeTeilenMixin:
         self._scan_load()
         try:
             from ...mailbox import send_command
-            send_command("daten")
+            send_command("data_reload")
         except (ImportError, OSError):
             pass
 

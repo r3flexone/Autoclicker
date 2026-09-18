@@ -547,10 +547,10 @@ def _color_wait_status(state: AutoClickerState, step: SequenceStep, wc,
         "point": [wc.pixel[0], wc.pixel[1]],
         "target": list(wc.color),
         "actual": list(current_color) if current_color else None,
-        "distanz": round(dist, 1) if dist is not None else None,
+        "distance": round(dist, 1) if dist is not None else None,
         "tolerance": state.config.pixel_wait_tolerance,
-        "bis_weg": bool(wc.until_gone),
-        "danach": _timeout_consequence(state, step),
+        "until_gone": bool(wc.until_gone),
+        "after_value": _timeout_consequence(state, step),
     }
 
 
@@ -829,7 +829,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                             "block_label": describe_step(step),
                             "block_title": step.name or "",
                             "block_set_type": block_type(step),
-                            "block_seit": time.time(), "waiting": None})
+                            "block_since": time.time(), "waiting": None})
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
     # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.

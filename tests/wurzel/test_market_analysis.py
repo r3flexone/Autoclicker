@@ -366,7 +366,7 @@ class HistorieTest(unittest.TestCase):
         basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
                  "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                  "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
-                 "warnungen": ""}
+                 "warnings": ""}
         basis.update(remainder)
         return basis
 

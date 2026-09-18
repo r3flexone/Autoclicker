@@ -98,7 +98,7 @@ def lade_scan(path: Path) -> dict:
         "items": data.get("items") or {},
         "slots": data.get("slots") or {},
         "tolerance": int(data.get("color_tolerance") or 30),
-        "vorlagen": path.parent.parent / "templates",
+        "templates": path.parent.parent / "templates",
         # `sequences/<name>/bilder/<scan>.png` — neben `item_scans/`, nicht
         # darin (`_photo_path()` im Studio: `filepath.parent / "bilder"`).
         "image": path.parent.parent / "bilder" / (path.stem + ".png"),
@@ -136,7 +136,7 @@ def proben_aus_vorlagen(scan: dict, katalog, reason: bool, limit: int) -> list:
         file = entry.get("template")
         if not file or not katalog.match(name):
             continue
-        path = scan["vorlagen"] / file
+        path = scan["templates"] / file
         try:
             with Image.open(path) as raw:
                 image = raw.copy()
@@ -195,7 +195,7 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
                 continue
             if _check_profile_match(item, ausschnitt, scan["tolerance"],
                                     stellvertreter, False,
-                                    template_root=scan["vorlagen"]):
+                                    template_root=scan["templates"]):
                 proben.append((katalog.match(item.name), ausschnitt))
                 break
     return proben
@@ -300,9 +300,9 @@ def lauf(proben: list, katalog, config, args, modell: str) -> dict:
         marke = "OK " if richtig else "-- "
         print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
-        "treffer": match, "total": len(proben), "ohne": remaining,
-        "sekunden": sum(zeiten) / len(zeiten) if zeiten else 0.0,
-        "fehler": fehler,
+        "match": match, "total": len(proben), "without": remaining,
+        "seconds": sum(zeiten) / len(zeiten) if zeiten else 0.0,
+        "error": fehler,
     }
 
 
@@ -382,15 +382,15 @@ def main(argv=None) -> int:
                   "\033[0m")
         ergebnisse[modell] = lauf(proben, katalog, config, args, modell)
         e = ergebnisse[modell]
-        print(f"  {e['treffer']}/{e['total']} richtig, "
-              f"{e['sekunden']:.1f}s je Item"
-              + (f", {e['ohne']} ohne Antwort" if e["ohne"] else ""))
+        print(f"  {e['match']}/{e['total']} richtig, "
+              f"{e['seconds']:.1f}s je Item"
+              + (f", {e['without']} ohne Antwort" if e["without"] else ""))
 
     if len(ergebnisse) > 1:
         print("\nZUSAMMENFASSUNG")
         for modell, e in sorted(ergebnisse.items(),
-                                key=lambda kv: -kv[1]["treffer"]):
-            print(f"  {e['treffer']:>3}/{e['total']}  {e['sekunden']:>6.1f}s  {modell}")
+                                key=lambda kv: -kv[1]["match"]):
+            print(f"  {e['match']:>3}/{e['total']}  {e['seconds']:>6.1f}s  {modell}")
     return 0
 
 

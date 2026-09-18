@@ -140,7 +140,7 @@ class ScanLibraryMixin:
             self._remember(f"'{name}': Farb-Toleranz")
             cfg.color_tolerance = max(0, tolerance)
             return self._scan_changed()
-        if field == "lernen":
+        if field == "learn":
             self._remember(f"'{name}': Unbekanntes lernen")
             cfg.learn_unknown = bool(value)
             return self._scan_changed()
@@ -306,7 +306,7 @@ class ScanLibraryMixin:
         # melden - sonst stuende der Hinweis nach jedem Speichern da.
         self._disk_track()
         from ...mailbox import send_command
-        send_command("daten")
+        send_command("data_reload")
         return self._scan_report(
             f"{len(self.slots)} Slot(s), {len(self.items)} Item(s), "
             f"{len(self.scans)} Item-Scan(s), {len(self.boss_scans)} Boss-Scan(s), "

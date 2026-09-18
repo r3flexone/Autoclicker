@@ -54,9 +54,9 @@ try:
           _z18["sequence"] == "S")
     check("ohne Bild gibt es kein Foto in der Aufnahme", _z18["photo"] is None)
     check("und keine Slots", _z18["slots"] == [])
-    check("der Modus faengt beim Auswaehlen an", _z18["modus"] == _MW18)
+    check("der Modus faengt beim Auswaehlen an", _z18["mode"] == _MW18)
     check("ohne Scan ist keine Aufnahmeart bereit",
-          _z18["aufnahme_bereit"] == {"item": False, "boss": False, "icon": False})
+          _z18["recording_ready"] == {"item": False, "boss": False, "icon": False})
 
     # Ein Screenshot und die daraus gebauten Bereiche brauchen zuerst ein
     # eindeutiges Speicherziel. Vorher lagen sie nur in dieser Studio-Sitzung
@@ -67,9 +67,9 @@ try:
         check(f"ohne {_name18} wird kein Screenshot aufgenommen",
               _z18["photo"] is None and _z18["status"]["kind"] == "warn"
               and _name18 in _z18["status"]["text"])
-    _z18 = _b18.scan_mode_set({"modus": _MS18, "kind": "item"})
+    _z18 = _b18.scan_mode_set({"mode": _MS18, "kind": "item"})
     check("ohne Item-Scan laesst sich auch kein Slot-Werkzeug einschalten",
-          _z18["modus"] == _MW18 and _z18["slots"] == [])
+          _z18["mode"] == _MW18 and _z18["slots"] == [])
     _z18 = _b18.scan_area_set({"area": [10, 10, 100, 100], "kind": "item"})
     check("ohne Item-Scan wird auch kein Aufnahmebereich vorgemerkt",
           _z18["area"] is None and _z18["status"]["kind"] == "warn")
@@ -77,12 +77,12 @@ try:
     # Gegenprobe fuer eine noch offene alte Sitzung: ein verwaistes Bild darf
     # beim spaeteren Anlegen nicht still dem neuen Scan zugeschlagen werden.
     _b18._foto = object()
-    _b18._foto_bild = "verwaist"
+    _b18._foto_bild = "orphaned"
     _b18._foto_info = {"width": 1, "height": 1}
     _b18.scan_bereich = (1, 2, 3, 4)
     _z18 = _b18.scan_new({"name": "Weg"})
     check("erst der angelegte Scan schaltet seine Aufnahme frei",
-          _z18["aufnahme_bereit"] == {"item": True, "boss": False, "icon": False})
+          _z18["recording_ready"] == {"item": True, "boss": False, "icon": False})
     check("ein verwaistes Sitzungsbild wird dabei nicht uebernommen",
           _z18["photo"] is None and _z18["area"] is None
           and _b18._foto is None and not _b18._foto_bild)
@@ -127,31 +127,31 @@ try:
             check("es steht NICHT in der Aufnahme", "image" not in _z18)
 
             # --- Zwei Ecken ergeben einen Slot ---
-            _b18.scan_mode_set({"modus": _MS18})
+            _b18.scan_mode_set({"mode": _MS18})
             _z18 = _b18.scan_click({"x": 100, "y": 100})
             check("nach der ersten Ecke gibt es noch keinen Slot",
-                  _z18["slots"] == [] and _z18["ecke"] == [100, 100])
+                  _z18["slots"] == [] and _z18["corner"] == [100, 100])
             _z18 = _b18.scan_click({"x": 160, "y": 160})
             check("die zweite Ecke legt ihn an", len(_z18["slots"]) == 1)
             _s18 = _z18["slots"][0]
             check("mit der aufgezogenen Flaeche", _s18["region"] == [100, 100, 160, 160])
-            check("dem Klickpunkt in der Mitte", _s18["klick"] == [130, 130])
+            check("dem Klickpunkt in der Mitte", _s18["click_pos"] == [130, 130])
             # Die Farbe wird an der INNEREN Ecke gemessen, nicht in der Mitte -
             # dort liegt das Item, nicht der Hintergrund.
             check("und dem gemessenen Hintergrund", _s18["color"] == "#303644")
-            check("die Ecke ist danach wieder frei", _z18["ecke"] is None)
+            check("die Ecke ist danach wieder frei", _z18["corner"] is None)
 
             # Ein Werkzeug ist standardmaessig einmalig: nach dem Slot ist wieder
             # Auswaehlen aktiv. Fuer zwanzig Slots laesst es sich anheften.
             check("ein einmaliges Werkzeug kehrt zum Auswaehlen zurueck",
-                  _z18["modus"] == _MW18)
-            _b18.scan_mode_set({"modus": _MS18, "fixiert": True})
+                  _z18["mode"] == _MW18)
+            _b18.scan_mode_set({"mode": _MS18, "fixiert": True})
             _b18.scan_click({"x": 260, "y": 260})
             _z18 = _b18.scan_click({"x": 200, "y": 200})
             check("auch von rechts unten nach links oben",
                   _z18["slots"][1]["region"] == [200, 200, 260, 260])
             check("angeheftet bleibt das Werkzeug fuer Serien aktiv",
-                  _z18["modus"] == _MS18 and _z18["werkzeug_fixiert"] is True)
+                  _z18["mode"] == _MS18 and _z18["tool_pinned"] is True)
 
             # --- Zu kleines Rechteck wird abgelehnt ---
             _b18.scan_click({"x": 300, "y": 300})
@@ -176,10 +176,10 @@ try:
             _b18.slots["Winzling"] = _SLOT8(name="Winzling",
                                             scan_region=(340, 40, 342, 42),
                                             click_pos=(341, 41))
-            _b18.scan_mode_set({"modus": _MW18, "fixiert": False})
+            _b18.scan_mode_set({"mode": _MW18, "fixiert": False})
             _z18 = _b18.scan_click({"x": 344, "y": 44})
             check("ein winziger Slot ist auch daneben noch zu treffen",
-                  _z18["wahl"]["name"] == "Winzling")
+                  _z18["choice"]["name"] == "Winzling")
             check("er bleibt dabei so klein, wie er ist",
                   [s for s in _z18["slots"] if s["name"] == "Winzling"][0]["region"]
                   == [340, 40, 342, 42])
@@ -198,14 +198,14 @@ try:
                                             click_pos=(160, 160))
             _z18 = _b18.scan_click({"x": 131, "y": 131})
             check("ein kleiner Slot in einem grossen gewinnt den Klick",
-                  _z18["wahl"]["name"] == "Zwerg")
+                  _z18["choice"]["name"] == "Zwerg")
             _z18 = _b18.scan_click({"x": 190, "y": 190})
             check("und der grosse bleibt ueberall sonst anklickbar",
-                  _z18["wahl"]["name"] == "Umschlag")
+                  _z18["choice"]["name"] == "Umschlag")
             # Auch zwischen zwei grossen zaehlt die Flaeche, nicht die Reihenfolge.
             _z18 = _b18.scan_click({"x": 150, "y": 150})
             check("zwischen zwei Slots gewinnt der kleinere",
-                  _z18["wahl"]["name"] == "Slot 1")
+                  _z18["choice"]["name"] == "Slot 1")
             # Der Punkt der ganzen Uebung: anklickbar heisst loeschbar.
             _b18.scan_click({"x": 131, "y": 131})
             _z18 = _b18.scan_slot_delete()
@@ -220,16 +220,16 @@ try:
             # der Grund, warum es das gibt. Die Sammel-Aktion arbeitet auf der
             # Auswahl, nicht auf einem Slot - dieselbe Regel wie im
             # Sequenz-Editor.
-            _b18.scan_mode_set({"modus": _MW18})
+            _b18.scan_mode_set({"mode": _MW18})
             _z18 = _b18.scan_click({"x": 5, "y": 5})
             check("ein Klick neben allen Slots faengt ein Rechteck an",
-                  _z18["ecke"] == [5, 5] and _z18["selection"] == [])
+                  _z18["corner"] == [5, 5] and _z18["selection"] == [])
             _z18 = _b18.scan_click({"x": 290, "y": 290})
             check("die zweite Ecke waehlt alles darin",
                   sorted(_z18["selection"]) == ["Slot 1", "Slot 2"])
-            check("und die Ecke ist wieder frei", _z18["ecke"] is None)
+            check("und die Ecke ist wieder frei", _z18["corner"] is None)
             check("einer davon ist der, den der Inspektor bearbeitet",
-                  _z18["wahl"]["name"] in _z18["selection"])
+                  _z18["choice"]["name"] in _z18["selection"])
 
             # Ganz darin, nicht angeschnitten: "alle die darin sind" heisst
             # genau das, und Ermessen ist bei einer Sammel-Loeschung falsch.
@@ -238,7 +238,7 @@ try:
             check("ein angeschnittener Slot zaehlt nicht dazu",
                   _z18["selection"] == [])
             check("ein leeres Rechteck hebt die Auswahl auf",
-                  _z18["wahl"]["name"] == "")
+                  _z18["choice"]["name"] == "")
 
             # STRG nimmt einzelne dazu und wieder heraus. Vorher einen normalen
             # Klick, sonst waere "dazu" von "nur dieser" nicht zu unterscheiden.
@@ -275,37 +275,37 @@ try:
 
             # --- Farbe messen: im Item statt im Hintergrund ---
             _b18.scan_select({"kind": "slot", "name": _s18["name"]})
-            _b18.scan_mode_set({"modus": _MM18})
+            _b18.scan_mode_set({"mode": _MM18})
             _z18 = _b18.scan_click({"x": 130, "y": 130})
             check("die Pipette misst im Originalbild",
                   _z18["slots"][0]["color"] == "#C83C3C")
             check("die Pipette ist danach wieder aus",
-                  _z18["modus"] == _MW18)
+                  _z18["mode"] == _MW18)
             # Gegenprobe: gemessen wird NICHT im verkleinerten Anzeigebild.
             # Waere es das, ergaebe der Rand des Items eine Mischfarbe.
-            _b18.scan_mode_set({"modus": _MM18})
+            _b18.scan_mode_set({"mode": _MM18})
             _z18 = _b18.scan_click({"x": 100, "y": 100})
             check("und trifft auch den Rand genau", _z18["slots"][0]["color"] == "#303644")
 
             # --- Klickpunkt setzen ---
-            _b18.scan_mode_set({"modus": _MK18})
+            _b18.scan_mode_set({"mode": _MK18})
             _z18 = _b18.scan_click({"x": 111, "y": 122})
-            check("der Klickpunkt folgt dem Zeiger", _z18["slots"][0]["klick"] == [111, 122])
+            check("der Klickpunkt folgt dem Zeiger", _z18["slots"][0]["click_pos"] == [111, 122])
 
             # --- Auswaehlen ueber das Bild ---
-            _b18.scan_mode_set({"modus": _MW18})
+            _b18.scan_mode_set({"mode": _MW18})
             _z18 = _b18.scan_click({"x": 210, "y": 210})
-            check("ein Klick waehlt den Slot darunter", _z18["wahl"]["name"] == "Slot 2")
+            check("ein Klick waehlt den Slot darunter", _z18["choice"]["name"] == "Slot 2")
             # Daneben zu klicken waehlt nicht ab, sondern faengt ein
             # Auswahl-Rechteck an: die Abwahl ist das leere Rechteck (oder ESC).
             # Ein einzelner Klick ins Leere darf nichts wegnehmen, sonst kostet
             # ein Verklicker die gerade aufgebaute Auswahl.
             _z18 = _b18.scan_click({"x": 5, "y": 5})
             check("daneben faengt ein Auswahl-Rechteck an",
-                  _z18["ecke"] == [5, 5] and _z18["wahl"]["name"] == "Slot 2")
+                  _z18["corner"] == [5, 5] and _z18["choice"]["name"] == "Slot 2")
             _z18 = _b18.scan_click({"x": 8, "y": 8})
             check("ein Rechteck ohne Slots waehlt nichts",
-                  _z18["wahl"]["name"] == "" and _z18["selection"] == [])
+                  _z18["choice"]["name"] == "" and _z18["selection"] == [])
 
             # --- Item lernen ---
             _b18.scan_select({"kind": "slot", "name": "Slot 1"})
@@ -316,7 +316,7 @@ try:
             check("und ein Template auf Platte",
                   _i18["template"]
                   and Path("sequences/s/templates", _i18["template"]).exists())
-            check("gelernt heisst nicht stumm", _i18["stumm"] is False)
+            check("gelernt heisst nicht stumm", _i18["silent"] is False)
             check("die Vorschau kommt auf Nachfrage",
                   _b18.scan_preview({"namen": [_i18["name"]]})[_i18["name"]]
                   .startswith("data:image/png;base64,"))
@@ -324,15 +324,15 @@ try:
             # --- Die drei Schritte zu einem Scan ---
             # Der Reiter zeigte alle Bedienelemente gleichzeitig; wer zum ersten
             # Mal einen Scan anlegt, sah eine Wand statt eines Weges.
-            _sch18 = _b18.scan_data()["schritte"]
+            _sch18 = _b18.scan_data()["steps"]
             check("es sind drei Schritte", [s["nr"] for s in _sch18] == [1, 2, 3])
-            check("mit Bild ist der erste erledigt", _sch18[0]["fertig"] is True)
+            check("mit Bild ist der erste erledigt", _sch18[0]["done"] is True)
             check("mit angelegten Slots ist auch der zweite erledigt",
-                  _sch18[1]["fertig"] is True)
+                  _sch18[1]["done"] is True)
             # Der entscheidende Satz: zwischen Slots und Items liegt das Spiel.
             # Wer auf dem alten Bild lernt, lernt leere Slots.
             check("Schritt 3 sagt, dass neu aufgenommen werden muss",
-                  "NEU aufnehmen" in _sch18[2]["was"])
+                  "NEU aufnehmen" in _sch18[2]["what"])
             check("ein fertiger Scan hat keinen offenen Assistent-Schritt",
                   sum(1 for s in _sch18 if s["current"]) == 0)
 
@@ -371,10 +371,10 @@ try:
             _b18._display_image(0, 0, 1.0)
 
             # Der erste Klick ist keine Farbe mehr, sondern eine Ecke.
-            _b18.scan_mode_set({"modus": _MF18})
+            _b18.scan_mode_set({"mode": _MF18})
             _z18 = _b18.scan_click({"x": 20, "y": 20})
             check("der erste Klick beim Finden setzt eine Ecke",
-                  _z18["slots"] == [] and _z18["ecke"] == [20, 20])
+                  _z18["slots"] == [] and _z18["corner"] == [20, 20])
             _z18 = _b18.scan_click({"x": 280, "y": 200})
             check("die zweite Ecke ergibt den Suchbereich",
                   _z18["search_area"] == [20, 20, 280, 200] and _z18["slots"] == [])
@@ -393,8 +393,8 @@ try:
                 check("der Suchbereich ist danach wieder weg",
                       _z18["search_area"] is None)
                 check("sie gehoeren gleich zum offenen Scan",
-                      all(s["dabei"] for s in _z18["slots"]))
-                check("danach ist wieder Auswaehlen aktiv", _z18["modus"] == _MW18)
+                      all(s["included"] for s in _z18["slots"]))
+                check("danach ist wieder Auswaehlen aktiv", _z18["mode"] == _MW18)
                 # Der Einzug: die Erkennung liefert die ganze Zelle samt Rahmen,
                 # gescannt werden soll das Innere. Der Konsolen-Editor rechnet
                 # ihn seit jeher, das Studio tat es nicht - und lernte den Rahmen
@@ -406,7 +406,7 @@ try:
                 check("und es steht dabei, dass eingezogen wurde",
                       "Einzug" in _z18["status"]["text"])
 
-                _b18.scan_mode_set({"modus": _MF18})
+                _b18.scan_mode_set({"mode": _MF18})
                 _b18.scan_click({"x": 20, "y": 20})
                 _b18.scan_click({"x": 280, "y": 200})
                 _z18 = _b18.scan_click({"x": 42, "y": 42})
@@ -421,7 +421,7 @@ try:
                 # der auch den Koeder umfasst - dann sind es sieben.
                 _b18.slots.clear()
                 _b18._sync_objects()
-                _b18.scan_mode_set({"modus": _MF18})
+                _b18.scan_mode_set({"mode": _MF18})
                 _b18.scan_click({"x": 10, "y": 10})
                 _b18.scan_click({"x": 395, "y": 295})
                 _z18 = _b18.scan_click({"x": 42, "y": 42})
@@ -436,13 +436,13 @@ try:
                 _b18.items.clear()
                 _b18.slots.clear()
                 _b18._sync_objects()
-                _b18.scan_mode_set({"modus": _MF18})
+                _b18.scan_mode_set({"mode": _MF18})
                 _b18.scan_click({"x": 10, "y": 10})
                 _b18.scan_click({"x": 395, "y": 295})
                 _z18 = _b18.scan_click({"x": 42, "y": 42})
                 check("ohne Items im Bestand sagt die Probe nichts",
                       "bekanntem Item" not in _z18["status"]["text"]
-                      and all(s["treffer"] is None for s in _z18["slots"]))
+                      and all(s["match"] is None for s in _z18["slots"]))
 
                 # Ein Item aus genau einem dieser Slots lernen, dann nochmal
                 # finden: der eine Slot muss gruen sein, die anderen nicht.
@@ -457,11 +457,11 @@ try:
                 _b18.slots["Draussen"] = _SLOT8(name="Draussen",
                                                 scan_region=(2000, 2000, 2060, 2060),
                                                 click_pos=(2030, 2030))
-                _b18.scan_mode_set({"modus": _MF18})
+                _b18.scan_mode_set({"mode": _MF18})
                 _b18.scan_click({"x": 10, "y": 10})
                 _b18.scan_click({"x": 395, "y": 295})
                 _z18 = _b18.scan_click({"x": 42, "y": 42})
-                _gruen18 = [s for s in _z18["slots"] if s["treffer"] and s["treffer"]["name"]]
+                _gruen18 = [s for s in _z18["slots"] if s["match"] and s["match"]["name"]]
                 check("das gelernte Item wird gleich im Slot erkannt",
                       len(_gruen18) >= 1)
                 check("und die Meldung sagt, was noch unbekannt ist",
@@ -470,7 +470,7 @@ try:
                 # Der Treffer gehoert zum offenen Scan (das Lernen hat ihn
                 # eingetragen), ist also NICHT fremd.
                 check("ein Item des offenen Scans gilt nicht als fremd",
-                      _gruen18[0]["treffer"].get("foreign") is False)
+                      _gruen18[0]["match"].get("foreign") is False)
 
                 # --- Ein neuer Scan faengt leer an, erkannte tauchen auf ---
                 # Vorher standen im Inspektor eines frischen Scans alle Slots
@@ -484,8 +484,8 @@ try:
                       len(_erk18) >= 1)
                 check("und es ist genau das, was in einem Slot steht",
                       {i["name"] for i in _erk18}
-                      == {s["treffer"]["name"] for s in _z18["slots"]
-                          if s["treffer"] and s["treffer"]["name"]})
+                      == {s["match"]["name"] for s in _z18["slots"]
+                          if s["match"] and s["match"]["name"]})
                 # Ein Item, das nirgends erkannt wird, traegt das Merkmal nicht -
                 # sonst waere die Liste wieder der ganze Bestand.
                 _b18.items["Nie gesehen"] = _ITEM8(name="Nie gesehen")
@@ -497,7 +497,7 @@ try:
                 _z18 = _b18.scan_data()
 
                 check("ein Item des Scans braucht keinen Mitgliedschaftsschalter",
-                      all(s["treffer"].get("foreign") is False for s in _gruen18))
+                      all(s["match"].get("foreign") is False for s in _gruen18))
                 _b18.slots.pop("Draussen", None)
                 _b18.items.clear()
                 _b18.items.update(_items_vorher18)
@@ -505,33 +505,33 @@ try:
                 print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
             # ESC raeumt einen halb gesetzten Suchbereich weg - sonst haengt er
             # an einem Bild, das es gleich nicht mehr gibt.
-            _b18.scan_mode_set({"modus": _MF18})
+            _b18.scan_mode_set({"mode": _MF18})
             _b18.scan_click({"x": 20, "y": 20})
             _b18.scan_click({"x": 280, "y": 200})
             _z18 = _b18.scan_cancel()
             check("ESC verwirft den Suchbereich",
-                  _z18["search_area"] is None and _z18["modus"] == _MW18)
+                  _z18["search_area"] is None and _z18["mode"] == _MW18)
 
             # --- Der Rueckweg ist die markierte Kachel selbst ---
             # Ein Modus, in den man nur hinein kommt, ist eine Falltuer: hinein
             # mit einem Klick, heraus nur mit einer Taste, die man kennen muss.
             # Dieselbe Regel wie bei der ELSE-Kachel im Sequenz-Editor.
-            _z18 = _b18.scan_mode_set({"modus": _MB18})
-            check("eine Kachel schaltet ihren Modus ein", _z18["modus"] == _MB18)
+            _z18 = _b18.scan_mode_set({"mode": _MB18})
+            check("eine Kachel schaltet ihren Modus ein", _z18["mode"] == _MB18)
             check("und sagt, wie man wieder herauskommt",
                   "zurück" in _z18["status"]["text"])
-            _z18 = _b18.scan_mode_set({"modus": _MB18})
+            _z18 = _b18.scan_mode_set({"mode": _MB18})
             check("nochmal dieselbe Kachel fuehrt zurueck ins Auswaehlen",
-                  _z18["modus"] == _MW18)
+                  _z18["mode"] == _MW18)
             # Auch eine halb gesetzte Ecke geht dabei weg - sie gehoert zu einer
             # Absicht, die man gerade aufgegeben hat.
-            _b18.scan_mode_set({"modus": _MB18})
+            _b18.scan_mode_set({"mode": _MB18})
             _b18.scan_click({"x": 40, "y": 40})
-            _z18 = _b18.scan_mode_set({"modus": _MB18})
+            _z18 = _b18.scan_mode_set({"mode": _MB18})
             check("und nimmt die halb gesetzte Ecke mit",
-                  _z18["ecke"] is None and _z18["modus"] == _MW18)
-            _z18 = _b18.scan_mode_set({"modus": _MW18})
-            check("Auswaehlen schaltet sich nicht selbst ab", _z18["modus"] == _MW18)
+                  _z18["corner"] is None and _z18["mode"] == _MW18)
+            _z18 = _b18.scan_mode_set({"mode": _MW18})
+            check("Auswaehlen schaltet sich nicht selbst ab", _z18["mode"] == _MW18)
             # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
             # weiter auf "Slot 1" und dem gestellten Bild.
             _b18.slots.clear()
@@ -551,7 +551,7 @@ try:
             # Bild, in dem drei Viertel stoeren.
             _z18 = _b18.scan_data()
             check("ohne Angabe ist es Vollbild", _z18["area"] is None)
-            _b18.scan_mode_set({"modus": _MB18})
+            _b18.scan_mode_set({"mode": _MB18})
             _b18.scan_click({"x": 80, "y": 80})
             _z18 = _b18.scan_click({"x": 280, "y": 240})
             check("zwei Ecken schneiden das Bild zu",
@@ -563,7 +563,7 @@ try:
             # Zugeschnitten, nicht neu geholt: gemessen wird weiter im Original,
             # und die Farbe an einer Stelle muss dieselbe bleiben.
             _b18.scan_select({"kind": "slot", "name": "Slot 1"})
-            _b18.scan_mode_set({"modus": _MM18})
+            _b18.scan_mode_set({"mode": _MM18})
             _z18 = _b18.scan_click({"x": 130, "y": 130})
             check("im Ausschnitt wird an derselben Stelle dasselbe gemessen",
                   _b18._photo_color(130, 130) == (200, 60, 60))
@@ -671,7 +671,7 @@ check("und die Kacheln stehen in der Reihenfolge von MODI",
       _kacheln18 == list(_MODI18))
 check("Slots finden steht gleich hinter Auswaehlen",
       _kacheln18[:2] == [_MW18, _MF18])
-_tasten18 = _re13.findall(r'taste:\s*"(\w)"', _block18)
+_tasten18 = _re13.findall(r'shortcut:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
       len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
 
@@ -712,15 +712,15 @@ check("der Quellenstand wird nicht neben dem Vollbild-Knopf eingequetscht",
       and 'id="scan-source-name"' in _html18)
 check("die Slot-Suche nimmt Ecken in der mittleren Buehne an",
       'function scanSearchPositionFromStage(e)' in _html18
-      and 'SC.modus !== "finden"' in _html18
+      and 'SC.mode !== "find"' in _html18
       and 'buehne.addEventListener("click"' in _html18)
 check("und begrenzt sie auf die vorhandenen Bildpixel",
       'bx = Math.max(0, Math.min(SC.photo.width, bx));' in _html18
       and 'by = Math.max(0, Math.min(SC.photo.height, by));' in _html18)
 check("Aufnahmequelle und Bildwerkzeuge bleiben bis zum Scan gesperrt",
       "function scanConfigOpen()" in _html18
-      and "neu.disabled = !SC.pillow || !bereit" in _html18
-      and "wahl.disabled = !bereit" in _html18
+      and "neu.disabled = !SC.pillow || !ready" in _html18
+      and "choice.disabled = !ready" in _html18
       and "Zuerst einen Scan anlegen oder auswählen" in _html18)
 check("jeder Screenshot nennt der Bruecke seine Scan-Art",
       'callScan("scan_screenshot", {kind: scanKind})' in _html18)
@@ -755,7 +755,7 @@ check("es gibt eine Regel, wo die Masken stehen",
 check("und sie gilt fuer alle Item-Listen",
       'function scanCardsRight() {\n  return scanKind === "item";' in _html18)
 check("Reiter, Filter und Liste baut EINE Funktion",
-      "function scanListBlock(tabs, filter, ziel)" in _html18)
+      "function scanListBlock(tabs, filter, target)" in _html18)
 # Und der zweite Listen-Block in der linken Spalte ist ersatzlos weg — samt
 # der Funktion, die je Reiter entschied, welcher der beiden ihn fuellt.
 check("und links bleibt gar nichts mehr stehen",
@@ -974,7 +974,7 @@ try:
     # Ueber den echten Weg anlegen (zwei Klicks), damit jeder Slot seine ID aus
     # `_next_slot_id()` bekommt — genau wie im Studio.
     for _i in range(3):
-        _bN.scan_mode_set({"modus": "slot"})
+        _bN.scan_mode_set({"mode": "slot"})
         _bN.scan_click({"x": _i * 100, "y": 0})
         _bN.scan_click({"x": _i * 100 + 60, "y": 60})
     _namenN = [s.name for s in _bN.slots.values()]
@@ -988,11 +988,11 @@ try:
 
     # **Die Stelle im Scan und die Stelle im LAUF gehen auseinander**, sobald
     # „Slots rückwärts" an ist.
-    check("vorwaerts sind beide gleich", _slotsN[_namenN[0]]["lauf"] == 1)
+    check("vorwaerts sind beide gleich", _slotsN[_namenN[0]]["run_index"] == 1)
     _bN.scan_set({"name": "Inv", "field": "reverse", "value": True})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("rueckwaerts dreht sich die Lauf-Stelle um",
-          [_slotsN[n]["lauf"] for n in _namenN] == [3, 2, 1])
+          [_slotsN[n]["run_index"] for n in _namenN] == [3, 2, 1])
     check("die Stelle im Scan bleibt dieselbe",
           [_slotsN[n]["number"] for n in _namenN] == [1, 2, 3])
 
@@ -1062,7 +1062,7 @@ try:
     check("ausgeschaltete Items sind auch im Studio-Test keine Kandidaten",
           _bN._candidates() == [])
     check("und der Assistent nennt Items dann wieder als offenen Schritt",
-          not next(s for s in _bN._steps() if s["nr"] == 3)["fertig"])
+          not next(s for s in _bN._steps() if s["nr"] == 3)["done"])
     _bN.scan_toggle_all({"kind": "item", "active": True})
     check("Alle ein schaltet wirklich jedes Item ein",
           all(i.enabled for i in _bN.items.values()))
@@ -1285,9 +1285,9 @@ check("und der Rang wird ebenfalls nachgezogen",
 # Lehnt die Bruecke den neuen Namen ab, heisst das Item weiter wie vorher —
 # und behaelt trotzdem seinen Platz.
 check("beide Namen stehen dafuer im Merkposten",
-      "merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);" in _html18)
+      "merk.splice(i, 1, {name: neu, group: merk[i].group}, merk[i]);" in _html18)
 check("rememberFocus loest den Hinweis genau einmal ein",
-      "const umbenannt = focusRenamed;" in _html18
+      "const renamed = focusRenamed;" in _html18
       and "focusRenamed = null;" in _html18)
 # Lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst die Maske
 # danach weiter wie vorher — und der Fokus soll trotzdem stehen bleiben.
@@ -1385,9 +1385,9 @@ check("und beim Zeichnen angewandt statt neu gerechnet",
 # ausschliesslich sie — auch fuer die Gruppen.
 check("mit Merkposten entscheidet nur er",
       "function scanOrderGroup(kind)" in _html18
-      and "const gruppe = scanOrderGroup(\"item\");" in _html18)
+      and "const group = scanOrderGroup(\"item\");" in _html18)
 check("die Ueberschrift kommt aus der eingefrorenen Gruppe",
-      "const gefroren = gruppe ? gruppe(i.name) : null;" in _html18)
+      "const gefroren = group ? group(i.name) : null;" in _html18)
 # Sonst reisst ein gerade geaendertes Item eine zweite Ueberschrift mitten in
 # die Liste — wohin es wandert, sagt stattdessen seine Zustandszeile.
 check("und der Wechsel wird an der Maske angesagt",
@@ -1434,7 +1434,7 @@ check("mit eigenem Hintergrund", "background:var(--panel)}" in
 check("der Rueckgaengig-Knopf traegt einen festen Namen",
       '"↶ Zurück")));' in _html18)
 check("und die Beschreibung steht im Tooltip",
-      '"STRG+Z — nimmt zurück: " + SC.undo.was' in _html18)
+      '"STRG+Z — nimmt zurück: " + SC.undo.what' in _html18)
 # Der Schalter bekommt dieselbe Flaeche wie seine Nachbarn — sonst haengt er als
 # loser Text zwischen Reiterleiste und Knopfreihe.
 check("ein Mitgliedschafts-Filterschalter ist ersatzlos weg",
@@ -1696,7 +1696,7 @@ try:
         def _durchlauf_an(b, data, schritte=None):
             """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
 
-            `schritte` bricht nach so vielen ab — genau das, was der
+            `steps` bricht nach so vielen ab — genau das, was der
             Abbrechen-Knopf im Arbeits-Kasten tut.
             """
             erg = b.scan_autoname_start(data)
@@ -1714,7 +1714,7 @@ try:
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_namen_an, None), "")
 
         _ba = _bau_an()
-        _vorher_an = _ba.scan_data()["undo"]["tiefe"]
+        _vorher_an = _ba.scan_data()["undo"]["depth"]
         _erg_an = _durchlauf_an(_ba, {"alle": True})
         check("'alle' benennt jedes Item mit Vorlage, nicht nur die Kategorie 'Auto'",
               "Godlike Bow" in _ba.items and "Citadel Helmet" in _ba.items)
@@ -1732,7 +1732,7 @@ try:
         # Zustand von VOR dem Durchgang nach dreissig Items aus dem Stapel
         # gefallen — also genau der, auf den man zurueck will.
         check("der ganze Durchgang ist EIN Rueckgaengig-Schritt",
-              _ba.scan_data()["undo"]["tiefe"] == _vorher_an + 1)
+              _ba.scan_data()["undo"]["depth"] == _vorher_an + 1)
         _ba.scan_undo()
         check("und ein Zurueck holt alle Namen auf einmal wieder",
               "Item 1" in _ba.items and "Item 2" in _ba.items
@@ -1742,10 +1742,10 @@ try:
         # zurueckdreht, ist eins, dem man danach nicht mehr traut.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, "")
         _bl = _bau_an()
-        _leer_an = _bl.scan_data()["undo"]["tiefe"]
+        _leer_an = _bl.scan_data()["undo"]["depth"]
         _erg_leer = _durchlauf_an(_bl, {"alle": True})
         check("erkennt das Modell nichts, entsteht kein Rueckgaengig-Stand",
-              _bl.scan_data()["undo"]["tiefe"] == _leer_an)
+              _bl.scan_data()["undo"]["depth"] == _leer_an)
         check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
               "2 ohne Vorschlag" in _erg_leer["status"]["text"])
 
@@ -1888,10 +1888,10 @@ try:
         _bfs.scan_autoname_start({"alle": True})
         _stand_an = _bfs.scan_data()["autoname"]
         check("die Momentaufnahme traegt den Fortschritt",
-              _stand_an and _stand_an["total"] == 2 and _stand_an["fertig"] == 0)
+              _stand_an and _stand_an["total"] == 2 and _stand_an["done"] == 0)
         _bfs.scan_autoname_step()
         check("und er waechst mit jedem Schritt",
-              _bfs.scan_data()["autoname"]["fertig"] == 1)
+              _bfs.scan_data()["autoname"]["done"] == 1)
         _bfs.scan_autoname_end()
 
         # Der Knopf steht im Kopf der rechten Spalte und schickt genau dieses
@@ -1908,8 +1908,8 @@ try:
         check("und laesst sich dabei abbrechen",
               "autonameCancel" in _quelle_an and "Abbrechen" in _quelle_an)
         check("und fragt vorher, ob das LLM eingeschaltet ist",
-              "SC.llm_an" in _quelle_an
-              and "llm_an" in _bau_an().scan_data())
+              "SC.llm_on" in _quelle_an
+              and "llm_on" in _bau_an().scan_data())
         # Ein Aufruf, der eine Minute lang rechnet, braucht einen Hinweis —
         # sonst sieht das Fenster tot aus. `withWait` passt nicht: dort wartet
         # die Bruecke auf ENTER und hat eine feste Grenze.
@@ -1985,15 +1985,15 @@ try:
     # Kein Rueckgaengig-Stand ohne Aenderung: ein STRG+Z, das nichts
     # zurueckdreht, ist eins, dem man danach nicht mehr traut.
     _bk5 = _bau_kat()
-    _tiefe_vorher = _bk5.scan_data()["undo"]["tiefe"]
+    _tiefe_vorher = _bk5.scan_data()["undo"]["depth"]
     _erg_leer_kat = _bk5.scan_category_rename({"alt": "Gibtsnicht", "neu": "X"})
     check("eine leere Gruppe aendert nichts",
           _erg_leer_kat["status"]["kind"] == "warn"
-          and _bk5.scan_data()["undo"]["tiefe"] == _tiefe_vorher)
+          and _bk5.scan_data()["undo"]["depth"] == _tiefe_vorher)
     _bk6 = _bau_kat()
     _bk6.scan_category_rename({"alt": "Bow", "neu": "Bow"})
     check("und derselbe Name auch nicht",
-          _bk6.scan_data()["undo"]["tiefe"] == _tiefe_vorher)
+          _bk6.scan_data()["undo"]["depth"] == _tiefe_vorher)
 
     # STRG+Z holt den ganzen Durchgang zurueck.
     _bk7 = _bau_kat()

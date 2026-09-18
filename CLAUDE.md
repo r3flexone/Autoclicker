@@ -1377,7 +1377,7 @@ Momentaufnahme, und die Ansicht bietet „Neu laden" an. Zwei Regeln dazu:
 Daraus folgt: **beide Seiten kennen die Änderungen der anderen erst nach dem Neuladen.**
 Der Subprozess liest die Dateien beim Start und schreibt sie beim Speichern; der
 Hauptprozess hält seinen eigenen Stand im Speicher. Für Config und Scan-Daten holt er
-sie inzwischen selbst nach (Briefkasten-Befehle `config` und `daten`), für Sequenzen
+sie inzwischen selbst nach (Briefkasten-Befehle `config` und `data_reload`), für Sequenzen
 weiterhin auf `CTRL+ALT+L`. Wer im Hauptprozess speichert, während der Subprozess offen
 ist, verliert eine der beiden Fassungen. Beim Erweitern also nichts einbauen, das auf
 gemeinsamen State setzt — der gemeinsame Nenner ist die Datei.
@@ -1740,7 +1740,7 @@ Sechs Regeln, an denen der Reiter hängt:
   wiederholen. Drei Tests halten das zusammen: jeder Zustand braucht Umriss
   *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
   `SLOT_COLOR` muss genau die Zustände abdecken.
-- **Erkannt ist nicht dasselbe wie im Scan** (`treffer.foreign`, türkis statt
+- **Erkannt ist nicht dasselbe wie im Scan** (`match.foreign`, türkis statt
   grün) — ein Zustand aus der Zeit des globalen Bestands: bei einem Scan ohne
   Items prüfte `_candidates()` alle Items aller Spiele, und ein Treffer aus dem
   *anderen* Spiel durfte nicht grün werden, denn dieser Scan sah das Item gar
@@ -1967,7 +1967,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Schlüssel in `slot_names`/`item_names`, die ID ist reine Anzeige.
 
   **Zwei Zahlen bleiben nötig, weil sie zwei verschiedene Fragen beantworten.**
-  `number`/`lauf`/`total` stehen weiterhin in der Momentaufnahme — sie
+  `number`/`run_index`/`total` stehen weiterhin in der Momentaufnahme — sie
   entscheiden die Vorsortierung („in welcher Reihenfolge lernt/scannt das hier")
   und stehen im Tooltip der Kachel; angezeigt wird aber `id`. Wer nicht zum
   offenen Scan gehört, hat keine `number` (dort gibt es keine Stelle), aber
@@ -2545,7 +2545,7 @@ Vier Regeln:
   im Subprozess gibt es ein Config-Objekt.
 
 Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
-Briefkasten-Befehl `daten`, der Hauptprozess.
+Briefkasten-Befehl `data_reload`, der Hauptprozess.
 
 **Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_werkzeuge.py`).
 Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`klick`) lagen im
@@ -2559,7 +2559,7 @@ die Mausposition über eine globale Taste. Genau diese zwei Griffe braucht eine
 Kalibrierung, also läuft sie im Fenster. Die Klick-Runde braucht dagegen einen
 **systemweiten Maus-Hook**, und der gehört dem Prozess, der auch die Hotkeys pumpt
 — sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Nur dafür gibt es den
-Briefkasten-Befehl `nachklick`.
+Briefkasten-Befehl `reclick`.
 
 **Und weil sie drüben läuft, gibt es einen Rückkanal** (`.nachklick.json`,
 `RECLICK_STATUS_FILE`). Ohne ihn stand im Fenster nur „gestartet", während die
@@ -2675,7 +2675,7 @@ Vier Regeln, an denen der Reiter hängt:
   den Weg zu verschweigen.
 
 Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über den
-Briefkasten-Befehl `daten` — der zieht dabei auch die Punkte der Sequenz
+Briefkasten-Befehl `data_reload` — der zieht dabei auch die Punkte der Sequenz
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
 
 **Der Reiter „Bericht" liest `logs/`** (`bridge_bericht.py`). Der Live-Run zeigt das
@@ -3257,7 +3257,7 @@ feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
 
 Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
 Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
-(max. Scans, Timeout) und macht danach weiter. `else_greift()` in
+(max. Scans, Timeout) und macht danach weiter. `else_applies()` in
 `bridge_contract.py` (über `bridge.py` weiterhin exportiert) hält
 dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
 nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
@@ -3712,7 +3712,7 @@ Briefkastens, Konsolenbefehle und CLI-Flags — Englisch. Kommentare, Docstrings
 UI-Texte, Meldungen, Hilfetexte, Testbeschreibungen (`check("…")`,
 `section("…")`), Commit-Messages und diese Datei — Deutsch. Ein String, der
 angezeigt wird, ist Sprache; ein String, der etwas *adressiert*
-(`call("block_set")`, `"start_manuell"`, ein Dispatch-Schlüssel), ist Code.
+(`call("block_set")`, `"start_manual"`, ein Dispatch-Schlüssel), ist Code.
 
 **Der Bestand ist noch deutsch benannt, und die Umstellung läuft phasenweise**
 — nicht alles auf einmal, sondern je ein grüner PR: (1) Werkzeug und diese

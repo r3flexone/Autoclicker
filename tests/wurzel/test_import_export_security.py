@@ -135,22 +135,22 @@ class ImportExportSecurityTest(unittest.TestCase):
 
     def test_failed_import_rolls_back_state_and_files(self):
         from autoclicker import import_export as modul
-        original = _write_sequence("bestand")
+        original = _write_sequence("inventory")
         vorher = (original / "sequence.json").read_bytes()
         manifest = _manifest()
         manifest["layout"] = "sequence-folders"
         with zipfile.ZipFile("bundle.zip", "w") as zf:
             zf.writestr("manifest.json", json.dumps(manifest))
-            zf.writestr("sequences/A/sequence.json", json.dumps(_sequence_data("bestand")))
+            zf.writestr("sequences/A/sequence.json", json.dumps(_sequence_data("inventory")))
             zf.writestr("sequences/A/templates/neu.png", b"neues Bild")
-            zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("defekt")))
+            zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
         echtes_copytree = modul.shutil.copytree
         mutiert = []
 
         def kopieren(source, target, *args, **kwargs):
-            if Path(target).name == "defekt":
+            if Path(target).name == "broken":
                 mutiert.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
             return echtes_copytree(source, target, *args, **kwargs)

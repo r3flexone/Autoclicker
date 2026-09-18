@@ -350,7 +350,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
             total_init = len(sequence.init_steps)
             status.write_status(state, {"phase": "INIT", "phase_index": -1,
                                     "phase_pos": _phase_pos(sequence, "init"),
-                                    "durchlauf": 1, "wiederholungen": 1,
+                                    "pass_index": 1, "repeat": 1,
                                     "blocks": total_init}, sofort=True)
             for i, step in enumerate(sequence.init_steps):
                 if state.stop_event.is_set() or state.quit_event.is_set():
@@ -433,15 +433,15 @@ def _phase_overview(sequence) -> list[dict]:
     raus = []
     if sequence.init_steps:
         raus.append({"name": "INIT", "kind": "init",
-                     "schritte": len(sequence.init_steps)})
+                     "steps": len(sequence.init_steps)})
     for phase in sequence.loop_phases:
         raus.append({"name": phase.name, "kind": "loop",
-                     "schritte": len(phase.steps),
-                     "wiederholungen": phase.repeat,
+                     "steps": len(phase.steps),
+                     "repeat": phase.repeat,
                      "start": phase.scheduled_start or ""})
     if sequence.end_steps:
         raus.append({"name": "END", "kind": "end",
-                     "schritte": len(sequence.end_steps)})
+                     "steps": len(sequence.end_steps)})
     return raus
 
 
@@ -485,13 +485,13 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
         status.write_status(state, {"phase": loop_phase.name, "phase_index": idx,
                                 "phase_pos": _phase_pos(sequence, "loop", idx),
-                                "wiederholungen": loop_phase.repeat,
+                                "repeat": loop_phase.repeat,
                                 "blocks": total_steps}, sofort=True)
 
         for repeat_num in range(1, loop_phase.repeat + 1):
             if state.stop_event.is_set() or state.quit_event.is_set():
                 break
-            status.write_status(state, {"durchlauf": repeat_num}, sofort=True)
+            status.write_status(state, {"pass_index": repeat_num}, sofort=True)
 
             if debug:
                 print(dbg(f"Loop {repeat_num}/{loop_phase.repeat} von '{loop_phase.name}'"))
@@ -523,7 +523,7 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
     total_end = len(sequence.end_steps)
     status.write_status(state, {"phase": "END", "phase_index": -1,
                             "phase_pos": _phase_pos(sequence, "end"),
-                            "durchlauf": 1, "wiederholungen": 1,
+                            "pass_index": 1, "repeat": 1,
                             "blocks": total_end}, sofort=True)
 
     for i, step in enumerate(sequence.end_steps):

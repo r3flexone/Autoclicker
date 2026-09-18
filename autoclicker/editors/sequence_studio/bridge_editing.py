@@ -14,7 +14,7 @@ from .bridge_contract import (
     _FELDER,
     _bloecke,
     _rgb,
-    else_greift,
+    else_applies,
 )
 from .model import (
     BLOCK_LABELS,
@@ -63,7 +63,7 @@ class BridgeEditingMixin:
             if lane.kind != LANE_LOOP:
                 return self._report("INIT und END tragen keinen eigenen Namen.", "warn")
             lane.name = str(value or "").strip() or lane.name
-        elif field == "wiederholungen":
+        elif field == "repeat":
             lane.repeat = max(1, int(value or 1))
         elif field == "start":
             raw = str(value or "").strip()
@@ -113,7 +113,7 @@ class BridgeEditingMixin:
         self.sel_anchor = row
 
     def select(self, data: dict) -> dict:
-        """Klick auf eine Karte. `modus`: einzeln / dazu / bereich.
+        """Klick auf eine Karte. `mode`: einzeln / dazu / bereich.
 
         Die Auswahl fängt in einer anderen Phase immer neu an — siehe
         Klassen-Docstring: Sammelaktionen brauchen genau eine Phase.
@@ -127,7 +127,7 @@ class BridgeEditingMixin:
         if not (0 <= row < len(lane.steps)):
             self._selection_clear()
             return self.snapshot()
-        modus = data.get("modus") or "einzeln"
+        modus = data.get("mode") or "einzeln"
         if modus == "dazu" and self.sel_lane is lane:
             self.sel_rows.symmetric_difference_update({row})
             if not self.sel_rows:
@@ -380,7 +380,7 @@ class BridgeEditingMixin:
 
         Gibt den Meldungstext zurück (leer, wenn nichts zu tun war).
         """
-        if step.else_config is None or else_greift(step):
+        if step.else_config is None or else_applies(step):
             return ""
         step.else_config = None
         return "ELSE entfernt — dieser Block kann es nicht mehr auslösen."
@@ -392,7 +392,7 @@ class BridgeEditingMixin:
         Ohne Punkt wird der Wechsel abgelehnt: lieber gar keine Bedingung als eine,
         die niemand mehr nachziehen kann.
         """
-        typ = (data or {}).get("typ")
+        typ = (data or {}).get("type_key")
         lane, row, step = self._single()
         if step is None or typ not in BLOCK_LABELS:
             return self.snapshot()
@@ -612,11 +612,11 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        field = "verify_condition" if data.get("welche") == "verify" else "wait_condition"
+        field = "verify_condition" if data.get("which") == "verify" else "wait_condition"
         return self._trigger_set(step, field, data)
 
     def _trigger_set(self, step: SequenceStep, field: str, data: dict) -> dict:
-        wahl = data.get("wahl")
+        wahl = data.get("choice")
         cond: Optional[WaitCondition] = getattr(step, field)
         if wahl == TRIGGER_KEIN:
             setattr(step, field, None)
@@ -664,8 +664,8 @@ class BridgeEditingMixin:
             # eintippen — beim nächsten Öffnen war die Eingabe weg.
             ec.point_id = point.id
             self._points_apply()
-        if "taste" in data:
-            ec.key = str(data["taste"] or "").strip() or None
+        if "action_key" in data:
+            ec.key = str(data["action_key"] or "").strip() or None
         if "delay" in data:
             ec.delay = max(0.0, float(data["delay"] or 0))
         return self._changed()

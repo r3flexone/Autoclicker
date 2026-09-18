@@ -108,7 +108,7 @@ class LinuxBackendTests(unittest.TestCase):
 
         `PILLOW_AVAILABLE` wird mitgesetzt: geprueft wird die WEITERGABE, und die
         haengt nicht daran, ob Pillow installiert ist. Ohne den Patch faellt der
-        Test in der `ohne`-Variante um, obwohl an der Weitergabe nichts fehlt -
+        Test in der `without`-Variante um, obwohl an der Weitergabe nichts fehlt -
         ein roter Test, der nur die Testumgebung meldet, verdeckt echte.
         """
         from autoclicker import imaging

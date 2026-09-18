@@ -84,13 +84,13 @@ function renderHelp(zeichen) {
   const open = openHelps.has(zeichen.getAttribute("data-hilfe"));
   const wirt = zeichen.closest("label") || zeichen.parentNode;
   const nachbar = wirt.nextElementSibling;
-  const da = nachbar && nachbar.classList.contains("help-text") ? nachbar : null;
+  const present = nachbar && nachbar.classList.contains("help-text") ? nachbar : null;
   zeichen.classList.toggle("on", open);
-  if (open && !da) {
+  if (open && !present) {
     wirt.parentNode.insertBefore(el("p", {class: "hint help-text"}, zeichen._text),
                                  wirt.nextSibling);
-  } else if (!open && da) {
-    da.remove();
+  } else if (!open && present) {
+    present.remove();
   }
 }
 
@@ -169,7 +169,7 @@ function categoryChooser(value, beim_setzen, opts) {
   // entscheidet allein, ob es etwas zu waehlen gibt.
   const key = opts.key || "";
   let current = String(value || "");
-  let gesperrt = false;
+  let locked = false;
 
   const values = () => categoryValues(categoryNote().concat(current));
   const add_finding = (v) => {
@@ -201,9 +201,9 @@ function categoryChooser(value, beim_setzen, opts) {
     return s;
   };
 
-  const textfeld = (vorgabe) => {
-    const e = el("input", {value: vorgabe, autocomplete: "off",
-      placeholder: opts.platzhalter || "Neue Kategorie",
+  const textfeld = (default_value) => {
+    const e = el("input", {value: default_value, autocomplete: "off",
+      placeholder: opts.placeholder || "Neue Kategorie",
       title: "Neuen Namen tippen — beim nächsten Item steht er in der Liste"});
     e.addEventListener("change", () => add_finding(e.value.trim()));
     e.addEventListener("keydown", (ev) => {
@@ -215,14 +215,14 @@ function categoryChooser(value, beim_setzen, opts) {
     return e;
   };
 
-  function tausche(frei, vorgabe, merken) {
+  function tausche(frei, default_value, merken) {
     if (key && merken !== false) {
       if (frei) categoryFree.add(key);
       else categoryFree.delete(key);
     }
-    const neu = frei ? textfeld(vorgabe === undefined ? current : vorgabe)
+    const neu = frei ? textfeld(default_value === undefined ? current : default_value)
                      : auswahlfeld();
-    neu.disabled = gesperrt;
+    neu.disabled = locked;
     huelle.replaceChildren(neu);
     huelle.value = () => (frei ? neu.value.trim() : neu.value);
     huelle.optionenNeu = frei ? null : neu.rebuildOptions;
@@ -237,18 +237,18 @@ function categoryChooser(value, beim_setzen, opts) {
           || (key && categoryFree.has(key))
           || (!!current && !vorhandene.some((k) => k === current)),
           undefined, false);
-  huelle.sperren = (an) => {
-    gesperrt = an;
+  huelle.lock = (an) => {
+    locked = an;
     for (const n of huelle.children) n.disabled = an;
   };
-  huelle.gesperrt = () => gesperrt;
+  huelle.locked = () => locked;
   // Von aussen setzen (Sammel-Aktion der Lern-Vorschau). Steht der Wert nicht
   // in der Liste, muss das Feld dafuer ins Tippen wechseln — sonst schluckt
   // ein <select> ihn stillschweigend.
-  huelle.setzen = (v) => {
+  huelle.set_value = (v) => {
     current = String(v || "");
-    const da = categoryValues(categoryNote());
-    tausche(!!current && !da.some((k) => k === current), current);
+    const present = categoryValues(categoryNote());
+    tausche(!!current && !present.some((k) => k === current), current);
     if (huelle.optionenNeu) huelle.optionenNeu();
     beim_setzen(current);
   };
@@ -366,8 +366,8 @@ function scanReviewCategoryToSelection(eingabe) {
   for (const row of document.querySelectorAll(".scan-review-row")) {
     const haken = row.querySelector(".scan-review-check");
     const category = row.querySelector(".scan-review-category");
-    if (haken && haken.checked && category && !category.gesperrt()) {
-      category.setzen(value);
+    if (haken && haken.checked && category && !category.locked()) {
+      category.set_value(value);
     }
   }
 }
@@ -380,12 +380,12 @@ function numberField(beschriftung, value, beim_setzen, extra, help, key) {
 /** Farbwähler mit Hex daneben. Ohne gemessene Farbe bleibt er leer statt eine
  *  zu behaupten — dieselbe Regel wie beim Quadrat in der Punkte-Palette. */
 function color_swatch(beschriftung, hex, beim_setzen, help, key) {
-  const wahl = el("input", {type: "color", value: hex || "#000000",
+  const choice = el("input", {type: "color", value: hex || "#000000",
                             style: "width:44px;height:28px;padding:2px"});
   const text = el("span", {class: "small mono"}, hex || "keine Farbe aufgenommen");
-  wahl.addEventListener("change", () => beim_setzen(wahl.value.toUpperCase()));
+  choice.addEventListener("change", () => beim_setzen(choice.value.toUpperCase()));
   return el("label", {class: "field"}, labeled(beschriftung, help, key),
-    el("div", {class: "row"}, wahl, text));
+    el("div", {class: "row"}, choice, text));
 }
 
 /** Ein Schalter — mit ⓘ statt eines Erklaerungsabsatzes darunter.
@@ -433,7 +433,7 @@ function selection(beschriftung, values, current, beim_setzen, help, key) {
 function rememberFocus() {
   // Ein Umbenennen aendert die Identitaet und damit die id. Wer umbenennt, sagt
   // es vorher; hier wird es einmal eingeloest und danach vergessen.
-  const umbenannt = focusRenamed;
+  const renamed = focusRenamed;
   focusRenamed = null;
   const a = document.activeElement;
   if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
@@ -445,7 +445,7 @@ function rememberFocus() {
   // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
   let start = null, end = null;
   try { start = a.selectionStart; end = a.selectionEnd; } catch (e) { /* egal */ }
-  const neu = umbenannt && umbenannt.von === kasten.id ? umbenannt.nach : kasten.id;
+  const neu = renamed && renamed.von === kasten.id ? renamed.nach : kasten.id;
   // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
   // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
   //
@@ -472,11 +472,11 @@ function restoreFocus(merk) {
   const kasten = document.getElementById(merk.id)
               || document.getElementById(merk.alt);
   if (!kasten) return;
-  const ziel = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
-  if (!ziel) return;
-  ziel.focus();
+  const target = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
+  if (!target) return;
+  target.focus();
   if (merk.start !== null) {
-    try { ziel.setSelectionRange(merk.start, merk.end); } catch (e) { /* egal */ }
+    try { target.setSelectionRange(merk.start, merk.end); } catch (e) { /* egal */ }
   }
 }
 
@@ -500,16 +500,16 @@ let selectedPhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
 const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 function waitForBridge() {
-  return new Promise((fertig) => {
-    if (window.pywebview && window.pywebview.api) return fertig();
-    window.addEventListener("pywebviewready", () => fertig(), {once: true});
+  return new Promise((done) => {
+    if (window.pywebview && window.pywebview.api) return done();
+    window.addEventListener("pywebviewready", () => done(), {once: true});
   });
 }
 
 /** Ein Befehl an die Brücke. Antwort ist immer die neue Momentaufnahme. */
-async function call(name, daten) {
+async function call(name, data_reload) {
   try {
-    const antwort = await window.pywebview.api[name](daten === undefined ? null : daten);
+    const antwort = await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
     const wechsel = name === "load" || name === "new";
     if (wechsel) {
       selectedPhase = null;
@@ -538,9 +538,9 @@ async function call(name, daten) {
  * Für alles, was gefragt und nicht befohlen wird: Sequenzliste, Laufstatus.
  * Über `call()` geholt würde ihre Antwort in `S` landen und den Editor-Zustand
  * zerschiessen — ein Blick in die Übersicht wäre dann ein Datenverlust. */
-async function ask(name, daten) {
+async function ask(name, data_reload) {
   try {
-    return await window.pywebview.api[name](daten === undefined ? null : daten);
+    return await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
   } catch (e) {
     setStatus({text: String(e && e.message ? e.message : e), kind: "err"});
     return null;
@@ -605,7 +605,7 @@ function render() {
   $("footer-points").textContent = S.points.length + " Punkte";
   $("dirty-dot").hidden = !S.dirty;
   $("footer-lamp").classList.toggle("open", !!S.dirty);
-  $("footer-lamp").title = S.dirty ? "ungespeicherte Änderungen" : "gespeichert";
+  $("footer-lamp").title = S.dirty ? "ungespeicherte Änderungen" : "saved";
   // Der Fenstertitel bleibt schlicht: in der Titelleiste steht sonst der
   // Sequenzname doppelt (er steht schon im Kopf der Seite), und das Fenster
   // findet sich in der Taskleiste besser über einen gleichbleibenden Namen.
@@ -665,15 +665,15 @@ function renderPoints() {
   const liste = S.points.filter((p) => !filter ||
       (p.name + " #" + p.id + " " + p.x + "," + p.y).toLowerCase().includes(filter));
   $("points-count").textContent = liste.length + "/" + S.points.length;
-  const ziel = $("points");
-  ziel.replaceChildren();
+  const target = $("points");
+  target.replaceChildren();
   if (!S.points.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch keine Punkte aufgenommen. Im Hauptprozess mit CTRL+ALT+A anlegen."));
     return;
   }
   for (const p of liste) {
-    ziel.appendChild(el("div", {
+    target.appendChild(el("div", {
       class: "point", draggable: "true", title: p.source || "",
       ondragstart: (e) => { drag = {kind: "point", point: p.id};
                             e.dataTransfer.effectAllowed = "copy"; },
@@ -694,14 +694,14 @@ function renderPoints() {
 /* --------------------------------------------------------------------- Board */
 
 function renderPhases() {
-  const ziel = $("phases");
-  ziel.replaceChildren();
+  const target = $("phases");
+  target.replaceChildren();
   if (!S.phases.some((p) => p.index === selectedPhase && p.kind === "loop")) {
     selectedPhase = null;
   }
   const sichtbar = S.phases.filter((phase) => phase.kind === "loop" ||
     phase.blocks.length || openSpecialPhases.has(phase.kind));
-  for (const phase of sichtbar) ziel.appendChild(renderPhase(phase));
+  for (const phase of sichtbar) target.appendChild(renderPhase(phase));
 
   const verborgen = S.phases.filter((phase) => phase.kind !== "loop" &&
     !phase.blocks.length && !openSpecialPhases.has(phase.kind));
@@ -715,7 +715,7 @@ function renderPhases() {
       renderPhases();
     }}, title));
   }
-  ziel.appendChild(werkzeuge);
+  target.appendChild(werkzeuge);
 }
 
 function renderPhase(phase) {
@@ -745,10 +745,10 @@ function renderPhase(phase) {
     el("span", {class: "small mono"}, phase.blocks.length + " Schritte")));
 
   if (phase.kind === "loop") {
-    const wdh = el("input", {type: "number", min: "1", value: phase.wiederholungen,
+    const wdh = el("input", {type: "number", min: "1", value: phase.repeat,
                              title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
     wdh.addEventListener("change", () => call("phase_set",
-      {phase: phase.index, field: "wiederholungen", value: Number(wdh.value) || 1}));
+      {phase: phase.index, field: "repeat", value: Number(wdh.value) || 1}));
     const start = el("input", {value: phase.start, placeholder: "HH:MM",
                                title: "Start erst ab dieser Uhrzeit"});
     start.addEventListener("change", () => call("phase_set",
@@ -848,11 +848,11 @@ function drop(e, phase, row) {
   e.preventDefault();
   e.stopPropagation();
   clearDropZone();
-  const was = drag;
+  const what = drag;
   drag = null;
-  if (!was) return;
-  if (was.kind === "point") call("point_insert", {phase: phase, row: row, point: was.point});
-  else call("drag", {von_phase: was.phase, from_row: was.row,
+  if (!what) return;
+  if (what.kind === "point") call("point_insert", {phase: phase, row: row, point: what.point});
+  else call("drag", {von_phase: what.phase, from_row: what.row,
                       nach_phase: phase, to_row: row});
 }
 
@@ -880,8 +880,8 @@ function renderCard(phase, block) {
   if (block.else_text) {
     // Ein ELSE ohne Bedingung feuert nie — auf der Karte stuende es sonst als
     // Zusage da („sonst: Schritt überspringen"), die nichts einloest.
-    leib.appendChild(el("div", {class: "card-else" + (block.else_greift ? "" : " dead")},
-      block.else_text + (block.else_greift ? "" : " · greift nie")));
+    leib.appendChild(el("div", {class: "card-else" + (block.else_applies ? "" : " dead")},
+      block.else_text + (block.else_applies ? "" : " · greift nie")));
   }
 
   // **Kein Auswahl-Häkchen mehr.** Es sagte dasselbe wie der Amber-Ring um die
@@ -901,7 +901,7 @@ function renderCard(phase, block) {
       selectedPhase = null;
       return call("select", {
         phase: phase.index, row: block.row,
-        modus: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "area" : "einzeln")});
+        mode: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "area" : "einzeln")});
     },
     ondragstart: (e) => { drag = {kind: "block", phase: phase.index, row: block.row};
                           e.dataTransfer.effectAllowed = "move"; },
@@ -910,8 +910,8 @@ function renderCard(phase, block) {
       if (!drag) return;
       e.preventDefault();
       const r = e.currentTarget.getBoundingClientRect();
-      const unten = e.clientY > r.top + r.height / 2;
-      const strich = unten ? e.currentTarget.nextElementSibling
+      const bottom = e.clientY > r.top + r.height / 2;
+      const strich = bottom ? e.currentTarget.nextElementSibling
                            : e.currentTarget.previousElementSibling;
       if (strich && strich.classList.contains("dropzone")) highlight(strich);
     },
@@ -930,7 +930,7 @@ function renderCard(phase, block) {
       block.breakpoint ? el("span", {class: "badge-small breakpoint",
                                      title: "Haltepunkt — der Lauf hält vor diesem Block an"},
                             "⏸ halt") : null,
-      block.warnung ? el("span", {class: "badge-small warn"}, block.warnung) : null,
+      block.warning ? el("span", {class: "badge-small warn"}, block.warning) : null,
       el("span", {class: "card-nr"}, String(block.row + 1).padStart(2, "0"))),
     leib);
 }
@@ -942,9 +942,9 @@ function renderCard(phase, block) {
  * Von Hand statt `toLocaleString()`: das Fenster erbt seine Locale von der
  * WebView, und die muss nicht die der Konsole sein. Ein Datum, das mal
  * deutsch und mal amerikanisch herum steht, liest man zweimal falsch. */
-function timestamp(sekunden) {
-  if (!sekunden) return "—";
-  const d = new Date(sekunden * 1000);
+function timestamp(seconds) {
+  if (!seconds) return "—";
+  const d = new Date(seconds * 1000);
   const zz = (n) => String(n).padStart(2, "0");
   return zz(d.getDate()) + "." + zz(d.getMonth() + 1) + "." + d.getFullYear() +
          " " + zz(d.getHours()) + ":" + zz(d.getMinutes());
@@ -969,32 +969,32 @@ function phaseColor(kind) {
  * Leere Phasen fallen raus: ein Segment der Breite 0 sagt nichts, kostet aber
  * eine Luecke. Die Phasenfarben sind dieselben wie ueberall sonst. */
 function phaseBar(s) {
-  const teile = [{n: s.init, color: phaseColor("init"), was: "INIT: " + s.init}]
-    .concat((s.phases || []).map((p) => ({n: p.schritte, color: phaseColor("loop"),
-      was: p.name + ": " + p.schritte + " Schritte ×" + p.wiederholungen +
+  const parts = [{n: s.init, color: phaseColor("init"), what: "INIT: " + s.init}]
+    .concat((s.phases || []).map((p) => ({n: p.steps, color: phaseColor("loop"),
+      what: p.name + ": " + p.steps + " Schritte ×" + p.repeat +
            (p.start ? " ab " + p.start : "")})))
-    .concat([{n: s.end, color: phaseColor("end"), was: "END: " + s.end}]);
-  const summe = teile.reduce((a, t) => a + t.n, 0) || 1;
-  return el("div", {class: "bar"}, teile.filter((t) => t.n).map((t) =>
-    el("span", {style: "flex:" + t.n / summe + ";background:" + t.color, title: t.was})));
+    .concat([{n: s.end, color: phaseColor("end"), what: "END: " + s.end}]);
+  const summe = parts.reduce((a, t) => a + t.n, 0) || 1;
+  return el("div", {class: "bar"}, parts.filter((t) => t.n).map((t) =>
+    el("span", {style: "flex:" + t.n / summe + ";background:" + t.color, title: t.what})));
 }
 
 async function renderSequenceList() {
-  const ziel = $("view-sequences");
+  const target = $("view-sequences");
   const liste = await ask("sequence_list");
   // Zwischen Frage und Antwort kann umgeschaltet worden sein — dann gehoert
   // die Antwort in eine Ansicht, die niemand mehr ansieht.
   if (view !== "sequences") return;
-  ziel.replaceChildren();
+  target.replaceChildren();
   if (!liste || !liste.length) {
     // grid-column: sonst stünde der Text in der ersten Spalte des Rasters und
     // wäre auf einem breiten Fenster in die linke Ecke gequetscht.
-    ziel.appendChild(el("p", {class: "empty", style: "grid-column:1/-1"},
+    target.appendChild(el("p", {class: "empty", style: "grid-column:1/-1"},
       "Noch keine Sequenz gespeichert. Im Editor eine anlegen (Neu) oder im " +
       "Hauptprozess mit CTRL+ALT+J eine aufnehmen."));
     return;
   }
-  for (const s of liste) ziel.appendChild(seqCard(s));
+  for (const s of liste) target.appendChild(seqCard(s));
 }
 
 /** Eine Sequenz als Karte — mit FESTEN Zeilen, damit die Karten sich einmessen.
@@ -1007,7 +1007,7 @@ async function renderSequenceList() {
  * aber DA sein, sonst rutscht der Rest wieder eine Stelle nach oben. */
 function seqCard(s) {
   const karte = el("div", {class: "seq-card" + (s.open ? " open" : "") +
-                                  (s.defekt ? " broken" : "")});
+                                  (s.broken ? " broken" : "")});
   karte.appendChild(el("div", {class: "seq-header"},
     el("span", {class: "seq-name"}, s.name),
     s.open ? el("span", {class: "num", style: "color:var(--accent)"}, "open") : null));
@@ -1016,23 +1016,23 @@ function seqCard(s) {
   // Kennzahlen — die Zeilen bleiben trotzdem stehen, damit die Nachbarkarten
   // nicht verrutschen.
   const text = el("div", {class: "seq-text"});
-  if (s.defekt) {
+  if (s.broken) {
     text.appendChild(el("p", {class: "seq-warn"},
       "Nicht ladbar — die Datei ist beschädigt oder kein gültiges Sequenz-Format. " +
       "Sie bleibt unangetastet; nachsehen lohnt sich in " + s.file + "."));
   } else {
     if (s.description) text.appendChild(el("p", {class: "seq-note"}, s.description));
-    if (s.warnungen && s.warnungen.length) {
+    if (s.warnings && s.warnings.length) {
       text.appendChild(el("p", {class: "seq-warn"},
-        s.warnungen.length + "× Scan ohne Konfiguration — " + s.warnungen[0] +
-        (s.warnungen.length > 1 ? " u. a." : "")));
+        s.warnings.length + "× Scan ohne Konfiguration — " + s.warnings[0] +
+        (s.warnings.length > 1 ? " u. a." : "")));
     }
   }
   karte.appendChild(text);
   karte.appendChild(el("div", {class: "seq-bar"},
-    s.defekt ? null : phaseBar(s)));
-  karte.appendChild(el("div", {class: "seq-numbers"}, s.defekt ? null : [
-    el("span", {class: "num"}, s.schritte + " Schritte"),
+    s.broken ? null : phaseBar(s)));
+  karte.appendChild(el("div", {class: "seq-numbers"}, s.broken ? null : [
+    el("span", {class: "num"}, s.steps + " Schritte"),
     el("span", {class: "num"}, s.phases.length + " Loop-Phasen"),
     el("span", {class: "num"}, s.cycles ? s.cycles + " Zyklen" : "endlos")]));
 
@@ -1047,7 +1047,7 @@ function seqCard(s) {
     el("div", {class: "button-pair"},
       // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
       // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
-      s.defekt ? el("span", {}) : el("button", {
+      s.broken ? el("span", {}) : el("button", {
         class: "btn" + (s.open ? "" : " primary"), disabled: s.open,
         onclick: async () => { await call("load", {name: s.name}); setView("editor"); },
       }, s.open ? "geöffnet" : "Öffnen"),
@@ -1070,16 +1070,16 @@ function seqCard(s) {
 function askDelete(s) {
   // Das Wort kommt fertig gebeugt aus der Bruecke. Ein angehaengtes "n" ergab
   // "2× Item-Scann" — deutsche Mehrzahl ist keine Regel fuer eine Zeile hier.
-  const teile = (s.umfang || []).map((u) => u.count + "× " + u.wort);
+  const parts = (s.scope || []).map((u) => u.count + "× " + u.word);
   showQuestion({
     kind: "seq_loeschen",
-    ziel: s.name,
+    target: s.name,
     title: "„" + s.name + "“ löschen?",
     text: "Der ganze Ordner geht weg"
-      + (teile.length ? " — samt " + teile.join(", ") + "." : ".")
+      + (parts.length ? " — samt " + parts.join(", ") + "." : ".")
       + " Er wird nach backups/sequences/ verschoben, nicht gelöscht:"
       + " zurückholen geht von Hand.",
-    weiter: "Löschen",
+    proceed_label: "Löschen",
   });
 }
 
@@ -1108,14 +1108,14 @@ function setRunPolling(an) {
 function runEdge(active) {
   if (active && !runWasRunning && view !== "lauf") setView("lauf");
   runWasRunning = active;
-  const knopf = $("btn-run");
-  knopf.textContent = active ? "■ Stoppen" : "▶ Starten";
-  knopf.classList.toggle("danger", active);
+  const button = $("btn-run");
+  button.textContent = active ? "■ Stoppen" : "▶ Starten";
+  button.classList.toggle("danger", active);
 }
 
 /** Einen Lauf-Befehl abschicken, nachfassen — und melden, wenn niemand zuhört. */
-async function sendRun(befehl, extra) {
-  await call("run_command", Object.assign({befehl: befehl}, extra || {}));
+async function sendRun(command, extra) {
+  await call("run_command", Object.assign({command: command}, extra || {}));
   runFollowUp();
   mailboxFollowUp();
 }
@@ -1165,8 +1165,8 @@ function edgePulse() {
 }
 
 /** Sekunden als „2:05“ bzw. „1:23:45“. */
-function duration(sekunden) {
-  const s = Math.max(0, Math.floor(sekunden));
+function duration(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
   const zz = (n) => String(n).padStart(2, "0");
   const std = Math.floor(s / 3600);
   return (std ? std + ":" + zz(Math.floor(s / 60) % 60) : String(Math.floor(s / 60))) +
@@ -1174,8 +1174,8 @@ function duration(sekunden) {
 }
 
 /** Restzeit knapp: unter zehn Sekunden mit Zehntel, darüber ganze Sekunden. */
-function remainingTime(sekunden) {
-  const s = Math.max(0, sekunden);
+function remainingTime(seconds) {
+  const s = Math.max(0, seconds);
   return (s < 10 ? s.toFixed(1) : String(Math.round(s))) + " s";
 }
 
@@ -1210,25 +1210,25 @@ function waitBox(w, jetzt) {
                                    (knapp ? " tight" : "")});
 
   if (w.kind === "color") {
-    const treffer = w.distanz !== null && w.distanz !== undefined &&
-                    w.distanz <= w.tolerance;
-    // Das Ziel hängt an der Richtung: bei `bis_weg` ist ein Treffer genau das,
+    const match = w.distance !== null && w.distance !== undefined &&
+                    w.distance <= w.tolerance;
+    // Das Ziel hängt an der Richtung: bei `until_gone` ist ein Treffer genau das,
     // worauf NICHT gewartet wird — dieselbe Zahl, umgekehrte Bedeutung.
-    const erfuellt = w.bis_weg ? !treffer : treffer;
+    const erfuellt = w.until_gone ? !match : match;
     kasten.appendChild(el("div", {class: "header"},
       el("span", {class: "grow"},
-         (w.bis_weg ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
+         (w.until_gone ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
          " bei (" + w.point.join(",") + ")"),
       el("span", {class: "small mono"}, "seit " + duration(jetzt - w.since))));
     const angaben = el("div", {class: "grow"},
       el("div", {class: "color-pair"},
         colorChip("target", w.target),
         colorChip("jetzt", w.actual),
-        w.distanz === null || w.distanz === undefined
+        w.distance === null || w.distance === undefined
           ? el("span", {class: "small"}, "nicht messbar")
           : el("span", {class: "badge-match" + (erfuellt ? "" : " beside")},
-               "Δ " + w.distanz + " · " +
-               (treffer ? "im Toleranzbereich" : "ausserhalb") + " (" + w.tolerance + ")")));
+               "Δ " + w.distance + " · " +
+               (match ? "im Toleranzbereich" : "ausserhalb") + " (" + w.tolerance + ")")));
     // Das Bild steht links neben den Zahlen: es beantwortet die Anschlussfrage
     // („was ist da statt dessen zu sehen?"), nicht dieselbe.
     kasten.appendChild(w.image
@@ -1250,7 +1250,7 @@ function waitBox(w, jetzt) {
   if (w.kind === "color") {
     kasten.appendChild(el("span", {class: "small"}, uebrig === null
       ? "ohne Timeout — wartet, bis die Farbe stimmt"
-      : "Timeout in " + remainingTime(uebrig) + " · danach " + (w.danach || "—")));
+      : "Timeout in " + remainingTime(uebrig) + " · danach " + (w.after_value || "—")));
   } else if (uebrig !== null) {
     kasten.appendChild(el("span", {class: "small"}, "von " + remainingTime(w.total || 0)));
   }
@@ -1258,8 +1258,8 @@ function waitBox(w, jetzt) {
 }
 
 function bar(actual, target) {
-  const anteil = target > 0 ? Math.max(0, Math.min(1, actual / target)) : 0;
-  return el("div", {class: "progress"}, el("span", {style: "width:" + anteil * 100 + "%"}));
+  const share_pct = target > 0 ? Math.max(0, Math.min(1, actual / target)) : 0;
+  return el("div", {class: "progress"}, el("span", {style: "width:" + share_pct * 100 + "%"}));
 }
 
 /** Alle Phasen des Laufs nebeneinander, die laufende breit.
@@ -1273,7 +1273,7 @@ function phaseStrip(z, beendet) {
   const jetzige = z.phase_pos;
   const liste = Array.isArray(z.phases) && z.phases.length
     ? z.phases
-    : [{name: z.phase || "—", kind: "loop", wiederholungen: z.wiederholungen || 1}];
+    : [{name: z.phase || "—", kind: "loop", repeat: z.repeat || 1}];
   const pos = jetzige === undefined || jetzige === null || !Array.isArray(z.phases)
     ? 0 : jetzige;
 
@@ -1291,10 +1291,10 @@ function phaseStrip(z, beendet) {
     if (running) {
       kachel.appendChild(el("div", {class: "row"},
         el("span", {class: "small mono grow"},
-           "Durchlauf " + (z.durchlauf || 1) + " / " + (z.wiederholungen || 1)),
+           "Durchlauf " + (z.pass_index || 1) + " / " + (z.repeat || 1)),
         el("span", {class: "small mono"},
            "Block " + (z.block || 0) + " / " + (z.blocks || 0))));
-      kachel.appendChild(bar(z.durchlauf || 0, z.wiederholungen || 1));
+      kachel.appendChild(bar(z.pass_index || 0, z.repeat || 1));
     } else if (beendet && i === pos) {
       // Die Phase, in der Schluss war. „ausstehend" waere hier falsch (sie lief
       // ja) und „abgeschlossen" auch (sie kam nicht durch) — ausser der Lauf
@@ -1317,58 +1317,58 @@ async function renderRun() {
   const z = await ask("run_status");
   runEdge(!!(z && z.active));   // auch hier mitfuehren, sonst kippt die Flanke
   if (view !== "lauf") return;
-  const ziel = $("view-run");
-  ziel.replaceChildren();
+  const target = $("view-run");
+  target.replaceChildren();
   if (!z || !z.active) {
     if (z && z.countdown) {
       const jetzt = Date.now() / 1000;
-      ziel.appendChild(el("div", {class: "run-header"},
+      target.appendChild(el("div", {class: "run-header"},
         el("span", {class: "lamp on"}),
         el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
         el("span", {class: "num"}, "startet in " +
-          remainingTime((z.zielzeit || jetzt) - jetzt))));
-      ziel.appendChild(el("p", {class: "hint"},
-        "Geplant für " + new Date((z.zielzeit || jetzt) * 1000).toLocaleString("de-CH") +
+          remainingTime((z.target_time || jetzt) - jetzt))));
+      target.appendChild(el("p", {class: "hint"},
+        "Geplant für " + new Date((z.target_time || jetzt) * 1000).toLocaleString("de-CH") +
         ". Der Countdown kann hier oder mit dem Stop-Hotkey abgebrochen werden."));
-      ziel.appendChild(controls(false, z));
+      target.appendChild(controls(false, z));
       return;
     }
-    if (z && z.end) return renderSummary(ziel, z);
+    if (z && z.end) return renderSummary(target, z);
     // Leerzustand ehrlich beschriften statt mit Nullen füllen: eine Tafel voller
     // Nullen sieht aus wie ein Lauf, der nichts tut.
-    ziel.appendChild(el("div", {class: "run-header"},
+    target.appendChild(el("div", {class: "run-header"},
       el("span", {class: "lamp"}),
       el("span", {class: "run-name"},
-         z && z.verwaist ? "Nicht sauber beendet" : "Es läuft gerade keine Sequenz")));
-    ziel.appendChild(el("p", {class: "hint"}, z && z.verwaist
+         z && z.orphaned ? "Nicht sauber beendet" : "Es läuft gerade keine Sequenz")));
+    target.appendChild(el("p", {class: "hint"}, z && z.orphaned
       ? "Der letzte Lauf hat sich nicht sauber beendet — der Hauptprozess wurde " +
         "vermutlich hart abgeschossen. Ein neuer Start räumt das auf."
       : "Startet die zuletzt gespeicherte Fassung der geöffneten Sequenz — " +
         "danach zeigt diese Ansicht mit, wo sie gerade steht."));
-    ziel.appendChild(controls(false, z));
+    target.appendChild(controls(false, z));
     return;
   }
 
   const jetzt = Date.now() / 1000;
-  ziel.appendChild(el("div", {class: "run-header"},
+  target.appendChild(el("div", {class: "run-header"},
     el("span", {class: "lamp on"}),
     el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
     el("span", {class: "num"},
        "Zyklus " + (z.cycle || 0) + " / " + (z.cycles ? z.cycles : "∞")),
     el("span", {class: "num"}, "läuft " + duration(jetzt - (z.start || jetzt)))));
 
-  ziel.appendChild(phaseStrip(z));
+  target.appendChild(phaseStrip(z));
 
   // Kopfzeile in der Typfarbe des laufenden Blocks — dieselbe Gestalt wie seine
   // Karte im Board, damit man ihn wiedererkennt statt ihn zu lesen. Ohne Typ
   // (alte Statusdatei) bleibt sie neutral statt eine Farbe zu erfinden.
   const counters = z.counters || {};
-  ziel.appendChild(el("div", {class: "run-middle"},
+  target.appendChild(el("div", {class: "run-middle"},
     el("div", {class: "panel with-header"},
       el("div", {class: "card-header",
-                 style: "background:" + (z.block_farbe || "#2A3245") +
-                        (z.block_farbe ? "" : ";color:var(--text)")},
-        el("span", {class: "card-type"}, z.block_marke || "AKTUELLER BLOCK"),
+                 style: "background:" + (z.block_color || "#2A3245") +
+                        (z.block_color ? "" : ";color:var(--text)")},
+        el("span", {class: "card-type"}, z.block_badge || "AKTUELLER BLOCK"),
         el("span", {class: "card-title"}, z.block_title || "(ohne Namen)"),
         el("span", {class: "card-nr"},
            "Block " + (z.block || 0) + " / " + (z.blocks || 0))),
@@ -1376,17 +1376,17 @@ async function renderRun() {
         el("div", {class: "card-row"}, z.block_label || ""),
         bar(z.block || 0, z.blocks || 1),
         el("span", {class: "small mono"},
-           "seit " + duration(jetzt - (z.block_seit || jetzt))),
+           "seit " + duration(jetzt - (z.block_since || jetzt))),
         waitBox(z.waiting, jetzt))),
     el("div", {class: "tile"},
-      [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
+      [["Klicks", "clicks"], ["Items", "items"], ["Tasten", "keys"],
        ["Timeouts", "timeouts"], ["Übersprungen", "skipped"],
-       ["Neustarts", "neustarts"]].map(([text, key]) =>
+       ["Neustarts", "restarts"]].map(([text, key]) =>
         el("div", {}, el("b", {}, String(counters[key] || 0)),
                       el("small", {}, text.toUpperCase()))))));
 
-  if (z.manual) ziel.appendChild(manualControls(z.manual));
-  ziel.appendChild(controls(true, z));
+  if (z.manual) target.appendChild(manualControls(z.manual));
+  target.appendChild(controls(true, z));
 }
 
 /** Der letzte Lauf, nachdem er fertig ist.
@@ -1394,7 +1394,7 @@ async function renderRun() {
  * Der Stand bleibt stehen, bis der naechste Start ihn ueberschreibt — sonst
  * waere die Ansicht genau dann leer, wenn man hinsieht. Dieselben Kacheln wie
  * im Lauf, nur mit festen statt mitlaufenden Zeitangaben. */
-function renderSummary(ziel, z) {
+function renderSummary(target, z) {
   const counters = z.counters || {};
   // Warum es zu Ende ist, entscheidet die Farbe: durchgelaufen ist gruen,
   // von Hand gestoppt neutral, Notbremse rot. Eine Zusammenfassung, die bei
@@ -1402,27 +1402,27 @@ function renderSummary(ziel, z) {
   const reason = z.reason || "";
   const kind = reason.startsWith("Notbremse") ? "err"
             : reason.startsWith("alle Zyklen") ? "ok" : "warn";
-  ziel.appendChild(el("div", {class: "run-header"},
+  target.appendChild(el("div", {class: "run-header"},
     el("span", {class: "lamp done"}),
     el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
     el("span", {class: "num summary-" + kind}, "beendet"),
     el("span", {class: "num"}, timestamp(z.end)),
     el("span", {class: "num"}, "lief " + duration(z.duration || 0))));
 
-  ziel.appendChild(el("p", {class: "hint summary-" + kind},
-    reason + " · " + (z.gelaufen || 0) + " von " +
+  target.appendChild(el("p", {class: "hint summary-" + kind},
+    reason + " · " + (z.elapsed_cycles || 0) + " von " +
     (z.cycles ? z.cycles : "∞") + " Zyklen"));
 
-  if (z.phases && z.phases.length) ziel.appendChild(phaseStrip(z, true));
+  if (z.phases && z.phases.length) target.appendChild(phaseStrip(z, true));
 
-  ziel.appendChild(el("div", {class: "tile"},
-    [["Klicks", "klicks"], ["Items", "items"], ["Tasten", "tasten"],
+  target.appendChild(el("div", {class: "tile"},
+    [["Klicks", "clicks"], ["Items", "items"], ["Tasten", "keys"],
      ["Timeouts", "timeouts"], ["Übersprungen", "skipped"],
-     ["Neustarts", "neustarts"]].map(([text, key]) =>
+     ["Neustarts", "restarts"]].map(([text, key]) =>
       el("div", {}, el("b", {}, String(counters[key] || 0)),
                     el("small", {}, text.toUpperCase())))));
 
-  ziel.appendChild(controls(false, z));
+  target.appendChild(controls(false, z));
 }
 
 /** Der Worker wartet wirklich auf diese Antworten; keine Konsolentaste.
@@ -1433,9 +1433,9 @@ function renderSummary(ziel, z) {
  * Haltepunkt schaltet sie ihn ein („Ab hier schrittweise"). Das Weiterlaufen
  * heisst am Haltepunkt „Weiter", denn es fragt danach nicht wieder. */
 function manualControls(m) {
-  const knopf = (text, action, klasse) => el("button", {
+  const button = (text, action, klasse) => el("button", {
     class: "btn" + (klasse ? " " + klasse : ""),
-    onclick: () => sendRun("manuell_aktion", {action: action}),
+    onclick: () => sendRun("manual_action", {action: action}),
   }, text);
   const halt = !!m.breakpoint;
   return el("section", {class: "panel manual-panel"},
@@ -1443,33 +1443,33 @@ function manualControls(m) {
     el("b", {}, m.title || "Aktueller Block"),
     el("p", {class: "hint"}, m.action || ""),
     el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-      knopf(halt ? "▶ Weiter" : "▶ Ausführen", "run", "primary"),
-      knopf("↷ Überspringen", "skip"),
-      halt ? knopf("Ab hier schrittweise", "step") : knopf("Normal weiter", "continue"),
-      knopf("■ Stoppen", "stop", "danger")));
+      button(halt ? "▶ Weiter" : "▶ Ausführen", "run", "primary"),
+      button("↷ Überspringen", "skip"),
+      halt ? button("Ab hier schrittweise", "step") : button("Normal weiter", "continue"),
+      button("■ Stoppen", "stop", "danger")));
 }
 
 /** Start/Pause/Stopp.
  *
  * Die Knöpfe führen nichts aus — dieses Fenster hat keinen Zugriff auf
  * `state.stop_event`. Sie legen einen Befehl ab, den der Hauptprozess in
- * derselben Schleife abholt wie seine Hotkeys (`befehl.py`). Deshalb steht das
+ * derselben Schleife abholt wie seine Hotkeys (`command.py`). Deshalb steht das
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
-  const knopf = (text, befehl, klasse) => el("button", {
+  const button = (text, command, klasse) => el("button", {
     class: "btn" + (klasse ? " " + klasse : ""),
-    onclick: () => sendRun(befehl),
+    onclick: () => sendRun(command),
   }, text);
   const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-    !running && !(stamp && stamp.countdown) ? knopf("▶ Starten", "start", "primary") : null,
-    !running && !(stamp && stamp.countdown) ? knopf("▶ Schrittweise", "start_manuell") : null,
-    running ? knopf("⏸ Pause", "pause") : null,
-    running ? knopf("↷ Warten überspringen", "skip") : null,
-    running ? knopf("⏭ Block überspringen", "skip_step") : null,
-    running ? knopf("✓ Zyklus abschliessen", "finish") : null,
-    running ? knopf("■ Stoppen", "stop", "danger") : null,
-    !running && stamp && stamp.countdown ? knopf("■ Zeitplan abbrechen", "stop", "danger") : null,
+    !running && !(stamp && stamp.countdown) ? button("▶ Starten", "start", "primary") : null,
+    !running && !(stamp && stamp.countdown) ? button("▶ Schrittweise", "start_manual") : null,
+    running ? button("⏸ Pause", "pause") : null,
+    running ? button("↷ Warten überspringen", "skip") : null,
+    running ? button("⏭ Block überspringen", "skip_step") : null,
+    running ? button("✓ Zyklus abschliessen", "finish") : null,
+    running ? button("■ Stoppen", "stop", "danger") : null,
+    !running && stamp && stamp.countdown ? button("■ Zeitplan abbrechen", "stop", "danger") : null,
     el("span", {class: "small"},
        running ? "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess"
                : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
@@ -1482,7 +1482,7 @@ function controls(running, stamp) {
         setStatus({kind: "warn", text: "Bitte eine Startzeit eingeben."});
         return;
       }
-      sendRun("zeitplan", {zeit: zeit.value.trim()});
+      sendRun("schedule", {zeit: zeit.value.trim()});
     }}, "◷ Start planen");
     row.append(el("span", {class: "divider"}), zeit, plan);
   }
@@ -1501,8 +1501,8 @@ function pointList(current, mitLeer) {
 }
 
 function renderInspector() {
-  const ziel = $("inspector");
-  ziel.replaceChildren();
+  const target = $("inspector");
+  target.replaceChildren();
   const b = S.block;
   const selected = S.selection.rows.length;
 
@@ -1511,7 +1511,7 @@ function renderInspector() {
   if (!b) {
     $("insp-point").style.background = "#2A3245";
     $("insp-title").textContent = selected > 1 ? selected + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
-    ziel.appendChild(el("div", {class: selected > 1 ? "bulk-editor" : "empty"}, selected > 1
+    target.appendChild(el("div", {class: selected > 1 ? "bulk-editor" : "empty"}, selected > 1
       ? renderBulkEditor(selected)
       : el("span", {}, "Block anklicken, um ihn zu bearbeiten.", el("br"),
            "Ziehen sortiert um — auch über Phasengrenzen.")));
@@ -1529,34 +1529,34 @@ function renderInspector() {
   // links, die gewaehlte zusaetzlich ausgefuellt. `border-color` steht im
   // style-Attribut und damit NACH dem `border`-Kurzformat aus .type-chip —
   // andersherum raeumte die Kurzform die Farbe wieder weg.
-  ziel.appendChild(heading("BLOCK-TYP",
+  target.appendChild(heading("BLOCK-TYP",
     "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
     "ist zugleich die Legende dazu.", "blocktyp"));
-  ziel.appendChild(el("div", {class: "gitter3"}, S.types.map((t) =>
+  target.appendChild(el("div", {class: "gitter3"}, S.types.map((t) =>
     el("button", {
       class: "type-chip",
       style: "border-color:" + t.color +
-             (t.key === b.typ
+             (t.key === b.type_key
                ? ";background:" + t.color + ";color:#0C0F14;font-weight:600"
                : ""),
-      onclick: () => call("block_set_type", {typ: t.key}),
+      onclick: () => call("block_set_type", {type_key: t.key}),
     }, t.label))));
 
   // Die drei Klick-/Warte-Typen unterscheiden sich in genau zwei Eigenschaften.
   // Als Schalter steht diese Tabelle auf dem Schirm, statt im Kopf zu sein.
-  if (b.typ === "click" || b.typ === "wait_click" || b.typ === "wait") buildAction(ziel, b);
+  if (b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait") buildAction(target, b);
 
   // --- Gemeinsames ---
-  if (b.typ !== "screenshot") {
+  if (b.type_key !== "screenshot") {
     // Der Name steht nur hier, wenn er dem SCHRITT gehört. Hat der Block einen
     // Punkt, gehört der Name dem Punkt — und dann steht er unten bei der Stelle,
     // zusammen mit Auswahl, Farbe und Koordinaten. Vorher stand oben „Name
     // (Punkt #1)" und weiter unten nochmal „Punkt": zweimal dieselbe Sache an
     // zwei Stellen, und man musste raten, welche die führende ist.
     if (b.point_id === null || b.point_id === undefined) {
-      ziel.appendChild(field("Name", b.name, (v) => call("block_set", {field: "name", value: v})));
+      target.appendChild(field("Name", b.name, (v) => call("block_set", {field: "name", value: v})));
     }
-    ziel.appendChild(el("div", {class: "gitter2"},
+    target.appendChild(el("div", {class: "gitter2"},
       numberField("Wartezeit (s)", b.delay_before,
                (v) => call("block_set", {field: "delay_before", value: v}),
                {step: "0.1", min: "0"}),
@@ -1567,7 +1567,7 @@ function renderInspector() {
 
   // Der Haltepunkt gilt für JEDEN Typ — auch ein Screenshot kann die Stelle
   // sein, an der man einmal hinsehen will, bevor es weitergeht.
-  ziel.appendChild(toggle("Haltepunkt — vor diesem Block anhalten", b.breakpoint,
+  target.appendChild(toggle("Haltepunkt — vor diesem Block anhalten", b.breakpoint,
     (an) => call("block_set", {field: "breakpoint", value: an}),
     "Der Lauf hält hier an und fragt — im Live-Run als Tafel (weiter, überspringen, "
     + "ab hier schrittweise, stoppen), in der Konsole per Taste. CTRL+ALT+G heisst "
@@ -1576,31 +1576,31 @@ function renderInspector() {
 
   // Ein Warte-Block ohne Trigger beobachtet nichts — dann gibt es auch keine
   // Stelle zu zeigen.
-  if (b.typ === "click" || b.typ === "wait_click" ||
-      (b.typ === "wait" && b.trigger !== "kein")) buildPosition(ziel, b);
-  if (b.typ === "key") {
-    ziel.appendChild(field("Taste", b.key_press,
+  if (b.type_key === "click" || b.type_key === "wait_click" ||
+      (b.type_key === "wait" && b.trigger !== "kein")) buildPosition(target, b);
+  if (b.type_key === "key") {
+    target.appendChild(field("Taste", b.key_press,
       (v) => call("block_set", {field: "key_press", value: v}), {placeholder: "enter, space, f1"}));
   }
-  buildScan(ziel, b);
-  if (b.typ === "screenshot") buildScreenshot(ziel, b);
+  buildScan(target, b);
+  if (b.type_key === "screenshot") buildScreenshot(target, b);
 
   // Der Farb-Trigger fragt VOR dem Schritt und steht nur da, wo die Laufzeit ihn
   // auswertet: Klick, Warten und Taste. Scans und Screenshot kehren vorher um.
   //
   // Haengt trotzdem schon eine Bedingung dran, bleibt der Abschnitt sichtbar —
   // sonst waere sie unerreichbar.
-  const mitTrigger = b.typ === "click" || b.typ === "wait_click" ||
-                     b.typ === "wait" || b.typ === "key";
-  if (mitTrigger || b.trigger !== "kein") buildTrigger(ziel, b, mitTrigger);
-  buildVerification(ziel, b);
-  buildElse(ziel, b);
-  buildProbe(ziel, b);
+  const mitTrigger = b.type_key === "click" || b.type_key === "wait_click" ||
+                     b.type_key === "wait" || b.type_key === "key";
+  if (mitTrigger || b.trigger !== "kein") buildTrigger(target, b, mitTrigger);
+  buildVerification(target, b);
+  buildElse(target, b);
+  buildProbe(target, b);
 
   // Zuletzt, wenn alles im Dokument haengt: was aufgeklappt war, bleibt es. Der
   // Inspektor wird bei jeder Aenderung komplett neu gebaut — ohne diese Zeile
   // verschwindet eine gerade gelesene Erklaerung beim naechsten Klick irgendwo.
-  applyHelps(ziel);
+  applyHelps(target);
 }
 
 /** „Sitzt der Punkt da, wo ich denke?" — die Maus faehrt hin und sagt es.
@@ -1608,13 +1608,13 @@ function renderInspector() {
  * Nur bei Bloecken mit Stelle. Das Fenster sieht den Bildschirm nicht; der
  * Hauptprozess bewegt die Maus, misst die Farbe und schreibt das Ergebnis in
  * seine eigene Konsole. */
-function buildProbe(ziel, b) {
+function buildProbe(target, b) {
   // Ein Block hat bis zu drei Stellen — Klick, Prüf-Pixel des Triggers und
   // ELSE-Klick —, und „sitzt das noch?" fragt man bei jeder. Angeboten wird
   // nur, was der Block wirklich hat.
   const stellen = [];
   if (b.point_id !== null && b.point_id !== undefined)
-    stellen.push(["klick", "Stelle", b.point_id]);
+    stellen.push(["click", "Stelle", b.point_id]);
   if (b.trigger !== "kein" && b.trigger_point !== null && b.trigger_point !== undefined)
     stellen.push(["trigger", "Prüf-Pixel", b.trigger_point]);
   if (b.verify !== "kein" && b.verify_point !== null && b.verify_point !== undefined)
@@ -1627,13 +1627,13 @@ function buildProbe(ziel, b) {
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
     onclick: () => call("block_test"),
   }, "▶ Block einmal testen"));
-  for (const [welche, text, point] of stellen) {
+  for (const [which, text, point] of stellen) {
     fuss.appendChild(el("button", {
       class: "btn wide",
-      onclick: () => call("point_show", {welche: welche}),
+      onclick: () => call("point_show", {which: which}),
     }, "◎ " + text + " zeigen (#" + point + ")"));
   }
-  ziel.appendChild(fuss);
+  target.appendChild(fuss);
 }
 
 function renderBulkEditor(count) {
@@ -1655,67 +1655,67 @@ function renderBulkEditor(count) {
     el("p", {class: "hint"},
       count + " Blöcke gemeinsam bearbeiten. Verschieben: ALT+↑/↓, löschen: Entf."),
     el("span", {class: "heading"}, "WARTEZEIT FÜR AUSWAHL"),
-    el("div", {class: "row bulk-quick"}, [0, 0.5, 1].map((sekunden) =>
+    el("div", {class: "row bulk-quick"}, [0, 0.5, 1].map((seconds) =>
       el("button", {class: "btn quiet", onclick: () => call("selection_set",
-        {field: "delay_before", value: sekunden})}, String(sekunden).replace(".", ",") + " s"))),
+        {field: "delay_before", value: seconds})}, String(seconds).replace(".", ",") + " s"))),
     el("div", {class: "gitter2"},
       zeitfeld("Wartezeit (s)", "delay_before", S.selection.delay_before,
-               S.selection.delay_before_gemischt),
+               S.selection.delay_before_mixed),
       zeitfeld("bis (0 = fest)", "delay_max", S.selection.delay_max,
-               S.selection.delay_max_gemischt)),
+               S.selection.delay_max_mixed)),
     el("p", {class: "hint"},
       "Nur diese Wartefelder werden gemeinsam geändert; Typ, Ziel und Bedingungen bleiben erhalten."));
 }
 
-function buildAction(ziel, b) {
-  const klickt = b.typ === "click" || b.typ === "wait_click";
+function buildAction(target, b) {
+  const klickt = b.type_key === "click" || b.type_key === "wait_click";
   const color = b.trigger !== "kein";
 
   // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
   // wechselt hier ja gerade, und eine Erklaerung, die man aufklappt und die beim
   // ersten Schalten verschwindet, ist keine.
-  ziel.appendChild(heading("AKTION",
+  target.appendChild(heading("AKTION",
     "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
     "warten. Die Kacheln oben zeigen das Ergebnis automatisch an.", "action"));
-  ziel.appendChild(toggle("klickt an der Stelle", klickt, (an) =>
-    call("block_set_type", {typ: an ? (color ? "wait_click" : "click") : "wait"})));
-  ziel.appendChild(toggle("wartet auf eine Farbe", color, (an) => {
+  target.appendChild(toggle("klickt an der Stelle", klickt, (an) =>
+    call("block_set_type", {type_key: an ? (color ? "wait_click" : "click") : "wait"})));
+  target.appendChild(toggle("wartet auf eine Farbe", color, (an) => {
     // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
     // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
     // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
-    if (!klickt) call("block_trigger", {wahl: an ? "da" : "kein"});
-    else call("block_set_type", {typ: an ? "wait_click" : "click"});
+    if (!klickt) call("block_trigger", {choice: an ? "present" : "kein"});
+    else call("block_set_type", {type_key: an ? "wait_click" : "click"});
   }));
 }
 
-function buildPosition(ziel, b) {
+function buildPosition(target, b) {
   // Beides an der Ueberschrift: der Zusatz fuer WARTEN-Bloecke erklaert, warum
   // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
-  ziel.appendChild(heading(b.typ === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
+  target.appendChild(heading(b.type_key === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
     "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
     "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten. " +
     "Mit ‚Stelle mit der Maus setzen‘ wechselst du danach ins Spiel, bewegst die " +
     "Maus an die Stelle und drückst ENTER. Die Farbe wird mitgemessen; ESC bricht ab." +
-    (b.typ === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
+    (b.type_key === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
      "beobachtet. Zum Klicken oben den Typ KLICK oder FARBE+KLICK wählen." : ""),
     "position"));
   if (!S.points.length && b.point_id === null) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Keine Punkte vorhanden. Im Hauptprozess mit CTRL+ALT+A aufnehmen — " +
       "oder hier eine Stelle eintragen, dann entsteht ein Punkt dafür."));
   } else {
-    ziel.appendChild(selection("Punkt", pointList(b.point_id), b.point_id === null ? "" : b.point_id,
+    target.appendChild(selection("Punkt", pointList(b.point_id), b.point_id === null ? "" : b.point_id,
       (v) => v && call("block_point", {point: Number(v)})));
   }
   // Alles, was dem Punkt gehört, steht beieinander: welcher, wie er heisst,
   // welche Farbe er trägt, wo er liegt.
   if (b.point_id !== null && b.point_id !== undefined) {
     const p = S.points.find((q) => q.id === b.point_id);
-    ziel.appendChild(field("Name des Punkts", b.name,
+    target.appendChild(field("Name des Punkts", b.name,
       (v) => call("point_set", {point: b.point_id, field: "name", value: v}), null,
       "Der Name gehört dem Punkt, nicht diesem Block: er ändert sich überall, " +
       "wo derselbe Punkt benutzt wird.", "punktname"));
-    ziel.appendChild(color_swatch("Farbe des Punkts", p && p.color,
+    target.appendChild(color_swatch("Farbe des Punkts", p && p.color,
       (hex) => call("point_set", {point: b.point_id, field: "color", value: hex}),
       "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
       "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
@@ -1723,9 +1723,9 @@ function buildPosition(ziel, b) {
     // wenn ein anderer Block woanders hinklickt. Und der Rueckweg steht dabei:
     // ein eigener Punkt fuer diesen Block, die anderen bleiben, wo sie sind.
     if (b.point_others && b.point_others.length) {
-      ziel.appendChild(el("p", {class: "hint"},
+      target.appendChild(el("p", {class: "hint"},
         "Punkt #" + b.point_id + " wird auch benutzt von: " + b.point_others.join(", ")));
-      ziel.appendChild(el("button", {
+      target.appendChild(el("button", {
         class: "btn wide",
         title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
                + b.point_id + ". Danach lässt sich seine Stelle ändern, ohne die anderen zu verstellen.",
@@ -1733,13 +1733,13 @@ function buildPosition(ziel, b) {
       }, "⧉ Eigenen Punkt für diesen Block"));
     }
   }
-  ziel.appendChild(el("div", {class: "gitter2"},
+  target.appendChild(el("div", {class: "gitter2"},
     numberField("X", b.x, (v) => setPosition(b, v, b.y), {step: "1"}),
     numberField("Y", b.y, (v) => setPosition(b, b.x, v), {step: "1"})));
   // Die Stelle anfahren statt sie zu tippen — derselbe Weg wie beim
   // Screenshot-Bereich. Die Zahlenfelder bleiben daneben stehen, für den Fall,
   // dass man eine Koordinate abschreibt.
-  ziel.appendChild(el("button", {
+  target.appendChild(el("button", {
     class: "btn wide",
     title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
     onclick: () => withWait("call", "point_capture"),
@@ -1752,7 +1752,7 @@ function buildPosition(ziel, b) {
   // zurueck ohne Trigger — und das ist keine Nebenwirkung, sondern die Bedeutung
   // von KLICK. Was seine Beschriftung erklaerte, steht am ⓘ der Ueberschrift.
   if (b.scroll) {
-    ziel.appendChild(numberField("Mausrad (Stufen, 0 = kein Rad)", b.scroll,
+    target.appendChild(numberField("Mausrad (Stufen, 0 = kein Rad)", b.scroll,
       (v) => call("block_set", {field: "scroll", value: v}), {step: "1"}));
   }
 }
@@ -1767,15 +1767,15 @@ function setPosition(b, x, y) {
   }
 }
 
-function buildScan(ziel, b) {
+function buildScan(target, b) {
   const scans = {item_scan: ["ITEM-SCAN", "item_scan"], icon_scan: ["ICON-SCAN", "icon_scan"],
                  boss_scan: ["BOSS-SCAN", "boss_scan"], boss_watcher: ["BOSS-WATCHER", "boss_watcher"]};
-  const eintrag = scans[b.typ];
+  const eintrag = scans[b.type_key];
   if (!eintrag) return;
   const [title, feldname] = eintrag;
-  const existing = (S.scan_names && S.scan_names[b.typ]) || [];
+  const existing = (S.scan_names && S.scan_names[b.type_key]) || [];
   const value = b[feldname];
-  ziel.appendChild(heading(title));
+  target.appendChild(heading(title));
 
   if (!existing.length && !value) {
     // Nichts zum Auswählen — dann ist ein leeres Feld die falsche Antwort. Es
@@ -1783,7 +1783,7 @@ function buildScan(ziel, b) {
     // still ins Leere. Also sagen, wo die Konfiguration herkommt.
     // CTRL+ALT+N fuer alle drei: Boss- und Icon-Scans sind Untermenues des
     // Item-Scan-Menues, eigene Hotkeys haben sie nicht.
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Keine Konfiguration vorhanden. Im Hauptprozess mit CTRL+ALT+N anlegen " +
       "(Boss- und Icon-Scans liegen in demselben Menü), dann steht sie hier " +
       "zur Auswahl."));
@@ -1796,20 +1796,20 @@ function buildScan(ziel, b) {
   const values = [{value: "", text: "(keine)"}].concat(existing.map(
     (n) => ({value: n, text: n})));
   if (value && !existing.includes(value)) values.push({value: value, text: value + " — fehlt"});
-  ziel.appendChild(selection("Konfiguration", values, value,
+  target.appendChild(selection("Konfiguration", values, value,
     (v) => call("block_set", {field: feldname, value: v}),
     "Im Item-/Boss-/Icon-Editor angelegt (Hauptprozess, CTRL+ALT+N). " +
     "Ohne Konfiguration wird nicht gespeichert.", "scan"));
-  if (b.typ === "item_scan") {
-    ziel.appendChild(selection("Modus", S.scan_modes.map((m) => ({value: m, text: m})),
+  if (b.type_key === "item_scan") {
+    target.appendChild(selection("Modus", S.scan_modes.map((m) => ({value: m, text: m})),
       b.item_scan_mode, (v) => call("block_set", {field: "item_scan_mode", value: v})));
   }
 }
 
-function buildScreenshot(ziel, b) {
-  ziel.appendChild(heading("SCREENSHOT"));
+function buildScreenshot(target, b) {
+  target.appendChild(heading("SCREENSHOT"));
   const hatBereich = !!b.screenshot_region;
-  ziel.appendChild(toggle("Bereich statt Vollbild", hatBereich,
+  target.appendChild(toggle("Bereich statt Vollbild", hatBereich,
     (an) => call("block_area", {values: an ? (b.screenshot_region || [0, 0, 100, 100]) : null})));
   if (!hatBereich) return;
   const r = b.screenshot_region.slice();
@@ -1818,7 +1818,7 @@ function buildScreenshot(ziel, b) {
   // Der eigentliche Weg: die Ecke anfahren statt sie auszurechnen. Vier Zahlen
   // sagen niemandem, wo der Bereich liegt — sie bleiben trotzdem stehen, fuer
   // den Fall, dass man eine Koordinate abschreibt.
-  ziel.appendChild(el("button", {class: "btn", onclick: (e) => {
+  target.appendChild(el("button", {class: "btn", onclick: (e) => {
     // blur() ist Pflicht, nicht Kosmetik: ein Knopf behaelt nach dem Klick den
     // Fokus, und das ENTER, mit dem die Ecke bestaetigt wird, wuerde ihn gleich
     // nochmal ausloesen — also mitten in der Aufnahme eine zweite starten.
@@ -1831,10 +1831,10 @@ function buildScreenshot(ziel, b) {
     withWait("call", "area_capture");
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
-  ziel.appendChild(el("div", {class: "gitter2"},
+  target.appendChild(el("div", {class: "gitter2"},
     numberField("X1", r[0], setze(0)), numberField("Y1", r[1], setze(1)),
     numberField("X2", r[2], setze(2)), numberField("Y2", r[3], setze(3))));
-  ziel.appendChild(el("p", {class: "hint"},
+  target.appendChild(el("p", {class: "hint"},
     "Grösse: " + Math.abs(r[2] - r[0]) + " × " + Math.abs(r[3] - r[1]) + " Pixel"));
 }
 
@@ -1842,11 +1842,11 @@ function buildScreenshot(ziel, b) {
 // kein eigenes Bedienelement dafuer gibt — bei den Klick-/Warte-Typen macht das
 // der Schalter im Abschnitt AKTION, und zwei Wege zum selben Aus waeren einer zu viel.
 const DIRECTION_OFF = {value: "kein", text: "kein"};
-const DIRECTIONS = [{value: "da", text: "bis Farbe DA"}, {value: "weg", text: "bis Farbe WEG"}];
+const DIRECTIONS = [{value: "present", text: "bis Farbe DA"}, {value: "weg", text: "bis Farbe WEG"}];
 
-function buildTrigger(ziel, b, mitTrigger) {
+function buildTrigger(target, b, mitTrigger) {
   // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
-  const ohneAus = b.typ === "click" || b.typ === "wait_click" || b.typ === "wait";
+  const ohneAus = b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait";
   // Ist der Trigger bei diesen Typen aus, hat der Abschnitt keinen Inhalt: das Ein
   // und Aus macht der Schalter in AKTION, Stelle und „nur prüfen" hängen an einer
   // Bedingung, die es nicht gibt. Eine Überschrift ohne alles darunter sieht aus
@@ -1855,41 +1855,41 @@ function buildTrigger(ziel, b, mitTrigger) {
   // erklärt, warum sich der Trigger nicht einschalten lässt.
   if (ohneAus && b.trigger === "kein"
       && b.point_id !== null && b.point_id !== undefined) return;
-  ziel.appendChild(heading("FARB-TRIGGER (VOR DEM SCHRITT)",
+  target.appendChild(heading("FARB-TRIGGER (VOR DEM SCHRITT)",
     mitTrigger
       ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
       : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
         "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
     "trigger-an"));
   if (!(ohneAus && b.trigger === "kein")) {
-    ziel.appendChild(segment(ohneAus ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
-      b.trigger, (w) => call("block_trigger", {wahl: w})));
+    target.appendChild(segment(ohneAus ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
+      b.trigger, (w) => call("block_trigger", {choice: w})));
   }
   if (b.trigger !== "kein") {
-    ziel.appendChild(selection("Geprüfte Stelle", pointList(b.trigger_point), b.trigger_point,
-      (v) => v && call("block_trigger", {wahl: b.trigger, point: Number(v)}),
+    target.appendChild(selection("Geprüfte Stelle", pointList(b.trigger_point), b.trigger_point,
+      (v) => v && call("block_trigger", {choice: b.trigger, point: Number(v)}),
       "Farbe und Stelle kommen aus dem Punkt. Soll an derselben Stelle auf eine " +
       "andere Farbe geprüft werden, ist das ein eigener Punkt.", "trigger"));
-    ziel.appendChild(toggle("nur prüfen, nicht warten", b.trigger_check,
-      (an) => call("block_trigger", {wahl: b.trigger, pruefen: an})));
+    target.appendChild(toggle("nur prüfen, nicht warten", b.trigger_check,
+      (an) => call("block_trigger", {choice: b.trigger, pruefen: an})));
   } else if (b.point_id === null || b.point_id === undefined) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Ohne Punkt gibt es nichts zu prüfen — erst eine Stelle wählen."));
   }
 }
 
-function buildVerification(ziel, b) {
+function buildVerification(target, b) {
   // Bleibt bei JEDEM Typ: „hat die Aktion gewirkt?" ergibt auch bei einer Taste
   // und bei einem Scan Sinn — anders als der Trigger davor.
   const richtungen = [DIRECTION_OFF].concat(DIRECTIONS);
-  ziel.appendChild(heading("NACHPRÜFUNG (NACH DEM SCHRITT)",
+  target.appendChild(heading("NACHPRÜFUNG (NACH DEM SCHRITT)",
     "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
     "wiederholt (verify_retries), danach greift ELSE.", "verify"));
-  ziel.appendChild(segment(richtungen, b.verify,
-    (w) => call("block_trigger", {welche: "verify", wahl: w})));
+  target.appendChild(segment(richtungen, b.verify,
+    (w) => call("block_trigger", {which: "verify", choice: w})));
   if (b.verify !== "kein") {
-    ziel.appendChild(selection("Geprüfte Stelle", pointList(b.verify_point), b.verify_point,
-      (v) => v && call("block_trigger", {welche: "verify", wahl: b.verify, point: Number(v)})));
+    target.appendChild(selection("Geprüfte Stelle", pointList(b.verify_point), b.verify_point,
+      (v) => v && call("block_trigger", {which: "verify", choice: b.verify, point: Number(v)})));
   }
 }
 
@@ -1902,12 +1902,12 @@ function buildVerification(ziel, b) {
  */
 function withoutElseText() {
   const o = S.without_else || {};
-  if (!o.folge) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
+  if (!o.consequence) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
                        "pixel_timeout_action in der config.json.";
-  const zeit = o.sekunden > 0 ? o.sekunden + " s" : "ohne Timeout";
+  const zeit = o.seconds > 0 ? o.seconds + " s" : "ohne Timeout";
   return "Ohne ELSE wartet der Schritt bis zum Timeout (" + zeit + "), danach: " +
-         o.folge + " (config.json: pixel_timeout_action)." +
-         (o.notbremse > 0 ? " Nach " + o.notbremse + " Timeouts in Folge greift " +
+         o.consequence + " (config.json: pixel_timeout_action)." +
+         (o.emergency_stop > 0 ? " Nach " + o.emergency_stop + " Timeouts in Folge greift " +
                             "die Notbremse." : "");
 }
 
@@ -1919,14 +1919,14 @@ const ELSE_DESCRIPTIONS = {
   key: "Stattdessen eine Taste drücken.",
 };
 
-function buildElse(ziel, b) {
+function buildElse(target, b) {
   // Kein Ausloeser, kein Abschnitt: an einem reinen Klick (Taste, Warten,
   // Screenshot, Boss-Watcher) kann ELSE nie feuern.
   //
   // Ist trotzdem eine Aktion gesetzt (Trigger entfernt, Typ umgestellt, Import),
   // bleibt der Abschnitt stehen — sonst stuende das ELSE unsichtbar in der Datei
   // und waere nicht mehr loszuwerden.
-  if (!b.else_greift && !b.else_action) return;
+  if (!b.else_applies && !b.else_action) return;
   // Kein ELSE heisst: keine Kachel markiert. Eine Kachel „(keine)" saehe aus wie
   // eine sechste Aktion, obwohl sie die Abwesenheit von allen ist.
   //
@@ -1935,7 +1935,7 @@ function buildElse(ziel, b) {
   const auswirkung = b.else_action
     ? ELSE_DESCRIPTIONS[b.else_action]
     : withoutElseText();
-  ziel.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
+  target.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
     "eigene Aktion des Schritts. " + auswirkung +
     (b.else_action ? " Ein zweiter Klick auf die markierte Kachel hebt ELSE wieder auf." : ""),
@@ -1947,13 +1947,13 @@ function buildElse(ziel, b) {
   // dasselbe Bedienelement zu erkennen sind.
   // Der Block kann gar nichts ausloesen: das gehoert VOR die Kacheln, sonst
   // stellt man erst eine Aktion ein und liest danach, dass sie nie drankommt.
-  if (!b.else_greift) {
-    ziel.appendChild(el("p", {class: "hint warning"},
+  if (!b.else_applies) {
+    target.appendChild(el("p", {class: "hint warning"},
       "Dieser Block hat keine Bedingung — ELSE kommt hier nie zum Zug. " +
       "Ausgelöst wird es von einem Farb-Trigger (Timeout oder „nur prüfen“), " +
       "einer Nachprüfung ohne Wirkung oder einem Scan, der nichts findet."));
   }
-  ziel.appendChild(el("div", {class: "gitter3"}, S.else_actions.map((a) =>
+  target.appendChild(el("div", {class: "gitter3"}, S.else_actions.map((a) =>
     el("button", {
       // Eigene Klasse trotz gleicher Form: eine Typ-Kachel schaltet den Block-Typ,
       // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
@@ -1966,12 +1966,12 @@ function buildElse(ziel, b) {
       onclick: () => call("block_else", {action: a === b.else_action ? "" : a}),
     }, a))));
   if (b.else_action === "click") {
-    ziel.appendChild(selection("ELSE-Punkt", pointList(b.else_point), b.else_point,
+    target.appendChild(selection("ELSE-Punkt", pointList(b.else_point), b.else_point,
       (v) => v && call("block_else", {action: "click", point: Number(v)})));
   }
   if (b.else_action === "key") {
-    ziel.appendChild(field("ELSE-Taste", b.else_taste,
-      (v) => call("block_else", {action: "key", taste: v})));
+    target.appendChild(field("ELSE-Taste", b.else_key,
+      (v) => call("block_else", {action: "key", action_key: v})));
   }
 }
 
@@ -1984,7 +1984,7 @@ function showQuestion(ask) {
   openQuestion = ask;
   $("dialog-title").textContent = ask.title || "Rückfrage";
   $("dialog-text").textContent = ask.text || "";
-  $("dialog-discard").textContent = ask.weiter || "Weiter";
+  $("dialog-discard").textContent = ask.proceed_label || "Weiter";
   $("dialog-save").hidden = !ask.save;
   $("veil").hidden = false;
 }
@@ -1997,7 +1997,7 @@ function closeQuestion() {
 /* Die lokale Variable hiess `ask` und verdeckte damit den gleichnamigen
  * Bruecken-Helfer — solange hier nur `call()` vorkam, fiel das nicht auf. Sie
  * heisst jetzt `open`, damit der fragende Kanal von hier aus erreichbar ist. */
-async function proceed(verwerfen) {
+async function proceed(discard) {
   const open = openQuestion;
   closeQuestion();
   if (!open) return;
@@ -2005,14 +2005,14 @@ async function proceed(verwerfen) {
   // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
   // Steht vorn, weil es weder speichern noch laden will.
   if (open.kind === "seq_loeschen") {
-    const antwort = await ask("sequence_delete", {name: open.ziel});
+    const antwort = await ask("sequence_delete", {name: open.target});
     if (antwort) setStatus({text: antwort.message, kind: antwort.ok ? "ok" : "warn"});
     return renderSequenceList();
   }
   if (open.kind === "save") return call("save", {erzwingen: true});
-  if (!verwerfen) await call("save");
-  if (open.kind === "load") await call("load", {name: open.ziel, verwerfen: true});
-  else await call("new", {verwerfen: true});
+  if (!discard) await call("save");
+  if (open.kind === "load") await call("load", {name: open.target, discard: true});
+  else await call("new", {discard: true});
 }
 
 /* ------------------------------------------------------------ Ansicht: Scans */
@@ -2095,15 +2095,15 @@ const SLOT_COLOR = (() => {
 })();
 
 const SCAN_MODES = [
-  {key: "wahl", text: "Auswählen", taste: "V", haupt: true,
+  {key: "choice", text: "Auswählen", shortcut: "V", haupt: true,
    help: "Slot anklicken — daneben zieht ein Rechteck um mehrere"},
-  {key: "finden", text: "Slots finden", taste: "G", haupt: true,
+  {key: "find", text: "Slots finden", shortcut: "G", haupt: true,
    help: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
-  {key: "slot", text: "Neuer Slot", taste: "S", haupt: true,
+  {key: "slot", text: "Neuer Slot", shortcut: "S", haupt: true,
    help: "zwei Ecken anklicken — wenn Finden nicht greift"},
-  {key: "messen", text: "Hintergrundfarbe", taste: "F", help: "Stelle im Slot anklicken"},
-  {key: "klick", text: "Klickpunkt", taste: "K", help: "wohin geklickt wird"},
-  {key: "area", text: "Bereich", taste: "B", help: "zwei Ecken um den Teil, der zählt"},
+  {key: "measure", text: "Hintergrundfarbe", shortcut: "F", help: "Stelle im Slot anklicken"},
+  {key: "click", text: "Klickpunkt", shortcut: "K", help: "wohin geklickt wird"},
+  {key: "area", text: "Bereich", shortcut: "B", help: "zwei Ecken um den Teil, der zählt"},
 ];
 
 async function renderScans(frisch) {
@@ -2134,8 +2134,8 @@ async function renderScans(frisch) {
 }
 
 /** Ein Befehl an den Scan-Teil der Brücke. Antwort ist die neue Scan-Aufnahme. */
-async function callScan(name, daten) {
-  const antwort = await ask(name, daten);
+async function callScan(name, data_reload) {
+  const antwort = await ask(name, data_reload);
   if (!antwort) return;
   SC = antwort;
   // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
@@ -2152,11 +2152,11 @@ async function callScan(name, daten) {
     scanOrderForget();
   }
   if (name === "scan_screenshot")
-    scanWizardStep = SC.schritte[1].fertig ? 3 : 2;
+    scanWizardStep = SC.steps[1].done ? 3 : 2;
   else if (name === "scan_learn_preview" || name === "scan_recognize")
     scanWizardStep = 3;
-  else if (name === "scan_mode_set" && daten &&
-           (daten.modus === "finden" || daten.modus === "slot"))
+  else if (name === "scan_mode_set" && data_reload &&
+           (data_reload.mode === "find" || data_reload.mode === "slot"))
     scanWizardStep = 2;
   await renderScans();
   scanScheduleAutosave(name);
@@ -2176,66 +2176,66 @@ function scanScheduleAutosave(ursache) {
 }
 
 function scanCanvasTools() {
-  const bereit = scanConfigOpen();
+  const ready = scanConfigOpen();
   const sicht = $("view-scans");
   sicht.classList.toggle("guided", scanGuided);
   sicht.classList.toggle("has-image", photoPresent());
   $("scan-free").textContent = scanGuided ? "Alle Werkzeuge" : "Nur Assistent";
-  document.querySelectorAll("[data-scan-tool]").forEach((knopf) => {
-    knopf.classList.toggle("on", SC.modus === knopf.dataset.scanTool);
-    knopf.disabled = (!bereit || !SC.pillow) && knopf.dataset.scanTool !== "wahl";
+  document.querySelectorAll("[data-scan-tool]").forEach((button) => {
+    button.classList.toggle("on", SC.mode === button.dataset.scanTool);
+    button.disabled = (!ready || !SC.pillow) && button.dataset.scanTool !== "choice";
   });
-  const modus = SCAN_MODES.find((m) => m.key === SC.modus);
+  const mode = SCAN_MODES.find((m) => m.key === SC.mode);
   const erk = {region: "Region aufziehen",
                action: scanKind === "item" ? "Bestätigungsklick setzen"
-                                          : "Klickpunkt setzen"}[SC.modus];
-  $("scan-tool-state").textContent = !bereit
+                                          : "Klickpunkt setzen"}[SC.mode];
+  $("scan-tool-state").textContent = !ready
     ? "Zuerst einen Scan anlegen oder auswählen"
-    : SC.modus === "wahl"
+    : SC.mode === "choice"
     ? (scanKind === "item" ? "Slot anklicken zum Bearbeiten"
                           : "Werkzeug wählen oder rechts ein Feld ändern")
     // Beim Aufziehen steht der STAND dabei, nicht nur der Name des Werkzeugs:
     // ohne ihn sieht man dem Bild nicht an, ob schon eine Ecke gesetzt ist.
-    : "Aktiv: " + (erk || (modus ? modus.text : SC.modus))
-      + (SC.ecke ? " — erste Ecke gesetzt, zweite Ecke anklicken · ESC bricht ab" : "");
-  $("scan-tool-state").classList.toggle("kind-warn", !!SC.ecke);
-  $("scan-pin").classList.toggle("on", !!SC.werkzeug_fixiert);
-  $("scan-pin").hidden = SC.modus === "wahl";
-  $("scan-pin").setAttribute("aria-pressed", String(!!SC.werkzeug_fixiert));
-  $("scan-pin-lang").textContent = SC.werkzeug_fixiert ? "Angeheftet" : "Anheften";
-  $("scan-pin-kurz").textContent = SC.werkzeug_fixiert ? "Pin ✓" : "Pin";
+    : "Aktiv: " + (erk || (mode ? mode.text : SC.mode))
+      + (SC.corner ? " — erste Ecke gesetzt, zweite Ecke anklicken · ESC bricht ab" : "");
+  $("scan-tool-state").classList.toggle("kind-warn", !!SC.corner);
+  $("scan-pin").classList.toggle("on", !!SC.tool_pinned);
+  $("scan-pin").hidden = SC.mode === "choice";
+  $("scan-pin").setAttribute("aria-pressed", String(!!SC.tool_pinned));
+  $("scan-pin-lang").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
+  $("scan-pin-kurz").textContent = SC.tool_pinned ? "Pin ✓" : "Pin";
   const stamp = $("scan-save-state");
   stamp.textContent = SC.dirty ? "Wird gespeichert …" : "✓ Gespeichert";
   stamp.classList.toggle("open", !!SC.dirty);
 }
 
 function scanRenderResult() {
-  const ziel = $("scan-result");
-  ziel.replaceChildren();
+  const target = $("scan-result");
+  target.replaceChildren();
   // Boss und Icon haben ein anderes Ergebnis als ein Item-Scan: EIN Treffer
   // statt 45. Dieselbe Leiste, weil es dieselbe Frage ist — „was hat der Test
   // ergeben" —, aber ein anderer Inhalt.
   if (scanKind !== "item") {
-    ziel.hidden = !detTestBar(ziel);
+    target.hidden = !detTestBar(target);
     return;
   }
-  const e = SC.ergebnis;
-  ziel.hidden = !e;
+  const e = SC.result;
+  target.hidden = !e;
   if (!e) return;
-  ziel.append(
+  target.append(
     el("b", {}, "Testergebnis"),
     el("span", {class: "metric", style: "color:var(--ok)"}, e.detected + " erkannt"),
     el("span", {class: "metric", style: "color:var(--accent)"}, e.unbekannt + " unbekannt"),
     el("span", {class: "grow"})
   );
-  if (e.unbekannt) ziel.appendChild(el("button", {class: "btn quiet",
-    onclick: () => scanResultNext("unbekannt_slots")}, "Nächsten unbekannten zeigen"));
+  if (e.unbekannt) target.appendChild(el("button", {class: "btn quiet",
+    onclick: () => scanResultNext("unknown_slots")}, "Nächsten unbekannten zeigen"));
 }
 
 function scanResultNext(field) {
-  const namen = (SC.ergebnis && SC.ergebnis[field]) || [];
+  const namen = (SC.result && SC.result[field]) || [];
   if (!namen.length) return;
-  const current = namen.indexOf(SC.wahl.name);
+  const current = namen.indexOf(SC.choice.name);
   const name = namen[(current + 1) % namen.length];
   callScan("scan_select", {kind: "slot", name: name});
 }
@@ -2245,7 +2245,7 @@ function photoPresent() { return !!(SC && SC.photo && SC.photo.image); }
 
 /** Hat die aktuelle Art ein eindeutiges Ziel für Bild, Slots und Regionen? */
 function scanConfigOpen() {
-  return !!(SC && SC.aufnahme_bereit && SC.aufnahme_bereit[scanKind]);
+  return !!(SC && SC.recording_ready && SC.recording_ready[scanKind]);
 }
 
 /** Holt das Bild nur, wenn es ein neues gibt — es ist der grosse Brocken. */
@@ -2328,18 +2328,18 @@ function scanToScreen(bx, by) {
 
 function scanTools() {
   $("scan-sequence").textContent = SC.sequence || "— keine Sequenz —";
-  const wahl = $("scan-open");
-  wahl.replaceChildren();
-  wahl.appendChild(el("option", {value: ""}, SC.scans.length
+  const choice = $("scan-open");
+  choice.replaceChildren();
+  choice.appendChild(el("option", {value: ""}, SC.scans.length
     ? "— keiner (ganzer Bestand) —" : "— noch kein Item-Scan —"));
   for (const c of SC.scans) {
     const o = el("option", {value: c.name}, c.name);
     if (c.name === SC.open) o.selected = true;
-    wahl.appendChild(o);
+    choice.appendChild(o);
   }
   const open = SC.scans.find((c) => c.name === SC.open);
-  const bereit = scanConfigOpen();
-  $("scan-stage").classList.toggle("search-active", SC.modus === "finden");
+  const ready = scanConfigOpen();
+  $("scan-stage").classList.toggle("search-active", SC.mode === "find");
   const namensfeld = $("scan-name");
   namensfeld.value = open ? open.name : "";
   namensfeld.disabled = !open;
@@ -2347,42 +2347,42 @@ function scanTools() {
     ? open.slots.length + " Slots · " + open.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
 
-  const ziel = $("scan-modes");
-  ziel.replaceChildren();
+  const target = $("scan-modes");
+  target.replaceChildren();
   for (const m of SCAN_MODES) {
-    const an = SC.modus === m.key;
-    ziel.appendChild(el("button", {
+    const an = SC.mode === m.key;
+    target.appendChild(el("button", {
       class: "scan-mode" + (an ? " on" : ""),
-      disabled: !bereit,
+      disabled: !ready,
       // Ein Umschalten sieht man einem Bedienelement nicht an — dieselbe Regel
       // wie bei der ELSE-Kachel im Inspektor. Es steht deshalb im Tooltip der
       // markierten Kachel UND im Hinweis unter dem Raster.
-      title: an && m.key !== "wahl"
+      title: an && m.key !== "choice"
         ? "Nochmal klicken = zurück zum Auswählen" : "",
-      onclick: () => callScan("scan_mode_set", {modus: m.key, kind: scanKind}),
+      onclick: () => callScan("scan_mode_set", {mode: m.key, kind: scanKind}),
     },
       el("span", {}, m.text),
-      el("span", {class: "key"}, m.taste),
+      el("span", {class: "key"}, m.shortcut),
       el("span", {class: "small"}, m.help)));
   }
-  $("scan-modes-back").hidden = SC.modus === "wahl";
+  $("scan-modes-back").hidden = SC.mode === "choice";
   // **Was man ZWISCHENDURCH tut, braucht keinen Modus** — und die Erklaerung
   // dazu keinen eigenen Absatz. Sie stand als vier Zeilen Text unter den
   // Kacheln; das ⓘ zeigt sie auf Wunsch und merkt sich, ob es offen war.
   $("scan-photo-info").replaceChildren("Woher das Bild kommt", info(
     "Items werden aus diesem eingefrorenen Bild gelernt. Beim Lauf wird "
     + "dasselbe Fenster mit derselben Aufnahmemethode neu aufgenommen; die "
-    + "Slots folgen seiner Position automatisch.", "aufnahme"));
+    + "Slots folgen seiner Position automatisch.", "recording"));
   $("scan-modes-direct").replaceChildren("Ohne Moduswechsel", info(
     "ALT+Klick misst den Hintergrund eines Slots, Doppelklick setzt seinen "
     + "Klickpunkt — beides wählt ihn gleich mit aus. Ein gewählter Slot lässt "
     + "sich mit der Maus ziehen oder mit den Pfeiltasten verschieben "
     + "(SHIFT = 10 px).", "direkt"));
-  const modus = SCAN_MODES.find((m) => m.key === SC.modus);
-  $("scan-mode-short").textContent = modus ? modus.text : "";
+  const mode = SCAN_MODES.find((m) => m.key === SC.mode);
+  $("scan-mode-short").textContent = mode ? mode.text : "";
   maintainCollapse();
   scanSteps();
-  $("scan-photo").disabled = !SC.pillow || !bereit;
+  $("scan-photo").disabled = !SC.pillow || !ready;
   const fensterquelle = !!(SC.window_title || SC.window_id);
   $("scan-photo").textContent = fensterquelle ? "Fenster aufnehmen"
     : (SC.area ? "Bereich aufnehmen" : "Screenshot aufnehmen");
@@ -2415,11 +2415,11 @@ function scanTools() {
     ? "Editor und Live-Scan verwenden dieselbe Aufnahmequelle. Verschieben wird automatisch ausgeglichen; beim Desktop-Fallback muss das Fenster sichtbar sein."
     : (SC.area ? "Ausschnitt vom Bildschirm — hier darf nichts davor liegen." : "");
   quelleninfo.classList.toggle("on", !!SC.area || fensterquelle);
-  $("scan-fullscreen").disabled = !bereit || (!SC.area && !fensterquelle) || !SC.pillow;
+  $("scan-fullscreen").disabled = !ready || (!SC.area && !fensterquelle) || !SC.pillow;
   // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
   const auf = $("scan-draw-area");
-  auf.disabled = !bereit || !photoPresent();
-  auf.classList.toggle("on", SC.modus === "area");
+  auf.disabled = !ready || !photoPresent();
+  auf.classList.toggle("on", SC.mode === "area");
   scanMaintainWindows();
 }
 
@@ -2437,15 +2437,15 @@ function maintainCollapse() {
 /** Ein Assistent mit genau einer offenen Aufgabe und jederzeit erreichbaren Schritten. */
 function scanSteps() {
   if (!scanWizardStep) {
-    const open = SC.schritte.find((s) => !s.fertig);
+    const open = SC.steps.find((s) => !s.done);
     scanWizardStep = open ? open.nr : 3;
   }
-  for (const s of SC.schritte) {
+  for (const s of SC.steps) {
     const karte = $("scan-wizard-" + s.nr);
     const open = scanWizardStep === s.nr;
     karte.classList.toggle("open", open);
-    karte.classList.toggle("done", s.fertig);
-    $("scan-step-" + s.nr + "-nr").textContent = s.fertig ? "✓" : String(s.nr);
+    karte.classList.toggle("done", s.done);
+    $("scan-step-" + s.nr + "-nr").textContent = s.done ? "✓" : String(s.nr);
     $("scan-step-" + s.nr + "-body").hidden = !open;
   }
   const scan = SC.scans.find((c) => c.name === SC.open);
@@ -2457,27 +2457,27 @@ function scanSteps() {
     ? slots + (slots === 1 ? " Slot" : " Slots") : "Noch keine Slots";
   $("scan-step-3-status").textContent = items
     ? items + (items === 1 ? " Item" : " Items") : "Noch keine Items";
-  const bereit = !!(SC.aufnahme_bereit && SC.aufnahme_bereit.item);
-  $("scan-slots-find").disabled = !bereit || !photoPresent() || !SC.pillow;
-  $("scan-slot-new").disabled = !bereit || !photoPresent() || !SC.pillow;
-  $("scan-test").disabled = !bereit || !photoPresent() || !slots;
-  $("scan-learn").disabled = !bereit || !photoPresent() || !slots;
+  const ready = !!(SC.recording_ready && SC.recording_ready.item);
+  $("scan-slots-find").disabled = !ready || !photoPresent() || !SC.pillow;
+  $("scan-slot-new").disabled = !ready || !photoPresent() || !SC.pillow;
+  $("scan-test").disabled = !ready || !photoPresent() || !slots;
+  $("scan-learn").disabled = !ready || !photoPresent() || !slots;
 }
 
 let scanWindows = [];
 
 /** Die offenen Fenster zur Auswahl — nur nachgeholt, wenn Pillow da ist. */
 async function scanMaintainWindows() {
-  const wahl = $("scan-window");
+  const choice = $("scan-window");
   const neu = $("scan-window-capture");
-  const bereit = scanConfigOpen();
-  neu.disabled = !SC.pillow || !bereit;
-  if (!SC.pillow) { wahl.hidden = true; return; }
-  wahl.disabled = !bereit;
+  const ready = scanConfigOpen();
+  neu.disabled = !SC.pillow || !ready;
+  if (!SC.pillow) { choice.hidden = true; return; }
+  choice.disabled = !ready;
   scanWindows = (await ask("scan_windows")) || [];
-  wahl.hidden = false;
-  wahl.replaceChildren();
-  wahl.appendChild(el("option", {value: ""}, scanWindows.length
+  choice.hidden = false;
+  choice.replaceChildren();
+  choice.appendChild(el("option", {value: ""}, scanWindows.length
     ? "— kein Fenster (ganzer Bildschirm) —" : "— keine Fenster gefunden —"));
   scanWindows.forEach((f, i) => {
     // Die Lage steht dabei, weil sie das einzige Unterscheidungsmerkmal ist,
@@ -2490,10 +2490,10 @@ async function scanMaintainWindows() {
     // liegt zwischen "Fenster gewaehlt" und "Bild da" ein zweiter Klick — und
     // in dieser Zeit muss ablesbar sein, WAS aufgenommen wird.
     if (SC.window_id && f.id === SC.window_id) o.selected = true;
-    wahl.appendChild(o);
+    choice.appendChild(o);
   });
   if (SC.window_title && !scanWindows.some((f) => f.id === SC.window_id)) {
-    wahl.appendChild(el("option", {
+    choice.appendChild(el("option", {
       value: "__nicht_offen__", selected: true, disabled: true,
     }, "„" + SC.window_title + "“ · momentan nicht geöffnet"));
   }
@@ -2535,7 +2535,7 @@ function scanCardsRight() {
 /** Welche Liste gilt: die gewaehlte, sonst die zur Lage passende Vorgabe. */
 function scanActiveList() {
   if (scanList) return scanList;
-  if (scanKind === "boss") return "bosse";
+  if (scanKind === "boss") return "bosses";
   if (scanKind === "icon") return "icons";
   return SC && SC.open ? "items" : "scans";
 }
@@ -2563,19 +2563,19 @@ function cardId(kind, name) { return "maske:" + kind + ":" + name; }
  * der Slot-Liste heraus versperrt, solange ein Slot gewaehlt ist. */
 function scanFollowTab() {
   if (!SC || scanKind !== "item") return;
-  const jetzt = SC.wahl.kind + ":" + SC.wahl.name;
+  const jetzt = SC.choice.kind + ":" + SC.choice.name;
   if (jetzt === scanLastChoice) return;
   const erster = scanLastChoice === null;
   scanLastChoice = jetzt;
   // Der Scan hat seinen eigenen Weg (`scanTabAfterOpen`); und beim
   // allerersten Zeichnen gibt es keinen Wechsel, nur einen Anfangszustand.
   if (erster) return;
-  const ziel = {slot: "slots", item: "items"}[SC.wahl.kind];
-  if (ziel && scanActiveList() !== ziel) scanList = ziel;
+  const target = {slot: "slots", item: "items"}[SC.choice.kind];
+  if (target && scanActiveList() !== target) scanList = target;
 }
 
 /** Reiter, Filter und Liste — ein Bauplan, ein Ort. */
-function scanListBlock(tabs, filter, ziel) {
+function scanListBlock(tabs, filter, target) {
   const open = scanActiveList();
   // Kopf und Liste werden getrennt gebaut (der Kopf klebt oben, die Liste
   // scrollt) — gerufen wird dieselbe Funktion zweimal, damit die Zuordnung
@@ -2585,19 +2585,19 @@ function scanListBlock(tabs, filter, ziel) {
     if (scanKind === "icon") {
       an(tabs, el("button", {class: "tab on"},
         "Icon-Scans " + SC.icon_scans.length));
-      return ziel ? detListIcons(ziel) : undefined;
+      return target ? detListIcons(target) : undefined;
     }
     // Zwei Listen, weil es zwei Orte sind: die Bosse DIESES Scans und die,
     // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
     // verlieren, an dem alles haengt.
-    for (const [key, text, number] of [["bosse", "Bosse", detBosses().length],
+    for (const [key, text, number] of [["bosses", "Bosse", detBosses().length],
                                      ["bibliothek", "Bibliothek",
                                       SC.global_bosses.length]]) {
       an(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
         onclick: () => { scanList = key; renderScans(); }}, text + " " + number));
     }
-    if (!ziel) return undefined;
-    return open === "bibliothek" ? detListLibrary(ziel) : detListBosses(ziel);
+    if (!target) return undefined;
+    return open === "bibliothek" ? detListLibrary(target) : detListBosses(target);
   }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
@@ -2615,10 +2615,10 @@ function scanListBlock(tabs, filter, ziel) {
     }, text + " " + sichtbar + (sichtbar === total ? "" : "/" + total)));
   }
   if (filter) scanFilterRow(filter, open);
-  if (!ziel) return undefined;
-  if (open === "slots") return scanListSlots(ziel);
-  if (open === "items") return scanListItems(ziel);
-  return scanListScans(ziel);
+  if (!target) return undefined;
+  if (open === "slots") return scanListSlots(target);
+  if (open === "items") return scanListItems(target);
+  return scanListScans(target);
 }
 
 /** Was die Liste einschraenkt: Kategorie; Bestand gehoert immer zum Scan. */
@@ -2676,7 +2676,7 @@ function scanOrderGroup(kind) {
   const merk = scanOrder[kind];
   if (!merk) return null;
   const gruppen = new Map();
-  for (const e of merk) gruppen.set(e.name, e.gruppe);
+  for (const e of merk) gruppen.set(e.name, e.group);
   return (name) => (gruppen.has(name) ? gruppen.get(name) : null);
 }
 
@@ -2695,7 +2695,7 @@ function scanOrderRename(kind, alt, neu) {
   const merk = scanOrder[kind];
   if (!merk || !neu || alt === neu) return;
   const i = merk.findIndex((e) => e.name === alt);
-  if (i >= 0) merk.splice(i, 1, {name: neu, gruppe: merk[i].gruppe}, merk[i]);
+  if (i >= 0) merk.splice(i, 1, {name: neu, group: merk[i].group}, merk[i]);
 }
 
 /** Die gemerkte Vorschau auf den neuen Namen mitnehmen.
@@ -2767,10 +2767,10 @@ function cardName(kind, name, title, setze) {
  * was drinsteht — nicht darin, wie man sie anfasst. Vorher waren es drei
  * Formen an zwei Orten, und ein Slot liess sich nur ueber vier Zahlenfelder
  * bearbeiten, waehrend ein Item eine Maske hatte. */
-function buildCard(kind, name, selected, teile, detail, beimWaehlen) {
+function buildCard(kind, name, selected, parts, detail, beimWaehlen) {
   const maske = el("div", {class: "scan-card" + (selected ? " on" : ""),
                            id: cardId(kind, name)});
-  for (const teil of teile) maske.appendChild(teil);
+  for (const teil of parts) maske.appendChild(teil);
   if (selected && detail) {
     const kasten = el("div", {class: "scan-card-detail"});
     detail(kasten);
@@ -2790,7 +2790,7 @@ function buildCard(kind, name, selected, teile, detail, beimWaehlen) {
   return maske;
 }
 
-function scanListSlots(ziel) {
+function scanListSlots(target) {
   // **Die stabile ID ist die Reihenfolge.** Scan-Position, Name und Reihenfolge
   // in der Datei koennen sich aendern; die ID bezeichnet den Slot dauerhaft.
   // Deshalb gilt sie auch ueber die Grenze „gehoert zum offenen Scan" hinweg.
@@ -2802,15 +2802,15 @@ function scanListSlots(ziel) {
          : (((Number(a.id) > 0 ? Number(a.id) : Number.MAX_SAFE_INTEGER)
               - (Number(b.id) > 0 ? Number(b.id) : Number.MAX_SAFE_INTEGER))
              || byName(a.name, b.name)));
-  if (!rang) scanOrder.slot = liste.map((s) => ({name: s.name, gruppe: ""}));
+  if (!rang) scanOrder.slot = liste.map((s) => ({name: s.name, group: ""}));
   if (!liste.length) {
-    ziel.appendChild(el("p", {class: "hint"}, SC.slots.length
+    target.appendChild(el("p", {class: "hint"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
       : "Noch keine Slots. Modus „Slots finden“ — oder „Neuer Slot“ und zwei "
         + "Ecken im Bild anklicken."));
     return;
   }
-  for (const s of liste) ziel.appendChild(scanSlotCard(s));
+  for (const s of liste) target.appendChild(scanSlotCard(s));
 }
 
 /** Ein Slot als Maske — dieselbe Bauform wie beim Item.
@@ -2823,7 +2823,7 @@ function scanSlotCard(s) {
   const setze = (field, value) => callScan("scan_slot_set",
                                         {name: s.name, field: field, value: value});
   const selected = SC.selection.includes(s.name)
-                || (SC.wahl.kind === "slot" && SC.wahl.name === s.name);
+                || (SC.choice.kind === "slot" && SC.choice.name === s.name);
   const name = cardName("slot", s.name,
     "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
   // **Die ID ist eine reine Anzeige-Kachel, kein Knopf.** Sie bleibt gleich,
@@ -2834,8 +2834,8 @@ function scanSlotCard(s) {
   const id = el("span", {class: "num",
     title: s.number
       ? "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten. "
-        + "Läuft in „" + SC.open + "“ als " + s.lauf + ". von " + s.total + "."
-        + (s.lauf !== s.number ? " (rückwärts)" : "")
+        + "Läuft in „" + SC.open + "“ als " + s.run_index + ". von " + s.total + "."
+        + (s.run_index !== s.number ? " (rückwärts)" : "")
       : "Slot-ID #" + s.id + " — bleibt gleich, auch beim Ab-/Wieder-Anschalten."},
     "#" + s.id);
   const box = el("input", {type: "checkbox",
@@ -2862,47 +2862,47 @@ function scanSlotState(s) {
   // Die Groesse ist ein gemessener WERT, kein Satz — also dieselbe Kachel wie
   // die Nummer daneben. Was daneben steht („Item 1", „unbekannt", „→ Helme"),
   // ist eine Aussage und bleibt Text.
-  const teile = [el("span", {class: "num"}, s.width + "×" + s.height)];
-  if (!s.active) teile.push(el("span", {class: "small slot-off"}, "aus"));
+  const parts = [el("span", {class: "num"}, s.width + "×" + s.height)];
+  if (!s.active) parts.push(el("span", {class: "small slot-off"}, "aus"));
   // Ein winziger Slot ist im Bild kaum zu treffen — in der Liste ist er so
   // gross wie jeder andere. Deshalb steht die Warnung HIER: das ist der Weg,
   // ihn auszuwaehlen und zu loeschen.
   if (s.tiny) {
-    teile.push(el("span", {class: "small", style: "color:var(--err)",
+    parts.push(el("span", {class: "small", style: "color:var(--err)",
       title: "Zu klein zum Erkennen — hier auswählen und löschen"}, "⚠ zu klein"));
-  } else if (s.treffer && s.treffer.name) {
-    teile.push(el("span", {class: "small",
-      style: "color:var(" + (s.treffer.foreign ? "--slot-fremd" : "--slot-ok") + ")",
-      title: s.treffer.foreign
-        ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.treffer.name));
-  } else if (s.treffer) {
+  } else if (s.match && s.match.name) {
+    parts.push(el("span", {class: "small",
+      style: "color:var(" + (s.match.foreign ? "--slot-fremd" : "--slot-ok") + ")",
+      title: s.match.foreign
+        ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.match.name));
+  } else if (s.match) {
     // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
     // Rechteck im Bild, damit Liste und Bild zusammengehen.
-    teile.push(el("span", {class: "small", style: "color:var(--slot-offen)"},
+    parts.push(el("span", {class: "small", style: "color:var(--slot-offen)"},
                   "unbekannt"));
   }
-  return el("div", {class: "scan-card-state"}, teile);
+  return el("div", {class: "scan-card-state"}, parts);
 }
 
-function scanListItems(ziel) {
+function scanListItems(target) {
   // **Gesortiert wird nur auf Ansage.** Steht eine gemerkte Reihenfolge, gilt
   // ausschliesslich sie — auch fuer die Gruppen, denn die Kategorie war als
   // erster Schluessel das letzte Feld, das die Zeile noch wegspringen liess.
   // Ohne Merkposten (erster Aufbau, „Sortieren", Neu laden) wird frisch geordnet.
   const rang = scanOrderRank("item");
-  const gruppe = scanOrderGroup("item");
+  const group = scanOrderGroup("item");
   const frisch = (a, b) =>
-    (SC.open ? Number(!!b.dabei) - Number(!!a.dabei) : 0) ||
+    (SC.open ? Number(!!b.included) - Number(!!a.included) : 0) ||
     a.priority - b.priority || a.name.localeCompare(b.name, "de");
   const liste = scanVisible(SC.items, true, "item").slice().sort((a, b) =>
     rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)
          : ((a.category || "").localeCompare(b.category || "", "de")
             || frisch(a, b)));
   if (!rang) {
-    scanOrder.item = liste.map((i) => ({name: i.name, gruppe: i.category || ""}));
+    scanOrder.item = liste.map((i) => ({name: i.name, group: i.category || ""}));
   }
   if (!liste.length) {
-    ziel.appendChild(el("p", {class: "hint"}, SC.items.length
+    target.appendChild(el("p", {class: "hint"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
       : "Noch keine Items. Einen Slot wählen und „Item lernen“ — oder alle "
         + "Slots auf einmal."));
@@ -2914,14 +2914,14 @@ function scanListItems(ziel) {
     // Die Ueberschrift kommt aus der EINGEFRORENEN Gruppe, nicht aus dem
     // aktuellen Wert: sonst reisst ein gerade geaendertes Item eine zweite
     // Ueberschrift mitten in die Liste. Wo es hinwandert, sagt seine Maske.
-    const gefroren = gruppe ? gruppe(i.name) : null;
+    const gefroren = group ? group(i.name) : null;
     const category = (gefroren === null ? (i.category || "") : gefroren)
                       || "Ohne Kategorie";
     if (category !== letzteKategorie) {
-      ziel.appendChild(scanCategoryHeader(category, liste));
+      target.appendChild(scanCategoryHeader(category, liste));
       letzteKategorie = category;
     }
-    ziel.appendChild(scanItemCard(i, gefroren));
+    target.appendChild(scanItemCard(i, gefroren));
   }
 }
 
@@ -2966,7 +2966,7 @@ function scanCategoryHeader(category, liste) {
 function scanItemCard(i, gefroren) {
   const setze = (field, value) => callScan("scan_item_set",
                                         {name: i.name, field: field, value: value});
-  const selected = SC.wahl.kind === "item" && SC.wahl.name === i.name;
+  const selected = SC.choice.kind === "item" && SC.choice.name === i.name;
   const image = scanPreviews.get(i.name);
 
   const box = el("input", {type: "checkbox",
@@ -3036,52 +3036,52 @@ function scanItemCard(i, gefroren) {
  * nichts und hielt ihn fuer wirkungslos. Hier steht jetzt, WO das Item gerade
  * gefunden wurde. */
 function scanItemState(i, gefroren) {
-  const teile = [];
+  const parts = [];
   // Die Kategorie ist gewechselt, die Zeile steht aber noch unter der alten
   // Ueberschrift — das muss dastehen, sonst liest sich die Liste falsch.
   if (gefroren !== null && gefroren !== undefined
       && (i.category || "") !== gefroren) {
-    teile.push(el("span", {style: "color:var(--accent)",
+    parts.push(el("span", {style: "color:var(--accent)",
       title: "Beim nächsten „Sortieren“ rutscht das Item in diese Gruppe"},
       "→ " + (i.category || "ohne Kategorie")));
   }
   if ((i.detected_in || []).length) {
-    teile.push(el("span", {style: "color:var(--slot-ok)"},
+    parts.push(el("span", {style: "color:var(--slot-ok)"},
       "erkannt in " + i.detected_in.slice(0, 2).join(", ")
       + (i.detected_in.length > 2 ? " +" + (i.detected_in.length - 2) : "")));
   }
-  if (i.stumm) {
-    teile.push(el("span", {style: "color:var(--err)",
-      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "stumm"));
-  } else if (!(i.vorlagen || []).length) {
-    teile.push(el("span", {class: "mono"}, i.marker.length + " Marker"));
+  if (i.silent) {
+    parts.push(el("span", {style: "color:var(--err)",
+      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "silent"));
+  } else if (!(i.templates || []).length) {
+    parts.push(el("span", {class: "mono"}, i.marker.length + " Marker"));
   }
   if ((i.missing_scan_sizes || []).length) {
-    teile.push(el("span", {style: "color:var(--accent)",
+    parts.push(el("span", {style: "color:var(--accent)",
       title: "Für die Slot-Größen dieses Scans gibt es noch keine Vorlage"},
       "Vorlage fehlt"));
   }
   const kollision = priorityDuplicate(i);
   if (kollision.length) {
-    teile.push(el("span", {style: "color:var(--accent)",
+    parts.push(el("span", {style: "color:var(--accent)",
       title: "Gleiche Priorität wie " + kollision.join(", ")
              + " — welches zuerst geklickt wird, entscheidet der Zufall"},
       "P" + i.priority + " doppelt"));
   }
   if (i.confirmation) {
-    teile.push(el("span", {class: "mono", title: "Nach dem Klick wird bestätigt: "
+    parts.push(el("span", {class: "mono", title: "Nach dem Klick wird bestätigt: "
       + i.confirmation.text}, "+ Bestätigung"));
   }
-  return el("div", {class: "scan-card-state"}, teile);
+  return el("div", {class: "scan-card-state"}, parts);
 }
 
-function scanListScans(ziel) {
+function scanListScans(target) {
   if (!SC.scans.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch kein Item-Scan. Er ist die Klammer um Slots und Items — bei mehreren "
       + "Spielen der einzige Weg, sie auseinanderzuhalten."));
   }
-  for (const c of SC.scans) ziel.appendChild(scanScanCard(c));
+  for (const c of SC.scans) target.appendChild(scanScanCard(c));
 }
 
 /** Ein Item-Scan als Maske: Name, Umfang — und seine Einstellungen darunter.
@@ -3099,10 +3099,10 @@ function scanScanCard(c) {
     el("span", {class: "small mono"},
        c.slots.length + " Slots · " + c.items.length + " Items"),
     open ? el("span", {class: "small", style: "color:var(--slot-ok)"}, "open") : null,
-    c.fehlend.length
+    c.missing_items.length
       ? el("span", {class: "small", style: "color:var(--err)",
-                    title: "Zeigt ins Leere: " + c.fehlend.join(", ")},
-           c.fehlend.length + "× fehlt")
+                    title: "Zeigt ins Leere: " + c.missing_items.join(", ")},
+           c.missing_items.length + "× fehlt")
       : null);
   return buildCard("scan", c.name, open,
     [el("span", {}),
@@ -3119,11 +3119,11 @@ function scanScanCard(c) {
 
 /** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
 async function scanFetchPreviews(namen) {
-  const fehlend = namen.filter((n) => !scanPreviews.has(n));
-  if (!fehlend.length) return;
+  const missing_items = namen.filter((n) => !scanPreviews.has(n));
+  if (!missing_items.length) return;
   // Vormerken, damit ein zweiter Aufbau nicht nochmal fragt.
-  for (const n of fehlend) scanPreviews.set(n, "");
-  const antwort = await ask("scan_preview", {namen: fehlend});
+  for (const n of missing_items) scanPreviews.set(n, "");
+  const antwort = await ask("scan_preview", {namen: missing_items});
   if (!antwort) return;
   let neu = false;
   for (const [name, url] of Object.entries(antwort)) {
@@ -3162,12 +3162,12 @@ function scanOverlay() {
     // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
     // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
     const selected = SC.selection.includes(s.name)
-      || (SC.wahl.kind === "slot" && SC.wahl.name === s.name);
+      || (SC.choice.kind === "slot" && SC.choice.name === s.name);
     // Gruen = hier liegt ein Item, das der Scan kennt. Amber = erkannt, aber
     // noch nicht Mitglied dieses Scans — anderer Zustand, andere Farbe, sonst
     // sucht man spaeter, warum der Scan das Gruene nicht findet.
-    const zustand = (s.treffer
-      ? (s.treffer.name ? (s.treffer.foreign ? " foreign-item" : " match") : " empty")
+    const zustand = (s.match
+      ? (s.match.name ? (s.match.foreign ? " foreign-item" : " match") : " empty")
       : "");
     const aus = s.active ? "" : " off";
     // Die Fuellung traegt denselben Zustand wie der Umriss: auf einem bunten
@@ -3187,14 +3187,14 @@ function scanOverlay() {
       svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-badge" + aus,
         "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
     }
-    if (s.treffer && s.treffer.name && (breit >= 34 || selected)) {
+    if (s.match && s.match.name && (breit >= 34 || selected)) {
       // Dieselbe Quelle wie der Umriss — sonst laeuft die Marke von ihrem
       // eigenen Rechteck farblich weg.
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-badge",
         "font-size": 10 * px, "stroke-width": 3 * px,
-        fill: SLOT_COLOR[s.treffer.foreign ? "foreign-item" : "match"]}, s.treffer.name));
+        fill: SLOT_COLOR[s.match.foreign ? "foreign-item" : "match"]}, s.match.name));
     }
-    const [kx, ky] = scanToImage(s.klick[0] + v[0], s.klick[1] + v[1]);
+    const [kx, ky] = scanToImage(s.click_pos[0] + v[0], s.click_pos[1] + v[1]);
     const arm = 4 * px;
     svg.appendChild(svgEl("path", {class: "scan-cross" + aus,
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
@@ -3217,8 +3217,8 @@ function scanOverlay() {
 
   // Die erste Ecke und das entstehende Rechteck: ohne die sieht man beim
   // Aufziehen nicht, was man gerade baut.
-  if (SC.ecke) {
-    const [ex, ey] = scanToImage(SC.ecke[0], SC.ecke[1]);
+  if (SC.corner) {
+    const [ex, ey] = scanToImage(SC.corner[0], SC.corner[1]);
     svg.appendChild(svgEl("circle", {cx: ex, cy: ey, r: 3 * px, class: "scan-corner"}));
     if (scanPointer) {
       const [zx, zy] = scanToImage(scanPointer[0], scanPointer[1]);
@@ -3249,7 +3249,7 @@ function svgEl(tag, attrs, text) {
 function scanSelectedSlots() {
   if (!SC) return [];
   const namen = SC.selection.length ? SC.selection
-    : (SC.wahl.kind === "slot" && SC.wahl.name ? [SC.wahl.name] : []);
+    : (SC.choice.kind === "slot" && SC.choice.name ? [SC.choice.name] : []);
   return SC.slots.filter((s) => namen.includes(s.name));
 }
 
@@ -3267,8 +3267,8 @@ function scanInSlot(slot, position) {
  * Auswahl: eine Buehne, die bei jedem Neuzeichnen springt, nimmt einem die
  * Stelle weg, die man gerade ansieht. */
 function scanShowSelected() {
-  if (!SC || !SC.photo || SC.wahl.kind !== "slot") { scanShown = ""; return; }
-  const name = SC.wahl.name;
+  if (!SC || !SC.photo || SC.choice.kind !== "slot") { scanShown = ""; return; }
+  const name = SC.choice.name;
   if (!name || name === scanShown) return;
   scanShown = name;
   const slot = SC.slots.find((s) => s.name === name);
@@ -3305,7 +3305,7 @@ function scanPositionFromEvent(e, amBildrand = false) {
  * Werkzeugleiste und Ergebnisboxen sind keine Zeichenflaeche. */
 function scanSearchPositionFromStage(e) {
   const flaeche = $("scan-surface");
-  if (!SC || SC.modus !== "finden" || flaeche.contains(e.target)) return null;
+  if (!SC || SC.mode !== "find" || flaeche.contains(e.target)) return null;
   if (e.target.closest("#scan-canvas-bar, #scan-result, #scan-library")) return null;
   return scanPositionFromEvent(e, true);
 }
@@ -3327,9 +3327,9 @@ function scanInspector() {
 }
 
 function scanBuildInspector() {
-  const ziel = $("scan-insp");
-  ziel.replaceChildren();
-  if (SC.review) return scanReview(ziel);
+  const target = $("scan-insp");
+  target.replaceChildren();
+  if (SC.review) return scanReview(target);
   const kopf = el("div", {class: "section scan-header"},
     el("div", {class: "row"},
       el("span", {class: "heading grow"},
@@ -3346,10 +3346,10 @@ function scanBuildInspector() {
       el("div", {class: "row"},
         SC.dirty ? el("button", {class: "btn primary", onclick: async () => {
           await callScan("scan_save");
-          await callScan("scan_reload", {verwerfen: true});
+          await callScan("scan_reload", {discard: true});
         }}, "Speichern & neu laden") : null,
         el("button", {class: "btn", onclick: () => callScan("scan_reload",
-                                                           {verwerfen: true})},
+                                                           {discard: true})},
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
     el("button", {class: "btn primary", onclick: () => callScan("scan_save")},
        "Speichern"),
@@ -3373,17 +3373,17 @@ function scanBuildInspector() {
       // zweizeilig, wechselte bei jeder Änderung ihre Länge, und was der Knopf
       // TUT, musste man aus ihr heraussuchen. Was zurückgenommen wird, liest,
       // wer nachfragt; dass es überhaupt etwas gibt, sagt der aktive Zustand.
-      el("button", {class: "btn scan-undo", disabled: !SC.undo.tiefe,
-                    title: SC.undo.tiefe
-                      ? "STRG+Z — nimmt zurück: " + SC.undo.was
-                        + " (" + SC.undo.tiefe + " Schritte gemerkt)"
+      el("button", {class: "btn scan-undo", disabled: !SC.undo.depth,
+                    title: SC.undo.depth
+                      ? "STRG+Z — nimmt zurück: " + SC.undo.what
+                        + " (" + SC.undo.depth + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
                     onclick: () => callScan("scan_undo")}, "↶ Zurück")));
   // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
   // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
   // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
   // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen.
-  if (scanKind === "item" && SC.katalog_an) {
+  if (scanKind === "item" && SC.catalog_on) {
     kopf.appendChild(el("button", {class: "btn wide",
       title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
              + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
@@ -3397,19 +3397,19 @@ function scanBuildInspector() {
   // fuer den Normalfall: nach dem Lernen heissen sie alle „Item 1“ … „Item 56“,
   // und genau dann will man einmal ueber alle. Er steht deshalb hier oben,
   // neben dem Katalog-Knopf, mit derselben Bezugsregel (der offene Scan).
-  if (scanKind === "item" && SC.llm_an) {
-    const mitVorlage = (SC.items || []).filter((i) => (i.vorlagen || []).length).length;
+  if (scanKind === "item" && SC.llm_on) {
+    const mitVorlage = (SC.items || []).filter((i) => (i.templates || []).length).length;
     if (mitVorlage) {
       kopf.appendChild(el("button", {class: "btn wide",
         title: mitVorlage + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
-               + (SC.katalog_an
+               + (SC.catalog_on
                   ? "Jeder Name wird aus dem Katalog gewählt, danach werden "
                     + "Kategorie und Priorität gesetzt."
                   : "Ohne Katalog rät das Modell frei — die Namen sind dann "
                     + "Vorschläge, keine echten Item-Namen.")
                + " Das dauert; STRG+Z nimmt den ganzen Durchgang zurück.",
         onclick: () => scanAutonameRun({alle: true})},
-        SC.katalog_an ? "✦ Alle aus Katalog benennen" : "✦ Alle mit LLM benennen"));
+        SC.catalog_on ? "✦ Alle aus Katalog benennen" : "✦ Alle mit LLM benennen"));
     }
   }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
@@ -3439,7 +3439,7 @@ function scanBuildInspector() {
       irgendAn ? "Alle aus" : "Alle ein"));
   }
   if (filter.childNodes.length) kopf.appendChild(filter);
-  ziel.appendChild(kopf);
+  target.appendChild(kopf);
 
   const rumpf = el("div", {class: "section growing"});
   // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Was zum
@@ -3467,7 +3467,7 @@ function scanBuildInspector() {
     rumpf.appendChild(el("p", {class: "hint"},
       "Nichts gewählt. Links eine Zeile anklicken — oder im Bild einen Slot."));
   }
-  ziel.appendChild(rumpf);
+  target.appendChild(rumpf);
 }
 
 /** Was in der Kopfzeile der rechten Spalte steht: die offene Liste.
@@ -3482,9 +3482,9 @@ function scanColumnTitle() {
          || "SCANS";
 }
 
-function scanReview(ziel) {
+function scanReview(target) {
   const itemsId = "review-items";
-  const bekannteNamen = new Set((SC.review.itemnamen || []).map(String));
+  const bekannteNamen = new Set((SC.review.item_names || []).map(String));
   const kopf = el("div", {class: "section"},
     el("span", {class: "heading"}, "ITEMS VOR DER ÜBERNAHME PRÜFEN"),
     el("p", {class: "hint"},
@@ -3495,14 +3495,14 @@ function scanReview(ziel) {
   if (existing) kopf.appendChild(existing);
   const sammelKategorie = categoryChooser("", scanReviewRefreshCategories, {
     empty: "— Kategorie für alle ausgewählten —",
-    platzhalter: "Kategorie für alle ausgewählten Items",
+    placeholder: "Kategorie für alle ausgewählten Items",
     key: "review-sammel",
   });
   kopf.appendChild(el("div", {class: "scan-review-bulk"}, sammelKategorie,
     el("button", {class: "btn quiet", type: "button",
       onclick: () => scanReviewCategoryToSelection(sammelKategorie)},
     "Auf ausgewählte anwenden")));
-  ziel.appendChild(kopf);
+  target.appendChild(kopf);
   const liste = el("div", {class: "section growing scan-review"});
   for (const z of SC.review.rows) {
     const haken = el("input", {type: "checkbox", class: "scan-review-check"});
@@ -3538,7 +3538,7 @@ function scanReview(ziel) {
       // Kategorie und Priorität des erkannten Profils sind direkt änderbar.
       // Wird ein anderer vorhandener Name gewählt, schützen wir dagegen dessen
       // Werte vor den leeren Standards der Aktion „Als anderes Item lernen“.
-      kat.sperren(bestehend && !normalerTreffer);
+      kat.lock(bestehend && !normalerTreffer);
       prio.disabled = bestehend && !normalerTreffer;
       row.dataset.alsAnderes = alsAnderes ? "true" : "false";
       row.classList.toggle("skip", !haken.checked);
@@ -3548,10 +3548,10 @@ function scanReview(ziel) {
         status.textContent = z.slot + (bestehend
           ? " · vorhandenes „" + name.value.trim() + "“ gewählt · Vorlage ergänzen"
           : " · wird als neues Item gelernt");
-      } else if (z.variante) {
+      } else if (z.variant) {
         status.textContent = z.slot + " · „" + vorhandenerName +
           "“ erkannt · neue Vorlage für diese Slot-Größe";
-      } else if (z.duplikat) {
+      } else if (z.duplicate) {
         status.textContent = z.slot + " · „" + vorhandenerName +
           "“ erkannt · bereits in diesem Scan eingerichtet";
       } else {
@@ -3561,7 +3561,7 @@ function scanReview(ziel) {
     };
     name.addEventListener("input", synchronisiere);
     row = el("div", {class: "scan-review-row" +
-        (z.variante ? " variant" : z.duplikat ? " duplicate done" : ""),
+        (z.variant ? " variant" : z.duplicate ? " duplicate done" : ""),
       "data-slot": z.slot, "data-existing": vorhandenerName,
       "data-als-anderes": "false"}, haken, status,
       z.image ? el("img", {class: "scan-review-image", src: z.image, alt: ""})
@@ -3591,7 +3591,7 @@ function scanReview(ziel) {
       alsAnderes = !alsAnderes;
       if (alsAnderes) {
         vorherigeAuswahl = haken.checked;
-        name.value = z.neu_name || "Item";
+        name.value = z.new_name || "Item";
         kat.value = "";
         prio.value = 1;
         haken.checked = true;
@@ -3616,7 +3616,7 @@ function scanReview(ziel) {
   liste.appendChild(el("div", {class: "button-pair", style: "margin-top:8px"},
     el("button", {class: "btn", onclick: () => callScan("scan_learn_preview_cancel")}, "Abbrechen"),
     el("button", {class: "btn primary", onclick: scanReviewApply}, "Auswahl anwenden")));
-  ziel.appendChild(liste);
+  target.appendChild(liste);
 }
 
 function scanReviewApply() {
@@ -3642,18 +3642,18 @@ function scanReviewApply() {
  * **Der Name steht in der Maske, nicht hier.** Dieselbe Regel wie beim Item und
  * beim Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
  * steht beim Ding; hier bleibt, was man daran EINSTELLT. */
-function scanSlotDetails(ziel, s) {
+function scanSlotDetails(target, s) {
   const setze = (field, value) => callScan("scan_slot_set", {name: s.name, field: field, value: value});
 
-  ziel.appendChild(el("div", {class: "button-pair"},
+  target.appendChild(el("div", {class: "button-pair"},
     el("button", {class: "btn quiet",
       title: "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt",
-      onclick: () => callScan("scan_mode_set", {modus: "klick"})},
+      onclick: () => callScan("scan_mode_set", {mode: "click"})},
       "Klickpunkt setzen"),
     el("button", {class: "btn quiet", disabled: !photoPresent(),
       title: "Die Farbe des leeren Slots — sie wird beim Item-Lernen abgezogen, "
              + "damit nicht der Rahmen als Merkmal gelernt wird",
-      onclick: () => callScan("scan_mode_set", {modus: "messen"})},
+      onclick: () => callScan("scan_mode_set", {mode: "measure"})},
       "Hintergrund messen")));
 
   const erweitert = el("details", {class: "scan-advanced"},
@@ -3669,14 +3669,14 @@ function scanSlotDetails(ziel, s) {
   erweitert.appendChild(heading("KLICKPUNKT",
     "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
   erweitert.appendChild(el("div", {class: "gitter2"},
-    numberField("X", s.klick[0], (v) => setze("kx", v)),
-    numberField("Y", s.klick[1], (v) => setze("ky", v))));
+    numberField("X", s.click_pos[0], (v) => setze("kx", v)),
+    numberField("Y", s.click_pos[1], (v) => setze("ky", v))));
   erweitert.appendChild(color_swatch("Hintergrund", s.color, (v) => setze("color", v),
     "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
     "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
-  ziel.appendChild(erweitert);
+  target.appendChild(erweitert);
 
-  ziel.appendChild(el("div", {class: "button-pair"},
+  target.appendChild(el("div", {class: "button-pair"},
     el("button", {class: "btn", disabled: !photoPresent(),
                   onclick: () => callScan("scan_item_learn", {slot: s.name})},
        "Item lernen"),
@@ -3686,7 +3686,7 @@ function scanSlotDetails(ziel, s) {
     // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
     // (`_scan_slots()` in scans.py). Das steht im Knopf, weil es vorher
     // stillschweigend anders war — und die Meldung danach ratlos machte.
-    ziel.appendChild(el("button", {class: "btn quiet",
+    target.appendChild(el("button", {class: "btn quiet",
       title: SC.open ? "Alle Slots aus „" + SC.open + "“ — nicht der ganze Bestand"
                       : "Alle Slots im Bestand (kein Scan offen)",
       onclick: () => callScan("scan_learn_preview", {scope: "alle"})},
@@ -3704,37 +3704,37 @@ function scanSlotDetails(ziel, s) {
  * obwohl gerade die Handgriffe nach dem Finden fast immer viele Slots auf
  * einmal betreffen (die Reihe sitzt drei Pixel zu hoch, die Haelfte gehoert
  * nicht in diesen Scan, aus den fuenf orangen soll gelernt werden). */
-function scanInspSelection(ziel) {
-  ziel.appendChild(heading("AUSWAHL",
+function scanInspSelection(target) {
+  target.appendChild(heading("AUSWAHL",
     "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
     "klicken). STRG-Klick nimmt einzelne dazu oder heraus. Alles hier lässt " +
     "sich mit STRG+Z zurücknehmen.", "selection"));
-  ziel.appendChild(el("p", {class: "hint"}, SC.selection.length + " Slots gewählt"));
+  target.appendChild(el("p", {class: "hint"}, SC.selection.length + " Slots gewählt"));
   // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
   // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
-  ziel.appendChild(el("div", {class: "column", style: "gap:2px;max-height:160px;"
+  target.appendChild(el("div", {class: "column", style: "gap:2px;max-height:160px;"
     + "overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--muted)"},
     ...SC.selection.map((n) => el("span", {}, n))));
 
-  ziel.appendChild(heading("LAGE UND GRÖSSE",
+  target.appendChild(heading("LAGE UND GRÖSSE",
     "Verschieben: im Bild ziehen oder Pfeiltasten (SHIFT = 10 px) — der " +
     "Klickpunkt geht mit. Angleichen zieht alle auf die MITTLERE Grösse, um " +
     "ihre Mitte herum: ein einzelner Verklicker soll nicht alle anderen " +
     "verbiegen.", "auswahl-lage"));
-  ziel.appendChild(el("button", {class: "btn wide",
+  target.appendChild(el("button", {class: "btn wide",
     onclick: () => callScan("scan_align_size")}, "Grösse angleichen"));
 
-  ziel.appendChild(heading("HINTERGRUND UND ITEMS",
+  target.appendChild(heading("HINTERGRUND UND ITEMS",
     "Gemessen wird jeder Slot an sich selbst — eine gemeinsame Farbe für alle " +
     "wäre an jedem einzelnen ein bisschen falsch.", "auswahl-lernen"));
-  ziel.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
+  target.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
     onclick: () => callScan("scan_selection_color")}, "Hintergrund neu messen"));
-  ziel.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
+  target.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
     title: "Aus jedem gewählten Slot ein Item — Doppelte werden übersprungen",
     onclick: () => callScan("scan_learn_preview", {scope: "selection"})},
     SC.selection.length + " Items prüfen & lernen"));
 
-  ziel.appendChild(el("div", {class: "button-pair", style: "margin-top:14px"},
+  target.appendChild(el("div", {class: "button-pair", style: "margin-top:14px"},
     el("button", {class: "btn", onclick: () => callScan("scan_cancel")},
        "Auswahl aufheben"),
     el("button", {class: "btn danger", onclick: () => callScan("scan_slot_delete")},
@@ -3747,27 +3747,27 @@ function scanInspSelection(ziel) {
  * beim Arbeiten an einem Ding zwischen zwei Orten hin und her, und die Maske
  * trägt seine Identität ohnehin schon. Dieselbe Regel wie „was dem Punkt
  * gehört, steht beim Punkt" im Sequenz-Editor. */
-function scanItemDetails(ziel, i) {
+function scanItemDetails(target, i) {
   const setze = (field, value) => callScan("scan_item_set", {name: i.name, field: field, value: value});
   const image = scanPreviews.get(i.name);
-  if (image) ziel.appendChild(el("img", {class: "scan-large", src: image}));
+  if (image) target.appendChild(el("img", {class: "scan-large", src: image}));
   if ((i.detected_in || []).length) {
-    ziel.appendChild(el("p", {class: "hint", style: "color:var(--slot-ok)"},
+    target.appendChild(el("p", {class: "hint", style: "color:var(--slot-ok)"},
       "Gerade erkannt in: " + i.detected_in.join(", ")));
   }
-  ziel.appendChild(priorityOverview(i.category, i.name));
+  target.appendChild(priorityOverview(i.category, i.name));
   const erweitert = el("details", {class: "scan-advanced"},
     el("summary", {}, "Erweiterte Erkennungseinstellungen"));
-  erweitert.appendChild(numberField("Konfidenz", i.konfidenz, (v) => setze("konfidenz", v),
+  erweitert.appendChild(numberField("Konfidenz", i.confidence, (v) => setze("confidence", v),
       {min: 0, max: 1, step: "any"},
       "Wie gut das Template passen muss (0–1).", "konf"));
   erweitert.appendChild(el("p", {class: "hint"},
     (i.template_sizes || []).length
       ? "Gelernte Slot-Größen: " + i.template_sizes.map((g) => g[0] + "×" + g[1]).join(", ")
       : "Keine Bildvorlage — nur Marker-Farben."));
-  if ((i.vorlagen || []).length) {
+  if ((i.templates || []).length) {
     erweitert.appendChild(el("div", {class: "column", style: "gap:5px"},
-      (i.vorlagen || []).map((v) => el("div", {class: "row"},
+      (i.templates || []).map((v) => el("div", {class: "row"},
         el("span", {class: "hint mono grow"}, v),
         el("button", {class: "btn quiet", title: "Nur vom Item lösen; Datei bleibt erhalten",
           onclick: () => callScan("scan_item_remove_template", {name: i.name, file: v})},
@@ -3786,26 +3786,26 @@ function scanItemDetails(ziel, i) {
     erweitert.appendChild(el("div", {class: "scan-marker"},
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
-  ziel.appendChild(erweitert);
+  target.appendChild(erweitert);
   // Der Knopf hing einmal an `kategorie === "Auto"` — also genau an den Items,
   // die schon einen Namen vom Auto-Lernen haben. Wer 56 Vorlagen von Hand als
   // „item_1“ … angelegt hat, fand ihn deshalb nie, obwohl das der Fall ist, für
   // den man ihn sucht. Gebraucht wird eine Vorlage, sonst gibt es nichts zu sehen.
-  if ((i.vorlagen || []).length) {
-    ziel.appendChild(el("button", {class: "btn wide", style: "margin-top:10px",
-      title: SC.katalog_an
+  if ((i.templates || []).length) {
+    target.appendChild(el("button", {class: "btn wide", style: "margin-top:10px",
+      title: SC.catalog_on
         ? "Wählt einen der echten Item-Namen aus dem Katalog und ordnet danach ein."
         : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
           + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
       onclick: () => scanAutonameRun({namen: [i.name]})},
-      SC.katalog_an ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
+      SC.catalog_on ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
   }
-  ziel.appendChild(scanItemConfirmation(i));
-  if (i.stumm) {
-    ziel.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
+  target.appendChild(scanItemConfirmation(i));
+  if (i.silent) {
+    target.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
       "Weder Template noch Marker — dieses Item wird nie erkannt."));
   }
-  ziel.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
+  target.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
     onclick: () => callScan("scan_item_delete")}, "Item löschen"));
 }
 
@@ -3829,20 +3829,20 @@ function scanItemConfirmation(i) {
     + "die Bestätigung bleibt das Popup stehen, und der Scan kommt nicht mehr "
     + "zum nächsten Slot. Die Stelle steht als Punkt in sequence.json — dieselbe "
     + "Kalibrierung erfasst sie mit.", "confirmation"));
-  const wahl = selection("Punkt", [{value: "", text: "— keine Bestätigung —"}].concat(
+  const choice = selection("Punkt", [{value: "", text: "— keine Bestätigung —"}].concat(
     SC.points.map((p) => ({value: p.id, text: "#" + p.id + " " + p.name}))),
     i.confirmation ? i.confirmation.point_id : "", (v) => setze("confirmation", v));
-  kasten.appendChild(wahl);
+  kasten.appendChild(choice);
   // Ein Punkt, den es nicht mehr gibt, wird GESAGT statt verschwiegen: der
   // Lauf klickt sonst nichts, und man sucht den Fehler bei der Erkennung.
-  if (i.confirmation && i.confirmation.fehlt) {
+  if (i.confirmation && i.confirmation.missing) {
     kasten.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
       i.confirmation.text + " — die Bestätigung greift nicht."));
   }
   kasten.appendChild(el("button", {class: "btn quiet", disabled: !photoPresent(),
     title: "Die Stelle im Bild anklicken — dabei entsteht ein Punkt, oder ein "
            + "vorhandener an derselben Stelle wird wiederverwendet",
-    onclick: () => callScan("region_mode", {kind: "item", modus: "action"})},
+    onclick: () => callScan("region_mode", {kind: "item", mode: "action"})},
     "Stelle im Bild anklicken"));
   if (i.confirmation) {
     kasten.appendChild(numberField("Wartezeit (s)", i.confirmation_delay,
@@ -3854,28 +3854,28 @@ function scanItemConfirmation(i) {
 }
 
 /** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske. */
-function scanScanDetails(ziel, c) {
+function scanScanDetails(target, c) {
   const setze = (field, value) => callScan("scan_set", {name: c.name, field: field, value: value});
 
-  ziel.appendChild(heading("EINSTELLUNGEN",
+  target.appendChild(heading("EINSTELLUNGEN",
     "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
     + "daneben: der Haken vor jeder Maske heisst „gehört zu diesem Scan“. Hier "
       + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
       + "auf diesen Scan.", "itemscan"));
 
-  ziel.appendChild(numberField("Farb-Toleranz", c.tolerance, (v) => setze("tolerance", v),
+  target.appendChild(numberField("Farb-Toleranz", c.tolerance, (v) => setze("tolerance", v),
     {min: 0, step: 1},
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
     "tolerance"));
-  ziel.appendChild(toggle("Unbekanntes lernen", c.lernen, (v) => setze("lernen", v),
+  target.appendChild(toggle("Unbekanntes lernen", c.learn, (v) => setze("learn", v),
     "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in "
-    + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "lernen"));
-  ziel.appendChild(toggle("Slots rückwärts", c.reverse, (v) => setze("reverse", v),
+    + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "learn"));
+  target.appendChild(toggle("Slots rückwärts", c.reverse, (v) => setze("reverse", v),
     "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand "
     + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
     + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
     + "und nicht in den Einstellungen.", "reverse"));
-  ziel.appendChild(toggle("Item-Katalog benutzen", c.use_catalog,
+  target.appendChild(toggle("Item-Katalog benutzen", c.use_catalog,
     (v) => setze("use_catalog", v),
     "Mit Katalog kennt der Editor die echten Item-Namen des Spiels: „Aus Katalog "
     + "einordnen“ setzt Kategorie und Priorität, und die LLM-Benennung wählt aus "
@@ -3885,12 +3885,12 @@ function scanScanDetails(ziel, c) {
     + "immer nur für EIN Spiel gilt; wo die Datei liegt, sagt "
     + "„Item-Katalog“ in den Einstellungen.", "katalog"));
 
-  if (c.fehlend.length) {
-    ziel.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
-      "Zeigt ins Leere: " + c.fehlend.join(", ") + ". Der Scan läuft mit dem Rest " +
+  if (c.missing_items.length) {
+    target.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
+      "Zeigt ins Leere: " + c.missing_items.join(", ") + ". Der Scan läuft mit dem Rest " +
       "weiter — lieber ein Slot weniger als ein toter Scan."));
   }
-  ziel.appendChild(el("button", {class: "btn danger",
+  target.appendChild(el("button", {class: "btn danger",
     title: "Entfernt die Konfiguration und ihre Datei. STRG+Z holt die "
            + "Konfiguration zurück, den gemerkten Screenshot nicht.",
     onclick: () => callScan("scan_delete", {name: c.name})}, "Diesen Scan löschen"));
@@ -3948,16 +3948,16 @@ function detScan() {
  * ein Boss erkannt wird, der gar nicht in der Liste steht. */
 function detBosses() {
   const c = detScan();
-  const lokal = c ? c.bosse : [];
+  const lokal = c ? c.bosses : [];
   const namen = new Set(lokal.map((b) => b.name));
   return lokal.concat(SC.global_bosses.filter((b) => !namen.has(b.name)));
 }
 
 /** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
 function detBoss() {
-  if (!SC || scanKind !== "boss" || !SC.boss.wahl) return null;
-  const liste = SC.boss.wahl_global ? SC.global_bosses : ((detScan() || {}).bosse || []);
-  return liste.find((b) => b.name === SC.boss.wahl) || null;
+  if (!SC || scanKind !== "boss" || !SC.boss.choice) return null;
+  const liste = SC.boss.choice_global ? SC.global_bosses : ((detScan() || {}).bosses || []);
+  return liste.find((b) => b.name === SC.boss.choice) || null;
 }
 
 /** Steht die Bibliothek statt eines Scans im Vordergrund? */
@@ -3983,10 +3983,10 @@ function scanMaintainKind() {
   $("sec-modes").hidden = !item;
   $("sec-det-choice").hidden = item;
   $("sec-det-steps").hidden = item;
-  for (const knopf of document.querySelectorAll("[data-erk-tool]")) {
-    knopf.hidden = item;
-    knopf.disabled = !SC.pillow || !detScan();
-    knopf.classList.toggle("on", SC.modus === knopf.dataset.erkTool);
+  for (const button of document.querySelectorAll("[data-erk-tool]")) {
+    button.hidden = item;
+    button.disabled = !SC.pillow || !detScan();
+    button.classList.toggle("on", SC.mode === button.dataset.erkTool);
   }
   // **Die Aufnahme-Karte wandert, also muss sie auch zurueck.** Sie gehoert
   // allen drei Arten und existiert deshalb nur EINMAL im Dokument; blieb sie
@@ -4011,7 +4011,7 @@ function scanMaintainKind() {
  * Item-Scan und beim Klick-Block: was dem Ding gehoert, steht beim Ding; rechts
  * bleibt, was man daran einstellt. */
 function detRenderChoice() {
-  const ziel = $("sec-det-choice");
+  const target = $("sec-det-choice");
   const boss = scanKind === "boss";
   const liste = boss ? SC.boss_scans : SC.icon_scans;
   const open = detScan();
@@ -4033,9 +4033,9 @@ function detRenderChoice() {
     }}, boss ? "+ neuer Boss-Scan" : "+ neuer Icon-Scan"),
     el("span", {class: "grow"}),
     el("span", {class: "small mono"}, open
-      ? (boss ? detBosses().length + " Bosse" : detHowText(open.erkennung))
+      ? (boss ? detBosses().length + " Bosse" : detHowText(open.detection))
       : liste.length + (liste.length === 1 ? " Scan" : " Scans"))));
-  ziel.replaceChildren(...kinder);
+  target.replaceChildren(...kinder);
 }
 
 /* ------------------------------------------------------------- Assistent */
@@ -4047,24 +4047,24 @@ function detHowText(wie) {
 }
 
 /** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
-function detCard(nr, title, stamp, fertig, inhalt) {
+function detCard(nr, title, stamp, done, content) {
   const open = scanDetStep === nr;
   return el("div", {class: "scan-wizard-step" + (open ? " open" : "")
-                           + (fertig ? " done" : "")},
+                           + (done ? " done" : "")},
     el("button", {class: "scan-wizard-header", onclick: () => {
       // Ein Schritt bleibt jederzeit wieder aufklappbar — er ist kein
       // Fortschrittsbalken, sondern ein Weg, den man auch rueckwaerts geht.
       scanDetStep = open ? null : nr;
       renderScans();
     }},
-      el("span", {class: "nr"}, fertig && !open ? "✓" : String(nr)),
+      el("span", {class: "nr"}, done && !open ? "✓" : String(nr)),
       el("span", {class: "grow"}, el("b", {}, title), el("small", {}, stamp)),
       el("span", {class: "arrow"}, "›")),
-    el("div", {class: "scan-wizard-body", hidden: !open}, inhalt));
+    el("div", {class: "scan-wizard-body", hidden: !open}, content));
 }
 
 function detRenderSteps() {
-  const ziel = $("sec-det-steps");
+  const target = $("sec-det-steps");
   const boss = scanKind === "boss";
   const c = detScan();
   // Erst alles bauen, dann umhaengen. **Die Aufnahme-Karte existiert genau
@@ -4082,18 +4082,18 @@ function detRenderSteps() {
       weitere.push(detDetectionStep(c), detActionStep(c, "icon"));
     }
   }
-  const schritte = el("div", {class: "scan-wizard"});
-  const aufnahme = $("scan-wizard-1");
-  aufnahme.classList.toggle("open", scanDetStep === 1);
-  aufnahme.classList.toggle("done", photoPresent());
+  const steps = el("div", {class: "scan-wizard"});
+  const recording = $("scan-wizard-1");
+  recording.classList.toggle("open", scanDetStep === 1);
+  recording.classList.toggle("done", photoPresent());
   $("scan-step-1-nr").textContent = photoPresent() && scanDetStep !== 1 ? "✓" : "1";
   $("scan-step-1-body").hidden = scanDetStep !== 1;
-  schritte.append(aufnahme, ...weitere);
+  steps.append(recording, ...weitere);
 
   if (!c) {
-    ziel.replaceChildren(
+    target.replaceChildren(
       el("span", {class: "heading"}, boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN"),
-      schritte,
+      steps,
       el("p", {class: "hint"}, "Oben einen Scan anlegen — danach stehen die "
         + "weiteren Schritte hier."));
     return;
@@ -4109,8 +4109,8 @@ function detRenderSteps() {
         + "Farb-Marker, OCR und LLM gehen trotzdem."),
       el("span", {class: "mono small"}, "pip install opencv-python")));
   }
-  kinder.push(schritte);
-  ziel.replaceChildren(...kinder);
+  kinder.push(steps);
+  target.replaceChildren(...kinder);
 }
 
 /** Schritt 2: die Region. Aufziehen ODER vier Zahlen — beides bleibt. */
@@ -4137,14 +4137,14 @@ function detRegionStep(c) {
       numberField("Rechts", r[2], (v) => setze(2, v), {step: 1}),
       numberField("Unten", r[3], (v) => setze(3, v), {step: 1})),
     el("button", {class: "btn primary scan-wizard-main", disabled: !photoPresent(),
-      onclick: () => callScan("region_mode", {kind: scanKind, modus: "region"})},
+      onclick: () => callScan("region_mode", {kind: scanKind, mode: "region"})},
       "Region im Bild aufziehen"),
   ]);
 }
 
 /** Schritt 3 (Boss): die Bosse dieses Scans. */
 function detBossesStep(c) {
-  const lokal = c.bosse.length;
+  const lokal = c.bosses.length;
   const global = SC.global_bosses.length;
   return detCard(3, "Bosse", lokal || global
     ? lokal + " lokal · " + global + " global"
@@ -4161,9 +4161,9 @@ function detBossesStep(c) {
 
 /** Schritt 4 (Boss): OCR und LLM. */
 function detWaysStep(c) {
-  const b = SC.bereit;
+  const b = SC.ready;
   const an = [c.use_ocr ? "OCR" : null, c.use_llm ? "LLM" : null].filter(Boolean);
-  const lampe = !b.llm_stand ? "" : (b.llm_stand.erreichbar ? " on" : " off");
+  const lampe = !b.llm_state ? "" : (b.llm_state.reachable ? " on" : " off");
   return detCard(4, "LLM & OCR", an.length ? an.join(" + ") + " aktiv" : "aus",
     an.length > 0, [
     el("span", {class: "heading"}, "OCR TEXTERKENNUNG"),
@@ -4174,20 +4174,20 @@ function detWaysStep(c) {
     // dauert Sekunden; in einer Momentaufnahme, die nach jedem Klick neu
     // entsteht, hat das nichts verloren. Dieselbe Lampe wie beim LLM.
     el("div", {class: "row"},
-      el("span", {class: "scan-lamp" + (!b.ocr_stand ? ""
-        : (b.ocr_stand.da ? " on" : " off"))}),
-      el("span", {class: "small grow"}, !b.ocr_stand
+      el("span", {class: "scan-lamp" + (!b.ocr_state ? ""
+        : (b.ocr_state.present ? " on" : " off"))}),
+      el("span", {class: "small grow"}, !b.ocr_state
         ? "noch nicht geprüft"
-        : (b.ocr_stand.da ? b.ocr_stand.backends.join(", ")
+        : (b.ocr_state.present ? b.ocr_state.backends.join(", ")
                           : "kein Backend installiert")),
       el("button", {class: "btn quiet", onclick: () => callScan("ocr_check")},
          "prüfen")),
-    el("p", {class: "hint"}, !b.ocr_an
+    el("p", {class: "hint"}, !b.ocr_on
       ? "OCR ist in den Einstellungen aus (ocr_enabled) — dieser Schalter "
         + "greift erst danach."
-      : (b.ocr_stand && !b.ocr_stand.da
+      : (b.ocr_state && !b.ocr_state.present
           ? "pip install easyocr (oder pytesseract)"
-          : b.ocr_backend + " · " + (b.ocr_sprachen.join(",") || "en")
+          : b.ocr_backend + " · " + (b.ocr_languages.join(",") || "en")
             + " · min " + b.ocr_min.toFixed(2))),
     el("span", {class: "heading"}, "LLM VISION"),
     toggle("LLM benutzen", c.use_llm, (v) => detField("use_llm", v)),
@@ -4200,11 +4200,11 @@ function detWaysStep(c) {
       // Der Endpunkt gehoert in den Tooltip — dort sucht man ihn, wenn die
       // Lampe rot ist.
       el("span", {class: "small grow", title: b.llm_endpoint || ""},
-        !b.llm_stand ? "noch nicht geprüft"
-          : (b.llm_stand.erreichbar ? "erreichbar (" + b.llm_stand.duration + " ms)"
+        !b.llm_state ? "noch nicht geprüft"
+          : (b.llm_state.reachable ? "erreichbar (" + b.llm_state.duration + " ms)"
                                     : "nicht erreichbar")),
       el("button", {class: "btn quiet", onclick: () => callScan("llm_check")}, "testen")),
-    el("p", {class: "hint"}, b.llm_an
+    el("p", {class: "hint"}, b.llm_on
       ? detOrder(c)
       : "LLM ist in den Einstellungen aus (llm_enabled) — dieser Schalter greift "
         + "erst danach."),
@@ -4235,7 +4235,7 @@ function detFallbackStep(c) {
                       (v) => detField("default_action", v)),
     c.default_action === "item_scan"
       ? selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
-          SC.item_scan_namen.map((n) => ({value: n, text: n}))), c.default_scan || "",
+          SC.item_scan_names.map((n) => ({value: n, text: n}))), c.default_scan || "",
           (v) => detField("default_scan", v))
       : null,
   ]);
@@ -4243,11 +4243,11 @@ function detFallbackStep(c) {
 
 /** Schritt 3 (Icon): Template oder Farb-Marker. */
 function detDetectionStep(c) {
-  return detCard(3, "Erkennung", c.erkennung === "template"
-    ? "Vorlage · min " + c.konfidenz.toFixed(2)
-    : (c.erkennung === "marker" ? c.marker.length + " Marker · Toleranz " + c.tolerance
+  return detCard(3, "Erkennung", c.detection === "template"
+    ? "Vorlage · min " + c.confidence.toFixed(2)
+    : (c.detection === "marker" ? c.marker.length + " Marker · Toleranz " + c.tolerance
                                 : "Noch nichts gesetzt"),
-    c.erkennung !== "keine", detDetectionFields(c, "icon"));
+    c.detection !== "keine", detDetectionFields(c, "icon"));
 }
 
 /** Die Erkennungs-Felder — dieselben fuer Boss und Icon.
@@ -4260,10 +4260,10 @@ function detDetectionFields(objekt, kind, name) {
   const ueber = DET_COMMAND[kind].field;
   const setze = (field, value) => callScan(ueber, Object.assign(
     {field: field, value: value}, name ? {name: name} : {}));
-  const template = objekt.erkennung !== "marker";
+  const template = objekt.detection !== "marker";
   return [
     segment([{value: "template", text: "Template"}, {value: "marker", text: "Farb-Marker"}],
-      objekt.erkennung === "marker" ? "marker" : "template",
+      objekt.detection === "marker" ? "marker" : "template",
       // Umschalten heisst hier: das andere loswerden. Beides stehen zu lassen
       // waere `_check_profile_match`s UND — dann muessen BEIDE stimmen, und
       // niemand rechnet damit.
@@ -4274,10 +4274,10 @@ function detDetectionFields(objekt, kind, name) {
         : el("div", {class: "scan-template empty"}, "keine Vorlage"),
       el("div", {class: "column grow"},
         el("span", {class: "small mono"}, objekt.template || "—"),
-        numberField("Min. Konfidenz", objekt.konfidenz, (v) => setze("konfidenz", v),
+        numberField("Min. Konfidenz", objekt.confidence, (v) => setze("confidence", v),
           {min: 0.05, max: 1, step: 0.01},
           "Ab welcher Übereinstimmung ein Treffer zählt. Zu hoch heisst "
-          + "„findet nie“, zu tief „findet alles“.", "konfidenz"))) : null,
+          + "„findet nie“, zu tief „findet alles“.", "confidence"))) : null,
     template ? el("button", {class: "btn scan-wizard-main",
       disabled: !photoPresent() || !SC.opencv,
       title: SC.opencv ? "Lernt die Region aus dem eingefrorenen Bild"
@@ -4292,14 +4292,14 @@ function detDetectionFields(objekt, kind, name) {
       numberField("Toleranz", objekt.tolerance === undefined ? 30 : objekt.tolerance,
         (v) => setze("tolerance", v), {min: 0, step: 1},
         "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
-      el("div", {class: "field-quiet"}, "gemessen",
+      el("div", {class: "field-quiet"}, "measured",
         el("span", {class: "mono"}, objekt.marker.length + " Farben"))) : null,
     !template ? el("button", {class: "btn scan-wizard-main", disabled: !photoPresent(),
       onclick: () => callScan("marker_measure", Object.assign(
         {kind: kind}, name ? {name: name} : {}))}, "Marker im Bild neu messen") : null,
     !template ? el("p", {class: "hint"}, "min. Pixel über 1 halten — sonst löst "
       + "ein einzelner Rausch-Pixel den Scan aus (Einstellung "
-      + "scan_marker_min_pixels, gerade " + SC.bereit.marker_min_pixel + ").") : null,
+      + "scan_marker_min_pixels, gerade " + SC.ready.marker_min_pixel + ").") : null,
   ];
 }
 
@@ -4315,7 +4315,7 @@ function detActionTiles(values, current, beim_setzen) {
   // Satz: „Zyklus abbrechen" ist auf 9,5 px zweizeilig und unlesbar.
   return el("div", {class: "gitter3"}, values.map((a) =>
     el("button", {class: "type-chip" + (a.value === current ? " on" : ""),
-      title: a.text, onclick: () => beim_setzen(a.value)}, a.kurz)));
+      title: a.text, onclick: () => beim_setzen(a.value)}, a.short)));
 }
 
 /** Die Felder hinter einer Aktion — Punkt, Taste, Verzoegerung, Item-Scan. */
@@ -4326,11 +4326,11 @@ function detActionFields(objekt, kind, name) {
   const felder = [];
   if (objekt.action === "item_scan") {
     felder.push(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
-      SC.item_scan_namen.map((n) => ({value: n, text: n}))), objekt.scan || "",
+      SC.item_scan_names.map((n) => ({value: n, text: n}))), objekt.scan || "",
       (v) => setze("scan", v)));
     felder.push(selection("Modus", SC.actions.scan_modes.map(
-      (m) => ({value: m.value, text: m.text})), objekt.scan_modus,
-      (v) => setze("scan_modus", v)));
+      (m) => ({value: m.value, text: m.text})), objekt.scan_mode,
+      (v) => setze("scan_mode", v)));
   }
   if (objekt.action === "click") {
     felder.push(selection("Punkt", [{value: "", text: "— keiner —"}].concat(
@@ -4338,11 +4338,11 @@ function detActionFields(objekt, kind, name) {
       objekt.point_id === null || objekt.point_id === undefined ? "" : objekt.point_id,
       (v) => setze("point", v === "" ? null : Number(v))));
     felder.push(el("button", {class: "btn quiet", disabled: !photoPresent(),
-      onclick: () => callScan("region_mode", {kind: kind, modus: "action"})},
+      onclick: () => callScan("region_mode", {kind: kind, mode: "action"})},
       "Stelle im Bild anklicken"));
   }
   if (objekt.action === "key")
-    felder.push(field("Taste", objekt.taste || "", (v) => setze("taste", v)));
+    felder.push(field("Taste", objekt.action_key || "", (v) => setze("action_key", v)));
   felder.push(numberField("Verzögerung vor Aktion (s)", objekt.delay,
     (v) => setze("delay", v), {min: 0, step: 0.1}));
   return felder;
@@ -4375,29 +4375,29 @@ function detField(field, value) {
  * **Der Test fuehrt die Aktion nicht aus.** Er erkennt, zeigt und benennt; das
  * steht auch als Nachsatz in der Leiste. Ein Testknopf, der im Editor eines
  * Autoclickers wirklich klickt, ist die schlechteste denkbare Ueberraschung. */
-function detTestBar(ziel) {
+function detTestBar(target) {
   const t = scanKind === "boss" ? SC.boss.test : SC.icon.test;
   if (!t) return false;
   const color = t.ok ? "var(--ok)" : "var(--err)";
-  ziel.append(
+  target.append(
     el("b", {style: "color:" + color},
       t.ok ? "Test: " + t.name + " erkannt" : "Test: " + t.name + " nicht erkannt"));
-  if (t.methode && t.konfidenz !== null && t.methode === "Template")
-    ziel.appendChild(el("span", {class: "metric"}, "Template · " + t.konfidenz.toFixed(2)));
+  if (t.method && t.confidence !== null && t.method === "Template")
+    target.appendChild(el("span", {class: "metric"}, "Template · " + t.confidence.toFixed(2)));
   if (t.marker_total)
-    ziel.appendChild(el("span", {class: "metric"},
-      t.marker_gefunden + " von " + t.marker_total + " Markern · nötig " + t.marker_required));
-  if (t.tolerance) ziel.appendChild(el("span", {class: "metric"}, "Toleranz " + t.tolerance));
-  if (t.duration) ziel.appendChild(el("span", {class: "metric"}, t.duration + " ms"));
-  ziel.appendChild(el("span", {class: "grow"}));
-  ziel.appendChild(el("span", {class: "small"},
+    target.appendChild(el("span", {class: "metric"},
+      t.marker_found + " von " + t.marker_total + " Markern · nötig " + t.marker_required));
+  if (t.tolerance) target.appendChild(el("span", {class: "metric"}, "Toleranz " + t.tolerance));
+  if (t.duration) target.appendChild(el("span", {class: "metric"}, t.duration + " ms"));
+  target.appendChild(el("span", {class: "grow"}));
+  target.appendChild(el("span", {class: "small"},
     t.ok ? "Aktion wäre: " + t.action + " (wird nicht ausgeführt)" : t.reason));
   // **Der Vorschlag ist der Kern.** Ein Test, der nur „fehlgeschlagen" sagt,
   // laesst einen genau dort stehen, wo man vorher war.
-  if (t.vorschlag)
-    ziel.appendChild(el("button", {class: "btn on",
-      onclick: () => detField(t.vorschlag.field, t.vorschlag.value)}, t.vorschlag.text));
-  ziel.appendChild(el("button", {class: "btn quiet", onclick: () => detTest()},
+  if (t.proposal)
+    target.appendChild(el("button", {class: "btn on",
+      onclick: () => detField(t.proposal.field, t.proposal.value)}, t.proposal.text));
+  target.appendChild(el("button", {class: "btn quiet", onclick: () => detTest()},
     "nochmal testen"));
   return true;
 }
@@ -4406,39 +4406,39 @@ function detTest() { return callScan(detCommand("test")); }
 
 /* ------------------------------------------------------------------ Listen */
 
-function detListBosses(ziel) {
+function detListBosses(target) {
   const c = detScan();
   if (!c) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch kein Boss-Scan. Oben einen anlegen — er ist die Klammer um Region, "
       + "Bosse und Fallback."));
     return;
   }
-  const lokal = c.bosse;
+  const lokal = c.bosses;
   if (!lokal.length && !SC.global_bosses.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
       + "Aktion dahinter."));
   }
-  for (const b of lokal) ziel.appendChild(detBossRow(b, false));
+  for (const b of lokal) target.appendChild(detBossRow(b, false));
   if (SC.global_bosses.length) {
-    ziel.appendChild(el("div", {class: "scan-category-header"},
+    target.appendChild(el("div", {class: "scan-category-header"},
       "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
     const namen = new Set(lokal.map((x) => x.name));
     for (const b of SC.global_bosses) {
       // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
       // hier blass, statt so zu tun, als wuerde er benutzt.
-      ziel.appendChild(detBossRow(b, true, namen.has(b.name)));
+      target.appendChild(detBossRow(b, true, namen.has(b.name)));
     }
   }
-  ziel.appendChild(el("button", {class: "empty-zone",
+  target.appendChild(el("button", {class: "empty-zone",
     onclick: () => { scanList = "bibliothek"; renderScans(); }},
     "Boss-Bibliothek (global) · " + SC.global_bosses.length));
 }
 
 function detBossRow(b, global, verdeckt) {
   const test = SC.boss.tests[b.name];
-  const selected = SC.boss.wahl === b.name && SC.boss.wahl_global === !!global;
+  const selected = SC.boss.choice === b.name && SC.boss.choice_global === !!global;
   return el("button", {
     class: "scan-row" + (selected ? " on" : ""),
     style: verdeckt ? "opacity:.5" : null,
@@ -4449,7 +4449,7 @@ function detBossRow(b, global, verdeckt) {
                : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
                              style: b.marker.length ? "background:" + b.marker[0] : ""}),
     el("span", {class: "name"}, b.name),
-    b.erkennung === "keine"
+    b.detection === "keine"
       ? el("span", {class: "small", style: "color:var(--accent)",
                     title: "Weder Vorlage noch Marker — nur OCR/LLM können ihn finden"},
            "⚠ keine Vorlage")
@@ -4460,15 +4460,15 @@ function detBossRow(b, global, verdeckt) {
                (SC.actions.boss.find((a) => a.value === b.action) || {}).text || b.action)));
 }
 
-function detListIcons(ziel) {
+function detListIcons(target) {
   if (!SC.icon_scans.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch kein Icon-Scan. Er erkennt EIN Symbol in einer Region und tut dann "
       + "etwas — keine Slots, keine Kategorien, kein LLM."));
   }
   for (const c of SC.icon_scans) {
     const test = SC.icon.test && SC.icon.test.name === c.name ? SC.icon.test : null;
-    ziel.appendChild(el("button", {
+    target.appendChild(el("button", {
       class: "scan-row" + (SC.icon.open === c.name ? " on" : ""),
       onclick: () => callScan("icon_scan_open", {name: c.name}),
     },
@@ -4476,7 +4476,7 @@ function detListIcons(ziel) {
                  : el("span", {class: "dot" + (c.marker.length ? "" : " without"),
                                style: c.marker.length ? "background:" + c.marker[0] : ""}),
       el("span", {class: "name"}, c.name),
-      c.erkennung === "keine"
+      c.detection === "keine"
         ? el("span", {class: "small", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
         : (test ? el("span", {class: "small",
                               style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
@@ -4489,51 +4489,51 @@ function detListIcons(ziel) {
 /** Die Bibliothek in der Liste: dieselben Bosse, die in der Mitte als Karten
  *  stehen. Die Knoepfe („+ Boss", „zurueck") stehen NICHT hier, sondern rechts
  *  — sonst gaebe es sie zweimal, und man raet, welcher der fuehrende ist. */
-function detListLibrary(ziel) {
-  ziel.appendChild(el("p", {class: "hint"},
+function detListLibrary(target) {
+  target.appendChild(el("p", {class: "hint"},
     "Diese Bosse gelten zusätzlich in JEDEM Boss-Scan. Ein lokaler Boss mit "
     + "gleichem Namen hat Vorrang."));
   if (!SC.global_bosses.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Noch leer. Rechts einen anlegen — oder einen Boss aus einem Scan "
       + "hierher verschieben."));
     return;
   }
-  for (const b of SC.global_bosses) ziel.appendChild(detBossRow(b, true));
+  for (const b of SC.global_bosses) target.appendChild(detBossRow(b, true));
 }
 
 /* ---------------------------------------------- Bibliothek als Kartenraster */
 
 function detRenderLibrary() {
-  const ziel = $("scan-library");
-  const zeigen = detLibrary();
-  ziel.hidden = !zeigen;
-  $("scan-surface").hidden = zeigen || !SC.photo;
-  $("scan-empty").hidden = zeigen || !!SC.photo;
-  $("scan-no-image").hidden = zeigen || photoPresent();
-  if (!zeigen) return;
-  ziel.replaceChildren();
+  const target = $("scan-library");
+  const show = detLibrary();
+  target.hidden = !show;
+  $("scan-surface").hidden = show || !SC.photo;
+  $("scan-empty").hidden = show || !!SC.photo;
+  $("scan-no-image").hidden = show || photoPresent();
+  if (!show) return;
+  target.replaceChildren();
   if (!SC.global_bosses.length) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Die Bibliothek ist leer. Wer denselben Boss in mehreren Scans braucht, "
       + "pflegt ihn sonst mehrfach — und ändert beim nächsten Mal nur die Hälfte."));
     return;
   }
-  for (const b of SC.global_bosses) ziel.appendChild(detLibraryCard(b));
+  for (const b of SC.global_bosses) target.appendChild(detLibraryCard(b));
 }
 
 function detLibraryCard(b) {
   // Ein vom LLM entdeckter Boss wird als `skip` angelegt: er ist erkannt, aber
   // es ist noch nicht entschieden, was mit ihm passieren soll. Das ist keine
   // Warnung, sondern eine offene Aufgabe — deshalb Amber und ein Hauptknopf.
-  const open = b.action === "skip" && b.erkennung === "keine";
+  const open = b.action === "skip" && b.detection === "keine";
   const karte = el("div", {class: "seq-card" + (open ? " new-from-llm" : "")},
     el("div", {class: "scan-card-header"},
       b.preview ? el("img", {class: "mini", src: b.preview})
                  : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
                                style: b.marker.length ? "background:" + b.marker[0] : ""}),
       el("b", {class: "grow"}, b.name),
-      el("span", {class: "num"}, open ? "neu vom LLM" : b.erkennung)));
+      el("span", {class: "num"}, open ? "neu vom LLM" : b.detection)));
   if (b.marker.length) {
     karte.appendChild(el("div", {class: "scan-marker"},
       b.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h}))));
@@ -4544,7 +4544,7 @@ function detLibraryCard(b) {
       + "passiert nichts."));
   } else {
     karte.appendChild(el("div", {class: "scan-card-numbers"},
-      el("span", {class: "num"}, "konf " + b.konfidenz.toFixed(2)),
+      el("span", {class: "num"}, "konf " + b.confidence.toFixed(2)),
       el("span", {class: "num"}, (SC.actions.boss.find((a) => a.value === b.action)
         || {}).text || b.action),
       b.scan ? el("span", {class: "num"}, "scan → " + b.scan) : null,
@@ -4552,7 +4552,7 @@ function detLibraryCard(b) {
   }
   karte.appendChild(el("div", {class: "button-pair"},
     el("button", {class: open ? "btn primary" : "btn quiet",
-      onclick: () => { scanList = "bosse";
+      onclick: () => { scanList = "bosses";
                        callScan("boss_select", {name: b.name, global: true}); }},
       open ? "Aktion zuweisen" : "bearbeiten"),
     el("button", {class: "btn quiet",
@@ -4562,42 +4562,42 @@ function detLibraryCard(b) {
 
 /* ------------------------------------------------------- Rechte Spalte */
 
-function detInspector(ziel) {
-  if (detLibrary()) return detInspLibrary(ziel);
+function detInspector(target) {
+  if (detLibrary()) return detInspLibrary(target);
   const c = detScan();
   if (!c) {
-    ziel.appendChild(el("p", {class: "hint"}, scanKind === "boss"
+    target.appendChild(el("p", {class: "hint"}, scanKind === "boss"
       ? "Kein Boss-Scan gewählt. Links einen anlegen."
       : "Kein Icon-Scan gewählt. Links einen anlegen."));
     return;
   }
-  if (scanKind === "icon") return detInspIcon(ziel, c);
+  if (scanKind === "icon") return detInspIcon(target, c);
   const b = detBoss();
-  return b ? detInspBoss(ziel, c, b) : detInspBossScan(ziel, c);
+  return b ? detInspBoss(target, c, b) : detInspBossScan(target, c);
 }
 
 /** Ohne gewaehlten Boss gehoert die Spalte dem Scan: Region, Toleranz, Fallback. */
-function detInspBossScan(ziel, c) {
-  ziel.appendChild(heading("BOSS-SCAN „" + c.name + "“",
+function detInspBossScan(target, c) {
+  target.appendChild(heading("BOSS-SCAN „" + c.name + "“",
     "Ein Block vom Typ BOSS-SCAN oder BOSS-WATCHER verweist per Name hierauf. "
     + "Umbenennen: oben links.", "bossscan"));
-  ziel.appendChild(numberField("Farb-Toleranz", c.tolerance,
+  target.appendChild(numberField("Farb-Toleranz", c.tolerance,
     (v) => detField("tolerance", v), {min: 0, step: 1},
     "Gilt für die Marker-Farben aller Bosse dieses Scans.", "bosstoleranz"));
-  ziel.appendChild(heading("WENN KEIN BOSS ERKANNT",
+  target.appendChild(heading("WENN KEIN BOSS ERKANNT",
     "Greift auch dann, wenn OCR und LLM nichts finden.", "bossfallback"));
-  ziel.appendChild(detActionTiles(SC.actions.boss, c.default_action,
+  target.appendChild(detActionTiles(SC.actions.boss, c.default_action,
     (v) => detField("default_action", v)));
   if (c.default_action === "item_scan") {
-    ziel.appendChild(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
-      SC.item_scan_namen.map((n) => ({value: n, text: n}))), c.default_scan || "",
+    target.appendChild(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
+      SC.item_scan_names.map((n) => ({value: n, text: n}))), c.default_scan || "",
       (v) => detField("default_scan", v)));
   }
   if (Object.keys(SC.boss.tests).length) {
-    ziel.appendChild(heading("ALLE BOSSE GEGEN DIESES BILD",
+    target.appendChild(heading("ALLE BOSSE GEGEN DIESES BILD",
       "Was jeder einzelne ergeben hat — und woran es lag.", "bosstests"));
     for (const [name, t] of Object.entries(SC.boss.tests)) {
-      ziel.appendChild(el("div", {class: "scan-result-row" + (t.ok ? " ok" : "")},
+      target.appendChild(el("div", {class: "scan-result-row" + (t.ok ? " ok" : "")},
         el("span", {}, name),
         el("span", {class: "mono small",
                     style: "color:var(" + (t.ok ? "--ok" : "--dim") + ")"},
@@ -4605,97 +4605,97 @@ function detInspBossScan(ziel, c) {
         el("span", {class: "reason"}, t.reason)));
     }
   }
-  ziel.appendChild(el("p", {class: "hint"}, "Im Sequenz-Editor: ein Block "
+  target.appendChild(el("p", {class: "hint"}, "Im Sequenz-Editor: ein Block "
     + "BOSS-SCAN prüft einmal, BOSS-WATCHER wartet, bis ein Boss auftaucht."));
-  ziel.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
+  target.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
     onclick: () => callScan(detCommand("delete"))}, "Boss-Scan löschen"));
 }
 
 /** Der wichtigste Fall: einen bestehenden Boss aendern, ohne den Assistenten
  *  noch einmal zu durchlaufen. Jedes Feld steht hier und ist einzeln setzbar. */
-function detInspBoss(ziel, c, b) {
-  ziel.appendChild(el("div", {class: "button-pair"},
+function detInspBoss(target, c, b) {
+  target.appendChild(el("div", {class: "button-pair"},
     el("button", {class: "btn quiet",
       onclick: () => callScan("boss_select", {name: ""})}, "‹ zurück zum Scan"),
     el("button", {class: "btn quiet",
       onclick: () => callScan("boss_delete")}, "löschen")));
-  ziel.appendChild(el("button", {class: "btn primary", disabled: !photoPresent(),
+  target.appendChild(el("button", {class: "btn primary", disabled: !photoPresent(),
     onclick: () => callScan("boss_test")}, "Diesen Boss testen"));
-  ziel.appendChild(heading("BOSS", "Der Name ist zugleich das, was OCR und "
+  target.appendChild(heading("BOSS", "Der Name ist zugleich das, was OCR und "
     + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "bossname"));
-  ziel.appendChild(field("Name", b.name, (v) => callScan("boss_set",
+  target.appendChild(field("Name", b.name, (v) => callScan("boss_set",
     {name: b.name, global: b.global, field: "name", value: v})));
   if (b.global) {
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Aus der Bibliothek — Änderungen gelten in jedem Boss-Scan."));
   }
-  ziel.appendChild(heading("ERKENNUNG", "Template ODER Farb-Marker. Beides "
+  target.appendChild(heading("ERKENNUNG", "Template ODER Farb-Marker. Beides "
     + "gesetzt heisst: beides muss stimmen.", "bosserkennung"));
   for (const teil of detDetectionFields(b, "boss", b.name))
-    if (teil) ziel.appendChild(teil);
-  ziel.appendChild(heading("AKTION BEI TREFFER",
+    if (teil) target.appendChild(teil);
+  target.appendChild(heading("AKTION BEI TREFFER",
     "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
-  ziel.appendChild(detActionTiles(SC.actions.boss, b.action,
+  target.appendChild(detActionTiles(SC.actions.boss, b.action,
     (v) => callScan("boss_set", {name: b.name, global: b.global,
                                    field: "action", value: v})));
   for (const teil of detActionFields(b, "boss", b.name))
-    if (teil) ziel.appendChild(teil);
-  ziel.appendChild(el("button", {class: "btn quiet", style: "margin-top:14px",
+    if (teil) target.appendChild(teil);
+  target.appendChild(el("button", {class: "btn quiet", style: "margin-top:14px",
     title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
     onclick: () => callScan("boss_move_global", {name: b.name, global: b.global})},
     b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
 }
 
-function detInspIcon(ziel, c) {
-  ziel.appendChild(el("button", {class: "btn primary", disabled: !photoPresent(),
+function detInspIcon(target, c) {
+  target.appendChild(el("button", {class: "btn primary", disabled: !photoPresent(),
     onclick: () => callScan("icon_test")}, "Icon-Scan testen"));
-  ziel.appendChild(heading("ICON-SCAN „" + c.name + "“",
+  target.appendChild(heading("ICON-SCAN „" + c.name + "“",
     "Erkennt EIN Symbol in einer Region und tut dann etwas. Ein Block vom Typ "
     + "ICON-SCAN verweist per Name hierauf.", "iconscan"));
   // **Der Ausschnitt zeigt, was der Scan sieht.** Vier Zahlen sagen nicht, ob
   // die Region sitzt; ein Bild von 104 px sagt es in einer Sekunde.
-  ziel.appendChild(c.ausschnitt
-    ? el("img", {class: "scan-template square", src: c.ausschnitt, alt: ""})
+  target.appendChild(c.crop_image
+    ? el("img", {class: "scan-template square", src: c.crop_image, alt: ""})
     : el("div", {class: "scan-template square empty"}, "kein Bild"));
-  ziel.appendChild(el("p", {class: "hint"},
+  target.appendChild(el("p", {class: "hint"},
     "Der Ausschnitt zeigt, was der Scan sieht — "
     + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])
     + " ab (" + c.region[0] + ", " + c.region[1] + ")."));
-  ziel.appendChild(el("button", {class: "btn", disabled: !photoPresent(),
-    onclick: () => callScan("region_mode", {kind: "icon", modus: "region"})},
+  target.appendChild(el("button", {class: "btn", disabled: !photoPresent(),
+    onclick: () => callScan("region_mode", {kind: "icon", mode: "region"})},
     "Region neu aufziehen"));
-  ziel.appendChild(heading("AKTION BEI FUND",
+  target.appendChild(heading("AKTION BEI FUND",
     "Was passiert, wenn das Symbol da ist.", "iconaktion"));
-  ziel.appendChild(detActionTiles(SC.actions.icon, c.action,
+  target.appendChild(detActionTiles(SC.actions.icon, c.action,
     (v) => detField("action", v)));
   for (const teil of detActionFields(c, "icon"))
-    if (teil) ziel.appendChild(teil);
+    if (teil) target.appendChild(teil);
   // **Das ELSE gehoert dem Block, nicht dem Scan.** `IconScanConfig` hat kein
   // else-Feld, und eins hier einzufuehren hiesse, dieselbe Sache an zwei
   // Stellen zu haben: der Sequenz-Editor setzt sie am Block, wo sie auch fuer
   // Item- und Boss-Scans steht.
-  ziel.appendChild(heading("WENN NICHTS ERKANNT",
+  target.appendChild(heading("WENN NICHTS ERKANNT",
     "Die Ersatzaktion gehört dem Block in der Sequenz, nicht dem Scan — dort "
     + "steht sie für alle drei Scan-Arten an derselben Stelle.", "iconelse"));
-  ziel.appendChild(el("p", {class: "hint"},
+  target.appendChild(el("p", {class: "hint"},
     "Im Sequenz-Editor am Block einstellen. Als Befehl im Konsolen-Editor: "
     + "icon " + c.name + " else skip"));
-  ziel.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
+  target.appendChild(el("button", {class: "btn danger", style: "margin-top:14px",
     onclick: () => callScan(detCommand("delete"))}, "Icon-Scan löschen"));
 }
 
-function detInspLibrary(ziel) {
-  ziel.appendChild(heading("BOSS-BIBLIOTHEK",
+function detInspLibrary(target) {
+  target.appendChild(heading("BOSS-BIBLIOTHEK",
     "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
     + "hat Vorrang.", "bossbib"));
-  ziel.appendChild(el("p", {class: "hint"},
+  target.appendChild(el("p", {class: "hint"},
     SC.global_bosses.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
     + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
     + "Scan, der sie gefunden hat."));
-  ziel.appendChild(el("button", {class: "btn primary",
+  target.appendChild(el("button", {class: "btn primary",
     onclick: () => callScan("boss_new", {global: true})}, "+ Boss anlegen"));
-  ziel.appendChild(el("button", {class: "btn quiet",
-    onclick: () => { scanList = "bosse"; renderScans(); }}, "zurück zum Scan"));
+  target.appendChild(el("button", {class: "btn quiet",
+    onclick: () => { scanList = "bosses"; renderScans(); }}, "zurück zum Scan"));
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -4715,13 +4715,13 @@ function detOverlay(svg, px) {
     class: "scan-region-f" + zustand}));
   svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
     class: "scan-region" + zustand}));
-  const marke = (t && t.ok && t.konfidenz !== null && t.methode === "Template")
-    ? t.name + " · " + t.konfidenz.toFixed(2)
+  const marke = (t && t.ok && t.confidence !== null && t.method === "Template")
+    ? t.name + " · " + t.confidence.toFixed(2)
     : (t ? (t.ok ? t.name + " erkannt" : "nicht erkannt")
          : "Region · " + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1]));
   svg.appendChild(svgEl("text", {x: x1, y: y2 + 13 * px, class: "scan-badge",
     "font-size": 11 * px, "stroke-width": 3 * px,
-    fill: !t ? null : (t.ok ? SLOT_COLOR.treffer : "#EF4444")}, marke));
+    fill: !t ? null : (t.ok ? SLOT_COLOR.match : "#EF4444")}, marke));
 
   // Der Klickpunkt der Aktion: gestrichelt und in Amber — er ist ein
   // Handlungsort, keine Erkennung.
@@ -4752,7 +4752,7 @@ async function renderShare(frisch) {
   const antwort = await ask("share_data");
   if (!antwort || view !== "teilen") return;
   T = antwort;
-  for (const t of T.teile) {
+  for (const t of T.parts) {
     if (shareExport[t.key] === undefined) shareExport[t.key] = true;
     if (shareImport[t.key] === undefined) shareImport[t.key] = true;
   }
@@ -4765,27 +4765,27 @@ async function renderShare(frisch) {
 }
 
 /** Ein Befehl an den Teilen-Teil. Antwort ist die neue Teilen-Aufnahme. */
-async function callShare(name, daten) {
-  const antwort = await ask(name, daten);
+async function callShare(name, data_reload) {
+  const antwort = await ask(name, data_reload);
   if (!antwort) return;
   T = antwort;
   await renderShare();
 }
 
-function shareCheckbox(ziel, selection, zahlen) {
-  for (const t of T.teile) {
+function shareCheckbox(target, selection, zahlen) {
+  for (const t of T.parts) {
     const row = el("label", {class: "share-row on"});
     const box = el("input", {type: "checkbox"});
     box.checked = !!selection[t.key];
     box.addEventListener("change", () => { selection[t.key] = box.checked; renderShare(); });
     row.append(box, el("span", {}, t.text),
       el("span", {class: "num"}, String(zahlen[t.key] ?? 0)));
-    ziel.appendChild(row);
+    target.appendChild(row);
   }
 }
 
 function shareRenderExport() {
-  const ziel = $("share-export");
+  const target = $("share-export");
   const kopf = el("div", {class: "section"},
     heading("EXPORTIEREN",
       "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
@@ -4794,15 +4794,15 @@ function shareRenderExport() {
       "Im Fenster gibt es ungespeicherte Änderungen — die kommen nicht mit. "
       + "Erst speichern, dann exportieren."));
   }
-  ziel.replaceChildren(kopf);
+  target.replaceChildren(kopf);
 
   const rumpf = el("div", {class: "section growing"});
-  shareCheckbox(rumpf, shareExport, T.bestand);
+  shareCheckbox(rumpf, shareExport, T.inventory);
   rumpf.appendChild(field("Dateiname (leer = mit Zeitstempel)", "",
     () => {}, {id: "share-name"}));
   // **Die Referenzpunkte kommen aus dem Spielfenster.** Ist es offen, rechnet
   // der Empfänger die Koordinaten selbst um; sonst setzt er zwei Punkte von Hand.
-  rumpf.appendChild(el("p", {class: "hint"}, T.window && T.window.gefunden
+  rumpf.appendChild(el("p", {class: "hint"}, T.window && T.window.found
     ? "Spielfenster „" + T.window.title + "“: " + T.window.width + "×"
       + T.window.height + " px. Der Empfänger rechnet damit automatisch um."
     : (T.window
@@ -4812,32 +4812,32 @@ function shareRenderExport() {
           + "setzt beim Import zwei Punkte von Hand.")));
   rumpf.appendChild(el("button", {class: "btn primary",
     onclick: () => callShare("export_start",
-      {teile: shareExport, name: ($("share-name") || {}).value || ""})},
+      {parts: shareExport, name: ($("share-name") || {}).value || ""})},
     "Bündel schreiben"));
-  ziel.appendChild(rumpf);
+  target.appendChild(rumpf);
 }
 
 function shareRenderMiddle() {
-  const ziel = $("share-middle");
-  ziel.replaceChildren();
+  const target = $("share-middle");
+  target.replaceChildren();
   const karte = el("div", {class: "share-card"}, el("h3", {}, "Vorhandene Bündel"));
-  if (!T.exporte.length) {
+  if (!T.exports.length) {
     karte.appendChild(el("p", {class: "hint"},
       "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
   }
   const liste = el("div", {class: "share-list"});
-  for (const e of T.exporte) {
+  for (const e of T.exports) {
     liste.appendChild(el("div", {class: "share-row"},
       el("span", {class: "mono"}, e.name),
       el("span", {class: "num mono"}, e.kb + " KB"),
       el("button", {class: "btn quiet",
-        onclick: () => callShare("import_check", {pfad: "exports/" + e.name})},
+        onclick: () => callShare("import_check", {path: "exports/" + e.name})},
         "einlesen")));
   }
   karte.appendChild(liste);
-  ziel.appendChild(karte);
+  target.appendChild(karte);
 
-  ziel.appendChild(el("div", {class: "share-card"},
+  target.appendChild(el("div", {class: "share-card"},
     el("h3", {}, "Weitergeben"),
     el("p", {class: "hint"},
       "Die ZIP-Datei verschicken. Der Empfänger legt sie in seinen "
@@ -4846,7 +4846,7 @@ function shareRenderMiddle() {
 }
 
 function shareRenderImport() {
-  const ziel = $("share-import");
+  const target = $("share-import");
   const i = T.import;
   const kopf = el("div", {class: "section"},
     heading("IMPORTIEREN",
@@ -4855,20 +4855,20 @@ function shareRenderImport() {
     // `reihe` war dasselbe mit einer zweiten Schreibweise.
     el("button", {class: "btn wide", onclick: () => callShare("file_choose")},
       "Datei wählen …"),
-    field("oder Pfad", i ? i.pfad : "",
-      (v) => callShare("import_check", {pfad: v})));
-  ziel.replaceChildren(kopf);
+    field("oder Pfad", i ? i.path : "",
+      (v) => callShare("import_check", {path: v})));
+  target.replaceChildren(kopf);
 
   const rumpf = el("div", {class: "section growing"});
   if (!i) {
     rumpf.appendChild(el("p", {class: "hint"},
       "Noch keine Datei gewählt. Ein Bündel ist ein ZIP mit manifest.json."));
-    ziel.appendChild(rumpf);
+    target.appendChild(rumpf);
     return;
   }
   rumpf.appendChild(el("div", {class: "field-quiet"}, i.file,
-    el("span", {class: "mono"}, i.erstellt || "")));
-  shareCheckbox(rumpf, shareImport, i.inhalt);
+    el("span", {class: "mono"}, i.created || "")));
+  shareCheckbox(rumpf, shareImport, i.content);
 
   rumpf.appendChild(heading("KOORDINATEN",
     "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "importkoord"));
@@ -4890,9 +4890,9 @@ function shareRenderImport() {
     : "Achtung: gleiche Namen werden überschrieben."));
   rumpf.appendChild(el("button", {class: "btn primary",
     onclick: () => callShare("import_start",
-      {teile: shareImport, modus: shareMode, merge: shareMerge})},
+      {parts: shareImport, mode: shareMode, merge: shareMerge})},
     "Bündel einlesen"));
-  ziel.appendChild(rumpf);
+  target.appendChild(rumpf);
 }
 
 /* ------------------------------------------------------------ Ansicht: Bericht
@@ -4909,8 +4909,8 @@ function shareRenderImport() {
 
 let B = null;
 
-async function renderReport(daten) {
-  const antwort = await ask("report_data", daten === undefined ? null : daten);
+async function renderReport(data_reload) {
+  const antwort = await ask("report_data", data_reload === undefined ? null : data_reload);
   if (!antwort || view !== "bericht") return;
   B = antwort;
   const merk = rememberFocus();
@@ -4938,13 +4938,13 @@ function repNumber(n, stellen) {
  * zum groessten Wert der Liste. VIER Listen benutzen sie (Timeouts, Items,
  * Erkanntes, Nachpruefung) — eine Bauform fuer alle, sonst hat dieselbe Sache
  * vier Gestalten. */
-function repRank(name, value, anteil, zusatz, kind) {
+function repRank(name, value, share_pct, zusatz, kind) {
   const row = el("div", {class: "rep-rank" + (kind ? " " + kind : "")},
     el("span", {class: "rep-rank-name", title: name}, name),
     el("span", {class: "rep-rank-value mono"}, value),
     el("div", {class: "rep-bar"},
       el("div", {class: "rep-bar-fill",
-        style: "width:" + Math.max(2, Math.round(anteil * 100)) + "%"})));
+        style: "width:" + Math.max(2, Math.round(share_pct * 100)) + "%"})));
   if (zusatz) row.appendChild(el("span", {class: "rep-rank-extra"}, zusatz));
   return row;
 }
@@ -4962,7 +4962,7 @@ function repList(title, help, key, eintraege) {
 /* ------------------------------------------------------------------- links */
 
 function reportRenderLeft() {
-  const ziel = $("rep-left");
+  const target = $("rep-left");
   const kopf = el("div", {class: "section sticky"},
     heading("SITZUNGEN",
       "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
@@ -4972,41 +4972,41 @@ function reportRenderLeft() {
     kopf.appendChild(el("p", {class: "hint warning"},
       "session_log_enabled ist aus — neue Laeufe schreiben nichts mit."));
   }
-  ziel.replaceChildren(kopf);
+  target.replaceChildren(kopf);
 
   const rumpf = el("div", {class: "section growing"});
   if (!B.available) {
-    rumpf.appendChild(el("p", {class: "hint"}, B.fehler));
-    ziel.appendChild(rumpf);
+    rumpf.appendChild(el("p", {class: "hint"}, B.error));
+    target.appendChild(rumpf);
     return;
   }
-  if (!B.sitzungen.length) {
-    rumpf.appendChild(el("p", {class: "hint"}, B.ordner
-      ? "Keine Logs in " + B.ordner + "."
+  if (!B.sessions.length) {
+    rumpf.appendChild(el("p", {class: "hint"}, B.folder
+      ? "Keine Logs in " + B.folder + "."
       : "Noch kein Log-Ordner. Er entsteht beim ersten Lauf mit "
         + "session_log_enabled."));
-    ziel.appendChild(rumpf);
+    target.appendChild(rumpf);
     return;
   }
 
   rumpf.appendChild(repSession({
     file: "", title: "Alle zusammen",
-    unten: B.sitzungen.length + " Sitzung(en)",
+    bottom: B.sessions.length + " Sitzung(en)",
   }));
-  for (const s of B.sitzungen) {
+  for (const s of B.sessions) {
     rumpf.appendChild(repSession({
       file: s.file,
-      title: s.beginn || s.file,
-      unten: repDuration(s.duration) + " · " + repNumber(s.klicks) + " Klicks",
-      warnung: s.timeouts ? s.timeouts + "× Timeout" : "",
+      title: s.begin || s.file,
+      bottom: repDuration(s.duration) + " · " + repNumber(s.clicks) + " Klicks",
+      warning: s.timeouts ? s.timeouts + "× Timeout" : "",
     }));
   }
-  if (B.ausgelassen) {
+  if (B.skipped_files) {
     rumpf.appendChild(el("p", {class: "hint"},
-      B.ausgelassen + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
+      B.skipped_files + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
       + "neuesten 50."));
   }
-  ziel.appendChild(rumpf);
+  target.appendChild(rumpf);
 }
 
 function repSession(s) {
@@ -5016,28 +5016,28 @@ function repSession(s) {
     onclick: () => renderReport({file: s.file}),
   },
     el("span", {class: "rep-session-title"}, s.title),
-    el("span", {class: "rep-session-bottom"}, s.unten));
-  if (s.warnung)
-    row.appendChild(el("span", {class: "rep-session-warn"}, s.warnung));
+    el("span", {class: "rep-session-bottom"}, s.bottom));
+  if (s.warning)
+    row.appendChild(el("span", {class: "rep-session-warn"}, s.warning));
   return row;
 }
 
 /* ------------------------------------------------------------------- Mitte */
 
 function reportRenderMiddle() {
-  const ziel = $("rep-middle");
-  ziel.replaceChildren();
+  const target = $("rep-middle");
+  target.replaceChildren();
   const b = B.bericht;
-  if (!b || !b.sitzungen) {
-    ziel.appendChild(el("p", {class: "hint"},
+  if (!b || !b.sessions) {
+    target.appendChild(el("p", {class: "hint"},
       "Nichts auszuwerten. Der Bericht liest die CSV-Dateien, die ein Lauf mit "
       + "eingeschaltetem Session-Log hinterlaesst."));
     return;
   }
 
-  ziel.appendChild(el("div", {class: "wz-metrics"},
+  target.appendChild(el("div", {class: "wz-metrics"},
     wzMetric(repDuration(b.duration), "Laufzeit", "neutral"),
-    wzMetric(repNumber(b.klicks), "Klicks", "neutral"),
+    wzMetric(repNumber(b.clicks), "Klicks", "neutral"),
     wzMetric(repNumber(b.items_total), "Items", "neutral"),
     wzMetric(repNumber(b.timeouts_total), "Timeouts",
       b.timeouts_total ? "hint" : "neutral"),
@@ -5047,18 +5047,18 @@ function reportRenderMiddle() {
   // DIE Frage, fuer die es den Reiter gibt — deshalb steht sie oben und nicht
   // zwischen den Item-Zahlen.
   if (b.timeouts.length) {
-    ziel.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HAENGT",
+    target.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HAENGT",
       "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
       + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "ber-timeout",
       b.timeouts.map(([name, n]) => ({name: name, value: n, kind: "warn"}))));
   } else {
-    ziel.appendChild(el("div", {class: "wz-success"}, wzIcon("ok"),
+    target.appendChild(el("div", {class: "wz-success"}, wzIcon("ok"),
       el("div", {}, el("b", {}, "Keine Timeouts"),
         el("span", {}, "Jede Farb-Bedingung ist aufgegangen."))));
   }
 
   if (b.verify_miss.length) {
-    ziel.appendChild(repList("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
+    target.appendChild(repList("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
       "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
       + "Spiel braucht laenger als verify_timeout.", "ber-verify",
       b.verify_miss.map(([name, n, gut]) => ({
@@ -5068,28 +5068,28 @@ function reportRenderMiddle() {
   }
 
   if (b.items.length) {
-    ziel.appendChild(repList("GEFUNDENE ITEMS", "", "ber-items",
+    target.appendChild(repList("GEFUNDENE ITEMS", "", "ber-items",
       b.items.map(([name, n]) => ({name: name, value: n}))));
   }
   if (b.detected.length) {
-    ziel.appendChild(repList("ERKANNT (BOSS/ICON)", "", "ber-erkannt",
+    target.appendChild(repList("ERKANNT (BOSS/ICON)", "", "ber-erkannt",
       b.detected.map(([name, n]) => ({name: name, value: n}))));
   }
   if (b.disturbances.length) {
-    ziel.appendChild(repList("UNTERBRECHUNGEN",
+    target.appendChild(repList("UNTERBRECHUNGEN",
       "Fokusverluste und Humanize-Pausen. Eine Haeufung heisst, dass das "
       + "Spielfenster oft nicht vorn war.", "ber-stoer",
       b.disturbances.map(([name, n]) => ({name: name, value: n}))));
   }
 
-  for (const [file, fehler] of b.nicht_lesbar) {
-    ziel.appendChild(el("p", {class: "hint warning"},
-      file + ": nicht lesbar (" + fehler + ")"));
+  for (const [file, error] of b.unreadable) {
+    target.appendChild(el("p", {class: "hint warning"},
+      file + ": nicht lesbar (" + error + ")"));
   }
   if (b.unbekannt.length) {
     // Dieselbe Meldung wie in der Konsole: eine neue Ereignisart soll auffallen,
     // nicht stillschweigend fehlen.
-    ziel.appendChild(el("p", {class: "hint"},
+    target.appendChild(el("p", {class: "hint"},
       "Nicht ausgewertete Ereignisarten: " + b.unbekannt.join(", ")));
   }
 }
@@ -5097,34 +5097,34 @@ function reportRenderMiddle() {
 /* ------------------------------------------------------------------- rechts */
 
 function reportRenderRight() {
-  const ziel = $("rep-right");
+  const target = $("rep-right");
   const kopf = el("div", {class: "section sticky"},
     heading("ERTRAG",
       "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
       + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
       + "Marktanalyse selbst laeuft getrennt.", "ber-ertrag"));
-  ziel.replaceChildren(kopf);
+  target.replaceChildren(kopf);
 
   const rumpf = el("div", {class: "section growing"});
-  const e = B.ertrag;
+  const e = B.yield_value;
   if (!e) {
     rumpf.appendChild(el("p", {class: "hint"},
       "Keine Bewertung: scan_market_value_file ist leer oder es wurden keine "
       + "Items gefunden. Mit eingetragener marktwert.json steht hier, was der "
       + "Lauf eingebracht hat."));
-    ziel.appendChild(rumpf);
+    target.appendChild(rumpf);
     return;
   }
-  if (!e.lesbar) {
+  if (!e.readable) {
     rumpf.appendChild(el("p", {class: "hint warning"},
       "Marktwert-Datei nicht lesbar: " + e.file));
-    ziel.appendChild(rumpf);
+    target.appendChild(rumpf);
     return;
   }
 
   rumpf.appendChild(el("div", {class: "wz-metrics"},
     wzMetric(repNumber(e.gold), "Gold gesamt", "neutral"),
-    wzMetric(e.pro_stunde === null ? "—" : repNumber(e.pro_stunde), "Gold/h",
+    wzMetric(e.per_hour === null ? "—" : repNumber(e.per_hour), "Gold/h",
       "neutral")));
   // **Obergrenze, keine Abrechnung.** `item_found` heisst „erkannt", nicht
   // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
@@ -5146,7 +5146,7 @@ function reportRenderRight() {
       e.without_value.length + " Item(s) ohne Marktwert: "
       + e.without_value.map(([name, n]) => name + " (" + n + "×)").join(", ")));
   }
-  ziel.appendChild(rumpf);
+  target.appendChild(rumpf);
 }
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */
@@ -5175,7 +5175,7 @@ let wzRecordingCycles = 0;
 let wzRecordingDescription = "";
 let wzRecordingPoll = 0;
 let wzRecordingLivePoll = 0;
-let wzRecordingLive = {active: false, pausiert: false, count: 0, events: []};
+let wzRecordingLive = {active: false, paused: false, count: 0, events: []};
 /* Der Live-Stand der Klick-Runde. Sie laeuft im HAUPTPROZESS (dort haengt der
  * Maus-Hook), also weiss dieses Fenster von sich aus nichts ueber sie — der
  * Stand kommt ueber `.nachklick.json`. Ohne ihn stand hier nur „gestartet",
@@ -5226,12 +5226,12 @@ let workEsc = null;
 
 /** Blendet ein, worauf gerade gewartet wird — mit Countdown bis zum Zeitablauf. */
 function showWait(name) {
-  const [was, drucke] = WAIT_ACTIONS[name] || ["Stelle setzen", 1];
+  const [what, drucke] = WAIT_ACTIONS[name] || ["Stelle setzen", 1];
   const grenze = (S && S.wait_timeout) || (W && W.wait_timeout) || 60;
   let rest = Math.round(grenze);
   const number = el("span", {class: "wait-remaining"}, rest + " s");
   const kasten = el("div", {class: "wait-box"},
-    el("div", {class: "wait-title"}, was),
+    el("div", {class: "wait-title"}, what),
     el("div", {class: "wait-text"},
       "Fahre mit der Maus an die Stelle im Spiel und drücke ",
       el("b", {}, "ENTER"),
@@ -5307,10 +5307,10 @@ function showWork(title, text, abbruch) {
  */
 function cancelWork(abbruch) {
   abbruch();
-  const knopf = $("work-cancel");
-  if (knopf) {
-    knopf.disabled = true;
-    knopf.textContent = "Bricht ab …";
+  const button = $("work-cancel");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Bricht ab …";
   }
   sayWork("Wartet noch auf die laufende Vorlage — die Antwort ist schon "
               + "unterwegs und laesst sich nicht zurueckholen.");
@@ -5338,9 +5338,9 @@ let autonameCancel = false;
  * Schritt und zeigt an, was zurueckkommt. Der Zustand (was ist offen, was ist
  * benannt) liegt vollstaendig in der Bruecke.
  */
-async function scanAutonameRun(daten) {
+async function scanAutonameRun(data_reload) {
   autonameCancel = false;
-  await callScan("scan_autoname_start", daten);
+  await callScan("scan_autoname_start", data_reload);
   // Kein Durchgang in der Momentaufnahme heisst: abgelehnt (LLM aus, nichts
   // mit Vorlage). Die Statuszeile sagt bereits, warum.
   if (!SC.autoname) return;
@@ -5348,8 +5348,8 @@ async function scanAutonameRun(daten) {
   try {
     while (SC.autoname && SC.autoname.open > 0 && !autonameCancel) {
       const a = SC.autoname;
-      sayWork("Vorlage " + (a.fertig + 1) + " von " + a.total
-                  + " — " + a.umbenannt + " benannt");
+      sayWork("Vorlage " + (a.done + 1) + " von " + a.total
+                  + " — " + a.renamed + " benannt");
       await callScan("scan_autoname_step", null);
     }
   } finally {
@@ -5365,10 +5365,10 @@ async function scanAutonameRun(daten) {
  * den zweiten — seine Antwort ist keine Momentaufnahme, und ueber `callScan`
  * geholt zerschoesse sie den Scans-Reiter.
  */
-async function withWork(kind, name, daten, title, text) {
+async function withWork(kind, name, data_reload, title, text) {
   showWork(title, text);
   try {
-    return kind === "scan" ? await callScan(name, daten) : await ask(name, daten);
+    return kind === "scan" ? await callScan(name, data_reload) : await ask(name, data_reload);
   } finally {
     hideWait();
   }
@@ -5380,34 +5380,34 @@ async function withWork(kind, name, daten, title, text) {
  * Momentaufnahme, `tool` zeichnet den Reiter neu, `ask` fragt nur. Das
  * Overlay aendert daran nichts — es legt sich nur davor.
  */
-async function withWait(kind, name, daten) {
+async function withWait(kind, name, data_reload) {
   showWait(name);
   try {
-    return kind === "call" ? await call(name, daten)
-         : kind === "tool" ? await callTool(name, daten)
-         : await ask(name, daten);
+    return kind === "call" ? await call(name, data_reload)
+         : kind === "tool" ? await callTool(name, data_reload)
+         : await ask(name, data_reload);
   } finally {
     hideWait();
   }
 }
 
 const WZ_TOOLS = [
-  {key: "recording", name: "Sequenz aufnehmen", befehl: "rec", bezug: "neu",
-   kurz: "Echtes Spielen als neue Sequenz aufzeichnen"},
-  {key: "check", name: "Bestand prüfen", befehl: "check", bezug: "bestand",
-   kurz: "Fehler und unvollständige Verknüpfungen finden"},
-  {key: "points", name: "Punkte verwalten", befehl: "points", bezug: "sequence",
-   kurz: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
+  {key: "recording", name: "Sequenz aufnehmen", command: "rec", bezug: "neu",
+   short: "Echtes Spielen als neue Sequenz aufzeichnen"},
+  {key: "check", name: "Bestand prüfen", command: "check", bezug: "inventory",
+   short: "Fehler und unvollständige Verknüpfungen finden"},
+  {key: "points", name: "Punkte verwalten", command: "points", bezug: "sequence",
+   short: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
   // `nichts` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
   // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
   // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
   // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
-  {key: "colors", name: "Farben analysieren", befehl: "color", bezug: "nichts",
-   kurz: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
-  {key: "calibrate", name: "Kalibrieren", befehl: "fix", bezug: "bestand",
-   kurz: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
-  {key: "reclick", name: "Punkte nachklicken", befehl: "klick", bezug: "sequence",
-   kurz: "Alle Klickstellen geführt im Spiel kontrollieren"},
+  {key: "colors", name: "Farben analysieren", command: "color", bezug: "nichts",
+   short: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
+  {key: "calibrate", name: "Kalibrieren", command: "fix", bezug: "inventory",
+   short: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
+  {key: "reclick", name: "Punkte nachklicken", command: "klick", bezug: "sequence",
+   short: "Alle Klickstellen geführt im Spiel kontrollieren"},
 ];
 
 /** Kleine, lokale Linien-Icons. Keine Schriftzeichen und keine externe Datei:
@@ -5489,7 +5489,7 @@ function wzScope(key) {
       el("span", {}, "nichts — es misst nur den Bildschirm und ändert keine Datei"));
     return kasten;
   }
-  if (!w || w.bezug === "bestand") {
+  if (!w || w.bezug === "inventory") {
     kasten.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "der gesamte gespeicherte Bestand — alle Sequenzen, Punkte, "
         + "Slots und Scans, nicht nur die offene Sequenz"));
@@ -5509,8 +5509,8 @@ async function renderTools(frisch) {
   const antwort = await ask("tool_data");
   if (!antwort || view !== "werkzeuge") return;
   W = antwort;
-  for (const u of W.umfang)
-    if (wzScopeState[u.key] === undefined) wzScopeState[u.key] = u.vorgabe;
+  for (const u of W.scope)
+    if (wzScopeState[u.key] === undefined) wzScopeState[u.key] = u.default_value;
   if (frisch) { wzReport = null; wzColorQuestion = null; }
   const merk = rememberFocus();
   wzRenderLeft();
@@ -5521,8 +5521,8 @@ async function renderTools(frisch) {
 
 /** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
  *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
-async function callTool(name, daten) {
-  const antwort = await ask(name, daten);
+async function callTool(name, data_reload) {
+  const antwort = await ask(name, data_reload);
   if (!antwort) return null;
   if (antwort.message)
     setStatus({text: antwort.message, kind: antwort.ok ? "ok" : "err"});
@@ -5531,7 +5531,7 @@ async function callTool(name, daten) {
 }
 
 function wzRenderLeft() {
-  const ziel = $("wz-left");
+  const target = $("wz-left");
   // Hier stand „offene Sequenz <Name>". Der Block hatte einen Grund: die
   // Kopfleiste blendete ihre Sequenz-Bedienelemente in diesem Reiter aus, und
   // damit war auch der Name weg — bei der Klick-Runde genau die Frage, die man
@@ -5544,7 +5544,7 @@ function wzRenderLeft() {
     el("span", {class: "heading"}, "WERKZEUGE"));
   const liste = el("div", {class: "section growing", style: "gap:6px"});
   for (const w of WZ_TOOLS) {
-    const knopf = el("button", {
+    const button = el("button", {
       class: "wz-nav " + w.key + (wzOpenTool === w.key ? " on" : ""),
       onclick: () => wzOpen(w.key),
       // Der Konsolen-Befehl steht mit — dieselbe Regel wie bei den Config-
@@ -5553,15 +5553,15 @@ function wzRenderLeft() {
     }, el("span", {class: "wz-nav-icon"}, wzIcon(w.key)),
        el("span", {class: "wz-nav-copy"},
          el("span", {class: "wz-nav-title"}, w.name,
-           el("span", {class: "wz-command"}, w.befehl)),
-         el("span", {class: "wz-nav-short"}, w.kurz)),
+           el("span", {class: "wz-command"}, w.command)),
+         el("span", {class: "wz-nav-short"}, w.short)),
        el("span", {class: "wz-nav-arrow"}, "›"));
-    liste.appendChild(knopf);
+    liste.appendChild(button);
   }
   liste.appendChild(wzInfo("Slots exakt reparieren",
     "CTRL+ALT+N → Slots → repair misst die Flächen pixelgenau neu."));
-  ziel.replaceChildren(kopf, liste);
-  applyHelps(ziel);
+  target.replaceChildren(kopf, liste);
+  applyHelps(target);
 }
 
 /** Ein Werkzeug öffnen — auch als Sprungziel aus dem Editor heraus. */
@@ -5578,15 +5578,15 @@ function wzOpen(key) {
 }
 
 function wzRenderMiddle() {
-  const ziel = $("wz-middle");
-  const inhalt = wzOpenTool === "recording" ? wzBuildRecording()
+  const target = $("wz-middle");
+  const content = wzOpenTool === "recording" ? wzBuildRecording()
     : wzOpenTool === "check" ? wzBuildCheck()
     : wzOpenTool === "points" ? wzBuildPoints()
     : wzOpenTool === "colors" ? wzBuildColors()
     : wzOpenTool === "calibrate" ? wzBuildCalib() : wzBuildReclick();
-  ziel.replaceChildren(...inhalt);
+  target.replaceChildren(...content);
   // Offene i-Texte ueberleben den Neuaufbau nach einer Werkzeug-Aktion.
-  applyHelps(ziel);
+  applyHelps(target);
 }
 
 /* ------------------------------------------------------------------ Prüfen */
@@ -5607,24 +5607,24 @@ function wzBuildCheck() {
     raus.push(el("p", {class: "kind-err"}, wzReport.message || "Prüfung fehlgeschlagen."));
     return raus;
   }
-  if (!wzReport.befunde.length) {
+  if (!wzReport.findings.length) {
     raus.push(el("div", {class: "wz-success"}, wzIcon("ok"),
       el("div", {}, el("b", {}, "Alles in Ordnung"),
         el("span", {}, wzReport.checked.length + " Bereiche ohne Befund geprüft."))));
     return raus;
   }
   raus.push(el("div", {class: "wz-metrics"},
-    wzMetric(String(wzReport.fehler || 0), "Fehler", "error"),
+    wzMetric(String(wzReport.errors || 0), "Fehler", "error"),
     wzMetric(String(wzReport.hints || 0), "Hinweise", "hint"),
     wzMetric(String(wzReport.checked.length), "Bereiche", "neutral")));
   // Fehler zuerst: „laeuft so nicht" schlaegt „ist vermutlich nicht gewollt".
-  for (const stufe of ["error", "hint"]) {
-    const treffer = wzReport.befunde.filter(b => b.stufe === stufe);
-    if (!treffer.length) continue;
+  for (const level of ["error", "hint"]) {
+    const match = wzReport.findings.filter(b => b.level === level);
+    if (!match.length) continue;
     raus.push(el("h3", {style: "margin-top:16px"},
-      stufe === "error" ? "Fehler (" + treffer.length + ")"
-                         : "Hinweise (" + treffer.length + ")"));
-    for (const b of treffer) raus.push(wzFinding(b, stufe));
+      level === "error" ? "Fehler (" + match.length + ")"
+                         : "Hinweise (" + match.length + ")"));
+    for (const b of match) raus.push(wzFinding(b, level));
   }
   return raus;
 }
@@ -5708,7 +5708,7 @@ function wzBuildColors() {
       el("b", {class: "mono"}, f.hex),
       el("span", {}, "RGB " + f.rgb.join(", ")),
       el("span", {class: "grow hint"}, f.name || ""),
-      el("span", {class: "mono"}, f.anteil + "%")));
+      el("span", {class: "mono"}, f.share_pct + "%")));
     raus.push(liste);
   }
   return raus;
@@ -5762,7 +5762,7 @@ function wzBuildRecording() {
   wzFillRecordingOutput(ausgabe);
 
   raus.push(el("div", {class: "wz-subheader"}, "HOTKEYS WÄHREND DER AUFNAHME"));
-  raus.push(wzKeyTable((W && W.aufnahme_tasten) || []));
+  raus.push(wzKeyTable((W && W.recording_keys) || []));
   raus.push(wzInfo("TUI bleibt verfügbar",
     "CTRL+ALT+J kann die Aufnahme weiterhin ganz ohne Studio starten. Dann werden "
     + "Name, Zyklen und Notiz wie bisher beim Beenden in der Konsole abgefragt."));
@@ -5782,7 +5782,7 @@ async function wzStartRecording() {
   if (!antwort.ok) return;
   wzRecordingName = antwort.name || name;
   wzRecordingStarted = true;
-  wzRecordingLive = {active: true, pausiert: false, count: 0, events: []};
+  wzRecordingLive = {active: true, paused: false, count: 0, events: []};
   wzWatchRecording();
   wzRenderMiddle();
   wzRenderRight();
@@ -5790,14 +5790,14 @@ async function wzStartRecording() {
 }
 
 /** Drei feste Zeilen statt eines wachsenden Logs: neuestes Ereignis unten. */
-function wzFillRecordingOutput(ziel) {
-  if (!ziel) return;
-  const daten = wzRecordingLive || {};
-  const events = Array.isArray(daten.events) ? daten.events.slice(-3) : [];
-  const kopftext = daten.pausiert ? "PAUSIERT" : wzRecordingStarted ? "LIVE" : "LETZTE EREIGNISSE";
-  ziel.replaceChildren(el("div", {class: "wz-output-header"},
+function wzFillRecordingOutput(target) {
+  if (!target) return;
+  const data_reload = wzRecordingLive || {};
+  const events = Array.isArray(data_reload.events) ? data_reload.events.slice(-3) : [];
+  const kopftext = data_reload.paused ? "PAUSIERT" : wzRecordingStarted ? "LIVE" : "LETZTE EREIGNISSE";
+  target.replaceChildren(el("div", {class: "wz-output-header"},
     el("span", {}, kopftext),
-    el("span", {class: "wz-output-counter"}, String(daten.count || 0) + " Ereignisse")));
+    el("span", {class: "wz-output-counter"}, String(data_reload.count || 0) + " Ereignisse")));
   const rows = el("div", {class: "wz-output-rows"});
   if (!events.length) {
     rows.appendChild(el("div", {class: "wz-output-empty"},
@@ -5815,7 +5815,7 @@ function wzFillRecordingOutput(ziel) {
         el("span", {class: "wz-output-color-text"}, color, e.color_text || "")));
     });
   }
-  ziel.appendChild(rows);
+  target.appendChild(rows);
 }
 
 function wzStartRecordingLive() {
@@ -5904,12 +5904,12 @@ function wzMetric(value, label, kind) {
     el("strong", {}, value), el("span", {}, label));
 }
 
-function wzFinding(b, stufe) {
-  const kasten = el("div", {class: "wz-finding " + stufe});
-  kasten.appendChild(el("div", {class: "wz-finding-icon"}, wzIcon(stufe)));
+function wzFinding(b, level) {
+  const kasten = el("div", {class: "wz-finding " + level});
+  kasten.appendChild(el("div", {class: "wz-finding-icon"}, wzIcon(level)));
   const copy = el("div", {class: "wz-finding-copy"},
     el("div", {class: "wz-area"}, b.area), el("div", {}, b.text));
-  if (b.tipp) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tipp));
+  if (b.tip) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tip));
   kasten.appendChild(copy);
   return kasten;
 }
@@ -5932,7 +5932,7 @@ async function wzCheck() {
   setStatus({text: "Prüfe…", kind: "info"});
   wzReport = await ask("tool_check");
   if (!wzReport) return;
-  const n = wzReport.fehler || 0, h = wzReport.hints || 0;
+  const n = wzReport.errors || 0, h = wzReport.hints || 0;
   setStatus({
     text: !wzReport.ok ? (wzReport.message || "Prüfung fehlgeschlagen.")
         : (n || h) ? n + " Fehler, " + h + " Hinweis(e)."
@@ -5953,7 +5953,7 @@ async function wzCheck() {
 /* ------------------------------------------------------------- Kalibrieren */
 
 function wzBuildCalib() {
-  const K = (W && W.kalibrierung) || {};
+  const K = (W && W.calibration) || {};
   const raus = [wzHeader("calibrate", "Koordinaten kalibrieren",
     "Einen bekannten Punkt neu messen und alle gespeicherten Stellen präzise mitziehen.")];
   raus.push(wzScope("calibrate"));
@@ -5979,12 +5979,12 @@ function wzBuildCalib() {
 
   if (K.ref1) {
     raus.push(el("div", {class: "wz-subheader"}, "BERECHNETER TRANSFORM"));
-    const v = K.versatz || {x: 0, y: 0};
+    const v = K.offset || {x: 0, y: 0};
     const values = el("div", {class: "wz-metrics"},
       wzMetric(wzSign(v.x), "X-Versatz", "neutral"),
       wzMetric(wzSign(v.y), "Y-Versatz", "neutral"));
-    if (K.skalierung && (K.skalierung.x !== 1 || K.skalierung.y !== 1))
-      values.appendChild(wzMetric(K.skalierung.x + "×" + K.skalierung.y,
+    if (K.scaling && (K.scaling.x !== 1 || K.scaling.y !== 1))
+      values.appendChild(wzMetric(K.scaling.x + "×" + K.scaling.y,
         "Skalierung X/Y", "hint"));
     raus.push(values);
     raus.push(wzOffsetFields(v));
@@ -6023,8 +6023,8 @@ function wzBuildColorQuestion() {
   const kasten = el("div", {class: "wz-color-question"});
   kasten.appendChild(el("div", {class: "kind-warn"}, f.message));
   const reihe = el("div", {class: "wz-color-series"});
-  reihe.append(el("span", {class: "hint"}, "gespeichert"), wzColor(f.expected),
-               el("span", {class: "hint"}, "dort gemessen"), wzColor(f.gemessen),
+  reihe.append(el("span", {class: "hint"}, "saved"), wzColor(f.expected),
+               el("span", {class: "hint"}, "dort gemessen"), wzColor(f.measured),
                el("span", {class: "hint"},
                   "(" + f.position[0] + ", " + f.position[1] + ")"));
   kasten.appendChild(reihe);
@@ -6076,23 +6076,23 @@ function wzRefRow(number, placed) {
   kasten.appendChild(el("div", {class: "wz-area"},
     number === 1 ? "1. Referenzpunkt (Verschiebung)"
                  : "2. Referenzpunkt (Skalierung, optional)"));
-  const wahl = el("select");
+  const choice = el("select");
   for (const p of W.points)
-    wahl.appendChild(el("option", {value: String(p.id)},
+    choice.appendChild(el("option", {value: String(p.id)},
       "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"));
-  if (placed) wahl.value = String(placed.point_id);
+  if (placed) choice.value = String(placed.point_id);
   // Der zweite Punkt soll WEIT weg vom ersten liegen — genau das steht als
   // Hinweis darueber. Der erste Eintrag der Liste ist aber der erste Punkt
   // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
   // Fehlermeldung ergibt, ist schlimmer als gar keiner.
-  else if (number === 2) wahl.value = String(wzFarthestPoint(W.kalibrierung.ref1));
-  kasten.appendChild(wahl);
+  else if (number === 2) choice.value = String(wzFarthestPoint(W.calibration.ref1));
+  kasten.appendChild(choice);
   kasten.appendChild(el("button", {
     class: "btn",
     onclick: async () => {
       setStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", kind: "info"});
       const antwort = await withWait("ask", "calib_reference",
-        {number, point_id: Number(wahl.value)});
+        {number, point_id: Number(choice.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
       if (antwort && antwort.confirm) { wzColorQuestion = {...antwort, number}; }
@@ -6135,7 +6135,7 @@ function wzScopeBox() {
   kasten.appendChild(el("div", {class: "wz-area"}, "Was mitgerechnet wird"));
   kasten.appendChild(wzInfo("Punkte",
     "Punkte werden immer mitgerechnet — daran hängt alles andere."));
-  for (const u of W.umfang) {
+  for (const u of W.scope) {
     const row = el("label", {class: "share-row on"});
     const box = el("input", {type: "checkbox"});
     box.checked = !!wzScopeState[u.key];
@@ -6173,12 +6173,12 @@ const WZ_STEPS = [
                + "nichts — an keiner Datei und in keinem Speicher."],
 ];
 
-function wzKeyTable(tasten = WZ_KEYS) {
+function wzKeyTable(keys = WZ_KEYS) {
   const rumpf = el("tbody");
-  for (const [taste, was, warum] of tasten)
+  for (const [combo, what, warum] of keys)
     rumpf.appendChild(el("tr", {},
-      el("td", {}, el("span", {class: "wz-key"}, taste)),
-      el("td", {class: "wz-what"}, was),
+      el("td", {}, el("span", {class: "wz-key"}, combo)),
+      el("td", {class: "wz-what"}, what),
       el("td", {class: "wz-why"}, warum)));
   return el("table", {class: "wz-keys"}, rumpf);
 }
@@ -6191,28 +6191,28 @@ const WZ_RECLICK_KIND = {
   passt: ["✓", "rc-fits", "bestätigt — bleibt, wo er ist"],
   placed: ["→", "rc-set", "neu gesetzt"],
   skipped: ["↷", "rc-skip", "übersprungen"],
-  fehlt: ["✕", "rc-missing", "Punkt gibt es nicht mehr"],
+  missing: ["✕", "rc-missing", "Punkt gibt es nicht mehr"],
 };
 
 /** Der Live-Stand der Runde: wo sie steht, was dran ist, was war. */
-function wzFillReclickOutput(ziel) {
-  if (!ziel) return;
+function wzFillReclickOutput(target) {
+  if (!target) return;
   const d = wzReclickLive || {};
   const total = d.total || 0;
-  const fertig = Math.min(d.index || 0, total);
-  const running = !!d.active && !d.verwaist;
+  const done = Math.min(d.index || 0, total);
+  const running = !!d.active && !d.orphaned;
 
   // Der Kopf beantwortet die erste Frage („laeuft das ueberhaupt noch?"), und
   // ein verwaister Stand sagt es, statt eine tote Runde als lebend zu zeigen.
-  const kopftext = d.verwaist ? "KEIN HAUPTPROZESS"
-    : d.pausiert ? "PAUSIERT" : running ? "LÄUFT" : total ? "BEENDET" : "NICHT GESTARTET";
-  ziel.replaceChildren(el("div", {class: "wz-output-header"},
+  const kopftext = d.orphaned ? "KEIN HAUPTPROZESS"
+    : d.paused ? "PAUSIERT" : running ? "LÄUFT" : total ? "BEENDET" : "NICHT GESTARTET";
+  target.replaceChildren(el("div", {class: "wz-output-header"},
     el("span", {}, kopftext),
     el("span", {class: "wz-output-counter"},
-      total ? fertig + " von " + total + " Punkt(en)" : "—")));
+      total ? done + " von " + total + " Punkt(en)" : "—")));
 
   if (!total) {
-    ziel.appendChild(el("div", {class: "wz-output-rows"},
+    target.appendChild(el("div", {class: "wz-output-rows"},
       el("div", {class: "wz-output-empty"},
         "Noch keine Runde gelaufen. „Runde starten“ setzt den Zeiger auf den "
         + "ersten Punkt.")));
@@ -6221,26 +6221,26 @@ function wzFillReclickOutput(ziel) {
 
   // Ein Balken statt einer zweiten Zahl: wie weit die Runde ist, sieht man
   // beim Klicken aus dem Augenwinkel — eine Zahl muss man lesen.
-  ziel.appendChild(el("div", {class: "rc-bar"},
+  target.appendChild(el("div", {class: "rc-bar"},
     el("div", {class: "rc-bar-fill",
-               style: "width:" + Math.round(fertig / total * 100) + "%"})));
+               style: "width:" + Math.round(done / total * 100) + "%"})));
 
   // Der aktuelle Punkt ist die Antwort auf „was macht das Programm gerade".
   const p = d.point || {};
   if (running && p.id !== undefined) {
-    ziel.appendChild(el("div", {class: "rc-now"},
+    target.appendChild(el("div", {class: "rc-now"},
       el("span", {class: "rc-now-badge"}, "jetzt"),
       el("span", {class: "num"}, "#" + p.id),
       el("span", {class: "rc-now-name"}, p.name || ""),
       el("span", {class: "rc-now-pos"}, "(" + p.x + ", " + p.y + ")"),
       p.color ? el("span", {class: "wz-output-color",
                             style: "color:rgb(" + p.color.join(",") + ")"}, "█") : null));
-    ziel.appendChild(el("div", {class: "hint rc-hint"}, d.pausiert
+    target.appendChild(el("div", {class: "hint rc-hint"}, d.paused
       ? "Pausiert — Klicks setzen keinen Punkt. CTRL+ALT+H macht weiter."
       : "Der Zeiger steht schon dort. Stimmt die Stelle — klicken. Sonst "
         + "hinfahren und dort klicken."));
   } else if (!running && total) {
-    ziel.appendChild(el("div", {class: "hint rc-hint"},
+    target.appendChild(el("div", {class: "hint rc-hint"},
       (d.changed || 0) + " Stelle(n) geändert. Was davon geschrieben wurde, "
       + "hängt daran, ob übernommen oder verworfen wurde."));
   }
@@ -6253,19 +6253,19 @@ function wzFillReclickOutput(ziel) {
       "Noch kein Punkt erledigt."));
   } else {
     for (const v of history) {
-      const [zeichen, klasse, was] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
+      const [zeichen, klasse, what] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
       rows.appendChild(el("div", {class: "rc-row"},
-        el("span", {class: "rc-kind " + klasse, title: was}, zeichen),
+        el("span", {class: "rc-kind " + klasse, title: what}, zeichen),
         el("span", {class: "num"}, "#" + v.id),
         el("span", {class: "rc-name"}, v.name || ""),
         el("span", {class: "rc-target"}, v.alt && v.neu
           ? "(" + v.alt[0] + ", " + v.alt[1] + ") → (" + v.neu[0] + ", " + v.neu[1] + ")"
-          : was)));
+          : what)));
     }
   }
-  ziel.appendChild(rows);
+  target.appendChild(rows);
   if (d.others)
-    ziel.appendChild(el("div", {class: "hint rc-hint"},
+    target.appendChild(el("div", {class: "hint rc-hint"},
       d.others + " Stelle(n) erreicht die Runde nicht (beobachtete Pixel, "
       + "ELSE, Rad) — dafür bleibt walk im Punkte-Menü."));
 }
@@ -6306,12 +6306,12 @@ function wzBuildReclick() {
     "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
   raus.push(wzScope("reclick"));
 
-  const schritte = el("div", {class: "wz-steps"});
+  const steps = el("div", {class: "wz-steps"});
   WZ_STEPS.forEach(([title, text], i) => {
-    schritte.append(el("div", {class: "wz-number"}, String(i + 1)),
+    steps.append(el("div", {class: "wz-number"}, String(i + 1)),
       el("div", {class: "wz-step-text"}, el("b", {}, title + ": "), text));
   });
-  raus.push(schritte);
+  raus.push(steps);
 
   // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
   raus.push(el("div", {class: "wz-rule"},
@@ -6340,7 +6340,7 @@ function wzBuildReclick() {
     title: "Schreibt die gesetzten Stellen nach sequence.json (= CTRL+ALT+J)",
   }, "Übernehmen"));
   leiste.appendChild(el("button", {
-    class: "btn", onclick: () => callTool("reclick_end", {verwerfen: true}),
+    class: "btn", onclick: () => callTool("reclick_end", {discard: true}),
     title: "Beendet die Runde, ohne etwas zu schreiben",
   }, "Verwerfen"));
   raus.push(leiste);
@@ -6364,13 +6364,13 @@ function wzBuildReclick() {
 /* ------------------------------------------------------------------- rechts */
 
 function wzRenderRight() {
-  const ziel = $("wz-right");
+  const target = $("wz-right");
   // Beim Pruefen steht hier, WAS geprueft wurde. „Alles in Ordnung" ist ohne
   // diese Liste eine Behauptung: man weiss nicht, ob der Bereich sauber war
   // oder gar nicht angesehen wurde.
-  if (wzOpenTool === "check") return ziel.replaceChildren(...wzBuildChecked());
+  if (wzOpenTool === "check") return target.replaceChildren(...wzBuildChecked());
   if (wzOpenTool === "recording")
-    return ziel.replaceChildren(el("div", {class: "section"},
+    return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "SO ENTSTEHEN DIE BLÖCKE"),
       el("div", {class: "wz-recording-flow"},
         el("b", {}, "1 · Starten"), el("span", {}, "Das Studio schickt Name und Einstellungen mit."),
@@ -6386,10 +6386,10 @@ function wzRenderRight() {
       liste.appendChild(el("p", {class: "hint"}, "Dieser Punkt wird nirgends verwendet und kann sicher gelöscht werden."));
     else for (const v of point.usages)
       liste.appendChild(el("div", {class: "wz-checked"}, wzIcon("points"), el("span", {}, v)));
-    return ziel.replaceChildren(kopf, liste);
+    return target.replaceChildren(kopf, liste);
   }
   if (wzOpenTool === "colors")
-    return ziel.replaceChildren(el("div", {class: "section"},
+    return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "MESSUNG"),
       el("p", {class: "hint"}, wzColorAnalysis && wzColorAnalysis.ok
         ? (wzColorAnalysis.message || "Analyse abgeschlossen.")
@@ -6399,32 +6399,32 @@ function wzRenderRight() {
     // haben GEPRUEFT, SO ENTSTEHEN DIE BLOECKE, VERWENDUNGEN, MESSUNG und
     // VORSCHAU. Uebrig blieb ein Hinweis ohne Dach in einer sonst leeren
     // Spalte, und der sah aus, als sei die Spalte kaputt.
-    return ziel.replaceChildren(el("div", {class: "section"},
+    return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "GRENZEN DER RUNDE"),
       wzInfo("Was die Runde nicht erreicht",
         "Beobachtete Pixel, Nachprüfungen, ELSE-Klicks und Rad-Schritte kommen "
         + "in einem normalen Durchlauf gar nicht vor. Dafür bleibt walk im "
         + "Punkte-Menü. Welche das sind, sagt die Runde beim Start in der Konsole.")));
-  if (!W || !W.kalibrierung.ref1)
-    return ziel.replaceChildren(el("div", {class: "section"},
+  if (!W || !W.calibration.ref1)
+    return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "VORSCHAU"),
       el("div", {class: "hint", style: "white-space:normal"},
         "Sobald der erste Referenzpunkt steht, steht hier, was sich ändern würde.")));
 
-  const rows = W.kalibrierung.preview || [];
+  const rows = W.calibration.preview || [];
   const kopf = el("div", {class: "section"},
     el("span", {class: "heading"}, "VORSCHAU"),
     el("div", {class: "hint"}, rows.length + " Stelle(n), Auszug"));
   const liste = el("div", {class: "section growing", style: "gap:4px"});
   for (const z of rows) {
     liste.appendChild(el("div", {class: "wz-preview"},
-      el("div", {}, z.was),
+      el("div", {}, z.what),
       el("div", {class: "hint"},
-        "(" + z.vorher.join(", ") + ") → (" + z.nachher.join(", ") + ")")));
+        "(" + z.before.join(", ") + ") → (" + z.after.join(", ") + ")")));
   }
   if (!rows.length)
     liste.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
-  ziel.replaceChildren(kopf, liste);
+  target.replaceChildren(kopf, liste);
 }
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
@@ -6479,16 +6479,16 @@ function cfgSet(key, value) {
 function cfgActive(key) {
   const m = C.meta[key] || {};
   if (m.dep && !cfgValue(m.dep)) return false;
-  if (m.dep_nicht && cfgValue(m.dep_nicht)) return false;
+  if (m.dep_not && cfgValue(m.dep_not)) return false;
   if (m.dep_min && !(Number(cfgValue(m.dep_min)) > 0)) return false;
   return true;
 }
 
 function cfgWhy(m) {
-  const anderes = m.dep || m.dep_nicht || m.dep_min;
+  const anderes = m.dep || m.dep_not || m.dep_min;
   const name = (C.meta[anderes] && C.meta[anderes].label) || anderes;
   if (m.dep) return "Wirkt nur, wenn „" + name + "“ an ist.";
-  if (m.dep_nicht) return "Wirkt nur, wenn „" + name + "“ aus ist.";
+  if (m.dep_not) return "Wirkt nur, wenn „" + name + "“ aus ist.";
   return "Wirkt nur, wenn „" + name + "“ grösser als 0 ist.";
 }
 
@@ -6516,27 +6516,27 @@ function cfgText(value, m) {
 }
 
 function renderCfgList() {
-  const ziel = $("cfg-list");
-  ziel.replaceChildren();
+  const target = $("cfg-list");
+  target.replaceChildren();
   C.sections.forEach((a, i) => {
     const open = a.keys.filter((k) => k in cfgChanged).length;
-    const treffer = cfgSearch ? a.keys.filter(cfgMatches).length : 0;
-    ziel.appendChild(el("button", {
+    const match = cfgSearch ? a.keys.filter(cfgMatches).length : 0;
+    target.appendChild(el("button", {
       class: "cfg-nav" + (!cfgSearch && i === cfgSection ? " on" : ""),
       onclick: () => { cfgSearch = ""; $("cfg-search").value = ""; cfgSection = i;
                        renderSettings(); },
     },
       el("span", {class: "grow"}, a.title),
-      cfgSearch ? el("span", {class: "small mono"}, treffer ? treffer + "×" : "") : null,
+      cfgSearch ? el("span", {class: "small mono"}, match ? match + "×" : "") : null,
       open ? el("span", {class: "num"}, open) : null));
   });
 }
 
 function renderCfgFields() {
-  const ziel = $("cfg-fields");
-  ziel.replaceChildren();
-  if (C.fehler) {
-    ziel.appendChild(el("p", {class: "empty", style: "color:var(--err)"}, C.fehler));
+  const target = $("cfg-fields");
+  target.replaceChildren();
+  if (C.error) {
+    target.appendChild(el("p", {class: "empty", style: "color:var(--err)"}, C.error));
     return;
   }
   // Bei einer Suche werden ALLE Abschnitte mit Treffern gezeigt, nicht nur der
@@ -6545,12 +6545,12 @@ function renderCfgFields() {
     ? C.sections.filter((a) => a.keys.some(cfgMatches))
     : [C.sections[cfgSection]].filter(Boolean);
   if (!gruppen.length) {
-    ziel.appendChild(el("p", {class: "empty"}, "Kein Feld passt zu „" + cfgSearch + "“."));
+    target.appendChild(el("p", {class: "empty"}, "Kein Feld passt zu „" + cfgSearch + "“."));
     return;
   }
   for (const a of gruppen) {
-    ziel.appendChild(el("div", {class: "cfg-group"}, a.title));
-    for (const key of a.keys) if (cfgMatches(key)) ziel.appendChild(cfgRow(key));
+    target.appendChild(el("div", {class: "cfg-group"}, a.title));
+    for (const key of a.keys) if (cfgMatches(key)) target.appendChild(cfgRow(key));
   }
 }
 
@@ -6593,7 +6593,7 @@ function cfgAction(key, m) {
 async function cfgCallAction(key, m) {
   // Ein Netzabruf dauert, und der Reiter zeichnet sich danach neu: ohne den
   // Kasten saehe das Fenster in der Zwischenzeit tot aus.
-  const antwort = await withWork("ask", m.action.befehl, null,
+  const antwort = await withWork("ask", m.action.command, null,
     m.action.text, "Das kann ein paar Sekunden dauern.");
   if (!antwort) return;
   // Geklappt, aber mit Vorbehalt (ein Konstrukt in der Antwort, das das
@@ -6717,7 +6717,7 @@ function cfgEmpty(key, m) {
 const STD_MAX = 24;
 
 function cfgDefault(key, m) {
-  const std = C.standard[key];
+  const std = C.defaults[key];
   if (cfgEqual(cfgValue(key), std))
     return el("span", {class: "cfg-default"}, "Standard");
   // **Ein Knopf sagt, was er TUT** — dieselbe Regel wie beim Rückgängig im
@@ -6728,18 +6728,18 @@ function cfgDefault(key, m) {
   // höher an `cfgEmpty()` — hier gehört hin, worauf zurückgesetzt wird.
   const roh = (std === null || std === undefined || std === "")
     ? "(leer)" : cfgText(std, m);
-  const kurz = roh.length > STD_MAX;
+  const short = roh.length > STD_MAX;
   return el("button", {class: "btn quiet cfg-default",
                        title: "auf den Standardwert zurücksetzen"
-                              + (kurz ? ": " + roh : ""),
+                              + (short ? ": " + roh : ""),
                        onclick: () => cfgSet(key, std)},
-            "↺ Standard" + (kurz ? "" : ": " + roh));
+            "↺ Standard" + (short ? "" : ": " + roh));
 }
 
 function renderCfgRight() {
-  const ziel = $("cfg-right");
+  const target = $("cfg-right");
   const keys = Object.keys(cfgChanged);
-  ziel.replaceChildren();
+  target.replaceChildren();
 
   const kopf = el("div", {class: "section"},
     el("div", {class: "row"},
@@ -6750,7 +6750,7 @@ function renderCfgRight() {
     keys.length ? el("button", {class: "btn", onclick: () => {
       cfgChanged = {}; cfgCorrections = []; renderSettings();
     }}, "Änderungen verwerfen") : null);
-  ziel.appendChild(kopf);
+  target.appendChild(kopf);
 
   const liste = el("div", {class: "section growing"});
   if (!keys.length && !cfgCorrections.length) {
@@ -6779,15 +6779,15 @@ function renderCfgRight() {
       el("div", {class: "cfg-key"}, k.key),
       el("div", {class: "row small"},
         el("span", {class: "cfg-old"}, cfgText(k.sent, m)), "→",
-        el("span", {class: "cfg-new"}, cfgText(k.wurde, m)))));
+        el("span", {class: "cfg-new"}, cfgText(k.became, m)))));
   }
-  ziel.appendChild(liste);
+  target.appendChild(liste);
 
-  ziel.appendChild(el("div", {class: "section"},
+  target.appendChild(el("div", {class: "section"},
     el("p", {class: "hint"},
       "Ein laufender Lauf zieht sofort mit — der Hauptprozess lädt die Datei " +
       "neu, sobald hier geschrieben wurde."),
-    el("p", {class: "cfg-key", style: "word-break:break-all"}, C.pfad || "")));
+    el("p", {class: "cfg-key", style: "word-break:break-all"}, C.path || "")));
 }
 
 async function cfgSave() {
@@ -6802,7 +6802,7 @@ async function cfgSave() {
     return setStatus({text: antwort.message || "Nicht gespeichert.", kind: "err"});
   C.values = antwort.values;
   cfgChanged = {};
-  cfgCorrections = antwort.korrekturen || [];
+  cfgCorrections = antwort.corrections || [];
   setStatus({
     text: count + (count === 1 ? " Einstellung" : " Einstellungen") + " gespeichert." +
           (cfgCorrections.length ? "  " + cfgCorrections.length + " davon korrigiert." : ""),
@@ -6824,7 +6824,7 @@ async function cfgSave() {
  * etwa weil die Sequenzdatei ausserhalb geändert wurde —, bleibt es beim
  * bisherigen Stand, statt die Arbeit im Vorbeigehen mitzunehmen.
  */
-async function switchSequence(befehl, daten) {
+async function switchSequence(command, data_reload) {
   if (SC && SC.dirty) {
     const antwort = await ask("scan_save");
     if (antwort) {
@@ -6835,7 +6835,7 @@ async function switchSequence(befehl, daten) {
       }
     }
   }
-  return call(befehl, daten);
+  return call(command, data_reload);
 }
 
 /* --------------------------------------------------------------- Verdrahtung */
@@ -6871,11 +6871,11 @@ function wire() {
     renderSettings();
   });
 
-  for (const knopf of document.querySelectorAll("[data-scan-kind]"))
-    knopf.addEventListener("click", () => scanSetKind(knopf.dataset.scanKind));
-  for (const knopf of document.querySelectorAll("[data-erk-tool]"))
-    knopf.addEventListener("click", () => callScan("region_mode",
-      {kind: scanKind, modus: knopf.dataset.erkTool}));
+  for (const button of document.querySelectorAll("[data-scan-kind]"))
+    button.addEventListener("click", () => scanSetKind(button.dataset.scanKind));
+  for (const button of document.querySelectorAll("[data-erk-tool]"))
+    button.addEventListener("click", () => callScan("region_mode",
+      {kind: scanKind, mode: button.dataset.erkTool}));
 
   $("scan-open").addEventListener("change", (e) => {
     scanWizardStep = null;
@@ -6896,37 +6896,37 @@ function wire() {
     scanGuided = !scanGuided;
     renderScans();
   });
-  document.querySelectorAll("[data-scan-schritt]").forEach((knopf) =>
-    knopf.addEventListener("click", () => {
-      scanWizardStep = Number(knopf.dataset.scanSchritt);
+  document.querySelectorAll("[data-scan-schritt]").forEach((button) =>
+    button.addEventListener("click", () => {
+      scanWizardStep = Number(button.dataset.scanSchritt);
       scanSteps();
     }));
   $("scan-slots-find").addEventListener("click", () =>
-    callScan("scan_mode_set", {modus: "finden", kind: scanKind}));
+    callScan("scan_mode_set", {mode: "find", kind: scanKind}));
   $("scan-slot-new").addEventListener("click", () =>
-    callScan("scan_mode_set", {modus: "slot", kind: scanKind}));
+    callScan("scan_mode_set", {mode: "slot", kind: scanKind}));
   $("scan-test").addEventListener("click", () => callScan("scan_recognize"));
   $("scan-learn").addEventListener("click", () =>
     callScan("scan_learn_preview", {scope: "alle"}));
-  document.querySelectorAll("[data-scan-tool]").forEach((knopf) =>
-    knopf.addEventListener("click", () =>
-      callScan("scan_mode_set", {modus: knopf.dataset.scanTool, kind: scanKind})));
+  document.querySelectorAll("[data-scan-tool]").forEach((button) =>
+    button.addEventListener("click", () =>
+      callScan("scan_mode_set", {mode: button.dataset.scanTool, kind: scanKind})));
   $("scan-pin").addEventListener("click", () =>
-    callScan("scan_mode_set", {modus: SC.modus, kind: scanKind,
-                                   fixiert: !SC.werkzeug_fixiert}));
+    callScan("scan_mode_set", {mode: SC.mode, kind: scanKind,
+                                   fixiert: !SC.tool_pinned}));
   $("scan-photo").addEventListener("click", () => callScan("scan_screenshot", {kind: scanKind}));
   $("scan-fullscreen").addEventListener("click", () =>
     callScan("scan_area_set", {kind: scanKind}));
   $("scan-draw-area").addEventListener("click",
-    () => callScan("scan_mode_set", {modus: "area", kind: scanKind}));
+    () => callScan("scan_mode_set", {mode: "area", kind: scanKind}));
   $("scan-window-capture").addEventListener("click", scanMaintainWindows);
   $("scan-window").addEventListener("change", (e) => {
-    const wahl = scanWindows[Number(e.target.value)];
+    const choice = scanWindows[Number(e.target.value)];
     // Waehlen nimmt NICHT auf — das tut der Knopf darueber. Vorher stand hier
     // beides in einem Griff, und dann sah es aus, als handele die Liste von
     // selbst und der Knopf gar nicht (er holte dasselbe Bild noch einmal).
-    if (wahl) callScan("scan_area_set",
-      {kind: scanKind, area: wahl.area, window: wahl.id});
+    if (choice) callScan("scan_area_set",
+      {kind: scanKind, area: choice.area, window: choice.id});
     else callScan("scan_area_set", {kind: scanKind});
   });
   $("scan-fit").addEventListener("click", scanFit);
@@ -6958,7 +6958,7 @@ function wire() {
     // ALT misst den Hintergrund des Slots unter dem Zeiger — ohne den Umweg
     // ueber die Modus-Kachel. Der haeufigste Handgriff nach dem Finden.
     if (e.altKey) return callScan("scan_direct", {x: position[0], y: position[1],
-                                                 was: "messen", kind: scanKind});
+                                                 what: "measure", kind: scanKind});
     // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
     // Geste wie im Sequenz-Editor.
     callScan("scan_click", {x: position[0], y: position[1], kind: scanKind,
@@ -6974,7 +6974,7 @@ function wire() {
   flaeche.addEventListener("dblclick", (e) => {
     const position = scanPositionFromEvent(e);
     if (position) callScan("scan_direct",
-      {x: position[0], y: position[1], was: "klick", kind: scanKind});
+      {x: position[0], y: position[1], what: "click", kind: scanKind});
   });
 
   // **Einen gewaehlten Slot zieht man, statt vier Zahlen zu tippen.** Gepackt
@@ -6982,7 +6982,7 @@ function wire() {
   // Trefferregel (die liegt in `_slot_under()` in Python und soll dort bleiben),
   // und die Geste liest sich wie ueberall sonst: erst auswaehlen, dann ziehen.
   flaeche.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || !SC || SC.modus !== "wahl" || SC.ecke) return;
+    if (e.button !== 0 || !SC || SC.mode !== "choice" || SC.corner) return;
     const position = scanPositionFromEvent(e);
     if (!position || !scanSelectedSlots().some((s) => scanInSlot(s, position))) return;
     scanDragStart = position;
@@ -7005,12 +7005,12 @@ function wire() {
     }
     // Nur waehrend des Aufziehens gebraucht — sonst waere es ein Neuaufbau des
     // Overlays bei jeder Mausbewegung.
-    if (!SC || !SC.ecke) return;
+    if (!SC || !SC.corner) return;
     scanPointer = scanPositionFromEvent(e);
     scanOverlay();
   });
   buehne.addEventListener("mousemove", (e) => {
-    if (!SC || !SC.ecke || SC.modus !== "finden") return;
+    if (!SC || !SC.corner || SC.mode !== "find") return;
     const position = scanSearchPositionFromStage(e);
     if (!position) return;
     scanPointer = position;
@@ -7107,7 +7107,7 @@ function keyboard(e) {
     // gar nicht.
     const schub = {ArrowLeft: [-1, 0], ArrowRight: [1, 0],
                    ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
-    if (schub && SC && (SC.selection.length || SC.wahl.kind === "slot")) {
+    if (schub && SC && (SC.selection.length || SC.choice.kind === "slot")) {
       e.preventDefault();
       const weit = e.shiftKey ? 10 : 1;
       // Eine GEHALTENE Taste ist ein Verschieben, nicht dreissig: nur der erste
@@ -7131,10 +7131,10 @@ function keyboard(e) {
     // vorkommt, und der naechste Klick im Bild haette eine andere Wirkung als
     // die Leiste behauptet.
     if (scanKind === "item") {
-      const modus = SCAN_MODES.find((m) => m.taste.toLowerCase() === e.key.toLowerCase());
-      if (modus) { e.preventDefault(); return callScan("scan_mode_set",
-        {modus: modus.key, kind: scanKind}); }
-      if (e.key === "Delete" && SC && SC.wahl.kind === "slot") {
+      const mode = SCAN_MODES.find((m) => m.shortcut.toLowerCase() === e.key.toLowerCase());
+      if (mode) { e.preventDefault(); return callScan("scan_mode_set",
+        {mode: mode.key, kind: scanKind}); }
+      if (e.key === "Delete" && SC && SC.choice.kind === "slot") {
         e.preventDefault();
         return callScan("scan_slot_delete");
       }
@@ -7146,13 +7146,13 @@ function keyboard(e) {
     const werkzeug = {r: "region", k: "action"}[e.key.toLowerCase()];
     if (werkzeug) {
       e.preventDefault();
-      return callScan("region_mode", {kind: scanKind, modus: werkzeug});
+      return callScan("region_mode", {kind: scanKind, mode: werkzeug});
     }
     if (e.key.toLowerCase() === "t" && SC && detScan()) {
       e.preventDefault();
       return detTest();
     }
-    if (e.key === "Delete" && scanKind === "boss" && SC && SC.boss.wahl) {
+    if (e.key === "Delete" && scanKind === "boss" && SC && SC.boss.choice) {
       e.preventDefault();
       return callScan("boss_delete");
     }

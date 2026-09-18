@@ -100,7 +100,7 @@ class ScanLearningMixin:
             # aber „Item 1". Der Platzhalter war nur fuer einen moeglichen
             # manuellen Widerspruch gedacht und bereitete beim Ankreuzen sogar
             # ein Duplikat vor. Der vorhandene Datensatz ist deshalb immer der
-            # sichtbare Standard; `neu_name` bleibt nur fuer die ausdrueckliche
+            # sichtbare Standard; `new_name` bleibt nur fuer die ausdrueckliche
             # UI-Aktion „Als anderes Item lernen" erhalten.
             neu_name = next_item_name({n: None for n in vergeben})
             vergeben.add(neu_name)
@@ -120,10 +120,10 @@ class ScanLearningMixin:
             review.append({
                 "slot": slot.name, "name": name, "category": category,
                 "priority": priority,
-                "existing": match or "", "neu_name": neu_name,
-                "duplikat": match if kompatibel else "",
-                "variante": variante,
-                "im_scan": im_scan, "can_add": can_add,
+                "existing": match or "", "new_name": neu_name,
+                "duplicate": match if kompatibel else "",
+                "variant": variante,
+                "in_scan": im_scan, "can_add": can_add,
                 # Das Haekchen beschreibt die gewuenschte Scan-Mitgliedschaft:
                 # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
                 # bewusst abwaehlen und damit aus genau diesem Scan entfernen.
@@ -137,8 +137,8 @@ class ScanLearningMixin:
                     f"{leere_slots} leere Slot(s) übersprungen — nichts zu lernen.",
                     "info")
             return self._scan_report("Keiner der Slots liegt im Screenshot.", "warn")
-        doppelt = sum(bool(z["duplikat"]) for z in review)
-        varianten = sum(bool(z["variante"]) for z in review)
+        doppelt = sum(bool(z["duplicate"]) for z in review)
+        varianten = sum(bool(z["variant"]) for z in review)
         parts = []
         if doppelt:
             parts.append(f"{doppelt} bereits gelernt")
@@ -367,7 +367,7 @@ class ScanLearningMixin:
             zusatz = (f"; {verschoben} andere Item(s) in '{item.category}' nach hinten gerückt"
                       if verschoben else "")
             return self._scan_changed(f"{name}: Priorität {item.priority}{zusatz}.")
-        if field == "konfidenz":
+        if field == "confidence":
             self._remember(f"'{name}': Konfidenz")
             item.min_confidence = max(0.0, min(1.0, float(value or 0)))
             return self._scan_changed()
@@ -627,7 +627,7 @@ class ScanLearningMixin:
             return self._scan_report(
                 f"Keine Items in '{old or 'ohne Kategorie'}'.", "warn")
 
-        self._remember(f"Kategorie '{old or 'ohne'}' → '{new or 'ohne'}'")
+        self._remember(f"Kategorie '{old or 'without'}' → '{new or 'without'}'")
         for item in betroffen:
             item.category = new
         # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in
@@ -774,8 +774,8 @@ class ScanLearningMixin:
         if not lauf:
             return None
         return {"total": lauf["total"], "open": len(lauf["open"]),
-                "fertig": lauf["total"] - len(lauf["open"]),
-                "umbenannt": lauf["umbenannt"], "varianten": lauf["varianten"]}
+                "done": lauf["total"] - len(lauf["open"]),
+                "renamed": lauf["renamed"], "variants": lauf["variants"]}
 
     def scan_autoname_start(self, data: Optional[dict] = None) -> dict:
         """Beginnt einen Benenn-Durchgang — **die Seite treibt ihn, Item fuer Item.**
@@ -827,12 +827,12 @@ class ScanLearningMixin:
             "open": [i.name for i in candidates],
             "total": len(candidates),
             "selection": katalog.names() or None,
-            "benannt": [],
-            "umbenannt": 0,
-            "varianten": 0,
-            "ohne": 0,
+            "named": [],
+            "renamed": 0,
+            "variants": 0,
+            "without": 0,
             "timeouts": 0,
-            "gemerkt": False,
+            "remembered": False,
         }
         return self._scan_report(f"Benennt {len(candidates)} Item(s) …", "info")
 
@@ -852,7 +852,7 @@ class ScanLearningMixin:
         item = self.items.get(lauf["open"].pop(0))
         if item is None or not item.template_names():
             # Zwischen Start und Schritt kann gelöscht worden sein.
-            lauf["ohne"] += 1
+            lauf["without"] += 1
             return self.scan_data()
 
         path = self.filepath.parent / "templates" / item.template_names()[0]
@@ -860,7 +860,7 @@ class ScanLearningMixin:
             with Image.open(path) as image:
                 vorlage = image.copy()
         except (OSError, ValueError):
-            lauf["ohne"] += 1
+            lauf["without"] += 1
             return self.scan_data()
 
         def frag(grenze):
@@ -889,7 +889,7 @@ class ScanLearningMixin:
         if not basis:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.
-            lauf["timeouts" if reason == TIMEOUT else "ohne"] += 1
+            lauf["timeouts" if reason == TIMEOUT else "without"] += 1
             return self.scan_data()
 
         if basis == item.name:
@@ -917,12 +917,12 @@ class ScanLearningMixin:
         # Modell nichts erkennt; je Item abgelegt waere der Stand von VOR dem
         # Durchgang nach dreissig Items aus dem Stapel gefallen — also genau
         # der, auf den man zurueck will.
-        if not lauf["gemerkt"]:
+        if not lauf["remembered"]:
             self._remember(str(lauf["total"]) + " Item(s) per LLM benannt")
-            lauf["gemerkt"] = True
+            lauf["remembered"] = True
         self._item_rename(item, new, merken=False)
-        lauf["umbenannt"] += 1
-        lauf["benannt"].append(item)
+        lauf["renamed"] += 1
+        lauf["named"].append(item)
         return self._scan_changed()
 
     def _autoname_variant(self, bestand, item, lauf: dict) -> dict:
@@ -934,16 +934,16 @@ class ScanLearningMixin:
         new = [n for n in item.template_names() if n not in bestand.template_names()]
         if not new and item.name not in self.items:
             return self.scan_data()
-        if not lauf["gemerkt"]:
+        if not lauf["remembered"]:
             self._remember(str(lauf["total"]) + " Item(s) per LLM benannt")
-            lauf["gemerkt"] = True
+            lauf["remembered"] = True
         bestand.template_variants = list(bestand.template_variants) + new
         self.items.pop(item.name, None)
         # Gespeichert wird `cfg.items`, nicht der Arbeitsbestand des Reiters:
         # ohne das Angleichen stuende das geloeschte Item beim naechsten
         # Speichern noch im Scan.
         self._sync_objects()
-        lauf["varianten"] += 1
+        lauf["variants"] += 1
         return self._scan_changed()
 
     def scan_autoname_end(self, data: Optional[dict] = None) -> dict:
@@ -968,27 +968,27 @@ class ScanLearningMixin:
         abgebrochen = bool((data or {}).get("abgebrochen"))
         remaining = len(lauf["open"])
         checked = lauf["total"] - remaining
-        kopf = (str(lauf["umbenannt"]) + " von " + str(checked)
+        kopf = (str(lauf["renamed"]) + " von " + str(checked)
                 + " Item(s) per LLM benannt")
         # **Eine zusammengelegte Vorlage wird gesagt.** Sonst zaehlt der Nutzer
         # hinterher weniger Items als Slots und sucht den Fehler beim Lernen.
-        if lauf["varianten"]:
-            kopf += (", " + str(lauf["varianten"])
+        if lauf["variants"]:
+            kopf += (", " + str(lauf["variants"])
                      + " Vorlage(n) an ein bekanntes Item angehängt")
         if abgebrochen:
             kopf += " — abgebrochen, " + str(remaining) + " nicht angesehen"
 
         katalog = self._catalog()
-        if katalog and lauf["benannt"]:
-            aenderungen, _bekannt = self._catalog_plan(lauf["benannt"], katalog)
+        if katalog and lauf["named"]:
+            aenderungen, _bekannt = self._catalog_plan(lauf["named"], katalog)
             if aenderungen:
                 categories = self._catalog_apply(aenderungen)
                 return self._scan_changed(
                     kopf + ", " + str(len(aenderungen)) + " davon in "
                     + str(len(categories)) + " Kategorie(n) eingeordnet"
-                    + self._autoname_remaining(lauf["ohne"], lauf["selection"], lauf["timeouts"]))
+                    + self._autoname_remaining(lauf["without"], lauf["selection"], lauf["timeouts"]))
         return self._scan_changed(
-            kopf + self._autoname_remaining(lauf["ohne"], lauf["selection"], lauf["timeouts"]))
+            kopf + self._autoname_remaining(lauf["without"], lauf["selection"], lauf["timeouts"]))
 
     # ------------------------------------------------------------- Erkennung
 

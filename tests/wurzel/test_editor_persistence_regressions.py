@@ -122,7 +122,7 @@ class EditorPersistenzTest(unittest.TestCase):
         folder = active_templates_dir(self.state)
         folder.mkdir(parents=True)
         (folder / "a.png").write_bytes(b"Original")
-        with patch.object(Path, "rename", side_effect=PermissionError("gesperrt")):
+        with patch.object(Path, "rename", side_effect=PermissionError("locked")):
             self.assertFalse(commands._apply_item_rename(self.state, "A", "Neu"))
         self.assertEqual(self.state.global_items["A"].template, "a.png")
         self.assertEqual((folder / "a.png").read_bytes(), b"Original")
@@ -220,7 +220,7 @@ class EditorPersistenzTest(unittest.TestCase):
             for data in ([], {"Gueltig": gueltig, "Defekt": None}):
                 with self.subTest(kind=kind, data=data):
                     file.write_text(json.dumps(data), encoding="utf-8")
-                    self.assertFalse(load(self.state, "defekt"))
+                    self.assertFalse(load(self.state, "broken"))
                     self.assertEqual(getattr(self.state, attribut), bestand_vorher)
                     self.assertEqual(scan_datei.read_bytes(), vorher)
 
@@ -243,7 +243,7 @@ class EditorPersistenzTest(unittest.TestCase):
                 (boss_scans.save_boss_scan, BossScanConfig("Boss", owner_sequence="Alt")),
                 (icon_scans.save_icon_scan, IconScanConfig("Icon", owner_sequence="Alt"))):
             with self.subTest(save=save.__name__), \
-                    patch.object(Path, "mkdir", side_effect=PermissionError("gesperrt")):
+                    patch.object(Path, "mkdir", side_effect=PermissionError("locked")):
                 self.assertFalse(save(cfg))
 
 

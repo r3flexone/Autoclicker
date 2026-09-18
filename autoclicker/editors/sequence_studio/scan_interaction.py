@@ -33,7 +33,7 @@ class ScanInteractionMixin:
         Nochmal auf denselben Modus führt zurück ins Auswählen — ein Modus, in den
         man nur hinein kommt, wäre eine Falltür.
         """
-        modus = (data or {}).get("modus") or MODUS_WAHL
+        modus = (data or {}).get("mode") or MODUS_WAHL
         if modus not in MODI_ALLE:
             return self._scan_report(f"Unbekannter Modus '{modus}'.", "err")
         if modus != MODUS_WAHL:
@@ -478,7 +478,7 @@ class ScanInteractionMixin:
 
         Ein Modus lohnt sich, solange man dasselbe zwanzigmal tut; eine einzelne
         Korrektur am Slot unter dem Zeiger ist das Gegenteil davon.
-        `messen` = ALT-Klick, `klick` = Doppelklick. Beides wählt den Slot mit aus.
+        `measure` = ALT-Klick, `klick` = Doppelklick. Beides wählt den Slot mit aus.
         """
         gesperrt = self._scan_requirement({"kind": "item"})
         if gesperrt is not None:
@@ -487,15 +487,15 @@ class ScanInteractionMixin:
             x, y = int((data or {})["x"]), int((data or {})["y"])
         except (KeyError, TypeError, ValueError):
             return self._scan_report("Klick ohne Stelle — ignoriert.", "err")
-        was = str((data or {}).get("was") or "")
+        was = str((data or {}).get("what") or "")
         name = self._slot_under(x, y)
         if name is None:
             return self._scan_report("Dort liegt kein Slot.", "info")
         self.scan_art, self.scan_name = ART_SLOT, name
         self._auswahl = [name]
-        if was == "messen":
+        if was == "measure":
             return self._click_measure(x, y)
-        if was == "klick":
+        if was == "click":
             return self._click_clickpoint(x, y)
         return self._scan_report(f"Unbekannter Handgriff '{was}'.", "err")
 

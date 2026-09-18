@@ -76,13 +76,13 @@ _puffer = io.StringIO()
 with redirect_stdout(_puffer):
     _d = _auswerten([_eins, _zwei])
 check("die Auswertung gibt keine Zeile aus", _puffer.getvalue() == "")
-check("beide Sitzungen sind erfasst", len(_d["sitzungen"]) == 2)
+check("beide Sitzungen sind erfasst", len(_d["sessions"]) == 2)
 check("die Laufzeit zaehlt zusammen", _d["duration"] == 5400.0)
-check("und jede Sitzung traegt ihre eigene", _d["sitzungen"][1]["duration"] == 1800.0)
+check("und jede Sitzung traegt ihre eigene", _d["sessions"][1]["duration"] == 1800.0)
 check("jede Sitzung kennt ihren Dateinamen",
-      [s["file"] for s in _d["sitzungen"]] == [_eins.name, _zwei.name])
+      [s["file"] for s in _d["sessions"]] == [_eins.name, _zwei.name])
 check("und den Beginn aus der ersten Zeile",
-      _d["sitzungen"][0]["beginn"] == "2026-01-01 00:00:00")
+      _d["sessions"][0]["begin"] == "2026-01-01 00:00:00")
 
 # DIE Frage, fuer die es den Reiter gibt: der oberste Timeout ist der Schritt,
 # den es zu reparieren lohnt — also muss die Liste absteigend sortiert sein.
@@ -107,7 +107,7 @@ _puffer = io.StringIO()
 with redirect_stdout(_puffer):
     _dk = _auswerten([_kaputt])
 check("eine unlesbare Datei kommt als Grund zurueck",
-      len(_dk["nicht_lesbar"]) == 1 and _dk["nicht_lesbar"][0][0] == "gibtsnicht.csv")
+      len(_dk["unreadable"]) == 1 and _dk["unreadable"][0][0] == "gibtsnicht.csv")
 check("und auch dabei wird nichts gedruckt", _puffer.getvalue() == "")
 
 # Die Konsole druckt weiterhin — sie ist der zweite Nutzer derselben Auswertung.
@@ -141,12 +141,12 @@ try:
     CONFIG.scan_market_value_file = ""
 
     _z = _b.report_data()
-    check("der Reiter findet die Logs", len(_z["sitzungen"]) == 2)
-    check("die neueste steht oben", _z["sitzungen"][0]["file"] == _zwei.name)
+    check("der Reiter findet die Logs", len(_z["sessions"]) == 2)
+    check("die neueste steht oben", _z["sessions"][0]["file"] == _zwei.name)
     check("ohne Wahl gilt alles zusammen",
-          _z["selected"] == "" and _z["bericht"]["sitzungen"] == 2)
+          _z["selected"] == "" and _z["bericht"]["sessions"] == 2)
     check("und die Zahlen sind die der Auswertung",
-          _z["bericht"]["timeouts_total"] == 3 and _z["bericht"]["klicks"] == 3)
+          _z["bericht"]["timeouts_total"] == 3 and _z["bericht"]["clicks"] == 3)
     # Die Ranglisten kommen gekuerzt — angezeigt werden ohnehin nur die obersten.
     check("die Rangliste ist gedeckelt",
           len(_z["bericht"]["timeouts"]) <= 10)
@@ -155,28 +155,28 @@ try:
 
     _z = _b.report_data({"file": _zwei.name})
     check("eine einzelne Sitzung laesst sich waehlen",
-          _z["selected"] == _zwei.name and _z["bericht"]["sitzungen"] == 1)
-    check("und zeigt nur deren Zahlen", _z["bericht"]["klicks"] == 1)
-    check("die Liste links bleibt vollstaendig", len(_z["sitzungen"]) == 2)
+          _z["selected"] == _zwei.name and _z["bericht"]["sessions"] == 1)
+    check("und zeigt nur deren Zahlen", _z["bericht"]["clicks"] == 1)
+    check("die Liste links bleibt vollstaendig", len(_z["sessions"]) == 2)
 
     # Eine Wahl, deren Datei es nicht mehr gibt, faellt auf „alle" zurueck statt
     # einen leeren Bericht zu zeigen: der Ordner wird aufgeraeumt, waehrend das
     # Fenster offen steht.
     _z = _b.report_data({"file": "weggeraeumt.csv"})
     check("eine verschwundene Wahl faellt auf alle zurueck",
-          _z["selected"] == "" and _z["bericht"]["sitzungen"] == 2)
+          _z["selected"] == "" and _z["bericht"]["sessions"] == 2)
 
-    check("ohne Marktwert-Datei gibt es keine Bewertung", _z["ertrag"] is None)
+    check("ohne Marktwert-Datei gibt es keine Bewertung", _z["yield_value"] is None)
 
     # --- Ertrag: Stueckzahl mal Wert, und es ist eine Obergrenze -------------
     Path("marktwert.json").write_text('{"Erz": 100, "Silber": 5}', encoding="utf-8")
     CONFIG.scan_market_value_file = "marktwert.json"
     _z = _b.report_data({"file": ""})
-    _e = _z["ertrag"]
-    check("mit Marktwert-Datei wird gerechnet", _e is not None and _e["lesbar"])
+    _e = _z["yield_value"]
+    check("mit Marktwert-Datei wird gerechnet", _e is not None and _e["readable"])
     # 3x Erz a 100 = 300. Holz hat keinen Wert und darf nicht mitzaehlen.
     check("gezaehlt wird Stueckzahl mal Wert", _e["gold"] == 300.0)
-    check("und pro Stunde ueber die Laufzeit", round(_e["pro_stunde"], 2) == 200.0)
+    check("und pro Stunde ueber die Laufzeit", round(_e["per_hour"], 2) == 200.0)
     check("Items ohne Wert stehen getrennt", _e["without_value"] == [["Holz", 1]])
     check("die Zeilen tragen Anzahl, Wert und Summe",
           _e["rows"] == [["Erz", 3, 100.0, 300.0]])
@@ -189,13 +189,13 @@ try:
     from autoclicker.runtime.item_scan import _marktwert_cache
     _marktwert_cache.clear()
     check("eine unlesbare Wertetabelle wird gemeldet, nicht verschluckt",
-          _b.report_data()["ertrag"]["lesbar"] is False)
+          _b.report_data()["yield_value"]["readable"] is False)
 
     CONFIG.scan_market_value_file = ""
     CONFIG.session_log_dir = "gibtsnicht"
     _z = _b.report_data()
     check("ohne Log-Ordner bleibt der Reiter leer statt zu werfen",
-          _z["sitzungen"] == [] and _z["bericht"]["sitzungen"] == 0)
+          _z["sessions"] == [] and _z["bericht"]["sessions"] == 0)
 
     CONFIG.session_log_dir, CONFIG.scan_market_value_file = _alt_dir, _alt_markt
 finally:

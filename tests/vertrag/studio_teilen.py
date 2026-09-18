@@ -72,33 +72,33 @@ try:
     _z = _b.share_data()
     # **Gezaehlt wird, was auf Platte liegt** — exportiert wird derselbe Stand.
     check("der Bestand kommt von Platte",
-          _z["bestand"]["sequences"] == 1)
-    check("noch kein Buendel da", _z["exporte"] == [])
+          _z["inventory"]["sequences"] == 1)
+    check("noch kein Buendel da", _z["exports"] == [])
     check("und nichts gewaehlt", _z["import"] is None)
 
-    _z = _b.export_start({"teile": {k: True for k, _ in _TEILE}, "name": "probe"})
+    _z = _b.export_start({"parts": {k: True for k, _ in _TEILE}, "name": "probe"})
     check("das Buendel steht auf Platte", Path("exports/probe.zip").exists())
-    check("und in der Liste", [e["name"] for e in _z["exporte"]] == ["probe.zip"])
-    _z = _b.export_start({"teile": {k: False for k, _ in _TEILE}})
+    check("und in der Liste", [e["name"] for e in _z["exports"]] == ["probe.zip"])
+    _z = _b.export_start({"parts": {k: False for k, _ in _TEILE}})
     check("ohne Auswahl wird nichts geschrieben", _z["status"]["kind"] == "warn")
 
-    _z = _b.import_check({"pfad": "gibtsnicht.zip"})
+    _z = _b.import_check({"path": "gibtsnicht.zip"})
     check("eine fehlende Datei ist ein Fehler", _z["status"]["kind"] == "err")
     check("und nichts bleibt gewaehlt", _z["import"] is None)
 
-    _z = _b.import_check({"pfad": "exports/probe.zip"})
-    check("das Manifest sagt, was drin ist", _z["import"]["inhalt"]["sequences"] == 1)
+    _z = _b.import_check({"path": "exports/probe.zip"})
+    check("das Manifest sagt, was drin ist", _z["import"]["content"]["sequences"] == 1)
     # Ohne beidseitig bekanntes Spielfenster gibt es nichts umzurechnen.
     check("ohne Fenster keine automatische Umrechnung", _z["import"]["auto"] is False)
 
-    _z = _b.import_start({"teile": {k: True for k, _ in _TEILE},
-                            "modus": "identity", "merge": True})
+    _z = _b.import_start({"parts": {k: True for k, _ in _TEILE},
+                            "mode": "identity", "merge": True})
     check("der Import laeuft durch", _z["status"]["kind"] == "ok")
     check("und das Fenster liest danach neu", len(_b.points) >= 2)
 
     # **Der Import schreibt auf Platte, nicht nur in den Speicher.**
     _b2 = _SB(_seq, _farm_pfad, "sequences")
     check("ein frisches Studio sieht dasselbe",
-          _b2.share_data()["bestand"]["sequences"] >= 1)
+          _b2.share_data()["inventory"]["sequences"] >= 1)
 finally:
     _os.chdir(_cwd)

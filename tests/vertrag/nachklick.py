@@ -524,7 +524,7 @@ def _verwerf_text(reason):
     return puffer.getvalue()
 
 
-_txt_knopf = _verwerf_text("knopf")
+_txt_knopf = _verwerf_text("button")
 _txt_fenster = _verwerf_text("window")
 check("der Verwerfen-Knopf behauptet kein geschlossenes Fenster",
       "geschlossen" not in _txt_knopf and "verworfen" in _txt_knopf.lower())

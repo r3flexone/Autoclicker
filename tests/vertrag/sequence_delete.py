@@ -85,14 +85,14 @@ try:
 
     _liste = {e["name"]: e for e in _b.sequence_list()}
     check("beide Sequenzen stehen in der Uebersicht", set(_liste) == {"Farm", "Raid"})
-    _umfang = {u["kind"]: u["count"] for u in _liste["Raid"]["umfang"]}
+    _umfang = {u["kind"]: u["count"] for u in _liste["Raid"]["scope"]}
     check("der Umfang nennt die Scans", _umfang.get("item_scans") == 1)
     check("und die Vorlagen", _umfang.get("templates") == 2)
-    check("eine Sequenz ohne Beiwerk hat keinen Umfang", _liste["Farm"]["umfang"] == [])
+    check("eine Sequenz ohne Beiwerk hat keinen Umfang", _liste["Farm"]["scope"] == [])
     # **Die Mehrzahl steht fertig in den Daten.** Die Ansicht haengte erst ein
     # "n" an — das ergibt "Vorlagen" und "Item-Scann". Bei drei von fuenf
     # Woertern falsch, und aufgefallen ist es erst am gerenderten Dialog.
-    _woerter = {u["kind"]: u["wort"] for u in _liste["Raid"]["umfang"]}
+    _woerter = {u["kind"]: u["word"] for u in _liste["Raid"]["scope"]}
     check("bei einem bleibt die Einzahl", _woerter.get("item_scans") == "Item-Scan")
     check("bei mehreren steht die richtige Mehrzahl",
           _woerter.get("templates") == "Vorlagen")

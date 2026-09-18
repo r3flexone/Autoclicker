@@ -60,7 +60,7 @@ class BridgeBerichtMixin:
             return self._report_empty(folder, fehler)
 
         total = auswerten(alle)
-        names = {s["file"] for s in total["sitzungen"]}
+        names = {s["file"] for s in total["sessions"]}
         # Eine Wahl, deren Datei es nicht mehr gibt, fällt auf „alle" zurück
         # statt einen leeren Bericht zu zeigen: der Ordner wird aufgeräumt,
         # das Fenster steht derweil offen.
@@ -74,17 +74,17 @@ class BridgeBerichtMixin:
             report = total
 
         return {
-            "ordner": str(folder.resolve()) if folder else "",
+            "folder": str(folder.resolve()) if folder else "",
             "active": bool(self._report_config("session_log_enabled", False)),
             "available": True,
-            "fehler": "",
+            "error": "",
             "selected": self._bericht_wahl,
             # Neueste zuerst: danach sucht man. Die Auswertung selbst liest in
             # Dateireihenfolge, das ändert an den Summen nichts.
-            "sitzungen": list(reversed(total["sitzungen"])),
-            "ausgelassen": max(0, len(self._report_all_files(folder)) - len(alle)),
+            "sessions": list(reversed(total["sessions"])),
+            "skipped_files": max(0, len(self._report_all_files(folder)) - len(alle)),
             "bericht": self._report_brief(report),
-            "ertrag": self._yield(report),
+            "yield_value": self._yield(report),
         }
 
     # ------------------------------------------------------------ Dateien
@@ -125,15 +125,15 @@ class BridgeBerichtMixin:
 
     def _report_empty(self, folder: Optional[Path], fehler: str) -> dict:
         return {
-            "ordner": str(folder.resolve()) if folder else "",
+            "folder": str(folder.resolve()) if folder else "",
             "active": bool(self._report_config("session_log_enabled", False)),
             "available": False,
-            "fehler": fehler,
+            "error": fehler,
             "selected": "",
-            "sitzungen": [],
-            "ausgelassen": 0,
+            "sessions": [],
+            "skipped_files": 0,
             "bericht": None,
-            "ertrag": None,
+            "yield_value": None,
         }
 
     # ------------------------------------------------------------ Auswertung
@@ -149,10 +149,10 @@ class BridgeBerichtMixin:
         verify_ok = raw["verify_ok"]
         miss = raw["verify_miss"]
         return {
-            "sitzungen": len(raw["sitzungen"]),
+            "sessions": len(raw["sessions"]),
             "duration": raw["duration"],
-            "klicks": raw["events"].get("click", 0),
-            "tasten": raw["events"].get("key", 0),
+            "clicks": raw["events"].get("click", 0),
+            "keys": raw["events"].get("key", 0),
             "scrolls": raw["events"].get("scroll", 0),
             "timeouts": raw["timeouts"][:RANG_ZEILEN],
             "timeouts_total": sum(n for _, n in raw["timeouts"]),
@@ -167,7 +167,7 @@ class BridgeBerichtMixin:
                             for name, n in miss[:RANG_ZEILEN]],
             "disturbances": raw["disturbances"],
             "unbekannt": raw["unbekannt"],
-            "nicht_lesbar": raw["nicht_lesbar"],
+            "unreadable": raw["unreadable"],
         }
 
     def _yield(self, raw: dict) -> Optional[dict]:
@@ -188,8 +188,8 @@ class BridgeBerichtMixin:
         from ...runtime.item_scan import load_market_values
         values = load_market_values(path)
         if not values:
-            return {"file": path, "lesbar": False, "rows": [],
-                    "gold": 0.0, "pro_stunde": None, "without_value": []}
+            return {"file": path, "readable": False, "rows": [],
+                    "gold": 0.0, "per_hour": None, "without_value": []}
 
         lines, ohne, gold = [], [], 0.0
         for name, count in raw["items"]:
@@ -204,9 +204,9 @@ class BridgeBerichtMixin:
         stunden = raw["duration"] / 3600 if raw["duration"] > 0 else 0
         return {
             "file": path,
-            "lesbar": True,
+            "readable": True,
             "rows": lines,
             "gold": gold,
-            "pro_stunde": (gold / stunden) if stunden else None,
+            "per_hour": (gold / stunden) if stunden else None,
             "without_value": ohne,
         }

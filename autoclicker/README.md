@@ -11,7 +11,7 @@ getrennt. Einstiegspunkt der Anwendung ist weiterhin `main.py` im Projektwurzelo
 | `models.py` | Persistierte Datenklassen und gemeinsamer Laufzeitzustand |
 | `handlers.py` | Hotkeys und Orchestrierung der Benutzeraktionen |
 | `diagnose.py` | Verständliche Prüfung des gesamten Setups |
-| `befehl.py` | Dateibasierte Befehle vom Studio an den Hauptprozess |
+| `mailbox.py` | Dateibasierte Befehle vom Studio an den Hauptprozess |
 | `session_log.py` | Threadsicheres CSV-Protokoll pro Lauf |
 | `import_export.py` | Validierte ZIP-Bundles, Remapping und transaktionaler Import |
 

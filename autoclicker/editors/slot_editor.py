@@ -542,7 +542,7 @@ def _check_assignment(old_slots: list, new_rects: list[tuple],
                        inset: int, offset: tuple[int, int]) -> tuple:
     """Prüft, ob die neu erkannten Rechtecke zu den bestehenden Slots passen.
 
-    Gibt `(paare, versatz, meldungen)` zurück; `pairs` ist leer, wenn die Zuordnung
+    Gibt `(paare, avg_offset, meldungen)` zurück; `pairs` ist leer, wenn die Zuordnung
     nicht eindeutig ist.
 
     Die Prüfung ist der ganze Punkt: übernommen wird nur, wenn die Verschiebung für
@@ -594,8 +594,8 @@ def _check_assignment(old_slots: list, new_rects: list[tuple],
         return [], None, messages
 
     # Mittlerer Versatz nur zur Anzeige/Weitergabe
-    versatz = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
-    return pairs, versatz, messages
+    avg_offset = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+    return pairs, avg_offset, messages
 
 
 _REPAIR_MAX_SPREAD = 4          # px, die die Einzelversaetze auseinanderliegen duerfen

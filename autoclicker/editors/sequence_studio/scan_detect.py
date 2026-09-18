@@ -177,20 +177,20 @@ class ScanDetectMixin:
             "boss_scans": copy.deepcopy(self.boss_scans),
             "icon_scans": copy.deepcopy(self.icon_scans),
             "global_bosses": copy.deepcopy(self.global_bosses),
-            "boss_offen": self.boss_offen,
-            "boss_wahl": self.boss_wahl,
-            "boss_wahl_global": self.boss_wahl_global,
-            "icon_offen": self.icon_offen,
+            "boss_open": self.boss_offen,
+            "boss_choice": self.boss_wahl,
+            "boss_choice_global": self.boss_wahl_global,
+            "icon_open": self.icon_offen,
         }
 
     def _detection_undo(self, stamp: dict) -> None:
         self.boss_scans = stamp.get("boss_scans", {})
         self.icon_scans = stamp.get("icon_scans", {})
         self.global_bosses = stamp.get("global_bosses", [])
-        self.boss_offen = stamp.get("boss_offen", "")
-        self.boss_wahl = stamp.get("boss_wahl", "")
-        self.boss_wahl_global = stamp.get("boss_wahl_global", False)
-        self.icon_offen = stamp.get("icon_offen", "")
+        self.boss_offen = stamp.get("boss_open", "")
+        self.boss_wahl = stamp.get("boss_choice", "")
+        self.boss_wahl_global = stamp.get("boss_choice_global", False)
+        self.icon_offen = stamp.get("icon_open", "")
         # Ein Testergebnis gehört zu dem Stand, in dem es gemessen wurde.
         self._boss_test = self._icon_test = None
         self._boss_tests = {}
@@ -205,27 +205,27 @@ class ScanDetectMixin:
             "global_bosses": [self._boss_json(b, True) for b in self.global_bosses],
             "boss": {
                 "open": self.boss_offen,
-                "wahl": self.boss_wahl,
-                "wahl_global": self.boss_wahl_global,
+                "choice": self.boss_wahl,
+                "choice_global": self.boss_wahl_global,
                 "test": self._boss_test,
                 "tests": self._boss_tests,
             },
             "icon": {"open": self.icon_offen, "test": self._icon_test},
-            "region_ziel": (list(self._region_ziel) if self._region_ziel else None),
+            "region_target": (list(self._region_ziel) if self._region_ziel else None),
             # Was die Aktionen brauchen: die Punkte kennt die Sequenz-Seite der
             # Brücke, die Item-Scan-Namen der Item-Teil. Beides steht hier
             # nochmal, weil der Reiter sonst zwei Kanäle bräuchte.
             "points": [{"id": p.id, "name": p.name or f"Punkt {p.id}",
                         "x": p.x, "y": p.y} for p in self.points],
-            "item_scan_namen": sorted(self.scans, key=str.casefold),
+            "item_scan_names": sorted(self.scans, key=str.casefold),
             "actions": {
-                "boss": [{"value": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
+                "boss": [{"value": a, "text": ACTION_TEXT[a], "short": _AKTION_KURZ[a]}
                          for a in _BOSS_AKTIONEN],
-                "icon": [{"value": a, "text": ACTION_TEXT[a], "kurz": _AKTION_KURZ[a]}
+                "icon": [{"value": a, "text": ACTION_TEXT[a], "short": _AKTION_KURZ[a]}
                          for a in _ICON_AKTIONEN],
                 "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODI_TEXT],
             },
-            "bereit": self._ready(),
+            "ready": self._ready(),
         }
 
     def _boss_scan_json(self, cfg: BossScanConfig) -> dict:
@@ -239,7 +239,7 @@ class ScanDetectMixin:
             "llm_fallback": bool(cfg.llm_fallback),
             "use_ocr": bool(cfg.use_ocr),
             "ocr_fallback": bool(cfg.ocr_fallback),
-            "bosse": [self._boss_json(b, False) for b in cfg.bosses],
+            "bosses": [self._boss_json(b, False) for b in cfg.bosses],
         }
 
     def _boss_json(self, b: BossProfile, aus_bibliothek: bool) -> dict:
@@ -248,18 +248,18 @@ class ScanDetectMixin:
             "global": aus_bibliothek,
             "template": b.template,
             "preview": self._template_url(b.template) if b.template else "",
-            "konfidenz": b.min_confidence,
+            "confidence": b.min_confidence,
             "marker": [hex_color(c) for c in b.marker_colors],
             "action": b.action,
             "scan": b.action_scan,
-            "scan_modus": b.action_scan_mode,
+            "scan_mode": b.action_scan_mode,
             "point_id": b.action_point_id,
-            "taste": b.action_key,
+            "action_key": b.action_key,
             "delay": b.action_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie per Bild
             # erkannt — nur noch per OCR/LLM. Das ist keine Warnung, sondern
             # eine Auskunft: der Reiter sagt daneben, ob OCR überhaupt an ist.
-            "erkennung": ("template" if b.template
+            "detection": ("template" if b.template
                           else ("marker" if b.marker_colors else "keine")),
         }
 
@@ -270,19 +270,19 @@ class ScanDetectMixin:
             "region": list(cfg.scan_region),
             "template": cfg.template,
             "preview": self._template_url(cfg.template) if cfg.template else "",
-            "konfidenz": cfg.min_confidence,
+            "confidence": cfg.min_confidence,
             "marker": [hex_color(c) for c in cfg.marker_colors],
             "tolerance": cfg.color_tolerance,
             "action": cfg.action,
             "point_id": cfg.action_point_id,
-            "taste": cfg.action_key,
+            "action_key": cfg.action_key,
             "delay": cfg.action_delay,
-            "erkennung": ("template" if cfg.template
+            "detection": ("template" if cfg.template
                           else ("marker" if cfg.marker_colors else "keine")),
             # **Der Ausschnitt zeigt, was der Scan sieht.** Nur für den offenen:
             # bei zwanzig Icon-Scans wären das zwanzig Bilder in jeder
             # Momentaufnahme, und neunzehn davon sieht niemand an.
-            "ausschnitt": self._region_image(cfg.scan_region) if remaining else "",
+            "crop_image": self._region_image(cfg.scan_region) if remaining else "",
         }
 
     def _region_image(self, region) -> str:
@@ -307,17 +307,17 @@ class ScanDetectMixin:
         return {
             "opencv": self._has_opencv(),
             "pillow": self._has_pillow(),
-            "ocr_stand": self._ocr_stand,
-            "ocr_an": bool(CONFIG.ocr_enabled),
+            "ocr_state": self._ocr_stand,
+            "ocr_on": bool(CONFIG.ocr_enabled),
             "ocr_backend": CONFIG.ocr_backend or "automatisch",
-            "ocr_sprachen": list(CONFIG.ocr_languages or []),
+            "ocr_languages": list(CONFIG.ocr_languages or []),
             "ocr_min": CONFIG.ocr_min_confidence,
-            "llm_an": bool(CONFIG.llm_enabled),
+            "llm_on": bool(CONFIG.llm_enabled),
             "llm_endpoint": CONFIG.llm_endpoint,
-            "llm_modell": CONFIG.llm_model or "",
-            "llm_stand": self._llm_stand,
+            "llm_model": CONFIG.llm_model or "",
+            "llm_state": self._llm_stand,
             "boss_learn_global": bool(CONFIG.boss_learn_global),
-            "marker_alle": bool(CONFIG.scan_require_all_markers),
+            "marker_all": bool(CONFIG.scan_require_all_markers),
             "marker_required": int(CONFIG.scan_min_markers_required),
             "marker_min_pixel": int(CONFIG.scan_marker_min_pixels),
         }
@@ -507,7 +507,7 @@ class ScanDetectMixin:
             self._remember(f"Boss '{boss.name}': Item-Scan")
             boss.action_scan = str(value) or None
             return self._scan_changed()
-        if field == "scan_modus":
+        if field == "scan_mode":
             if value not in VALID_SCAN_MODES:
                 return self._scan_report(f"Unbekannter Scan-Modus '{value}'.", "err")
             self._remember(f"Boss '{boss.name}': Scan-Modus")
@@ -634,7 +634,7 @@ class ScanDetectMixin:
         das sind dieselben sechs Felder. Zwei Setzer dafür wären zwei Stellen,
         an denen eine Prüfung fehlen kann.
         """
-        if field == "konfidenz":
+        if field == "confidence":
             number = self._decimal(value)
             if number is None or not 0 < number <= 1:
                 return self._scan_report("Konfidenz muss zwischen 0 und 1 liegen.", "err")
@@ -663,7 +663,7 @@ class ScanDetectMixin:
             objekt.action_point_id = point_id
             self._action_point_apply(objekt)
             return self._scan_changed()
-        if field == "taste":
+        if field == "action_key":
             self._remember(f"{wer}: Taste")
             objekt.action_key = str(value) or None
             return self._scan_changed()
@@ -794,7 +794,7 @@ class ScanDetectMixin:
         """
         self._scan_load()
         data = data or {}
-        modus = str(data.get("modus") or MODUS_REGION)
+        modus = str(data.get("mode") or MODUS_REGION)
         if modus not in (MODUS_REGION, MODUS_AKTION, MODUS_WAHL):
             return self._scan_report(f"Unbekannter Modus '{modus}'.", "err")
         kind = str(data.get("kind") or "")
@@ -1062,7 +1062,7 @@ class ScanDetectMixin:
         result = self._profile_check(cfg, cfg.scan_region, cfg.color_tolerance)
         result["action"] = self._action_text(cfg)
         if not result["ok"] and cfg.marker_colors:
-            result["vorschlag"] = self._tolerance_proposal(cfg)
+            result["proposal"] = self._tolerance_proposal(cfg)
         self._icon_test = result
         return self._scan_report(
             (f"Icon erkannt ({result['reason']})." if result["ok"]
@@ -1095,18 +1095,18 @@ class ScanDetectMixin:
             reason = (f"{found} von {total} Markern" if ok
                      else f"{found} von {total} Markern · nötig {noetig}")
         result = self._test_result(profil, ok, reason)
-        result.update({"konfidenz": round(value, 4), "duration": round(duration),
-                         "marker_gefunden": found, "marker_total": total,
+        result.update({"confidence": round(value, 4), "duration": round(duration),
+                         "marker_found": found, "marker_total": total,
                          "marker_required": noetig, "tolerance": tolerance,
-                         "methode": "Template" if profil.template else "Marker"})
+                         "method": "Template" if profil.template else "Marker"})
         return result
 
     @staticmethod
     def _test_result(profil, ok: bool, reason: str) -> dict:
-        return {"name": profil.name, "ok": ok, "reason": reason, "methode": None,
-                "konfidenz": None, "duration": 0, "marker_gefunden": 0,
+        return {"name": profil.name, "ok": ok, "reason": reason, "method": None,
+                "confidence": None, "duration": 0, "marker_found": 0,
                 "marker_total": len(profil.marker_colors), "marker_required": 0,
-                "tolerance": 0, "action": "", "vorschlag": None}
+                "tolerance": 0, "action": "", "proposal": None}
 
     @staticmethod
     def _marker_count(profil, crop, tolerance: int) -> tuple:
@@ -1172,10 +1172,10 @@ class ScanDetectMixin:
             from ... import ocr
             backends = ocr.available_backends()
         except ImportError as fehler:
-            self._ocr_stand = {"da": False, "backends": [], "reason": str(fehler)}
+            self._ocr_stand = {"present": False, "backends": [], "reason": str(fehler)}
             return self._scan_report(f"OCR nicht verfügbar: {fehler}", "warn")
         self._ocr_stand = {
-            "da": bool(backends), "backends": backends, "reason": "",
+            "present": bool(backends), "backends": backends, "reason": "",
             "duration": round((time.perf_counter() - beginn) * 1000),
         }
         if not backends:
@@ -1208,7 +1208,7 @@ class ScanDetectMixin:
         erreichbar, message = test_connection(
             CONFIG.llm_provider, CONFIG.llm_endpoint, CONFIG.llm_model)
         self._llm_stand = {
-            "erreichbar": erreichbar, "reason": "" if erreichbar else message,
+            "reachable": erreichbar, "reason": "" if erreichbar else message,
             "endpoint": CONFIG.llm_endpoint or chat_endpoint(CONFIG.llm_provider),
             "duration": round((time.perf_counter() - beginn) * 1000),
         }

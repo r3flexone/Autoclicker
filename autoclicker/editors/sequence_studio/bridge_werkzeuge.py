@@ -63,14 +63,14 @@ class BridgeWerkzeugeMixin:
                         "color": list(p.color) if p.color else None,
                         "usages": self._point_usages(p.id)}
                        for p in self.points],
-            "kalibrierung": self._calib_json(),
+            "calibration": self._calib_json(),
             # Dieselbe Zahl wie in der Momentaufnahme: mehrere Werkzeuge
             # hier warten mit der Maus auf ENTER und blockieren dabei die
             # Bruecke. Der Reiter braucht sie, ohne den Editor zu fragen.
             "wait_timeout": WARTE_TIMEOUT,
-            "umfang": [{"key": k, "text": t, "vorgabe": v}
+            "scope": [{"key": k, "text": t, "default_value": v}
                        for k, t, v in KALIB_UMFANG],
-            "aufnahme_tasten": [list(line) for line in RECORDING_HOTKEYS],
+            "recording_keys": [list(line) for line in RECORDING_HOTKEYS],
             # Welche Sequenz offen ist, gehoert hierher: die Kopfleiste blendet
             # ihre Bedienelemente in diesem Reiter aus (er bearbeitet andere
             # Dateien), und ohne diese Angabe weiss man bei der Klick-Runde
@@ -186,7 +186,7 @@ class BridgeWerkzeugeMixin:
         set_cursor_pos(point.x, point.y)
         current = self._color_at(point.x, point.y)
         return {"ok": True, "point_id": point.id,
-                "gespeichert": list(point.color) if point.color else None,
+                "saved": list(point.color) if point.color else None,
                 "current": list(current) if current else None,
                 "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
 
@@ -257,7 +257,7 @@ class BridgeWerkzeugeMixin:
         r, g, b = (int(v) for v in color[:3])
         return {"rgb": [r, g, b], "hex": f"#{r:02X}{g:02X}{b:02X}",
                 "name": namensfunktion((r, g, b)), "count": int(count),
-                "anteil": round(100.0 * count / max(1, total), 1)}
+                "share_pct": round(100.0 * count / max(1, total), 1)}
 
     def _running(self) -> bool:
         """Läuft gerade eine Sequenz? Aus der Statusdatei, wie im Live-Run."""
@@ -275,9 +275,9 @@ class BridgeWerkzeugeMixin:
         return {
             "ref1": self._kalib.get("ref1"),
             "ref2": self._kalib.get("ref2"),
-            "versatz": {"x": round(transform.get("offset_x", 0.0), 1),
+            "offset": {"x": round(transform.get("offset_x", 0.0), 1),
                         "y": round(transform.get("offset_y", 0.0), 1)},
-            "skalierung": {"x": round(transform.get("scale_x", 1.0), 4),
+            "scaling": {"x": round(transform.get("scale_x", 1.0), 4),
                            "y": round(transform.get("scale_y", 1.0), 4)},
             "identity": self._is_identity(transform),
             "preview": self._kalib.get("preview", []),
@@ -304,13 +304,13 @@ class BridgeWerkzeugeMixin:
             report = check_setup(self._inventory())
         except Exception as e:                                   # noqa: BLE001
             return {"ok": False, "message": f"Prüfung fehlgeschlagen: {e}",
-                    "befunde": [], "checked": []}
+                    "findings": [], "checked": []}
         return {
             "ok": True,
-            "befunde": [{"stufe": b.level, "area": b.area, "text": b.text,
-                         "tipp": b.tip} for b in report.befunde],
+            "findings": [{"level": b.level, "area": b.area, "text": b.text,
+                         "tip": b.tip} for b in report.befunde],
             "checked": list(report.checked),
-            "fehler": sum(1 for b in report.befunde if b.level == LEVEL_ERROR),
+            "errors": sum(1 for b in report.befunde if b.level == LEVEL_ERROR),
             "hints": sum(1 for b in report.befunde if b.level != LEVEL_ERROR),
         }
 
@@ -407,8 +407,8 @@ class BridgeWerkzeugeMixin:
             "confirm": True,
             "point_id": point.id,
             "expected": list(point.color),
-            "gemessen": list(gemessen),
-            "abstand": distance,
+            "measured": list(gemessen),
+            "gap": distance,
             "tolerance": CONFIG.punkt_farbtoleranz,
             "position": [x, y],
             "message": (f"Andere Farbe als gespeichert (Abstand {distance}, erlaubt "
@@ -483,7 +483,7 @@ class BridgeWerkzeugeMixin:
         message = f"Kalibriert: {parts or 'nichts geändert'}."
         if sicherung:
             message += f" Sicherung: {sicherung}"
-        return {"ok": True, "message": message, "sicherung": sicherung or ""}
+        return {"ok": True, "message": message, "backup": sicherung or ""}
 
     def _after_calibration(self) -> None:
         """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
@@ -493,7 +493,7 @@ class BridgeWerkzeugeMixin:
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.
-        send_command("daten")
+        send_command("data_reload")
 
     def _point_with_id(self, point_id):
         try:
@@ -536,7 +536,7 @@ class BridgeWerkzeugeMixin:
             self._kalib["preview"] = []
             return
         self._kalib["preview"] = [
-            {"was": str(was), "vorher": list(vorher), "nachher": list(nachher)}
+            {"what": str(was), "before": list(vorher), "after": list(nachher)}
             for was, vorher, nachher in lines[:40]
         ]
 
@@ -563,7 +563,7 @@ class BridgeWerkzeugeMixin:
         # geladen als die hier offene. Ohne sie klickt man eine Runde lang die
         # Punkte einer fremden Sequenz nach - dieselbe Falle, die `command_start`
         # laengst vermeidet.
-        if not send_command("nachklick", file=str(self.filepath)):
+        if not send_command("reclick", file=str(self.filepath)):
             return {"ok": False, "message": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = True
         return {"ok": True,
@@ -589,11 +589,11 @@ class BridgeWerkzeugeMixin:
         sehr wohl eine Runde läuft.
         """
         from ...mailbox import send_command
-        discard = bool((data or {}).get("verwerfen"))
+        discard = bool((data or {}).get("discard"))
         # Warum verworfen wurde, weiss nur der Aufrufer — der Hauptprozess kann
         # den Knopf nicht vom geschlossenen Fenster unterscheiden.
-        reason = str((data or {}).get("reason") or "knopf")
-        if not send_command("nachklick_stop", discard="1" if discard else "0",
+        reason = str((data or {}).get("reason") or "button")
+        if not send_command("reclick_stop", discard="1" if discard else "0",
                      reason=reason):
             return {"ok": False, "message": "Befehl konnte nicht abgelegt werden."}
         self._nachklick_gestartet = False
@@ -624,7 +624,7 @@ class BridgeWerkzeugeMixin:
         import time
         from ...config import RECLICK_STATUS_FILE
         empty = {"active": False, "index": 0, "total": 0, "history": [],
-                "point": {}, "verwaist": False}
+                "point": {}, "orphaned": False}
         try:
             with open(RECLICK_STATUS_FILE, "r", encoding="utf-8") as f:
                 stamp = json.load(f)
@@ -636,7 +636,7 @@ class BridgeWerkzeugeMixin:
         # dahinter. Am Alter erkennbar, und nur solange es aktiv behauptet: eine
         # abgeschlossene Runde ist Vergangenheit und darf alt sein.
         old = time.time() - float(stamp.get("stamp") or 0)
-        stamp["verwaist"] = bool(stamp.get("active") and old > self.NACHKLICK_ALTER)
+        stamp["orphaned"] = bool(stamp.get("active") and old > self.NACHKLICK_ALTER)
         return stamp
 
     def reclick_on_close(self) -> None:
@@ -649,4 +649,4 @@ class BridgeWerkzeugeMixin:
         """
         if not self._nachklick_gestartet:
             return
-        self.reclick_end({"verwerfen": True, "reason": "window"})
+        self.reclick_end({"discard": True, "reason": "window"})

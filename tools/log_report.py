@@ -121,9 +121,9 @@ def auswerten(pfade: list[Path]) -> dict:
                 verify_ok[detail or "(ohne Namen)"] += 1
         sitzungen.append({
             "file": path.name,
-            "beginn": (lines[0].get("timestamp") or "").strip(),
+            "begin": (lines[0].get("timestamp") or "").strip(),
             "duration": duration,
-            "klicks": eigen.get("click", 0),
+            "clicks": eigen.get("click", 0),
             "timeouts": eigen.get("timeout", 0),
             "items": eigen.get("item_found", 0),
             "verify_miss": eigen.get("verify_miss", 0),
@@ -133,8 +133,8 @@ def auswerten(pfade: list[Path]) -> dict:
                   if k.startswith(("focus_", "humanize_"))}
     unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(disturbances)
     return {
-        "sitzungen": sitzungen,
-        "nicht_lesbar": nicht_lesbar,
+        "sessions": sitzungen,
+        "unreadable": nicht_lesbar,
         "duration": gesamt_dauer,
         "events": dict(gesamt_events),
         "timeouts": _rang(timeouts_je_schritt),
@@ -149,10 +149,10 @@ def auswerten(pfade: list[Path]) -> dict:
 
 def report(pfade: list[Path]) -> None:
     data = auswerten(pfade)
-    for file, fehler in data["nicht_lesbar"]:
+    for file, fehler in data["unreadable"]:
         print(f"  ! {file}: nicht lesbar ({fehler})")
 
-    sessions = len(data["sitzungen"])
+    sessions = len(data["sessions"])
     if not sessions:
         print("Keine lesbaren Logs gefunden.")
         return

@@ -2,7 +2,7 @@
 
 Was die Vertragssuite hier NICHT sehen kann: ob der Schalter und der Knopf
 ueberhaupt gezeichnet werden. Beide haengen an Feldern der Momentaufnahme
-(`use_catalog`, `katalog_an`) — steht dort ein Tippfehler, ist der Wert
+(`use_catalog`, `catalog_on`) — steht dort ein Tippfehler, ist der Wert
 schlicht `undefined`, die Seite laeuft weiter und der Knopf fehlt einfach.
 Genau der Fehler, der im Fenster sofort auffaellt und in keinem Logik-Test.
 """
@@ -50,7 +50,7 @@ def aufbau():
     cfgmod.CONFIG.scan_catalog_file = str(file)
 
     # **Beide LLM-Schalter, und keiner davon aus der echten config.json.** Der
-    # Sammel-Knopf haengt am Modul-CONFIG (`llm_an` in der Momentaufnahme), der
+    # Sammel-Knopf haengt am Modul-CONFIG (`llm_on` in der Momentaufnahme), der
     # Durchgang liest die DATEI (`load_config`). Haengte der Test an der Config
     # des Entwicklers, waere er hier gruen und auf einem frischen Checkout rot —
     # dort steht `llm_enabled` auf false.

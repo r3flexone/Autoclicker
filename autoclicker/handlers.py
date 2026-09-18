@@ -990,7 +990,7 @@ def command_quit(state: AutoClickerState, arguments: dict) -> None:
 # und „Studio geschlossen" bei einem Druck auf „Verwerfen" laesst es aussehen,
 # als haette sich die Runde von selbst beendet.
 DISCARD_REASON = {
-    "knopf": "im Studio verworfen",
+    "button": "im Studio verworfen",
     "window": "Studio geschlossen — Runde verworfen",
 }
 
@@ -1017,7 +1017,7 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     # Wer das liest und weiss, dass er nichts geschlossen hat, sucht den Fehler
     # an der falschen Stelle: es sieht aus, als haette sich die Runde von selbst
     # beendet.
-    reason = str(arguments.get("reason") or "knopf")
+    reason = str(arguments.get("reason") or "button")
     with state.lock:
         running = state.reclick_active
     if not running:
@@ -1025,7 +1025,7 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
             print(f"\n{info('Es laeuft keine Klick-Runde.')}")
         return
     if discard:
-        stop_reclick(state, DISCARD_REASON.get(reason, DISCARD_REASON["knopf"]),
+        stop_reclick(state, DISCARD_REASON.get(reason, DISCARD_REASON["button"]),
                        apply_config=False)
     else:
         stop_reclick(state, "aus dem Studio übernommen")
@@ -1082,23 +1082,23 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
 # auseinander, hat ein Knopf keine Wirkung mehr und niemand merkt es.
 COMMANDS = {
     "start": command_start,
-    "start_manuell": command_start_manual,
+    "start_manual": command_start_manual,
     "stop": command_stop,
     "pause": command_pause,
     "skip": command_skip,
     "skip_step": command_skip_step,
     "finish": command_finish,
     "manual": command_manual,
-    "manuell_aktion": command_manual_action,
-    "zeitplan": command_schedule,
-    "zeigen": command_show,
+    "manual_action": command_manual_action,
+    "schedule": command_schedule,
+    "show": command_show,
     "config": command_config,
-    "daten": command_data,
-    "aufnahme": command_recording,
-    "aufnahme_stop": command_recording_stop,
-    "programm_beenden": command_quit,
-    "nachklick": command_reclick,
-    "nachklick_stop": command_reclick_stop,
+    "data_reload": command_data,
+    "recording": command_recording,
+    "recording_stop": command_recording_stop,
+    "quit_program": command_quit,
+    "reclick": command_reclick,
+    "reclick_stop": command_reclick_stop,
     "block_test": command_step_test,
 }
 

@@ -9,7 +9,7 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 (`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
-`.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
+`.lauf.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
 *Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
 über `auswerten()` aus `tools/log_report.py`, Stückzahlen mal

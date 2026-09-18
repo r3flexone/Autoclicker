@@ -206,7 +206,7 @@ class ScanStateMixin:
         meldet nur, der zweite (mit `discard`) lädt — dieselbe Zwei-Schritt-
         Regel wie überall, wo hier etwas verloren gehen kann.
         """
-        if self._scan_dirty and not (data or {}).get("verwerfen"):
+        if self._scan_dirty and not (data or {}).get("discard"):
             return self._scan_report(
                 "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
                 "— „Speichern“ behält sie.", "warn")
@@ -353,7 +353,7 @@ class ScanStateMixin:
             # Der Abzug ist vollständig oder er ist keiner: ein Rückgängig, das
             # die Slots zurückdreht und den Boss-Scan stehen lässt, wäre ein
             # halbes Zurück — und das ist schlimmer als gar keins.
-            "erkennung": self._detection_state(),
+            "detection": self._detection_state(),
         }
 
     def _remember(self, was: str) -> None:
@@ -386,7 +386,7 @@ class ScanStateMixin:
         self._scan_dirty = stamp["dirty"]
         self.scan_bereich = stamp.get("area")
         self.scan_fenster_id = stamp.get("window_id", 0)
-        self._detection_undo(stamp.get("erkennung") or {})
+        self._detection_undo(stamp.get("detection") or {})
         # Die Scan-Konfigurationen tragen abgeleitete Objektlisten; nach dem
         # Abzug zeigen sie auf Kopien statt auf die Slots in `self.slots`.
         self._sync_objects()
@@ -423,8 +423,8 @@ class ScanStateMixin:
         ]
         remaining = [nr for nr, _, _, fertig, _, _ in raw if not fertig]
         current = remaining[0] if remaining else 0
-        return [{"nr": nr, "title": title, "was": was, "fertig": fertig,
-                 "current": nr == current, "befehl": command, "knopf": knopf}
+        return [{"nr": nr, "title": title, "what": was, "done": fertig,
+                 "current": nr == current, "command": command, "button": knopf}
                 for nr, title, was, fertig, command, knopf in raw]
 
     def _canvas_area(self) -> Optional[dict]:
@@ -489,12 +489,12 @@ class ScanStateMixin:
             # nur aus dem aktuell offenen Editor darauf zu schliessen ist bei
             # mehreren Sequenzen zu fehleranfaellig.
             "sequence": self.board.name,
-            "aufnahme_bereit": {
+            "recording_ready": {
                 kind: self._scan_has_config(kind) for kind in SCAN_KINDS
             },
-            "modus": self.scan_modus,
-            "werkzeug_fixiert": self.scan_werkzeug_fixiert,
-            "ecke": list(self._ecke) if self._ecke else None,
+            "mode": self.scan_modus,
+            "tool_pinned": self.scan_werkzeug_fixiert,
+            "corner": list(self._ecke) if self._ecke else None,
             # Der Suchbereich muss zu SEHEN sein, solange man noch die Farbe
             # zeigen soll — sonst klickt man den Hintergrund an und weiss nicht,
             # worin gesucht wird.
@@ -511,11 +511,11 @@ class ScanStateMixin:
             # Ob der OFFENE Scan den Katalog benutzt UND eine Datei da ist. Die
             # Ansicht rechnet das nicht selbst nach: sie sieht `config.json`
             # nicht, und zwei Antworten auf dieselbe Frage liefen auseinander.
-            "katalog_an": bool(self._catalog()),
+            "catalog_on": bool(self._catalog()),
             # Ob die Sammel-Benennung ueberhaupt etwas tun kann. Die Ansicht
             # sieht `config.json` nicht — ein Knopf, der jedes Mal nur „ist
             # nicht aktiviert" meldet, ist schlechter als keiner.
-            "llm_an": bool(CONFIG.llm_enabled),
+            "llm_on": bool(CONFIG.llm_enabled),
             # Laeuft gerade ein Benenn-Durchgang, und wie weit ist er?
             "autoname": self._autoname_state(),
             "area": list(self.scan_bereich) if self.scan_bereich else None,
@@ -527,24 +527,24 @@ class ScanStateMixin:
             "window_available": bool(self.scan_fenster_id),
             "window_reference": (list(cfg.capture_window_rect)
                                   if cfg and cfg.capture_window_rect else None),
-            "schritte": self._steps(),
+            "steps": self._steps(),
             "open": self.scan_offen,
-            "wahl": {"kind": self.scan_art, "name": self.scan_name},
-            # Die Menge, auf der Sammel-Aktionen laufen. `wahl` bleibt der EINE,
+            "choice": {"kind": self.scan_art, "name": self.scan_name},
+            # Die Menge, auf der Sammel-Aktionen laufen. `choice` bleibt der EINE,
             # den der Inspektor bearbeitet — zwei Dinge, zwei Felder.
             "selection": [n for n in self._auswahl if n in self.slots],
             # Was STRG+Z zurücknehmen würde. Der Knopf nennt es beim Namen: ein
             # „Rückgängig" ohne Angabe, WAS es rückgängig macht, drückt man
             # entweder gar nicht oder einmal zu oft.
-            "undo": {"tiefe": len(self._undo),
-                     "was": self._undo[-1][0] if self._undo else ""},
+            "undo": {"depth": len(self._undo),
+                     "what": self._undo[-1][0] if self._undo else ""},
             "dirty": self._scan_dirty,
             # Hat der Hauptprozess die Dateien angefasst? Ein Lauf mit
             # Auto-Lernen tut das, und ohne diesen Hinweis sucht man die
             # gelernten Items im Reiter vergeblich.
             "foreign": self._disk_changed_externally(),
             "status": {"text": text, "kind": kind},
-            "ergebnis": self._result_json(),
+            "result": self._result_json(),
             "review": self._review_json(),
             # Beide sind optional und der Reiter sagt es, statt Knöpfe
             # anzubieten, die nichts tun: ohne Pillow gibt es kein Bild, ohne
@@ -571,7 +571,7 @@ class ScanStateMixin:
         return {
             "total": len(slots), "detected": len(detected), "foreign": len(foreign),
             "unbekannt": len(unbekannt), "detected_slots": detected,
-            "foreign_slots": foreign, "unbekannt_slots": unbekannt,
+            "foreign_slots": foreign, "unknown_slots": unbekannt,
         }
 
     def _review_json(self) -> Optional[dict]:
@@ -585,7 +585,7 @@ class ScanStateMixin:
             # Name ist zugleich die Item-Identitaet. Die Vorschlaege machen es
             # moeglich, eine weitere Slot-Groesse an ein bestehendes Item zu
             # haengen, statt aus Versehen ein zweites Item anzulegen.
-            "itemnamen": sorted(self.items, key=str.casefold),
+            "item_names": sorted(self.items, key=str.casefold),
         }
 
     @staticmethod
@@ -611,11 +611,11 @@ class ScanStateMixin:
         width = slot.scan_region[2] - slot.scan_region[0]
         height = slot.scan_region[3] - slot.scan_region[1]
         return {
-            "dabei": dabei,
+            "included": dabei,
             "active": bool(slot.enabled),
             "name": slot.name,
             "region": list(slot.scan_region),
-            "klick": list(slot.click_pos),
+            "click_pos": list(slot.click_pos),
             "color": hex_color(slot.slot_color),
             "width": width,
             "height": height,
@@ -624,7 +624,7 @@ class ScanStateMixin:
             # ihn in der LISTE finden, denn dort ist er so gross wie jeder
             # andere. Das ist der zweite Weg zum Löschen.
             "tiny": width < MIN_SLOT or height < MIN_SLOT,
-            "treffer": match,
+            "match": match,
             # **Stabile Identität.** Bleibt beim Aus- und Wiedereinschalten
             # gleich; die laufende Nummer gehört dagegen nur aktiven Slots.
             "id": slot.id,
@@ -632,7 +632,7 @@ class ScanStateMixin:
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
             # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
             "number": number,
-            "lauf": (total - number + 1) if (number and rueckwaerts) else number,
+            "run_index": (total - number + 1) if (number and rueckwaerts) else number,
             "total": total,
         }
 
@@ -673,7 +673,7 @@ class ScanStateMixin:
         fehlende_groessen = ([g for g in scan_groessen if g not in groessen]
                              if vorlagen else [])
         return {
-            "dabei": dabei,
+            "included": dabei,
             "active": bool(item.enabled),
             # Gehört (noch) nicht dazu, wird aber gerade gesehen. Die Ansicht
             # zeigt genau diese beiden Sorten, alles Weitere auf Knopfdruck: ein
@@ -687,9 +687,9 @@ class ScanStateMixin:
             "name": item.name,
             "category": item.category,
             "priority": item.priority,
-            "konfidenz": item.min_confidence,
+            "confidence": item.min_confidence,
             "template": vorlagen[0] if vorlagen else None,
-            "vorlagen": vorlagen,
+            "templates": vorlagen,
             "template_sizes": groessen,
             "missing_scan_sizes": fehlende_groessen,
             "marker": [hex_color(c) for c in item.marker_colors],
@@ -702,7 +702,7 @@ class ScanStateMixin:
             "confirmation_delay": item.confirm_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
-            "stumm": not vorlagen and not item.marker_colors,
+            "silent": not vorlagen and not item.marker_colors,
         }
 
     def _confirmation_json(self, item: ItemProfile) -> Optional[dict]:
@@ -716,9 +716,9 @@ class ScanStateMixin:
             return None
         point = next((p for p in self.points if p.id == item.confirm_point_id), None)
         if point is None:
-            return {"point_id": item.confirm_point_id, "fehlt": True,
+            return {"point_id": item.confirm_point_id, "missing": True,
                     "text": f"Punkt #{item.confirm_point_id} fehlt"}
-        return {"point_id": point.id, "fehlt": False,
+        return {"point_id": point.id, "missing": False,
                 "text": (point.name or f"Punkt {point.id}")
                         + f" ({point.x}, {point.y})"}
 
@@ -728,18 +728,18 @@ class ScanStateMixin:
             "slots": list(cfg.slot_names),
             "items": list(cfg.item_names),
             "tolerance": cfg.color_tolerance,
-            "lernen": bool(cfg.learn_unknown),
+            "learn": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
             "use_catalog": bool(cfg.use_catalog),
             "window": ({
                 "title": cfg.capture_window_title,
-                "instanz": cfg.capture_window_index,
-                "referenz": (list(cfg.capture_window_rect)
+                "instance": cfg.capture_window_index,
+                "reference": (list(cfg.capture_window_rect)
                               if cfg.capture_window_rect else None),
             } if cfg.capture_window_title else None),
             # Namen, die es global nicht mehr gibt: der Scan läuft mit dem Rest
             # weiter, aber man soll es sehen, bevor er es meldet.
-            "fehlend": ([n for n in cfg.slot_names if n not in self.slots] +
+            "missing_items": ([n for n in cfg.slot_names if n not in self.slots] +
                         [n for n in cfg.item_names if n not in self.items]),
         }
 
