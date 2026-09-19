@@ -1342,7 +1342,7 @@ Autoclicker-Idleclans/
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
-├── AGENTS.md               # dasselbe für Codex (inhaltsgleich zu CLAUDE.md)
+├── AGENTS.md               # Verweis auf CLAUDE.md (für Codex)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
 ├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
@@ -1373,8 +1373,6 @@ Autoclicker-Idleclans/
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
-    ├── rename.py           # Bezeichner im ganzen Repo umbenennen (token-basiert)
-    ├── rename_tables/      # die Tabellen der Umstellung auf englische Namen
     ├── llm_bench.py        # LLM-Benennung gegen den eigenen Bestand messen
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse (Werkzeug, kein Test)

@@ -9,9 +9,8 @@ Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor,
 OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection
 (Ollama / LM Studio). Wayland wird nicht unterstützt. **Bezeichner im Code sind
 Englisch, alles Gelesene ist Deutsch** — Kommentare, Docstrings, UI-Texte,
-Meldungen, Testbeschreibungen; neue Strings ebenso. Der Bestand ist
-umgestellt; was dabei bewusst deutsch geblieben ist und wie man umbenennt,
-steht bei „Bezeichner auf Englisch" unter den Konventionen.
+Meldungen, Testbeschreibungen; neue Strings ebenso (s. „Bezeichner auf
+Englisch" bei den Konventionen).
 
 ## Run / Lint / Test
 
@@ -46,8 +45,6 @@ python tools/log_report.py      # Wertet die Session-Logs aus (welcher Schritt h
                                 # --last = nur die neueste Session
 python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
-python tools/rename.py alt=neu  # Benennt einen Bezeichner im ganzen Repo um — token-basiert,
-                                # Kommentare bleiben Prosa (--dry-run, --strings, s. Konventionen)
 ```
 
 **Ein Kommando, drei Schichten: `python tests/all_tests.py`.**
@@ -3714,108 +3711,42 @@ UI-Texte, Meldungen, Hilfetexte, Testbeschreibungen (`check("…")`,
 angezeigt wird, ist Sprache; ein String, der etwas *adressiert*
 (`call("block_set")`, `"start_manual"`, ein Dispatch-Schlüssel), ist Code.
 
-**Der Bestand ist umgestellt, phasenweise und je ein grüner Stand**: (1)
-Werkzeug und diese Regel, (2) Python-Interna unter `autoclicker/`, (3) Brücke
-und Seite zusammen (die Tests halten beide Seiten gegeneinander, also gingen
-sie nur gemeinsam), (4) Modulnamen per `git mv` samt Briefkasten und
-Statusdateien, (5) `tests/`, `tools/`, `market_analysis/`, (6) Doku-Durchgang.
-Die Tabellen jeder Phase liegen unter `tools/rename_tables/` — wer wissen
-will, wie ein Name vorher hiess, findet ihn dort. Seither gilt: **wer eine
-Stelle anfasst und dort noch einen deutschen Namen findet, benennt ihn um —
-samt allen Aufrufern.** Eine halb umbenannte Funktion (Definition englisch,
-drei Aufrufer deutsch) gibt es nicht; flake8 `--select=F` findet den Rest, die
-Suite den Rest vom Rest.
+**Wer eine Stelle anfasst und dort noch einen deutschen Namen findet, benennt
+ihn um — samt allen Aufrufern.** Eine halb umbenannte Funktion (Definition
+englisch, drei Aufrufer deutsch) gibt es nicht; flake8 `--select=F` findet
+den Rest, die Suite den Rest vom Rest. Drei Stellen, an denen ein Name mehr
+ist als ein Name und deshalb auf beiden Seiten geändert werden muss:
 
-**Bewusst deutsch geblieben** — weil es gelesen wird, nicht gerufen:
+- **Keyword-Argumente, die zu JSON-Schlüsseln werden**: `send_command("show",
+  point=…)` schreibt `{"point": …}` in den Briefkasten, und der Empfänger liest
+  `.get("point")`.
+- **Die Seite hängt am DOM**: `t.dataset.view` ist das Attribut `data-view` in
+  `index.html`; `S.question` ist zugleich der JSON-Schlüssel, den die Brücke
+  schreibt. Ein Klick, der ins Leere geht, ohne `pageerror` — alle acht
+  Rauchtests rot —, ist fast immer dieser Fall.
+- **Tests, die JS-Quelltext als Python-String tragen** (`… in _html18`,
+  `page.evaluate(…)` in den Rauchtests) zitieren den Namen wörtlich.
+
+**Bewusst deutsch** — weil es gelesen wird, nicht gerufen:
 
 - Testmethoden-Namen (`def test_sequenzwechsel_entfernt_fremden_bestand`) —
   sie sind die Beschreibung, die im Lauf ausgegeben wird, dasselbe wie
   `check("…")`.
 - Die Matrix-Achsen `ohne`/`pillow`/`mit` in `tests.yml` — Beschriftungen
   der CI-Jobs, und diese Datei nennt sie so.
-- Die Beispiele im Docstring von `tools/rename.py` und die Fixtures in
-  `tests/root/test_rename.py` (`neu`, `alt`, `punkt_id`): das Werkzeug muss
-  an deutschen Namen vorgeführt werden, sonst prüft der Test nichts.
+- Konsolen-Eingabewörter, die neben dem englischen weiter gelten (`klick`,
+  `weg`, `maus`): sie werden getippt, nicht gerufen.
 - Schlüssel gespeicherter Dateien (s. u.) und die Spaltennamen der
   SQLite-Historie in `market_analysis/` — Daten, kein Code.
 
-**Umbenannt wird mit `tools/rename.py`, nie mit Suchen/Ersetzen.** `neu`, `alt`,
-`empty`, `point`, `row` sind zugleich Wörter in den Kommentaren, und ein
-Textersatz macht aus „ist neu" ein „ist new" — der Fehler, den niemand sieht.
-Das Werkzeug liest Python mit `tokenize` und JavaScript mit einem eigenen Lexer
-und schreibt **nur Namens-Token** um (auch nach `.`, in `${…}` und als
-Objekt-Schlüssel). In Prosa — Kommentare, Docstrings, Markdown — ersetzt es
-nur, was erkennbar ein Verweis ist: in Backticks, gefolgt von `(`, oder ein
-Name mit Unterstrich (`point_set` ist nie ein deutsches Wort). Strings
-folgen derselben Regel; `--strings` nimmt zusätzlich die Strings, die den Namen
-als Ganzes oder als Pfad-Glied tragen (`"laden"`, `"autoclicker.befehl"`) — das
-sind die Brücken-Aufrufe der Seite, die Dispatch-Tabellen und die Gegenproben
-in `tests/mutation_check.py`, die per Namensstring monkeypatchen. Vorher
-prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
-zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
-findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.
-
-**Vier Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
-Suite laufen lassen, sie findet drei davon:**
-
-- **Keyword-Argumente, die zu JSON-Schlüsseln werden, sind Strings in
-  Verkleidung.** `send_command("zeigen", punkt=…)` schreibt `{"punkt": …}` in
-  den Briefkasten, `dict(info, bild=True)` und `fokus.update(aktiv=False)`
-  ebenso — das Werkzeug benennt das `punkt=` um (es ist ein Name), der
-  Empfänger liest weiter `.get("punkt")`. Der Lokalen-Durchgang von Phase 2a
-  hat damit den halben Briefkasten umgestellt; deshalb ist sein Protokoll
-  (Umschlag `command`/`arguments`/`sent_at`, Argument-Schlüssel) seither
-  vollständig englisch, und das Modul heisst seither `mailbox.py` (vorher
-  befehl).
-- **Tests, die JS-Quelltext als Python-String tragen**, werden nach der
-  Verweis-Regel umgeschrieben (`werte()` wird zu `values()`), während `app.js`
-  unverändert bleibt — der Vergleich schlägt dann fehl. Betroffen sind
-  Quelltext-Prüfungen (`… in _html18`) und JS-Schnipsel in Rauchtests
-  (`seite.evaluate("""…""")`). In Phase 2 hiess das: zurücksetzen, die Seite
-  kommt später als Ganzes. Seit Phase 3c gilt die Umkehrung — die Seite ist
-  umbenannt, und was die Verweis-Regel in den Tests NICHT mitzieht (ein Name
-  ohne `(` dahinter, ein `\bname` in einer Regex — die Wortgrenze steht dort
-  hinter einem `b`), wird von Hand nachgezogen.
-- **Die Seite hängt am DOM, und das DOM hat seine eigenen Namen.** Ein
-  `t.dataset.ansicht` ist das Attribut `data-ansicht` in `index.html`; wird
-  `ansicht` zu `view`, liest die Seite `dataset.view` — und findet nichts, bis
-  das Attribut `data-view` heisst. Dasselbe bei `S.frage`: eine JS-Eigenschaft
-  ist zugleich der JSON-Schlüssel, den die Brücke schreibt, und ein Klick auf
-  einen Tab sieht danach aus wie ein Klick ins Leere (alle acht Rauchtests rot,
-  kein einziger `pageerror`). Nach einem JS-Durchgang deshalb `dataset.*` gegen
-  die `data-*`-Attribute und `S.*` gegen die Momentaufnahme halten.
-
-- **`--strings` und `--keys` treffen auch den Text, der zufällig so heisst
-  wie der Schlüssel.** `offen` war ein Feld der Momentaufnahme UND das Wort,
-  das die Übersicht neben eine Sequenz schreibt; `gespeichert` ein Zustand
-  UND der Titel der Fusszeilen-Lampe. Nach einem solchen Lauf stand „open"
-  und „saved" im Fenster — und keine Suite sieht das, weil kein Test einen
-  angezeigten Text prüft. Gegenprobe deshalb von Hand: die String-Literale
-  von vorher und nachher nebeneinander (`git show main:… | tokenize`), und
-  jede Stelle, an der ein deutsches Wort zu seinem englischen wurde, danach
-  fragen, ob sie angezeigt wird. Beim Abschluss-Durchgang waren es neun
-  Stellen in `app.js`, drei in `utils/console.py` (die Lage „oben rechts")
-  und eine in `market_analysis/analysis.py`. Umgekehrt genauso: ein JS-Lauf
-  benennt Objekt-Schlüssel um, und `{alt: …, neu: …}` in einem `call()` IST
-  das Protokoll — `scan_category_rename` bekam danach `next` statt `neu`.
-
-Aus demselben Grund gibt es `--python-only`: Lokale wie `point`, `value`,
-`category` sind zugleich JSON-Schlüssel der Brücke, und der JS-Lexer würde
-`z.kategorie` umschreiben, während Python weiter `"kategorie"` schickt. Mit
-Unterstrich ist es umgekehrt: `punkt_id` wird nach der Verweis-Regel **auch in
-Strings** umgeschrieben (`data.get("punkt_id")` → `"point_id"`), während die
-Seite weiter `punkt_id` schickt. Dann die Seite für genau diesen Schlüssel
-nachziehen (`Renamer({...}).javascript()` auf `app.js`) — das ist ohnehin die
-Richtung von Phase 3 — oder den Namen aus der Tabelle lassen.
-
-**Nicht Teil der Umstellung sind Schlüssel in gespeicherten Dateien** —
+**Schlüssel in gespeicherten Dateien bleiben, wie sie sind** —
 `config.json`, `sequence.json`, `catalog.json`, `marktwert.json`. Das sind
 Daten, kein Code; wer sie umbenennt, verstellt den Bestand des Nutzers. Sie
 bleiben, bis eine Formatänderung sie ohnehin anfasst — und dann gilt die Regel
 von oben: Default in der Dataclass, kein Migrationsschritt.
 
-**Ein Begriff, ein Wort.** Damit sechs Phasen nicht sechs Vokabeln erzeugt
-haben, galt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
+**Ein Begriff, ein Wort.** Damit nicht jede Stelle ihre eigene Vokabel
+erfindet, gilt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
 
 | deutsch | englisch | | deutsch | englisch |
 |---|---|---|---|---|

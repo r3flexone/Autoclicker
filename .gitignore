@@ -79,6 +79,9 @@ screenshots/
 logs/
 *.log
 
+# Debug-Bilder des Slot-Testers (tools/slot_tester.py legt den Ordner selbst an)
+tools/debug/
+
 # Markt-Analyse - generierte Ausgaben
 market_analysis/output/
 
