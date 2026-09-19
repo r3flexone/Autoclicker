@@ -53,9 +53,9 @@ check("scheitert das Umbenennen, bleibt die alte Datei ebenfalls intakt",
 
 # Ein Verzeichnis, das es noch nicht gibt, wird angelegt - sonst muesste jeder
 # Aufrufer selbst daran denken.
-_tief = _aw_dir / "a" / "b" / "c.json"
-_aw(_tief, "x")
-check("legt fehlende Verzeichnisse an", _tief.read_text(encoding="utf-8") == "x")
+_deep = _aw_dir / "a" / "b" / "c.json"
+_aw(_deep, "x")
+check("legt fehlende Verzeichnisse an", _deep.read_text(encoding="utf-8") == "x")
 
 
 section("Zeit-Eingaben (parse_time_input)")
@@ -173,14 +173,14 @@ try:
     _studio_items["Kohle"].priority = 3
     _studio_scan.items = list(_studio_items.values())
     _save_scan_r(_studio_scan)
-    _st_zurueck = _ST_P()
-    _st_zurueck.active_sequence = _SEQ_R(name="Farm")
+    _st_back = _ST_P()
+    _st_back.active_sequence = _SEQ_R(name="Farm")
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _load_scans_r(_st_zurueck)
+        _load_scans_r(_st_back)
     check("der Hauptprozess liest zurueck, was das Studio geschrieben hat",
-          _st_zurueck.global_slots["Beutel"].scan_region == (10, 20, 70, 80)
-          and _st_zurueck.global_items["Kohle"].category == "Erz"
-          and _st_zurueck.global_items["Kohle"].priority == 3)
+          _st_back.global_slots["Beutel"].scan_region == (10, 20, 70, 80)
+          and _st_back.global_items["Kohle"].category == "Erz"
+          and _st_back.global_items["Kohle"].priority == 3)
     check("globale slots.json/items.json entstehen dabei nicht",
           not Path("slots/slots.json").exists() and not Path("items/items.json").exists())
 finally:
@@ -240,7 +240,7 @@ _os.chdir(_seq_tmp)
 try:
     Path("sequences").mkdir()
 
-    def _schreibe_seq(folder, name):
+    def _write_seq(folder, name):
         path = Path("sequences", folder, "sequence.json")
         path.parent.mkdir()
         path.write_text(_js_seq.dumps({
@@ -248,24 +248,24 @@ try:
             "points": [], "init_steps": [], "end_steps": [], "loop_phases": []}),
             encoding="utf-8")
 
-    _ordnerzeit = 1_700_000_000
+    _folder_time = 1_700_000_000
 
-    _schreibe_seq("erste", "erste")
-    _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
+    _write_seq("erste", "erste")
+    _os.utime("sequences", (_folder_time, _folder_time))
     _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
     check("die erste Sequenz steht in der Liste", _namen == ["erste"])
 
     # Zweite Datei, Ordner-Zeit absichtlich unveraendert.
-    _schreibe_seq("zweite", "zweite")
-    _os.utime("sequences", (_ordnerzeit, _ordnerzeit))
+    _write_seq("zweite", "zweite")
+    _os.utime("sequences", (_folder_time, _folder_time))
     _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
     check("die zweite auch, obwohl die Ordner-Zeit gleich blieb",
           _namen == ["erste", "zweite"])
 
     # Und die Folge, wegen der es weh tut: das Studio oeffnet die richtige.
-    _os.utime(Path("sequences/erste/sequence.json"), (_ordnerzeit, _ordnerzeit))
+    _os.utime(Path("sequences/erste/sequence.json"), (_folder_time, _folder_time))
     _os.utime(Path("sequences/zweite/sequence.json"),
-              (_ordnerzeit + 100, _ordnerzeit + 100))
+              (_folder_time + 100, _folder_time + 100))
     check("und last_edited() findet die neuere",
           _zb_seq() == Path("sequences/zweite/sequence.json"))
 
@@ -346,26 +346,26 @@ _marker_ids = ["HOTKEY_RECORD_COLOR", "HOTKEY_RECORD_SCREENSHOT",
 _name_id = {name: value for name, value in vars(_common_hk).items()
             if name.startswith("HOTKEY_")}
 
-_ohne_shift = [n for n in _marker_ids
+_without_shift = [n for n in _marker_ids
                if "<shift>" not in _BIND[_name_id[n]]]
-check("jeder Aufnahme-Marker liegt auf CTRL+ALT+SHIFT", _ohne_shift == [])
-if _ohne_shift:
-    print("        ohne SHIFT: " + ", ".join(_ohne_shift))
+check("jeder Aufnahme-Marker liegt auf CTRL+ALT+SHIFT", _without_shift == [])
+if _without_shift:
+    print("        ohne SHIFT: " + ", ".join(_without_shift))
 
 # Auf EINER Ebene braucht jeder Marker einen eigenen Buchstaben. Vorher ging
 # das noch mit Paaren (M/SHIFT+M beide "warte auf Farbe"); jetzt waeren zwei
 # gleiche Buchstaben zwei Hotkeys, von denen einer stumm bleibt.
-_tasten = [_BIND[_name_id[n]].rsplit("+", 1)[-1] for n in _marker_ids]
+_keys = [_BIND[_name_id[n]].rsplit("+", 1)[-1] for n in _marker_ids]
 check("und jeder auf einem eigenen Buchstaben",
-      len(set(_tasten)) == len(_tasten))
-if len(set(_tasten)) != len(_tasten):
-    print("        doppelt: " + ", ".join(sorted(t for t in _tasten
-                                                 if _tasten.count(t) > 1)))
+      len(set(_keys)) == len(_keys))
+if len(set(_keys)) != len(_keys):
+    print("        doppelt: " + ", ".join(sorted(t for t in _keys
+                                                 if _keys.count(t) > 1)))
 
 # Die Gegenprobe: die Steuertasten der Aufnahme duerfen NICHT mitwandern.
-_steuer = ["HOTKEY_RECORD_SEQ", "HOTKEY_RECORD_PAUSE", "HOTKEY_UNDO"]
+_control = ["HOTKEY_RECORD_SEQ", "HOTKEY_RECORD_PAUSE", "HOTKEY_UNDO"]
 check("Start/Stopp, Pause und Zuruecknehmen bleiben auf der Basis-Ebene",
-      all("<shift>" not in _BIND[_name_id[n]] for n in _steuer))
+      all("<shift>" not in _BIND[_name_id[n]] for n in _control))
 
 # M und D waren an die Aufnahme vergeben und sind damit wieder frei. Die
 # Basis-Ebene hatte nur noch R und Y uebrig — das ist der eigentliche Gewinn.

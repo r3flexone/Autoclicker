@@ -50,7 +50,7 @@ def _lies(path: Path) -> tuple[list[dict], str]:
         return [], str(e)
 
 
-def _dauer(lines: list[dict]) -> float:
+def _duration(lines: list[dict]) -> float:
     """Laufzeit der Session in Sekunden (aus elapsed_sec der letzten Zeile)."""
     for z in reversed(lines):
         try:
@@ -60,13 +60,13 @@ def _dauer(lines: list[dict]) -> float:
     return 0.0
 
 
-def _fmt_dauer(sek: float) -> str:
+def _fmt_duration(sek: float) -> str:
     h, remainder = divmod(int(sek), 3600)
     m, s = divmod(remainder, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _rang(counters: Counter) -> list[list]:
+def _rank(counters: Counter) -> list[list]:
     """Counter als absteigend sortierte Paarliste — JSON-tauglich und stabil."""
     return [[name, n] for name, n in counters.most_common()]
 
@@ -90,7 +90,7 @@ def evaluate(paths: list[Path]) -> dict:
     detected = Counter()
     verify_miss = Counter()
     verify_ok = Counter()
-    sitzungen = []
+    sessions = []
     nicht_lesbar = []
     gesamt_dauer = 0.0
 
@@ -101,7 +101,7 @@ def evaluate(paths: list[Path]) -> dict:
             continue
         if not lines:
             continue
-        duration = _dauer(lines)
+        duration = _duration(lines)
         gesamt_dauer += duration
         eigen = Counter()
         for z in lines:
@@ -119,7 +119,7 @@ def evaluate(paths: list[Path]) -> dict:
                 verify_miss[detail or "(ohne Namen)"] += 1
             elif ev == "verify_ok":
                 verify_ok[detail or "(ohne Namen)"] += 1
-        sitzungen.append({
+        sessions.append({
             "file": path.name,
             "begin": (lines[0].get("timestamp") or "").strip(),
             "duration": duration,
@@ -133,14 +133,14 @@ def evaluate(paths: list[Path]) -> dict:
                   if k.startswith(("focus_", "humanize_"))}
     unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(disturbances)
     return {
-        "sessions": sitzungen,
+        "sessions": sessions,
         "unreadable": nicht_lesbar,
         "duration": gesamt_dauer,
         "events": dict(gesamt_events),
-        "timeouts": _rang(timeouts_je_schritt),
-        "items": _rang(items),
-        "detected": _rang(detected),
-        "verify_miss": _rang(verify_miss),
+        "timeouts": _rank(timeouts_je_schritt),
+        "items": _rank(items),
+        "detected": _rank(detected),
+        "verify_miss": _rank(verify_miss),
         "verify_ok": dict(verify_ok),
         "disturbances": sorted([k, v] for k, v in disturbances.items()),
         "unbekannt": sorted(unbekannt),
@@ -164,7 +164,7 @@ def report(paths: list[Path]) -> None:
     gesamt_dauer = data["duration"]
 
     print("=" * 66)
-    print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_dauer(gesamt_dauer)}")
+    print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_duration(gesamt_dauer)}")
     print("=" * 66)
 
     clicks = gesamt_events.get("click", 0)

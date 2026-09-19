@@ -20,7 +20,7 @@ from autoclicker.persistence import load_item_scan_file
 from autoclicker.persistence.sequences import sequence_dir
 
 
-def _manifest(version=1):
+def _manifest_data(version=1):
     return {
         "version": version,
         "reference_points": {"point1": [0, 0], "point2": [10, 10]},
@@ -122,7 +122,7 @@ class ImportExportSecurityTest(unittest.TestCase):
 
     def test_import_rejects_wrong_manifest_version_before_writing(self):
         with zipfile.ZipFile("bundle.zip", "w") as zf:
-            zf.writestr("manifest.json", json.dumps(_manifest(version=999)))
+            zf.writestr("manifest.json", json.dumps(_manifest_data(version=999)))
             zf.writestr("points.json", json.dumps([{"id": 2, "x": 1, "y": 1}]))
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
@@ -137,7 +137,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         from autoclicker import import_export as module_name
         original = _write_sequence("inventory")
         before = (original / "sequence.json").read_bytes()
-        manifest = _manifest()
+        manifest = _manifest_data()
         manifest["layout"] = "sequence-folders"
         with zipfile.ZipFile("bundle.zip", "w") as zf:
             zf.writestr("manifest.json", json.dumps(manifest))
@@ -175,7 +175,7 @@ class ImportExportSecurityTest(unittest.TestCase):
                 self.assertIsNone(_safe_bundle_path(name))
 
     def test_boss_bibliothek_ueberlebt_einen_transformierten_import(self):
-        manifest = _manifest()
+        manifest = _manifest_data()
         manifest["layout"] = "sequence-folders"
         bibliothek = [{"name": "Drache", "action": "click", "action_point_id": 7}]
         seq = _sequence_data("farm")
@@ -201,7 +201,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         template = original / "templates" / "item.png"
         template.parent.mkdir()
         template.write_bytes(b"altes bild")
-        manifest = _manifest()
+        manifest = _manifest_data()
         manifest["layout"] = "sequence-folders"
         manifest["contents"]["sequences"] = ["ABestand", "ZDefekt"]
         with zipfile.ZipFile("bundle.zip", "w") as zf:
@@ -226,7 +226,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual(template.read_bytes(), b"altes bild")
 
     def test_import_keeps_window_scan_anchor_aligned_with_remapped_slots(self):
-        manifest = _manifest()
+        manifest = _manifest_data()
         manifest["layout"] = "sequence-folders"
         manifest["contents"]["sequences"] = ["Farm"]
         slot = {

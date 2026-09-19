@@ -5,13 +5,13 @@ Scrollposition. Ein `subgrid`, das der Browser nicht kann, und ein `sticky`, das
 an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 """
 
-from ._bridge import Fenster, main, sandkasten
+from ._bridge import Window, main, sandbox
 
 
-def _sequenz(name: str, notiz: str, phases: int, steps_list: int):
+def _sequenz(name: str, note: str, phases: int, steps_list: int):
     from autoclicker.models import LoopPhase, Sequence, SequenceStep
 
-    s = Sequence(name=name, description=notiz, total_cycles=1)
+    s = Sequence(name=name, description=note, total_cycles=1)
     s.loop_phases = [
         LoopPhase(name=f"P{i}", steps=[SequenceStep(name="x", x=1, y=1, point_id=1)
                                        for _ in range(steps_list)])
@@ -20,19 +20,19 @@ def _sequenz(name: str, notiz: str, phases: int, steps_list: int):
     return s
 
 
-def aufbau():
+def setup():
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
     from autoclicker.models import AutoClickerState, ClickPoint
     from autoclicker.persistence.sequences import save_data
 
-    sandkasten("rauch_sequenzen_")
+    sandbox("rauch_sequenzen_")
     state_value = AutoClickerState()
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
-    for name, notiz, phases, steps_list in (("Alpha", "Mit einer Notiz", 1, 50),
+    for name, note, phases, steps_list in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        state_value.sequences[name] = _sequenz(name, notiz, phases, steps_list)
+        state_value.sequences[name] = _sequenz(name, note, phases, steps_list)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
     state_value.sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
@@ -44,92 +44,92 @@ def aufbau():
 
 
 def run():
-    b = aufbau()
+    b = setup()
     error = []
 
-    def pruefe(condition, text):
+    def expect(condition, text):
         if not condition:
             error.append(text)
 
-    with Fenster(b, width=1300, height=560) as f:
+    with Window(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
-        f.reiter("sequences")
-        karten = f.count(".seq-card")
-        pruefe(karten == 3, f"3 Karten erwartet, da: {karten}")
+        f.tab("sequences")
+        cards = f.count(".seq-card")
+        expect(cards == 3, f"3 Karten erwartet, da: {cards}")
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
         # rutschte alles darunter hoch: der Phasenbalken der einen lag auf Höhe
         # der Kennzahlen der anderen, und die Übersicht war keine mehr.
         for part in ("seq-bar", "seq-numbers", "seq-footer"):
-            kanten = f.seite.eval_on_selector_all(
+            edges = f.page.eval_on_selector_all(
                 f".seq-card .{part}",
                 "ns => ns.map(n => Math.round(n.getBoundingClientRect().top))")
-            pruefe(len(set(kanten)) == 1,
-                   f".{part} liegt nicht auf einer Linie: {kanten}")
+            expect(len(set(edges)) == 1,
+                   f".{part} liegt nicht auf einer Linie: {edges}")
         # Der Pfad der langen dritten Sequenz darf nicht über den Öffnen-Knopf
         # und in die Nachbarkarte malen. `min-width:0` allein reicht dafür nicht:
         # der Text schrumpft rechnerisch, bleibt bei overflow:visible aber sichtbar.
-        pfad_overflow = f.seite.eval_on_selector_all(
+        pfad_overflow = f.page.eval_on_selector_all(
             ".seq-footer .grow",
             "ns => ns.map(n => getComputedStyle(n).overflowX)")
-        pruefe(pfad_overflow and all(value != "visible" for value in pfad_overflow),
+        expect(pfad_overflow and all(value != "visible" for value in pfad_overflow),
                f"Sequenzpfade laufen aus ihren Karten: {pfad_overflow}")
-        knopf_in_karte = f.seite.eval_on_selector_all(
+        knopf_in_karte = f.page.eval_on_selector_all(
             ".seq-card",
             "ns => ns.every(k => { const b=k.querySelector('.seq-footer .btn'); "
             "if (!b) return true; const kr=k.getBoundingClientRect(); "
             "const br=b.getBoundingClientRect(); return br.right <= kr.right + 1; })")
-        pruefe(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
+        expect(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
         f.image("sequenzen_karten")
 
         # ------------------------------------------------------------- Editor
-        f.reiter("editor")
-        pruefe(f.count("#btn-recording") == 1,
+        f.tab("editor")
+        expect(f.count("#btn-recording") == 1,
                "Verweis auf das Aufnahme-Werkzeug fehlt")
         head = ".page.left .section.sticky"
-        pruefe(f.count(head) == 1, "kein klebender Abschnitt in der linken Spalte")
-        pruefe(f.count(head + " #btn-recording") == 1,
+        expect(f.count(head) == 1, "kein klebender Abschnitt in der linken Spalte")
+        expect(f.count(head + " #btn-recording") == 1,
                "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
-        pruefe(f.count("#aufnahme-info, .recording-row .info") == 0,
+        expect(f.count("#aufnahme-info, .recording-row .info") == 0,
                "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
-        feldhoehen = f.seite.eval_on_selector_all(
+        field_heights = f.page.eval_on_selector_all(
             "#seq-cycles, #seq-blocks",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().height))")
-        pruefe(len(feldhoehen) == 2 and feldhoehen[0] == feldhoehen[1],
-               f"Zyklen und Bloecke haben verschiedene Kachelhoehen: {feldhoehen}")
-        pruefe(f.seite.eval_on_selector(
+        expect(len(field_heights) == 2 and field_heights[0] == field_heights[1],
+               f"Zyklen und Bloecke haben verschiedene Kachelhoehen: {field_heights}")
+        expect(f.page.eval_on_selector(
             "#seq-blocks", "e => getComputedStyle(e).borderTopStyle") == "solid",
             "der berechneten Blockanzahl fehlt die sichtbare Kachel")
-        klebt = f.seite.eval_on_selector(head, "e => getComputedStyle(e).position")
-        pruefe(klebt == "sticky", f"der oberste Block klebt nicht: {klebt}")
+        sticky = f.page.eval_on_selector(head, "e => getComputedStyle(e).position")
+        expect(sticky == "sticky", f"der oberste Block klebt nicht: {sticky}")
         # Und er klebt an der SPALTE: hinge er an einem nicht scrollenden
         # Vorfahren, wäre `position:sticky` gesetzt und trotzdem wirkungslos.
-        before = f.seite.eval_on_selector(
+        before = f.page.eval_on_selector(
             head, "e => Math.round(e.getBoundingClientRect().top)")
-        f.seite.eval_on_selector(".page.left", "e => { e.scrollTop = 400; }")
-        f.ruhe()
-        after = f.seite.eval_on_selector(
+        f.page.eval_on_selector(".page.left", "e => { e.scrollTop = 400; }")
+        f.settle()
+        after = f.page.eval_on_selector(
             head, "e => Math.round(e.getBoundingClientRect().top)")
-        gescrollt = f.seite.eval_on_selector(".page.left", "e => e.scrollTop")
-        pruefe(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
-        pruefe(before == after,
+        gescrollt = f.page.eval_on_selector(".page.left", "e => e.scrollTop")
+        expect(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
+        expect(before == after,
                f"der Block scrollt mit: {before} -> {after}")
         f.image("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
-        f.reiter("editor")
+        f.tab("editor")
         # **Kein „×" am ENDE einer Beschriftung.** Der Skalieren-Knopf hiess
         # „Wartezeiten ×" — dort, wo jede andere Oberflaeche ein Schliesskreuz
         # hat, las sich das als „wegmachen" statt als „mal". Daneben stand ein
         # zweites × als Vorsatz der Wiederholungen, und der Kopf sah aus, als
         # liesse sich dort etwas entfernen.
-        knopftexte = f.seite.eval_on_selector_all(
+        knopftexte = f.page.eval_on_selector_all(
             ".phase-header.loop button", "ns => ns.map(n => n.textContent.trim())")
-        pruefe(not any("×" in t for t in knopftexte),
+        expect(not any("×" in t for t in knopftexte),
                f"ein Knopf im Phasenkopf traegt ein ×: {knopftexte}")
         # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
         # Werkzeugzeile stehen nur die beiden Felder, die die Phase
         # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
-        pruefe(f.count(".phase-tool button") == 0,
+        expect(f.count(".phase-tool button") == 0,
                "in der Eigenschaften-Zeile der Phase steht ein Knopf")
         # **Beide Zeilen liegen auf demselben Raster.** Vorher war oben ein
         # `flex` mit fest getippten 70/74 px und unten ein `knopfpaar`: die
@@ -140,7 +140,7 @@ def run():
         # Kinder einer Spalten-Flexbox ohnehin immer so breit wie der Kopf —
         # daran haette ein zu schmaler Inhalt nichts geaendert, und der Test
         # waere gruen geblieben, ohne die Kante zu sehen, um die es geht.
-        raster = f.seite.eval_on_selector(".phase-header.loop", """e => {
+        grid = f.page.eval_on_selector(".phase-header.loop", """e => {
           const boxEl = (s) => [...e.querySelectorAll(s)]
             .map(n => n.getBoundingClientRect());
           const spanne = (r) => [Math.round(r[0].left),
@@ -153,23 +153,23 @@ def run():
                   knoepfe: knoepfe.map(r => Math.round(r.width)),
                   knopfoben: knoepfe.map(r => Math.round(r.top))};
         }""")
-        pruefe(raster["eig"] == raster["akt"],
-               f"Eigenschaften und Sammel-Aktionen haben verschiedene Kanten: {raster}")
-        pruefe(len(set(raster["fields"])) == 1,
-               f"die beiden Felder sind verschieden breit: {raster}")
+        expect(grid["eig"] == grid["akt"],
+               f"Eigenschaften und Sammel-Aktionen haben verschiedene Kanten: {grid}")
+        expect(len(set(grid["fields"])) == 1,
+               f"die beiden Felder sind verschieden breit: {grid}")
         # Ein Feld ist so breit wie ein Knopf — dasselbe Raster, nicht nur
         # zufaellig dieselbe Aussenkante.
-        pruefe(set(raster["fields"]) == set(raster["knoepfe"]),
-               f"Felder und Knoepfe liegen nicht auf demselben Raster: {raster}")
-        pruefe(len(raster["knoepfe"]) == 2 and len(set(raster["knoepfe"])) == 1,
-               f"zwei gleich breite Sammel-Knoepfe erwartet: {raster}")
-        pruefe(len(set(raster["knopfoben"])) == 1,
-               f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {raster}")
+        expect(set(grid["fields"]) == set(grid["knoepfe"]),
+               f"Felder und Knoepfe liegen nicht auf demselben Raster: {grid}")
+        expect(len(grid["knoepfe"]) == 2 and len(set(grid["knoepfe"])) == 1,
+               f"zwei gleich breite Sammel-Knoepfe erwartet: {grid}")
+        expect(len(set(grid["knopfoben"])) == 1,
+               f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {grid}")
         # Und die Felder sagen selbst, was sie sind — vorher stand das nur im
         # Tooltip, und ein Tooltip ist keine Beschriftung.
-        kopftext = f.text(".phase-header.loop")
+        head_text = f.text(".phase-header.loop")
         for word in ("Läufe je Zyklus", "Start ab Uhrzeit"):
-            pruefe(word in kopftext, f"'{word}' fehlt im Phasenkopf: {kopftext!r}")
+            expect(word in head_text, f"'{word}' fehlt im Phasenkopf: {head_text!r}")
         f.image("sequenzen_phasenkopf")
 
         # ------------------------------------------- Die Auswahl gilt ueberall
@@ -177,19 +177,19 @@ def run():
         # mit dem Speichern-Knopf zusammen ausgeblendet — und damit musste man
         # fuer einen Wechsel erst in den Editor zurueck, ausgerechnet aus den
         # Reitern, die am staerksten an der Sequenz haengen.
-        for reiter in ("editor", "sequences", "run", "scans",
+        for tab in ("editor", "sequences", "run", "scans",
                        "share", "tools", "settings"):
-            f.reiter(reiter)
-            sichtbar = f.seite.eval_on_selector_all(
+            f.tab(tab)
+            visible = f.page.eval_on_selector_all(
                 "#seq-select, #btn-load, #btn-new",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
-            pruefe(sichtbar == 3,
-                   f"im Reiter '{reiter}' fehlt die Sequenz-Auswahl "
-                   f"({sichtbar}/3 sichtbar)")
+            expect(visible == 3,
+                   f"im Reiter '{tab}' fehlt die Sequenz-Auswahl "
+                   f"({visible}/3 sichtbar)")
         # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
-        f.reiter("scans")
-        pruefe(not f.seite.eval_on_selector(
+        f.tab("scans")
+        expect(not f.page.eval_on_selector(
             "#btn-save", "e => e.offsetParent !== null"),
             "der Sequenz-Speichern-Knopf steht im Scans-Reiter")
 
@@ -197,15 +197,15 @@ def run():
         # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den
         # `render()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
-        f.reiter("tools")
-        f.klick_text("#wz-left button", "Punkte nachklicken")
-        pruefe("Alpha" in f.text("#wz-middle"),
+        f.tab("tools")
+        f.click_text("#wz-left button", "Punkte nachklicken")
+        expect("Alpha" in f.text("#wz-middle"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
-        f.seite.select_option("#seq-select", "Beta")
-        f.click_value("#btn-load")
-        pruefe(f.seite.eval_on_selector("#seq-select", "e => e.value") == "Beta",
+        f.page.select_option("#seq-select", "Beta")
+        f.click("#btn-load")
+        expect(f.page.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
-        pruefe("Beta" in f.text("#wz-middle"),
+        expect("Beta" in f.text("#wz-middle"),
                f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
                f"{f.text('#wz-middle')[:120]!r}")
 

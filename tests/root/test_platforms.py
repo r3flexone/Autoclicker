@@ -44,12 +44,12 @@ class LinuxBackendTests(unittest.TestCase):
         self.assertEqual("Autoclicker.SequenzStudio", winapi.APP_ID)
 
     def test_wayland_wird_nicht_als_x11_ausgegeben(self):
-        umgebung = {
+        environment = {
             "XDG_SESSION_TYPE": "wayland",
             "WAYLAND_DISPLAY": "wayland-0",
             "DISPLAY": ":0",
         }
-        with patch.dict(os.environ, umgebung, clear=True):
+        with patch.dict(os.environ, environment, clear=True):
             self.assertFalse(linux_x11._x11_ready())
             self.assertTrue(any("Wayland" in text
                                 for text in linux_x11.environment_warnings()))

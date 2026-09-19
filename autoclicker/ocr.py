@@ -149,7 +149,7 @@ def _read_tesseract(img: 'Image.Image', languages: list[str] = None,
                      min_confidence: float = 0.3) -> list[tuple[str, float]]:
     """Liest Text mit Tesseract."""
     lang_str = "+".join(languages) if languages else "eng"
-    data = _pytesseract_mod.image_to_data(img, lang=lang_str, output_type=_pytesseract_mod.Output.DICT)
+    data = _pytesseract_mod.image_to_data(img, long_text=lang_str, output_type=_pytesseract_mod.Output.DICT)
 
     texts = []
     for i, text in enumerate(data["text"]):

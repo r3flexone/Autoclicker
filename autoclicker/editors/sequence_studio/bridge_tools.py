@@ -543,7 +543,7 @@ class BridgeToolsMixin:
     # -------------------------------------------------------------- Klick-Runde
 
     def reclick_start(self, data: Optional[dict] = None) -> dict:
-        """Die Klick-Runde im HAUPTPROZESS starten (`click_value` im Punkte-Menü).
+        """Die Klick-Runde im HAUPTPROZESS starten (`click` im Punkte-Menü).
 
         Das eine Werkzeug, das hier nicht laufen kann: es braucht einen
         systemweiten Maus-Hook, und der gehört dem Prozess, der auch die Hotkeys

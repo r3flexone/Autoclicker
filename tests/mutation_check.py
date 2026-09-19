@@ -18,7 +18,7 @@ import sys
 import textwrap
 import unittest
 
-WURZEL = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = "test_runtime_hardening.RuntimeHardeningTest."
 STUDIO = "test_studio_close.StudioCloseTest."
 FAELLE = {
@@ -26,12 +26,12 @@ FAELLE = {
         "tests.all_tests", "smoke", "e.ok = False", "e.ok = True",
         "test_test_runner.TestRunnerTest.test_browser_lokal_optional_aber_als_pflicht_rot"),
     "doppelter-vertragslauf": (
-        "tests.root_tests", "sammeln", "continue", "pass",
+        "tests.root_tests", "collect", "continue", "pass",
         "test_test_runner.TestRunnerTest.test_discovery_entfernt_nur_den_vertragswrapper"),
     "pause-nach-fokus": (
         "autoclicker.runtime.actions", "_input_allowed",
         "if not state.pause_event.is_set():", "if True:",
-        "test_input_synchronisation.EingabeSynchronisationTest"),
+        "test_input_synchronisation.InputSynchronisationTest"),
     **{f"stopp-nach-delay-{kind}": (
         "autoclicker.runtime.actions", f"safe_{kind}",
         "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
@@ -58,10 +58,10 @@ FAELLE = {
 }
 
 
-def pruefen(name: str, mutiert: bool) -> int:
+def run_check(name: str, mutiert: bool) -> int:
     # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
     # `tests/wurzel` fuer die Testmodule, die `FAELLE` beim Namen nennt.
-    for _path in (WURZEL, WURZEL / "tests" / "root"):
+    for _path in (ROOT, ROOT / "tests" / "root"):
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))
     module_name, path, old, new, test = FAELLE[name]
@@ -75,10 +75,10 @@ def pruefen(name: str, mutiert: bool) -> int:
             source = textwrap.dedent(inspect.getsource(funktion))
             if source.count(old) != 1:
                 raise ValueError(f"Mutationsstelle nicht mehr eindeutig: {name}")
-            namensraum = dict(funktion.__globals__)
-            exec(compile(source.replace(old, new), f"<Gegenprobe {name}>", "exec"), namensraum)
+            namespace = dict(funktion.__globals__)
+            exec(compile(source.replace(old, new), f"<Gegenprobe {name}>", "exec"), namespace)
             # Auch zuvor importierte Funktionsreferenzen sehen den Mutanten.
-            funktion.__code__ = namensraum[funktion.__name__].__code__
+            funktion.__code__ = namespace[funktion.__name__].__code__
         ausgabe = io.StringIO()
         result = unittest.TextTestRunner(stream=ausgabe).run(suite)
     finally:
@@ -106,15 +106,15 @@ def main() -> int:
     parser.add_argument("--kind", choices=("basis", "mutiert"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.kind:
-        return pruefen(args.case[0], args.kind == "mutiert")
+        return run_check(args.case[0], args.kind == "mutiert")
     error = 0
-    umgebung = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.case or FAELLE:
         for mode in ("basis", "mutiert"):
             try:
                 run = subprocess.run(
                     [sys.executable, str(Path(__file__).resolve()), "--case", name, "--kind", mode],
-                    cwd=WURZEL, env=umgebung, capture_output=True, text=True,
+                    cwd=ROOT, env=environment, capture_output=True, text=True,
                     encoding="utf-8", errors="replace", timeout=60)
             except subprocess.TimeoutExpired:
                 print(f"FEHLER {name}: Zeitlimit ({mode})", flush=True)

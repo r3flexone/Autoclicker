@@ -23,14 +23,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-WURZEL = Path(__file__).resolve().parents[2]
-WEB = WURZEL / "autoclicker" / "editors" / "sequence_studio" / "web"
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "autoclicker" / "editors" / "sequence_studio" / "web"
 
 # Der Proxy: jeder `window.pywebview.api.<name>(daten)`-Aufruf der Seite landet
 # als ein Python-Aufruf auf der Bruecke. Genau ein Argument, wie im Fenster.
 # Der Proxy zaehlt, wie viele Bruecken-Aufrufe gerade unterwegs sind — das
 # ist die eine Groesse, an der ein Test erkennen kann, ob die Seite fertig ist
-# (s. `Fenster.ruhe`). `__offen++` passiert synchron im Klick-Handler, also
+# (s. `Window.ruhe`). `__offen++` passiert synchron im Klick-Handler, also
 # bevor Playwright den Klick als erledigt meldet.
 STUB = """
 window.__offen = 0;
@@ -41,10 +41,10 @@ window.pywebview = {api: new Proxy({}, {get: (t, name) => async (d) => {
 }})};
 """
 
-# Was `ruhe()` in der Seite abwartet: kein Aufruf offen, und das in zwei
+# Was `settle()` in der Seite abwartet: kein Aufruf offen, und das in zwei
 # Frames hintereinander — ein einzelner ruhiger Frame kann zwischen zwei
 # Gliedern einer Kette liegen (Neuaufbau -> Vorschau nachladen -> Neuaufbau).
-_RUHE = """(ms) => new Promise((res, rej) => {
+_SETTLE = """(ms) => new Promise((res, rej) => {
   const start = performance.now();
   let quiet = 0;
   const tick = () => {
@@ -59,7 +59,7 @@ _RUHE = """(ms) => new Promise((res, rej) => {
 })"""
 
 
-def playwright_da() -> tuple[bool, str]:
+def playwright_available() -> tuple[bool, str]:
     """(verfuegbar, Grund). Chromium liegt im CI-Image, Playwright nicht immer.
 
     **Ein fehlender Image-Browser ist kein fehlender Browser.** Hier stand
@@ -76,13 +76,13 @@ def playwright_da() -> tuple[bool, str]:
         import playwright.sync_api  # noqa: F401
     except ImportError:
         return False, "playwright fehlt — nachinstallieren: pip install playwright"
-    if _chromium() or _playwright_eigener():
+    if _chromium() or _own_playwright():
         return True, ""
     return False, ("kein Chromium — nachinstallieren: "
                    "python -m playwright install chromium")
 
 
-def _playwright_eigener() -> bool:
+def _own_playwright() -> bool:
     """Liegt Playwrights EIGENER Chromium in seiner Standardablage?
 
     Nachgesehen wird im dokumentierten Ordner je Betriebssystem, statt
@@ -116,13 +116,13 @@ def _chromium() -> str:
     # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
     for pattern in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
                    "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
-        for kandidat in sorted(base_name.glob(pattern)):
-            return str(kandidat)
+        for candidate in sorted(base_name.glob(pattern)):
+            return str(candidate)
     direkt = base_name / "chromium"
     return str(direkt) if direkt.exists() else ""
 
 
-def sandkasten(prefix: str) -> str:
+def sandbox(prefix: str) -> str:
     """Ein leeres Datenverzeichnis, in das gewechselt wird.
 
     Die Pfad-Konstanten sind CWD-relativ (s. CLAUDE.md), also reicht ein
@@ -134,21 +134,21 @@ def sandkasten(prefix: str) -> str:
     return sand
 
 
-class Fenster:
+class Window:
     """Die Seite im Browser, mit der echten Bruecke dahinter.
 
-    Als Kontextmanager: `with Fenster(bruecke) as f: f.reiter("tools")`.
+    Als Kontextmanager: `with Window(bruecke) as f: f.tab("tools")`.
     Sammelt nebenbei jeden Seitenfehler ein — ein `pageerror` ist im Fenster ein
     Reiter, der leer bleibt, und genau danach wird hier gesucht.
     """
 
-    def __init__(self, bruecke, width: int = 1500, height: int = 900):
-        self.bruecke = bruecke
+    def __init__(self, bridge, width: int = 1500, height: int = 900):
+        self.bridge = bridge
         self.error: list[str] = []
-        self._groesse = (width, height)
+        self._size = (width, height)
         self._pw = None
         self._browser = None
-        self.seite = None
+        self.page = None
 
     def __enter__(self):
         from playwright.sync_api import sync_playwright
@@ -156,15 +156,15 @@ class Fenster:
         path = _chromium()
         self._browser = self._pw.chromium.launch(
             **({"executable_path": path} if path else {}))
-        self.seite = self._browser.new_page(
-            viewport={"width": self._groesse[0], "height": self._groesse[1]})
-        self.seite.on("pageerror", lambda e: self.error.append(f"pageerror: {e}"))
-        self.seite.on("console", lambda m: self.error.append(
+        self.page = self._browser.new_page(
+            viewport={"width": self._size[0], "height": self._size[1]})
+        self.page.on("pageerror", lambda e: self.error.append(f"pageerror: {e}"))
+        self.page.on("console", lambda m: self.error.append(
             f"console.error: {m.text}") if m.type == "error" else None)
-        self.seite.expose_function("__bruecke", self._ruf)
-        self.seite.add_init_script(STUB)
-        self.seite.goto((WEB / "index.html").as_uri())
-        self.ruhe()
+        self.page.expose_function("__bruecke", self._call)
+        self.page.add_init_script(STUB)
+        self.page.goto((WEB / "index.html").as_uri())
+        self.settle()
         return self
 
     def __exit__(self, *_):
@@ -174,13 +174,13 @@ class Fenster:
             self._pw.stop()
         return False
 
-    def _ruf(self, name: str, data):
+    def _call(self, name: str, data):
         """Ein Aufruf der Seite an die Bruecke. Unbekannte Namen sind ein Fehler.
 
         Die Seite bekaeme sonst `null` und zeichnete eine leere Ansicht - also
         genau das Bild, das dieser Test aufdecken soll.
         """
-        fn = getattr(self.bruecke, name, None)
+        fn = getattr(self.bridge, name, None)
         if fn is None or not callable(fn):
             self.error.append(f"Bruecke kennt '{name}' nicht")
             return None
@@ -188,7 +188,7 @@ class Fenster:
 
     # ---------------------------------------------------------------- Bedienen
 
-    def ruhe(self, hoechstens: int = 15000):
+    def settle(self, at_most: int = 15000):
         """Wartet, bis die Seite fertig ist — nicht eine feste Zeit lang.
 
         **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand nach
@@ -206,18 +206,18 @@ class Fenster:
         sieht das nicht — dort bleibt eine feste Wartezeit, und sie sagt dazu,
         auf welche Uhr sie wartet.
         """
-        self.seite.evaluate(_RUHE, hoechstens)
+        self.page.evaluate(_SETTLE, at_most)
         return self
 
-    def reiter(self, name: str):
-        self.seite.click(f'.tab[data-view="{name}"]')
-        return self.ruhe()
+    def tab(self, name: str):
+        self.page.click(f'.tab[data-view="{name}"]')
+        return self.settle()
 
-    def click_value(self, choice: str):
-        self.seite.click(choice)
-        return self.ruhe()
+    def click(self, choice: str):
+        self.page.click(choice)
+        return self.settle()
 
-    def klick_text(self, choice: str, text: str):
+    def click_text(self, choice: str, text: str):
         """Den Knopf mit diesem Text anklicken — robuster als eine Position.
 
         Ueber `nth-of-type` zu gehen bricht, sobald jemand einen Knopf davor
@@ -231,38 +231,38 @@ class Fenster:
         # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
         last_one = None
         for _ in range(3):
-            match = [k for k in self.seite.query_selector_all(choice)
+            match = [k for k in self.page.query_selector_all(choice)
                        if text in (k.inner_text() or "")]
             if not match:
-                self.seite.wait_for_timeout(150)
+                self.page.wait_for_timeout(150)
                 continue
             try:
                 match[0].click()
             except Exception as error:      # noqa: BLE001 - erneut versuchen
                 last_one = error
-                self.seite.wait_for_timeout(150)
+                self.page.wait_for_timeout(150)
                 continue
-            return self.ruhe()
+            return self.settle()
         raise AssertionError(f"kein '{text}' in {choice}" + (f" ({last_one})" if last_one else ""))
 
     # ---------------------------------------------------------------- Ablesen
 
     def text(self, choice: str) -> str:
-        return self.seite.inner_text(choice)
+        return self.page.inner_text(choice)
 
     def status(self) -> str:
-        return self.seite.inner_text("#status")
+        return self.page.inner_text("#status")
 
     def count(self, choice: str) -> int:
-        return len(self.seite.query_selector_all(choice))
+        return len(self.page.query_selector_all(choice))
 
     def image(self, name: str):
         target = Path(tempfile.gettempdir()) / f"rauchtest_{name}.png"
-        self.seite.screenshot(path=str(target))
+        self.page.screenshot(path=str(target))
         return target
 
 
-def main_part(name: str, run) -> int:
+def run_smoke(name: str, run) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
     # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
     # `tests/all_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
@@ -273,7 +273,7 @@ def main_part(name: str, run) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
-    da, reason = playwright_da()
+    da, reason = playwright_available()
     if not da:
         print(f"UEBERSPRUNGEN  {name}: {reason}")
         return 0
@@ -292,4 +292,4 @@ def main_part(name: str, run) -> int:
 
 
 def main(name: str, run) -> None:
-    sys.exit(main_part(name, run))
+    sys.exit(run_smoke(name, run))

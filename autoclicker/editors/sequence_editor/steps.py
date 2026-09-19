@@ -983,7 +983,7 @@ class _PhaseEditor:
             step = self.steps[idx]
             wc = step.wait_condition
             trig = ("bis Farbe WEG" if wc.until_gone else "auf Farbe") if wc else "keiner"
-            click_value = "nur warten (kein Klick)" if step.wait_only else "klicken"
+            click = "nur warten (kein Klick)" if step.wait_only else "klicken"
 
             def _opt(n: str, label: str) -> str:
                 return f"    {col(f'[{n}]', 'yellow')} {label}"
@@ -991,7 +991,7 @@ class _PhaseEditor:
             print(f"\n  {col(f'Schritt {num} bearbeiten:', 'bold')} {step}")
             print(_opt("1", f"Wartezeit    (aktuell: {self._delay_str(step)})"))
             print(_opt("2", f"Trigger      (aktuell: {trig})"))
-            print(_opt("3", f"Klick an/aus (aktuell: {click_value})"))
+            print(_opt("3", f"Klick an/aus (aktuell: {click})"))
             print(_opt("4", "Trigger-Farbe neu abgreifen"))
             print(_opt("5", "Details anzeigen"))
             print(_opt("6", "Duplizieren"))

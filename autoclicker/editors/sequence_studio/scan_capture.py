@@ -158,9 +158,9 @@ class ScanCaptureMixin:
                     "Slots unverändert.", True)
 
         self._remember("Slots ans Fenster angepasst")
-        for slot, region, click_value in moved:
+        for slot, region, click in moved:
             slot.scan_region = region
-            slot.click_pos = click_value
+            slot.click_pos = click
         cfg.capture_window_rect = new
         self._sync_objects()
         self._scan_dirty = True

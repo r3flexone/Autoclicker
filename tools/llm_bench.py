@@ -74,7 +74,7 @@ class NurConfig:
 
 # ---------------------------------------------------------------- Bestand
 
-def finde_scan(path: str = "") -> Path:
+def find_scan(path: str = "") -> Path:
     """Die Scan-Datei — angegeben oder die zuletzt bearbeitete.
 
     Dieselbe Regel wie `last_edited()` im Studio: ein echtes „zuletzt
@@ -90,7 +90,7 @@ def finde_scan(path: str = "") -> Path:
     return candidates[0]
 
 
-def lade_scan(path: Path) -> dict:
+def load_scan(path: Path) -> dict:
     """Rohdaten des Scans plus die Pfade, die daran haengen."""
     data = json.loads(path.read_text(encoding="utf-8"))
     return {
@@ -126,7 +126,7 @@ def lade_foto(path: Path):
 
 # ---------------------------------------------------------------- Proben
 
-def proben_aus_vorlagen(scan: dict, catalog, reason: bool, limit: int) -> list:
+def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> list:
     """`(Wahrheit, Bild)` je Item mit Vorlage, dessen Name im Katalog steht."""
     from PIL import Image
     proben = []
@@ -156,7 +156,7 @@ def auf_grund(image, color=NEUTRAL):
     return flaeche
 
 
-def proben_aus_slots(scan: dict, catalog, config, limit: int) -> list:
+def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
     """`(Wahrheit, Ausschnitt)` je Slot — die Wahrheit kommt aus dem Template.
 
     **Der belastbarere Bezug.** Bei den Vorlagen ist die Wahrheit der Name, der
@@ -203,7 +203,7 @@ def proben_aus_slots(scan: dict, catalog, config, limit: int) -> list:
 
 # ---------------------------------------------------------------- Fragen
 
-def frage_einstufig(image, candidates: list, config, model: str) -> tuple:
+def ask_single_stage(image, candidates: list, config, model: str) -> tuple:
     """Ein Aufruf mit der ganzen Namensliste — der Weg, den das Studio geht."""
     return suggest_item_name_with_reason(
         image, provider=config.llm_provider, endpoint=config.llm_endpoint,
@@ -211,7 +211,7 @@ def frage_einstufig(image, candidates: list, config, model: str) -> tuple:
         candidates=candidates)
 
 
-def frage_zweistufig(image, catalog, config, model: str) -> tuple:
+def ask_two_stage(image, catalog, config, model: str) -> tuple:
     """Erst die Art, dann der Name aus NUR dieser Art.
 
     Gegen den Fehler, der uebrig bleibt: die Art trifft das Modell zuverlaessig
@@ -239,10 +239,10 @@ def frage_zweistufig(image, catalog, config, model: str) -> tuple:
         # gar keine Kandidaten. Lieber sagen, woran es lag.
         return None, f"unbekannte Art '{kind}'"
     eng = [n for n in catalog.names() if catalog.category(n) == passend]
-    return frage_einstufig(image, eng, config, model)
+    return ask_single_stage(image, eng, config, model)
 
 
-def mit_stimmen(frage, votes: int) -> tuple:
+def with_votes(frage, votes: int) -> tuple:
     """Mehrfach fragen und die Mehrheit nehmen.
 
     Bei `temperature 0` kommt zwar immer dasselbe heraus — die Bildkodierung
@@ -264,7 +264,7 @@ def mit_stimmen(frage, votes: int) -> tuple:
 
 # ---------------------------------------------------------------- Lauf
 
-def aufwaermen(image, config, model: str) -> float:
+def warm_up(image, config, model: str) -> float:
     """Ein Aufruf vor der Messung — er misst das Laden, nicht die Frage."""
     start = time.time()
     suggest_item_name_with_reason(image, provider=config.llm_provider,
@@ -277,28 +277,28 @@ def lauf(proben: list, catalog, config, args, model: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
     candidates = catalog.names()
     match, remaining, zeiten, fehler = 0, 0, [], []
-    for wahrheit, image in proben:
+    for truth, image in proben:
         start = time.time()
         if args.two_stage:
             def einmal():
-                return frage_zweistufig(image, catalog, config, model)
+                return ask_two_stage(image, catalog, config, model)
         else:
             def einmal():
-                return frage_einstufig(image, candidates, config, model)
+                return ask_single_stage(image, candidates, config, model)
         if args.votes > 1:
-            name, reason = mit_stimmen(einmal, args.votes)
+            name, reason = with_votes(einmal, args.votes)
         else:
             name, reason = einmal()
         duration = time.time() - start
         zeiten.append(duration)
-        richtig = bool(name) and name.casefold() == wahrheit.casefold()
+        richtig = bool(name) and name.casefold() == truth.casefold()
         match += 1 if richtig else 0
         if not name:
             remaining += 1
         if not richtig:
-            fehler.append((wahrheit, name or f"— ({reason})"))
+            fehler.append((truth, name or f"— ({reason})"))
         marke = "OK " if richtig else "-- "
-        print(f"    {marke} {wahrheit:<26} -> {str(name):<26} ({duration:.1f}s)")
+        print(f"    {marke} {truth:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
         "match": match, "total": len(proben), "without": remaining,
         "seconds": sum(zeiten) / len(zeiten) if zeiten else 0.0,
@@ -352,11 +352,11 @@ def main(argv=None) -> int:
         raise SystemExit("Kein Katalog — Einstellungen → 'Item-Katalog', "
                          "oder python tools/catalog.py")
 
-    scan = lade_scan(finde_scan(args.scan))
+    scan = load_scan(find_scan(args.scan))
     if args.image == "slot":
-        proben = proben_aus_slots(scan, catalog, config, args.limit)
+        proben = samples_from_slots(scan, catalog, config, args.limit)
     else:
-        proben = proben_aus_vorlagen(scan, catalog, args.image == "reason", args.limit)
+        proben = samples_from_templates(scan, catalog, args.image == "reason", args.limit)
     if not proben:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "
@@ -378,7 +378,7 @@ def main(argv=None) -> int:
     for model in modelle:
         print(f"\n=== {model} ===")
         if not args.no_warmup:
-            print(f"  \033[90maufwaermen … {aufwaermen(proben[0][1], config, model):.0f}s"
+            print(f"  \033[90maufwaermen … {warm_up(proben[0][1], config, model):.0f}s"
                   "\033[0m")
         ergebnisse[model] = lauf(proben, catalog, config, args, model)
         e = ergebnisse[model]

@@ -36,12 +36,12 @@ class BridgeServicesMixin:
         Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
         out: list[dict] = []
-        root_dir = Path(self.sequences_dir)
+        root_layer = Path(self.sequences_dir)
         files = sorted(
-            (folder / "sequence.json" for folder in root_dir.iterdir()
+            (folder / "sequence.json" for folder in root_layer.iterdir()
              if folder.is_dir() and (folder / "sequence.json").exists()),
             key=lambda path: path.parent.name,
-        ) if root_dir.exists() else []
+        ) if root_layer.exists() else []
         for path in files:
             saved_name = path.parent.name
             try:
@@ -134,9 +134,9 @@ class BridgeServicesMixin:
         for entry, path in list_available_sequences():
             if entry == name:
                 return Path(path).parent
-        root_dir = Path(self.sequences_dir)
-        if root_dir.is_dir():
-            for folder in root_dir.iterdir():
+        root_layer = Path(self.sequences_dir)
+        if root_layer.is_dir():
+            for folder in root_layer.iterdir():
                 if folder.is_dir() and folder.name == name:
                     return folder
         return None
@@ -568,12 +568,12 @@ class BridgeServicesMixin:
         import sys
         from ...config import CONFIG
 
-        root_dir = Path(__file__).resolve().parents[3]
-        if str(root_dir) not in sys.path:
-            sys.path.insert(0, str(root_dir))
+        root_layer = Path(__file__).resolve().parents[3]
+        if str(root_layer) not in sys.path:
+            sys.path.insert(0, str(root_layer))
         try:
-            from tools.catalog import (baue_katalog, hole_spieldaten,
-                                       _zusammenfassung, STANDARD_ZIEL)
+            from tools.catalog import (build_catalog, fetch_game_data,
+                                       _summary, STANDARD_ZIEL)
         except ImportError as e:
             return {"ok": False,
                     "message": f"tools/catalog.py nicht gefunden ({e})."}
@@ -584,7 +584,7 @@ class BridgeServicesMixin:
         # Konstrukt nach einem Spiel-Update ist ein Hinweis, kein Abbruch.
         hints: list = []
         try:
-            catalog = baue_katalog(hole_spieldaten(hints=hints))
+            catalog = build_catalog(fetch_game_data(hints=hints))
         except Exception as e:
             # Netz, DNS, ein geaendertes Antwortformat — alles derselbe Fall
             # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
@@ -601,7 +601,7 @@ class BridgeServicesMixin:
         except OSError as e:
             return {"ok": False, "message": f"Konnte '{target}' nicht schreiben: {e}"}
 
-        message = _zusammenfassung(catalog).splitlines()[0]
+        message = _summary(catalog).splitlines()[0]
         kind = "ok"
         if hints:
             message += " — " + " ".join(hints)

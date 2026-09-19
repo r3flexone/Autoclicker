@@ -139,9 +139,9 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     seq_dir = _sequences_dir()
     if seq_dir.is_dir():
         for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
-            main_part = folder / "sequence.json"
-            if main_part.exists():
-                files.append((main_part, KIND_SEQUENCE, _rt_sequence))
+            run_smoke = folder / "sequence.json"
+            if run_smoke.exists():
+                files.append((run_smoke, KIND_SEQUENCE, _rt_sequence))
             for below, kind, rt in (
                 ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
                 ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),

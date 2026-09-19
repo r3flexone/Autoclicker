@@ -330,7 +330,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         matched = bool(candidates)
         if matched:
             quality, _neg_order, item = max(
-                candidates, key=lambda kandidat: (kandidat[0], kandidat[1]))
+                candidates, key=lambda candidate: (candidate[0], candidate[1]))
             found_items.append((slot, item, item.priority))
             if debug and len(candidates) > 1:
                 print(dbg(f"  → {item.name}: bester von {len(candidates)} Treffern "

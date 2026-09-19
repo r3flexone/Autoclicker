@@ -27,9 +27,9 @@ _web = studio_web_source()
 
 section("Sequenzen-Reiter: loeschen mit Rueckfrage")
 
-_sand = Path(tempfile.mkdtemp(prefix="seqloesch_"))
+_sandbox = Path(tempfile.mkdtemp(prefix="seqloesch_"))
 _cwd = _os.getcwd()
-_os.chdir(_sand)
+_os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import (
@@ -37,7 +37,7 @@ try:
         sequence_templates_dir,
     )
 
-    def _anlegen(name):
+    def _create(name):
         st = _ST()
         seq = _SEQ(name=name, loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                    points=[_CP(id=1, x=10, y=20)])
@@ -47,8 +47,8 @@ try:
         save_data(st)
         return seq
 
-    _farm = _anlegen("Farm")
-    _raid = _anlegen("Raid")
+    _farm = _create("Farm")
+    _raid = _create("Raid")
     # An „Raid" haengt mehr als die JSON — genau das soll die Rueckfrage nennen.
     save_item_scan(_ISC(name="Inventar", owner_sequence="Raid",
                         slots=[_SLOT(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))],
@@ -58,13 +58,13 @@ try:
     # der Persistenz und werden nicht aus dem Anzeigenamen zusammengehaengt.
     # Genau dieser Unterschied war der Fehler: `sequence_delete()` hing den
     # angezeigten Namen an `sequences/` und griff daneben.
-    _ordner_raid = sequence_dir("Raid")
+    _folder_raid = sequence_dir("Raid")
     check("der Ordner traegt den bereinigten Namen, nicht den angezeigten",
-          _ordner_raid.name == "raid" and _ordner_raid.is_dir())
-    _vorlagen = sequence_templates_dir("Raid")
-    _vorlagen.mkdir(parents=True, exist_ok=True)
-    (_vorlagen / "erz.png").write_bytes(b"x")
-    (_vorlagen / "holz.png").write_bytes(b"x")
+          _folder_raid.name == "raid" and _folder_raid.is_dir())
+    _templates = sequence_templates_dir("Raid")
+    _templates.mkdir(parents=True, exist_ok=True)
+    (_templates / "erz.png").write_bytes(b"x")
+    (_templates / "holz.png").write_bytes(b"x")
     # Der Stolperstein selbst: ein Ordner, der so heisst wie die Sequenz — und
     # der gerade NICHT gemeint ist.
     #
@@ -78,24 +78,24 @@ try:
     _falle = Path("sequences/Raid")
     _falle.mkdir(parents=True, exist_ok=True)
     (_falle / "nicht_gemeint.txt").write_bytes(b"x")
-    _falle_eigen = not _os.path.samefile(_falle, _ordner_raid)
+    _falle_eigen = not _os.path.samefile(_falle, _folder_raid)
 
     _b = _SB(_farm, dict(list_available_sequences())["Farm"], "sequences")
     _b._running = lambda: False          # kein echter Lauf in der Testumgebung
 
-    _liste = {e["name"]: e for e in _b.sequence_list()}
-    check("beide Sequenzen stehen in der Uebersicht", set(_liste) == {"Farm", "Raid"})
-    _umfang = {u["kind"]: u["count"] for u in _liste["Raid"]["scope"]}
-    check("der Umfang nennt die Scans", _umfang.get("item_scans") == 1)
-    check("und die Vorlagen", _umfang.get("templates") == 2)
-    check("eine Sequenz ohne Beiwerk hat keinen Umfang", _liste["Farm"]["scope"] == [])
+    _list = {e["name"]: e for e in _b.sequence_list()}
+    check("beide Sequenzen stehen in der Uebersicht", set(_list) == {"Farm", "Raid"})
+    _extent = {u["kind"]: u["count"] for u in _list["Raid"]["scope"]}
+    check("der Umfang nennt die Scans", _extent.get("item_scans") == 1)
+    check("und die Vorlagen", _extent.get("templates") == 2)
+    check("eine Sequenz ohne Beiwerk hat keinen Umfang", _list["Farm"]["scope"] == [])
     # **Die Mehrzahl steht fertig in den Daten.** Die Ansicht haengte erst ein
     # "n" an — das ergibt "Vorlagen" und "Item-Scann". Bei drei von fuenf
     # Woertern falsch, und aufgefallen ist es erst am gerenderten Dialog.
-    _woerter = {u["kind"]: u["word"] for u in _liste["Raid"]["scope"]}
-    check("bei einem bleibt die Einzahl", _woerter.get("item_scans") == "Item-Scan")
+    _words = {u["kind"]: u["word"] for u in _list["Raid"]["scope"]}
+    check("bei einem bleibt die Einzahl", _words.get("item_scans") == "Item-Scan")
     check("bei mehreren steht die richtige Mehrzahl",
-          _woerter.get("templates") == "Vorlagen")
+          _words.get("templates") == "Vorlagen")
     from autoclicker.editors.sequence_studio.bridge_services import BridgeServicesMixin
     check("kein Wort entsteht durch ein angehaengtes n",
           all(many != one_item + "n" or one_item.endswith("e")
@@ -111,17 +111,17 @@ try:
     _b._running = lambda: True
     _z = _b.sequence_delete({"name": "Raid"})
     check("waehrend eines Laufs wird abgelehnt", _z["ok"] is False)
-    check("der Ordner steht auch dann noch", _ordner_raid.is_dir())
+    check("der Ordner steht auch dann noch", _folder_raid.is_dir())
     _b._running = lambda: False
 
     # --- Der Normalfall -----------------------------------------------------
     _z = _b.sequence_delete({"name": "Raid"})
     check("eine fremde Sequenz laesst sich loeschen", _z["ok"] is True)
-    check("der Ordner ist weg", not _ordner_raid.exists())
+    check("der Ordner ist weg", not _folder_raid.exists())
     # **Verschoben, nicht entfernt.** Alles muss mit — die Vorlagen sind der
     # Teil, den man am wenigsten wiederherstellen kann. Die Struktur ist
     # gespiegelt (wie bei `backup_path()`), also steht dort der ORDNERname.
-    _bak = Path("backups/sequences") / _ordner_raid.name
+    _bak = Path("backups/sequences") / _folder_raid.name
     check("er liegt unter backups/", _bak.is_dir())
     check("samt sequence.json", (_bak / "sequence.json").exists())
     check("samt Item-Scan", (_bak / "item_scans").is_dir())
@@ -137,11 +137,11 @@ try:
               (_bak / "nicht_gemeint.txt").exists() and not _falle.exists())
 
     # --- Zweimal derselbe Name ueberschreibt die Sicherung nicht -----------
-    _anlegen("Raid")
+    _create("Raid")
     _b.sequence_delete({"name": "Raid"})
     _stände = sorted(p.name for p in Path("backups/sequences").iterdir())
     check("eine zweite Sicherung bekommt einen Zeitstempel", len(_stände) == 2)
-    check("und die erste bleibt die erste", _ordner_raid.name in _stände)
+    check("und die erste bleibt die erste", _folder_raid.name in _stände)
 
     # --- Was es nicht gibt ---------------------------------------------------
     _z = _b.sequence_delete({"name": "Gibtsnicht"})
@@ -156,7 +156,7 @@ try:
 finally:
     _os.chdir(_cwd)
     import shutil as _sh
-    _sh.rmtree(_sand, ignore_errors=True)
+    _sh.rmtree(_sandbox, ignore_errors=True)
 
 
 # --- Die Verdrahtung in der Ansicht ---------------------------------------

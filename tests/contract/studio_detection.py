@@ -39,18 +39,18 @@ section("Erkennungs-Scans: die Seite erfindet weder Methoden noch Aktionswerte")
 # Vertragstest in `test_logic.py` keinen einzigen davon (er sucht nach
 # `callScan("name"`). Deshalb stehen sie in EINER Tabelle — und die wird hier
 # gemessen.
-_tabelle = _web[_web.index("const DET_COMMAND = {"):]
-_tabelle = _tabelle[:_tabelle.index("};")]
-_befehle = sorted(set(re.findall(r':\s*"([a-z_]+)"', _tabelle)))
-check("die Befehlstabelle der Erkennungs-Arten ist da", len(_befehle) >= 8)
-_fehlend = [n for n in _befehle if not callable(getattr(_SB, n, None))]
-check("jeden Namen darin gibt es in der Bruecke", _fehlend == [])
-if _fehlend:
-    print("        fehlt in der Bruecke: " + ", ".join(_fehlend))
+_table = _web[_web.index("const DET_COMMAND = {"):]
+_table = _table[:_table.index("};")]
+_commands = sorted(set(re.findall(r':\s*"([a-z_]+)"', _table)))
+check("die Befehlstabelle der Erkennungs-Arten ist da", len(_commands) >= 8)
+_missing = [n for n in _commands if not callable(getattr(_SB, n, None))]
+check("jeden Namen darin gibt es in der Bruecke", _missing == [])
+if _missing:
+    print("        fehlt in der Bruecke: " + ", ".join(_missing))
 
 import inspect as _inspect
 _unpassend = []
-for _name in _befehle:
+for _name in _commands:
     try:
         _inspect.signature(getattr(_SB, _name)).bind(None, None)
     except TypeError:
@@ -71,9 +71,9 @@ check("und die Seite fuehrt dieselbe Liste",
 # ---------------------------------------------------------------------------
 section("Boss- und Icon-Scans: anlegen, Region, Felder, Bibliothek")
 
-_sand = tempfile.mkdtemp(prefix="studioerk_")
+_sandbox = tempfile.mkdtemp(prefix="studioerk_")
 _cwd = _os.getcwd()
-_os.chdir(_sand)
+_os.chdir(_sandbox)
 try:
     Path("sequences/s/templates").mkdir(parents=True)
     _b = _SB(_SEQ(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -106,7 +106,7 @@ try:
                               "value": [1164, 296, 742, 188]})
     _region = _b.boss_scans["Bossfarm"].scan_region
     check("eine verdrehte Region wird normalisiert", _region == (742, 188, 1164, 296))
-    _vorher = dict(_b.boss_scans["Bossfarm"].__dict__)
+    _before = dict(_b.boss_scans["Bossfarm"].__dict__)
     _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region",
                               "value": [10, 10, 10 + _MIN_REGION - 1, 40]})
     check("eine zu schmale Region wird abgelehnt statt gesetzt",
@@ -262,7 +262,7 @@ try:
             check("und die auffaelligste Farbe ist das Symbol",
                   (220 // 5 * 5, 50 // 5 * 5, 60 // 5 * 5) in _ic.marker_colors)
 
-            _dirty_vorher = _b._scan_dirty
+            _dirty_before = _b._scan_dirty
             _z = _b.icon_test({})
             _t = _z["icon"]["test"]
             check("der Test erkennt das Icon", _t["ok"] is True)
@@ -274,7 +274,7 @@ try:
             check("er benennt die Aktion, statt sie auszufuehren",
                   "klicken" in _t["action"] or "Punkt" in _t["action"])
             check("und er aendert nichts an den Daten",
-                  _b._scan_dirty == _dirty_vorher)
+                  _b._scan_dirty == _dirty_before)
 
             # --- Der Vorschlag ist der Kern des Fehlerfalls ---
             _b.icon_set({"field": "tolerance", "value": 0})
@@ -329,11 +329,11 @@ try:
 
             # --- Rueckgaengig nimmt den ganzen Stand zurueck ---
             section("Rueckgaengig und Speichern umfassen alle drei Scan-Arten")
-            _vor = len(_b.icon_scans)
+            _before = len(_b.icon_scans)
             _b.icon_scan_new({"name": "Wegwerf"})
-            check("der neue Icon-Scan ist da", len(_b.icon_scans) == _vor + 1)
+            check("der neue Icon-Scan ist da", len(_b.icon_scans) == _before + 1)
             _z = _b.scan_undo()
-            check("STRG+Z nimmt ihn zurueck", len(_b.icon_scans) == _vor)
+            check("STRG+Z nimmt ihn zurueck", len(_b.icon_scans) == _before)
             check("und sagt, was es war", "Icon-Scan" in _z["status"]["text"])
 
             # --- Speichern und wieder laden ---
@@ -397,9 +397,9 @@ section("Slot-Farben, ELSE und die Werkzeugleiste")
 # „gewaehlt" sahen gleich aus. Und --slot-ok/--slot-fremd lagen als
 # #00FF9C/#2DD4BF so dicht beieinander, dass man sie im Bild nicht trennen
 # konnte. Die drei Familien stehen hier fest, damit sie nicht zurueckwandern.
-_soll_farben = {"--slot-ok": "#00E58A", "--slot-fremd": "#22D3EE",
+_expected_colors = {"--slot-ok": "#00E58A", "--slot-fremd": "#22D3EE",
                 "--slot-offen": "#F43F5E"}
-for _var, _value in _soll_farben.items():
+for _var, _value in _expected_colors.items():
     _matches = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
     check(f"{_var} ist {_value}",
           _matches is not None and _matches.group(1).upper() == _value)
@@ -407,7 +407,7 @@ for _var, _value in _soll_farben.items():
     check(f"und {_var}-f traegt dieselbe Farbe",
           _f is not None and _f.group(1)[:7].upper() == _value)
 check("der Akzent gehoert weiterhin der Auswahl — keine Slot-Farbe liegt darauf",
-      "#F59E0B" not in _soll_farben.values())
+      "#F59E0B" not in _expected_colors.values())
 
 # **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** Zwei Tabellen fuer
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen
@@ -461,15 +461,15 @@ _html = (Path(__file__).resolve().parent.parent.parent
 _js = (Path(__file__).resolve().parent.parent.parent
        / "autoclicker/editors/sequence_studio/web/app.js").read_text("utf-8")
 _gefragt = set(re.findall(r'\$\("([a-zA-Z0-9_-]+)"\)', _js))
-_vorhanden = set(re.findall(r'id="([a-zA-Z0-9_-]+)"', _html))
+_present = set(re.findall(r'id="([a-zA-Z0-9_-]+)"', _html))
 # Was die Seite selbst anlegt, zaehlt mit: im Aufbau (`id: "x"`) und als
 # Konstante daneben (`const xId = "y"`).
-_vorhanden |= set(re.findall(r'\bid:\s*"([a-zA-Z0-9_-]+)"', _js))
-_vorhanden |= set(re.findall(r'Id\s*=\s*"([a-zA-Z0-9_-]+)"', _js))
-_ohne = sorted(_gefragt - _vorhanden)
-check("jede von der Seite angesprochene Stelle gibt es auch", _ohne == [])
-if _ohne:
-    print("        fehlt in index.html: " + ", ".join(_ohne))
+_present |= set(re.findall(r'\bid:\s*"([a-zA-Z0-9_-]+)"', _js))
+_present |= set(re.findall(r'Id\s*=\s*"([a-zA-Z0-9_-]+)"', _js))
+_without = sorted(_gefragt - _present)
+check("jede von der Seite angesprochene Stelle gibt es auch", _without == [])
+if _without:
+    print("        fehlt in index.html: " + ", ".join(_without))
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
       {"sec-det-choice", "sec-det-steps", "scan-library"} <= _gefragt)
 check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)

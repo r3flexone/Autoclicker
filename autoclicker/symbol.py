@@ -32,7 +32,7 @@ _ROTATION = re.compile(
 def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
     """Flacht einen SVG-Pfad aus M/L/C/Z zu geschlossenen Polygonen ab."""
     parts = _TOKEN.findall(data)
-    polygone: list[tuple[tuple[float, float], ...]] = []
+    polygons: list[tuple[tuple[float, float], ...]] = []
     polygon: list[tuple[float, float]] = []
     command = None
     position = (0.0, 0.0)
@@ -53,7 +53,7 @@ def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
             i += 1
             if command in "Zz":
                 if len(polygon) >= 3:
-                    polygone.append(tuple(polygon))
+                    polygons.append(tuple(polygon))
                 polygon = []
                 position = start
                 command = None
@@ -65,7 +65,7 @@ def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
 
         if command == "M":
             if len(polygon) >= 3:
-                polygone.append(tuple(polygon))
+                polygons.append(tuple(polygon))
             position = (number(), number())
             start = position
             polygon = [position]
@@ -87,10 +87,10 @@ def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
             position = (x3, y3)
 
     if len(polygon) >= 3:
-        polygone.append(tuple(polygon))
-    if not polygone:
+        polygons.append(tuple(polygon))
+    if not polygons:
         raise ValueError("Das Studio-Logo enthält einen leeren SVG-Pfad")
-    return tuple(polygone)
+    return tuple(polygons)
 
 
 def _rotator(transform: str):
@@ -120,12 +120,12 @@ def _tag(element) -> str:
 @lru_cache(maxsize=1)
 def _logo_geometry():
     """Liest Farbe, ViewBox, sichtbaren Grund und Aussparungen aus dem SVG."""
-    root_dir = ElementTree.parse(LOGO_PATH).getroot()
-    viewbox = tuple(float(w) for w in root_dir.attrib["viewBox"].split())
+    root_layer = ElementTree.parse(LOGO_PATH).getroot()
+    viewbox = tuple(float(w) for w in root_layer.attrib["viewBox"].split())
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
 
-    farb_rect = next((e for e in root_dir if _tag(e) == "rect" and "mask" in e.attrib), None)
+    farb_rect = next((e for e in root_layer if _tag(e) == "rect" and "mask" in e.attrib), None)
     if farb_rect is None:
         raise ValueError("Farbfläche im Studio-Logo fehlt")
     color_text = farb_rect.attrib.get("fill", "").lstrip("#")
@@ -133,7 +133,7 @@ def _logo_geometry():
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
     color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
-    maske = next((e for e in root_dir.iter() if _tag(e) == "mask"), None)
+    maske = next((e for e in root_layer.iter() if _tag(e) == "mask"), None)
     group = (next((e for e in maske.iter() if _tag(e) == "g"), None)
                if maske is not None else None)
     if group is None:
@@ -141,20 +141,20 @@ def _logo_geometry():
     rotate = _rotator(group.attrib.get("transform", ""))
 
     reason = []
-    aussparungen = []
+    cutouts = []
     for path in (e for e in group.iter() if _tag(e) == "path"):
         target = reason if path.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
-            else aussparungen
+            else cutouts
         for polygon in _path_polygons(path.attrib.get("d", "")):
             target.append(tuple(rotate(point) for point in polygon))
-    if not reason or not aussparungen:
+    if not reason or not cutouts:
         raise ValueError("Grund oder transparente Aussparung im Studio-Logo fehlt")
-    return color, viewbox, tuple(reason), tuple(aussparungen)
+    return color, viewbox, tuple(reason), tuple(cutouts)
 
 
-def _intervals(polygone, y: float):
+def _intervals(polygons, y: float):
     """Gibt die nach Even/Odd-Regel gefüllten X-Intervalle einer Zeile zurück."""
-    for polygon in polygone:
+    for polygon in polygons:
         cuts = []
         before = polygon[-1]
         for point in polygon:
@@ -194,7 +194,7 @@ def pixel_rows(edge: int, proben: int = SAMPLES):
     elif edge >= 128:
         proben = min(proben, 2)
 
-    color, (left, top, width, height), reason, aussparungen = _logo_geometry()
+    color, (left, top, width, height), reason, cutouts = _logo_geometry()
     sub_breite = edge * proben
     x_schritt = width / sub_breite
     y_schritt = height / (edge * proben)
@@ -206,7 +206,7 @@ def pixel_rows(edge: int, proben: int = SAMPLES):
             y = top + (zy * proben + py + 0.5) * y_schritt
             subpixel = bytearray(sub_breite)
             _paint(subpixel, _intervals(reason, y), 1, left, x_schritt)
-            _paint(subpixel, _intervals(aussparungen, y), 0, left, x_schritt)
+            _paint(subpixel, _intervals(cutouts, y), 0, left, x_schritt)
             for zx in range(edge):
                 from_index = zx * proben
                 deckung[zx] += sum(subpixel[from_index:from_index + proben])

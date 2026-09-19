@@ -10,10 +10,10 @@ from .platforms.common import *  # noqa: F401,F403 - öffentliche Konstanten
 
 _backend = load_backend()
 
-_fehlend = [name for name in BACKEND_FUNCTIONS if not hasattr(_backend, name)]
-if _fehlend:
+_missing = [name for name in BACKEND_FUNCTIONS if not hasattr(_backend, name)]
+if _missing:
     raise ImportError(
         f"Plattform-Backend {_backend.__name__} ist unvollständig: "
-        + ", ".join(_fehlend))
+        + ", ".join(_missing))
 
 globals().update({name: getattr(_backend, name) for name in BACKEND_FUNCTIONS})

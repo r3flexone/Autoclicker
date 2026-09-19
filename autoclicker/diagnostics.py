@@ -75,21 +75,21 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
     """
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-        quellen = [(f"Item '{i.name}' (Scan '{scan.name}')", tpl)
+        sources = [(f"Item '{i.name}' (Scan '{scan.name}')", tpl)
                    for scan in state.item_scans.values() for i in scan.items
                    for tpl in i.template_names()]
         for scan in state.boss_scans.values():
-            quellen += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template)
+            sources += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template)
                         for b in scan.bosses]
-        quellen += [(f"Boss '{b.name}' (Bibliothek)", b.template)
+        sources += [(f"Boss '{b.name}' (Bibliothek)", b.template)
                     for b in state.global_bosses]
-        quellen += [(f"Icon-Scan '{c.name}'", c.template)
+        sources += [(f"Icon-Scan '{c.name}'", c.template)
                     for c in state.icon_scans.values()]
 
     template_ordner = sequence_templates_dir(owner) if owner else Path("sequences")
-    missing = [(who, tpl) for who, tpl in quellen
+    missing = [(who, tpl) for who, tpl in sources
                if tpl and not (template_ordner / tpl).exists()]
-    report.checked.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
+    report.checked.append(f"{sum(1 for _, t in sources if t)} Template-Verweise")
     for who, tpl in missing:
         report.add_finding(LEVEL_ERROR, who,
                       f"Template '{tpl}' fehlt in {template_ordner}/",

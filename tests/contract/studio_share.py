@@ -28,21 +28,21 @@ import inspect as _inspect
 from autoclicker.import_export import export_bundle as _exp, import_bundle as _imp
 _export_args = set(_inspect.signature(_exp).parameters)
 _import_args = set(_inspect.signature(_imp).parameters)
-_fehlend = [k for k, _ in _TEILE
+_missing = [k for k, _ in _TEILE
             if f"include_{k}" not in _export_args or f"import_{k}" not in _import_args]
-check("jeder anhakbare Teil hat sein Argument auf beiden Seiten", _fehlend == [])
-if _fehlend:
-    print("        ohne Argument: " + ", ".join(_fehlend))
+check("jeder anhakbare Teil hat sein Argument auf beiden Seiten", _missing == [])
+if _missing:
+    print("        ohne Argument: " + ", ".join(_missing))
 
 check("die Seite hat einen Reiter dafuer", 'data-view="share"' in _web)
 check("und ruft die Bruecke ueber einen eigenen Kanal", "callShare(" in _web)
 _gerufen = sorted(set(re.findall(r'callShare\("([a-z_]+)"', _web)))
-_ohne = [n for n in _gerufen if not callable(getattr(_SB, n, None))]
-check("jeden gerufenen Namen gibt es in der Bruecke", _ohne == [])
+_without = [n for n in _gerufen if not callable(getattr(_SB, n, None))]
+check("jeden gerufenen Namen gibt es in der Bruecke", _without == [])
 
-_sand = tempfile.mkdtemp(prefix="teilen_")
+_sandbox = tempfile.mkdtemp(prefix="teilen_")
 _cwd = _os.getcwd()
-_os.chdir(_sand)
+_os.chdir(_sandbox)
 try:
     Path("sequences").mkdir()
     from autoclicker.persistence import (

@@ -62,19 +62,19 @@ SLOTS = {
 }
 
 
-def anzeigename(key_name: str) -> str:
+def display_name(key_name: str) -> str:
     """`godlike_bow` -> `Godlike Bow` — der Name, wie er im Spiel steht."""
     return key_name.replace("_", " ").title()
 
 
-def kategorie_fuer(item: dict) -> str:
+def category_for(item: dict) -> str:
     """Die Gruppe, innerhalb derer dieses Item mit anderen konkurriert."""
     slot = item.get("EquipmentSlot") or 0
     fest = SLOTS.get(slot)
     if fest:
         return fest
     # Slot 7 und 0: das letzte Wort ist die engste verlaessliche Gruppe.
-    letztes = anzeigename(item.get("Name", "")).split()
+    letztes = display_name(item.get("Name", "")).split()
     return letztes[-1] if letztes else "Sonstiges"
 
 
@@ -98,7 +98,7 @@ _AUFRUF = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 _SKALAR = re.compile(r'^(?:"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)$')
 
 
-def _string_ende(text: str, start: int) -> int:
+def _string_end(text: str, start: int) -> int:
     """Index hinter dem schliessenden Anfuehrungszeichen des Strings ab `start`."""
     i = start + 1
     n = len(text)
@@ -113,7 +113,7 @@ def _string_ende(text: str, start: int) -> int:
     return n
 
 
-def _argument_ende(text: str, start: int) -> int:
+def _argument_end(text: str, start: int) -> int:
     """Index hinter der schliessenden Klammer; -1, wenn sie nie zugeht."""
     tiefe = 1
     i = start
@@ -121,7 +121,7 @@ def _argument_ende(text: str, start: int) -> int:
     while i < n:
         c = text[i]
         if c == '"':
-            i = _string_ende(text, i)
+            i = _string_end(text, i)
             continue
         if c == "(":
             tiefe += 1
@@ -133,7 +133,7 @@ def _argument_ende(text: str, start: int) -> int:
     return -1
 
 
-def _als_zahl(inneres: str):
+def _as_number(inneres: str):
     """`5`, `"5"`, `"1.5"` -> `5` bzw. `1.5`; sonst None."""
     raw = inneres.strip()
     if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
@@ -147,7 +147,7 @@ def _ersatz(name: str, inneres: str, unbekannt: dict) -> str:
     """Der JSON-Text, der fuer `Name(inneres)` an dieselbe Stelle kommt."""
     inneres = inneres.strip()
     if name in ZAHL_HUELLEN:
-        number = _als_zahl(inneres)
+        number = _as_number(inneres)
         if number is not None:
             return number
     elif name in TEXT_HUELLEN:
@@ -164,7 +164,7 @@ def _ersatz(name: str, inneres: str, unbekannt: dict) -> str:
     return json.dumps(f"{name}({inneres})")
 
 
-def bereinige_extended_json(text: str) -> tuple:
+def clean_extended_json(text: str) -> tuple:
     """`(json_text, unbekannte)` — `unbekannte` zaehlt je Konstruktname."""
     unbekannt: dict = {}
     parts = []
@@ -173,7 +173,7 @@ def bereinige_extended_json(text: str) -> tuple:
     while i < n:
         c = text[i]
         if c == '"':
-            ende = _string_ende(text, i)
+            ende = _string_end(text, i)
             parts.append(text[i:ende])
             i = ende
             continue
@@ -182,7 +182,7 @@ def bereinige_extended_json(text: str) -> tuple:
             parts.append(c)
             i += 1
             continue
-        ende = _argument_ende(text, match.end())
+        ende = _argument_end(text, match.end())
         if ende < 0:
             parts.append(text[i:match.end()])
             i = match.end()
@@ -192,7 +192,7 @@ def bereinige_extended_json(text: str) -> tuple:
     return "".join(parts), unbekannt
 
 
-def extended_json_hinweise(unbekannt: dict) -> list:
+def extended_json_hints(unbekannt: dict) -> list:
     """Die Meldungen zu unbekannten Konstrukten — eine je Name, mit Anzahl."""
     return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {count}× — Wert "
             f"uebernommen, nicht uebersetzt. Falls es eine Zahl oder ein Text ist: "
@@ -200,32 +200,32 @@ def extended_json_hinweise(unbekannt: dict) -> list:
             for name, count in sorted(unbekannt.items())]
 
 
-def hole_spieldaten(url: str = GAME_URL, timeout: int = 60, hinweise: list = None) -> dict:
+def fetch_game_data(url: str = GAME_URL, timeout: int = 60, hinweise: list = None) -> dict:
     """Laedt game-data und macht daraus gueltiges JSON.
 
     Der Endpunkt liefert MongoDB-Shell-JSON (`ObjectId("…")`, `NumberLong(0)`);
-    `bereinige_extended_json` uebersetzt es. Was dabei unbekannt war, landet als
+    `clean_extended_json` uebersetzt es. Was dabei unbekannt war, landet als
     Meldung in `hinweise` (falls uebergeben) — der Aufrufer entscheidet, wo sie
     hingehoert: die Kommandozeile auf stderr, das Studio in seine Statuszeile.
     """
     req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-catalog"})
     with urllib.request.urlopen(req, timeout=timeout) as antwort:
         raw = antwort.read().decode("utf-8")
-    bereinigt, unbekannt = bereinige_extended_json(raw)
+    cleaned, unbekannt = clean_extended_json(raw)
     if hinweise is not None:
-        hinweise.extend(extended_json_hinweise(unbekannt))
-    return json.loads(bereinigt)
+        hinweise.extend(extended_json_hints(unbekannt))
+    return json.loads(cleaned)
 
 
-def baue_katalog(spieldaten: dict) -> dict:
+def build_catalog(spieldaten: dict) -> dict:
     """Aus den Spieldaten die beiden Listen, die der Autoclicker braucht."""
     items = {}
     for entry in (spieldaten.get("Items") or {}).get("Items") or []:
         key_name = entry.get("Name")
         if not key_name:
             continue
-        items[anzeigename(key_name)] = {
-            "kategorie": kategorie_fuer(entry),
+        items[display_name(key_name)] = {
+            "kategorie": category_for(entry),
             "wert": entry.get("BaseValue") or 0,
         }
 
@@ -239,7 +239,7 @@ def baue_katalog(spieldaten: dict) -> dict:
             for feld in ("EnemyName", "MonsterName", "BossNameLocalizationKey"):
                 value = knoten.get(feld)
                 if isinstance(value, str) and value:
-                    gegner.add(anzeigename(value))
+                    gegner.add(display_name(value))
             for value in knoten.values():
                 sammle(value)
         elif isinstance(knoten, list):
@@ -248,14 +248,14 @@ def baue_katalog(spieldaten: dict) -> dict:
 
     sammle(spieldaten)
     return {
-        "_quelle": GAME_URL,
+        "_source": GAME_URL,
         "_erzeugt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "items": items,
         "gegner": sorted(gegner),
     }
 
 
-def _zusammenfassung(catalog: dict) -> str:
+def _summary(catalog: dict) -> str:
     """Was drinsteht — die Zeile, die man nach dem Lauf liest."""
     kategorien = {}
     for entry in catalog["items"].values():
@@ -278,7 +278,7 @@ def main(argv=None) -> int:
     print(f"Lade {GAME_URL} ...")
     hinweise: list = []
     try:
-        spieldaten = hole_spieldaten(hinweise=hinweise)
+        spieldaten = fetch_game_data(hinweise=hinweise)
     except (urllib.error.URLError, TimeoutError) as e:
         print(f"[FEHLER] Nicht erreichbar: {e}", file=sys.stderr)
         return 1
@@ -291,8 +291,8 @@ def main(argv=None) -> int:
     for hinweis in hinweise:
         print(f"[WARNUNG] {hinweis}", file=sys.stderr)
 
-    catalog = baue_katalog(spieldaten)
-    print(_zusammenfassung(catalog))
+    catalog = build_catalog(spieldaten)
+    print(_summary(catalog))
     if args.show:
         return 0
 

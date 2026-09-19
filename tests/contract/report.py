@@ -49,8 +49,8 @@ def _log(path: Path, lines: list) -> Path:
 
 section("Bericht: die Auswertung rechnet, sie druckt nicht")
 
-_sand = Path(tempfile.mkdtemp(prefix="bericht_"))
-_eins = _log(_sand / "logs" / "20260101_000000_farm.csv", [
+_sandbox = Path(tempfile.mkdtemp(prefix="bericht_"))
+_one = _log(_sandbox / "logs" / "20260101_000000_farm.csv", [
     ("2026-01-01 00:00:00", 0, "session_start", "Farm", "", "", ""),
     ("2026-01-01 00:00:01", 1, "click", "Bank", 10, 20, ""),
     ("2026-01-01 00:00:02", 2, "click", "Bank", 10, 20, ""),
@@ -65,7 +65,7 @@ _eins = _log(_sand / "logs" / "20260101_000000_farm.csv", [
     ("2026-01-01 00:00:11", 11, "focus_lost", "", "", "", ""),
     ("2026-01-01 01:00:00", 3600, "session_end", "Farm", "", "", ""),
 ])
-_zwei = _log(_sand / "logs" / "20260102_000000_farm.csv", [
+_zwei = _log(_sandbox / "logs" / "20260102_000000_farm.csv", [
     ("2026-01-02 00:00:00", 0, "session_start", "Farm", "", "", ""),
     ("2026-01-02 00:00:01", 1, "click", "Bank", 10, 20, ""),
     ("2026-01-02 00:00:02", 2, "item_found", "Erz", "", "", ""),
@@ -74,13 +74,13 @@ _zwei = _log(_sand / "logs" / "20260102_000000_farm.csv", [
 
 _puffer = io.StringIO()
 with redirect_stdout(_puffer):
-    _d = _auswerten([_eins, _zwei])
+    _d = _auswerten([_one, _zwei])
 check("die Auswertung gibt keine Zeile aus", _puffer.getvalue() == "")
 check("beide Sitzungen sind erfasst", len(_d["sessions"]) == 2)
 check("die Laufzeit zaehlt zusammen", _d["duration"] == 5400.0)
 check("und jede Sitzung traegt ihre eigene", _d["sessions"][1]["duration"] == 1800.0)
 check("jede Sitzung kennt ihren Dateinamen",
-      [s["file"] for s in _d["sessions"]] == [_eins.name, _zwei.name])
+      [s["file"] for s in _d["sessions"]] == [_one.name, _zwei.name])
 check("und den Beginn aus der ersten Zeile",
       _d["sessions"][0]["begin"] == "2026-01-01 00:00:00")
 
@@ -95,14 +95,14 @@ check("Unterbrechungen werden getrennt gefuehrt", _d["disturbances"] == [["focus
 check("und nichts bleibt unausgewertet", _d["unbekannt"] == [])
 
 # Gegenprobe: eine neue Ereignisart soll auffallen, nicht stillschweigend fehlen.
-_neu = _log(_sand / "logs2" / "x.csv", [
+_new = _log(_sandbox / "logs2" / "x.csv", [
     ("2026-01-03 00:00:00", 0, "irgendwas_neues", "", "", "", ""),
 ])
 check("eine unbekannte Ereignisart wird gemeldet",
-      _auswerten([_neu])["unbekannt"] == ["irgendwas_neues"])
+      _auswerten([_new])["unbekannt"] == ["irgendwas_neues"])
 
 # Eine kaputte Datei ist ein Grund, kein Absturz — und keine Konsolenausgabe.
-_kaputt = _sand / "logs3" / "gibtsnicht.csv"
+_kaputt = _sandbox / "logs3" / "gibtsnicht.csv"
 _puffer = io.StringIO()
 with redirect_stdout(_puffer):
     _dk = _auswerten([_kaputt])
@@ -113,7 +113,7 @@ check("und auch dabei wird nichts gedruckt", _puffer.getvalue() == "")
 # Die Konsole druckt weiterhin — sie ist der zweite Nutzer derselben Auswertung.
 _puffer = io.StringIO()
 with redirect_stdout(_puffer):
-    _bericht([_eins, _zwei])
+    _bericht([_one, _zwei])
 _text = _puffer.getvalue()
 check("der Kommandozeilen-Bericht druckt nach wie vor", "TIMEOUTS" in _text)
 check("und nennt dieselbe Zahl wie die Auswertung", "2x  Bank oeffnen" in _text)
@@ -122,7 +122,7 @@ check("und nennt dieselbe Zahl wie die Auswertung", "2x  Bank oeffnen" in _text)
 section("Bericht: was der Reiter daraus macht")
 
 _cwd = _os.getcwd()
-_os.chdir(_sand)
+_os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.config import CONFIG
@@ -136,7 +136,7 @@ try:
     save_data(_st)
     _b = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
 
-    _alt_dir, _alt_markt = CONFIG.session_log_dir, CONFIG.scan_market_value_file
+    _old_dir, _old_market = CONFIG.session_log_dir, CONFIG.scan_market_value_file
     CONFIG.session_log_dir = "logs"
     CONFIG.scan_market_value_file = ""
 
@@ -197,7 +197,7 @@ try:
     check("ohne Log-Ordner bleibt der Reiter leer statt zu werfen",
           _z["sessions"] == [] and _z["brief"]["sessions"] == 0)
 
-    CONFIG.session_log_dir, CONFIG.scan_market_value_file = _alt_dir, _alt_markt
+    CONFIG.session_log_dir, CONFIG.scan_market_value_file = _old_dir, _old_market
 finally:
     _os.chdir(_cwd)
 
@@ -212,26 +212,26 @@ check("und einen Behaelter in derselben Dreiteilung",
 # `hidden`-Zeile ist ein Reiter, der sich nicht oeffnet — und der Fehler faellt
 # erst beim Klicken auf. Beide Richtungen: kein Knopf ohne Zeile, keine Zeile
 # ohne Knopf.
-_knoepfe = set(re.findall(r'data-view="(\w+)"', _web))
+_buttons = set(re.findall(r'data-view="(\w+)"', _web))
 # Gemerkt wird der ANSICHTSNAME, nicht die Element-Id: die beiden sind nicht
 # ueberall gleich (der Reiter „einstellungen" wohnt in `view-settings`), und ein
 # Test auf die Id meldete genau diesen Reiter als nicht verdrahtet.
-_geschaltet = {b for _, b in re.findall(
+_switched = {b for _, b in re.findall(
     r'\$\("view-([\w-]+)"\)\.hidden = neu !== "(\w+)"', _web)}
 # Der Editor liegt als `editor-body` im Dokument, nicht als `view-editor`.
-_offen = (_knoepfe - _geschaltet) - {"editor"}
+_offen = (_buttons - _switched) - {"editor"}
 check("jeder Reiter-Knopf hat seine Umschalt-Zeile", _offen == set())
 if _offen:
     print("        ohne Umschaltung: " + ", ".join(sorted(_offen)))
-_verwaist = _geschaltet - _knoepfe
+_verwaist = _switched - _buttons
 check("und keine Umschalt-Zeile ohne Knopf", _verwaist == set())
 
 # **Die Kopfleiste blendet ihre Sequenz-Knoepfe in JEDEM fremden Reiter aus.**
 # Der Bericht liest `logs/`, nicht die offene Sequenz — bliebe „Speichern"
 # stehen, staenden zwei Speichern-Bedeutungen in einer Leiste.
-_liste = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(neu\)', _web)
+_list = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(neu\)', _web)
 check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
-      _liste is not None and '"report"' in _liste.group(1))
+      _list is not None and '"report"' in _list.group(1))
 
 # **Symmetrie:** der Reiter baut mit dem, was da ist. Die Kennzahlen sind
 # dieselben Kacheln wie im Werkzeuge-Reiter, die Karten dieselben wie im Teilen-
@@ -253,10 +253,10 @@ for _roh in re.findall(r'class: "([^"]+)"', _bericht_js):
     _benutzt |= {k for k in _roh.split() if k.startswith("ber-")}
 _css = (Path(_WURZEL) / "autoclicker/editors/sequence_studio/web/styles.css"
         ).read_text(encoding="utf-8")
-_ohne_css = sorted(k for k in _benutzt if "." + k not in _css)
-check("jede eigene Bericht-Klasse ist auch gestaltet", _ohne_css == [])
-if _ohne_css:
-    print("        ohne CSS: " + ", ".join(_ohne_css))
+_without_css = sorted(k for k in _benutzt if "." + k not in _css)
+check("jede eigene Bericht-Klasse ist auch gestaltet", _without_css == [])
+if _without_css:
+    print("        ohne CSS: " + ", ".join(_without_css))
 
 # Der Reiter fragt nur — er aendert die Sequenz nicht und darf deshalb nie
 # ueber `call()` laufen: eine Antwort von hier als Momentaufnahme zu behandeln
@@ -266,7 +266,7 @@ check("der Reiter geht ueber den fragenden Kanal",
 check("und nicht ueber den befehlenden", 'call("report_data"' not in _web)
 
 import shutil as _sh  # noqa: E402
-_sh.rmtree(_sand, ignore_errors=True)
+_sh.rmtree(_sandbox, ignore_errors=True)
 
 
 section("Kein Rauchtest bleibt unaufgerufen")
@@ -294,9 +294,9 @@ section("Einstellungen: der Schreiber laedt sich selbst neu")
 # nachdem man es eingeschaltet hatte —, betroffen war aber jeder Reiter, der
 # `CONFIG` liest: OCR/LLM-Lampen und Marker-Schwellen im Scans-Reiter, die
 # Farbtoleranz im Werkzeuge-Reiter, der Fenstertitel im Teilen-Reiter.
-_sand2 = Path(tempfile.mkdtemp(prefix="bericht_cfg_"))
+_sandbox2 = Path(tempfile.mkdtemp(prefix="bericht_cfg_"))
 _cwd = _os.getcwd()
-_os.chdir(_sand2)
+_os.chdir(_sandbox2)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.config import CONFIG as _CFG, AppConfig as _AC, save_config as _sc
@@ -311,9 +311,9 @@ try:
     save_data(_st)
     _b2 = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
 
-    _alt_log, _alt_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz
+    _old_log, _old_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz
     _CFG.session_log_enabled = False
-    _vorher = id(_CFG)
+    _before = id(_CFG)
     check("vorher steht der Reiter auf aus", _b2.report_data()["active"] is False)
 
     _r = _b2.config_write({"values": {"session_log_enabled": True,
@@ -330,9 +330,9 @@ try:
     # mit `from ...config import CONFIG` (imaging, die Scan-Module) dauerhaft auf
     # den Werten vom Programmstart sitzen — genau der Fehler, gegen den es
     # `apply_config()` gibt.
-    check("und das Config-Objekt bleibt dasselbe", id(_CFG) == _vorher)
+    check("und das Config-Objekt bleibt dasselbe", id(_CFG) == _before)
 
-    _CFG.session_log_enabled, _CFG.punkt_farbtoleranz = _alt_log, _alt_tol
+    _CFG.session_log_enabled, _CFG.punkt_farbtoleranz = _old_log, _old_tol
 finally:
     _os.chdir(_cwd)
-    _sh.rmtree(_sand2, ignore_errors=True)
+    _sh.rmtree(_sandbox2, ignore_errors=True)

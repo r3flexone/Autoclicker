@@ -63,18 +63,18 @@ class Catalog:
 
     def category(self, name: str) -> Optional[str]:
         """Die Gruppe, in der dieses Item mit anderen konkurriert."""
-        echt = self.match(name)
-        if echt is None:
+        real = self.match(name)
+        if real is None:
             return None
-        return self.items[echt].get("kategorie") or None
+        return self.items[real].get("kategorie") or None
 
     def value(self, name: str) -> Optional[float]:
         """Grundwert in Gold. Rangfolge INNERHALB eines Scans, nicht global."""
-        echt = self.match(name)
-        if echt is None:
+        real = self.match(name)
+        if real is None:
             return None
         try:
-            return float(self.items[echt].get("wert") or 0)
+            return float(self.items[real].get("wert") or 0)
         except (TypeError, ValueError):
             return None
 

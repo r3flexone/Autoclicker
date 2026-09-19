@@ -162,9 +162,9 @@ class ScanDetectMixin:
         Platte hat sich etwas geändert" nur für Items — also ausgerechnet nicht
         für das, was hier gerade bearbeitet wird.
         """
-        root_dir = self.filepath.parent
-        folder_list = (root_dir / "boss_scans", root_dir / "icon_scans")
-        paths = [*folder_list, root_dir / "boss_scans" / "bibliothek.json"]
+        root_layer = self.filepath.parent
+        folder_list = (root_layer / "boss_scans", root_layer / "icon_scans")
+        paths = [*folder_list, root_layer / "boss_scans" / "bibliothek.json"]
         for folder in folder_list:
             if folder.is_dir():
                 paths += sorted(folder.glob("*.json"))

@@ -631,8 +631,8 @@ def get_window_title_at(x: int, y: int) -> str:
         hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
-        root_dir = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _window_title(root_dir or hwnd)
+        root_layer = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+        return _window_title(root_layer or hwnd)
     except Exception:
         return ""
 

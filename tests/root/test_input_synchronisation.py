@@ -13,14 +13,14 @@ from autoclicker.models import AutoClickerState
 from autoclicker.runtime import actions
 
 
-class EingabeSynchronisationTest(unittest.TestCase):
+class InputSynchronisationTest(unittest.TestCase):
     def test_pause_waehrend_fokusverlust_sperrt_bis_zur_freigabe(self):
-        self._fokus_pause(stoppen=False)
+        self._focus_pause(stoppen=False)
 
     def test_stopp_waehrend_fokuspause_verhindert_die_eingabe(self):
-        self._fokus_pause(stoppen=True)
+        self._focus_pause(stoppen=True)
 
-    def _fokus_pause(self, stoppen):
+    def _focus_pause(self, stoppen):
         for kind, arguments in (("click", (10, 20)), ("key", ("a",)), ("scroll", (1,))):
             with self.subTest(kind=kind), ExitStack() as mocks:
                 state = AutoClickerState()
@@ -30,7 +30,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
                 state.config.window_focus_action = "pause"
                 verloren = threading.Event()
                 wieder_da = threading.Event()
-                entschieden = threading.Event()
+                decided = threading.Event()
                 results_list, error = [], []
                 aufrufe = 0
                 original_pause = actions.wait_while_paused
@@ -49,11 +49,11 @@ class EingabeSynchronisationTest(unittest.TestCase):
 
                 def pause(s, text):
                     if s.pause_event.is_set():
-                        entschieden.set()
+                        decided.set()
                     return original_pause(s, text)
 
                 def sent(*_args):
-                    entschieden.set()
+                    decided.set()
                     return True
 
                 sender = [mocks.enter_context(patch.object(actions, "send_" + name,
@@ -68,7 +68,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
                         results_list.append(getattr(actions, "safe_" + kind)(state, *arguments))
                     except BaseException as exc:
                         error.append(exc)
-                        entschieden.set()
+                        decided.set()
 
                 thread = threading.Thread(target=ausfuehren, daemon=True)
                 thread.start()
@@ -76,7 +76,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
                     self.assertTrue(verloren.wait(3), "Fokus-Wartephase nicht erreicht")
                     state.pause_event.set()
                     wieder_da.set()
-                    self.assertTrue(entschieden.wait(3), "Keine Reaktion auf Fokusrückkehr")
+                    self.assertTrue(decided.wait(3), "Keine Reaktion auf Fokusrückkehr")
                     self.assertEqual(error, [])
                     for senden in sender:
                         senden.assert_not_called()

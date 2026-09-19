@@ -37,9 +37,9 @@ from autoclicker.models import (ItemProfile as _ITEM8, ItemSlot as _SLOT8,
 
 _repo17 = Path(__file__).resolve().parent.parent
 
-_sand18 = tempfile.mkdtemp(prefix="studioscan_")
+_sandbox18 = tempfile.mkdtemp(prefix="studioscan_")
 _cwd18 = _os.getcwd()
-_os.chdir(_sand18)
+_os.chdir(_sandbox18)
 try:
     Path("sequences").mkdir()
     _b18 = _SB8(_SEQ8(name="S"),
@@ -100,13 +100,13 @@ try:
     if not _hat_pil18:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
-        _bild18 = _PILImage18.new("RGB", (400, 300), (24, 28, 36))
+        _image18 = _PILImage18.new("RGB", (400, 300), (24, 28, 36))
         for _px18 in range(100, 160):
             for _py18 in range(100, 160):
-                _bild18.putpixel((_px18, _py18), (48, 54, 68))
+                _image18.putpixel((_px18, _py18), (48, 54, 68))
         for _px18 in range(112, 148):
             for _py18 in range(112, 148):
-                _bild18.putpixel((_px18, _py18), (200, 60, 60))
+                _image18.putpixel((_px18, _py18), (200, 60, 60))
 
         import autoclicker.imaging as _img18
         import autoclicker.winapi as _win18
@@ -116,7 +116,7 @@ try:
         # den Ausschnitt, nicht den ganzen Schirm. Ohne das koennte der Test die
         # Bereichs-Aufnahme gar nicht messen - sie saehe aus wie Vollbild.
         _img18.take_screenshot = lambda region=None: (
-            _bild18.copy() if not region else _bild18.crop(tuple(region)))
+            _image18.copy() if not region else _image18.crop(tuple(region)))
         _win18.get_virtual_origin = lambda: (0, 0)
         try:
             _z18 = _b18.scan_screenshot()
@@ -324,17 +324,17 @@ try:
             # --- Die drei Schritte zu einem Scan ---
             # Der Reiter zeigte alle Bedienelemente gleichzeitig; wer zum ersten
             # Mal einen Scan anlegt, sah eine Wand statt eines Weges.
-            _sch18 = _b18.scan_data()["steps"]
-            check("es sind drei Schritte", [s["nr"] for s in _sch18] == [1, 2, 3])
-            check("mit Bild ist der erste erledigt", _sch18[0]["done"] is True)
+            _st18 = _b18.scan_data()["steps"]
+            check("es sind drei Schritte", [s["nr"] for s in _st18] == [1, 2, 3])
+            check("mit Bild ist der erste erledigt", _st18[0]["done"] is True)
             check("mit angelegten Slots ist auch der zweite erledigt",
-                  _sch18[1]["done"] is True)
+                  _st18[1]["done"] is True)
             # Der entscheidende Satz: zwischen Slots und Items liegt das Spiel.
             # Wer auf dem alten Bild lernt, lernt leere Slots.
             check("Schritt 3 sagt, dass neu aufgenommen werden muss",
-                  "NEU aufnehmen" in _sch18[2]["what"])
+                  "NEU aufnehmen" in _st18[2]["what"])
             check("ein fertiger Scan hat keinen offenen Assistent-Schritt",
-                  sum(1 for s in _sch18 if s["current"]) == 0)
+                  sum(1 for s in _st18 if s["current"]) == 0)
 
             # --- Slots finden: Suchbereich, dann ein Klick auf den Hintergrund ---
             # 24 Slots von Hand sind 48 Klicks. Die Erkennung gibt es laengst -
@@ -364,7 +364,7 @@ try:
                 for _gx18 in range(3):
                     _zelle18(40 + _gx18 * 80, 40 + _gy18 * 80, _gy18 * 3 + _gx18)
             _zelle18(320, 220, 99)
-            _slots_vorher18 = dict(_b18.slots)
+            _slots_before18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18._sync_objects()
             _b18._photo = _gitter18
@@ -400,9 +400,9 @@ try:
                 # ihn seit jeher, das Studio tat es nicht - und lernte den Rahmen
                 # als Item-Merkmal mit.
                 import autoclicker.config as _cfg18
-                _ein18 = _cfg18.CONFIG.scan_slot_inset
+                _on18 = _cfg18.CONFIG.scan_slot_inset
                 check("die Zelle wird um scan_slot_inset eingezogen",
-                      all(s["width"] == 60 - 2 * _ein18 for s in _z18["slots"]))
+                      all(s["width"] == 60 - 2 * _on18 for s in _z18["slots"]))
                 check("und es steht dabei, dass eingezogen wurde",
                       "Einzug" in _z18["status"]["text"])
 
@@ -432,7 +432,7 @@ try:
                 # Die Frage nach dem Finden ist nicht "habe ich Slots", sondern
                 # "was davon kenne ich schon". Ohne das stehen zwanzig gleich
                 # aussehende Rechtecke da, und "Items lernen" lernt stumpf alle.
-                _items_vorher18 = dict(_b18.items)
+                _items_before18 = dict(_b18.items)
                 _b18.items.clear()
                 _b18.slots.clear()
                 _b18._sync_objects()
@@ -461,16 +461,16 @@ try:
                 _b18.scan_click({"x": 10, "y": 10})
                 _b18.scan_click({"x": 395, "y": 295})
                 _z18 = _b18.scan_click({"x": 42, "y": 42})
-                _gruen18 = [s for s in _z18["slots"] if s["match"] and s["match"]["name"]]
+                _green18 = [s for s in _z18["slots"] if s["match"] and s["match"]["name"]]
                 check("das gelernte Item wird gleich im Slot erkannt",
-                      len(_gruen18) >= 1)
+                      len(_green18) >= 1)
                 check("und die Meldung sagt, was noch unbekannt ist",
                       "bekanntem Item" in _z18["status"]["text"]
                       and "unbekannt" in _z18["status"]["text"])
                 # Der Treffer gehoert zum offenen Scan (das Lernen hat ihn
                 # eingetragen), ist also NICHT fremd.
                 check("ein Item des offenen Scans gilt nicht als fremd",
-                      _gruen18[0]["match"].get("foreign") is False)
+                      _green18[0]["match"].get("foreign") is False)
 
                 # --- Ein neuer Scan faengt leer an, erkannte tauchen auf ---
                 # Vorher standen im Inspektor eines frischen Scans alle Slots
@@ -497,10 +497,10 @@ try:
                 _z18 = _b18.scan_data()
 
                 check("ein Item des Scans braucht keinen Mitgliedschaftsschalter",
-                      all(s["match"].get("foreign") is False for s in _gruen18))
+                      all(s["match"].get("foreign") is False for s in _green18))
                 _b18.slots.pop("Draussen", None)
                 _b18.items.clear()
-                _b18.items.update(_items_vorher18)
+                _b18.items.update(_items_before18)
             else:
                 print("  ----  Slots finden uebersprungen (OpenCV fehlt)")
             # ESC raeumt einen halb gesetzten Suchbereich weg - sonst haengt er
@@ -535,7 +535,7 @@ try:
             # Zustand von vorher zurueck: die naechsten Pruefungen arbeiten
             # weiter auf "Slot 1" und dem gestellten Bild.
             _b18.slots.clear()
-            _b18.slots.update(_slots_vorher18)
+            _b18.slots.update(_slots_before18)
             _b18.scans.pop("Weg", None)
             _b18.scans["Basis"] = _ISC8(
                 name="Basis", slots=list(_b18.slots.values()),
@@ -543,7 +543,7 @@ try:
             _b18.open_scan = "Basis"
             _b18._scan_working_set("Basis")
             _b18.scan_select({"kind": "slot", "name": "Slot 1"})
-            _b18._photo = _bild18
+            _b18._photo = _image18
             _b18._display_image(0, 0, 1.0)
 
             # --- Der Bereich: nicht immer Vollbild ---
@@ -585,14 +585,14 @@ try:
             # ein Bild, ohne etwas ausgeloest zu haben - und der Knopf daneben
             # schien danach nichts mehr zu tun (er holte dasselbe Bild noch
             # einmal, und zwei gleiche Bilder sehen gleich aus).
-            _alt18 = _b18.scan_data()["photo"]["stamp"]
+            _old18 = _b18.scan_data()["photo"]["stamp"]
             _z18 = _b18.scan_area_set({"area": [100, 100, 300, 300]})
             check("ein Bereich laesst sich auch direkt setzen",
                   _z18["area"] == [100, 100, 300, 300])
             # Das alte Bild steht unveraendert da: 200x160 vom Zuschnitt vorhin,
             # nicht 200x200 vom gerade gewaehlten Bereich.
             check("aber die Wahl nimmt NICHT gleich auf",
-                  _z18["photo"]["stamp"] == _alt18
+                  _z18["photo"]["stamp"] == _old18
                   and (_z18["photo"]["width"], _z18["photo"]["height"]) == (200, 160))
             check("sie sagt stattdessen, was als naechstes kommt",
                   "aufnehmen" in _z18["status"]["text"])
@@ -671,9 +671,9 @@ check("und die Kacheln stehen in der Reihenfolge von MODI",
       _kacheln18 == list(_MODI18))
 check("Slots finden steht gleich hinter Auswaehlen",
       _kacheln18[:2] == [_MW18, _MF18])
-_tasten18 = _re13.findall(r'shortcut:\s*"(\w)"', _block18)
+_keys18 = _re13.findall(r'shortcut:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
-      len(_tasten18) == len(_kacheln18) == len(set(_tasten18)))
+      len(_keys18) == len(_kacheln18) == len(set(_keys18)))
 
 # --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
 # Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`collapsed`) muessen
@@ -685,10 +685,10 @@ _klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
 check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 1)
 check("jeder Kopf sitzt in einem Abschnitt mit passender id",
       all(f'id="sec-{_k18}"' in _html18 for _k18 in _klapp18))
-_zustand18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
+_state18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
 check("und jeder hat einen Zustand in collapsed",
-      _zustand18 is not None
-      and sorted(_re13.findall(r'(\w+):', _zustand18.group(1))) == _klapp18)
+      _state18 is not None
+      and sorted(_re13.findall(r'(\w+):', _state18.group(1))) == _klapp18)
 # Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
@@ -734,9 +734,9 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 # einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
 _maske18 = _html18[_html18.index("function scanItemCard("):]
 _maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
-for _feld18, _was18 in (('cardName("item"', "Name"), ('setter("category"', "Kategorie"),
+for _field18, _was18 in (('cardName("item"', "Name"), ('setter("category"', "Kategorie"),
                         ('setter("priority"', "Prioritaet")):
-    check(f"die Maske setzt {_was18}", _feld18 in _maske18)
+    check(f"die Maske setzt {_was18}", _field18 in _maske18)
 
 # Und dieselbe Sache steht NICHT zweimal da. Der Inspektor als eigener Ort ist
 # ganz entfallen: es gibt keine zweite Spalte mehr, in der ein Item stehen
@@ -891,10 +891,10 @@ check("ESC fuehrt aus dem Tippen zurueck in die Liste",
 # „Erkennung testen" und im Inspektor als „Items erkennen" — zwei Namen fuer
 # einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
 # Verschiedenes.
-_erkenn18 = _re13.findall(r'>(Items erkennen|Erkennung testen)<', _html18)
-_erkenn18 += _re13.findall(r'\}, "(Items erkennen|Erkennung testen)"\)', _html18)
+_det18 = _re13.findall(r'>(Items erkennen|Erkennung testen)<', _html18)
+_det18 += _re13.findall(r'\}, "(Items erkennen|Erkennung testen)"\)', _html18)
 check("beide Knoepfe fuer scan_recognize heissen gleich",
-      len(_erkenn18) >= 2 and set(_erkenn18) == {"Items erkennen"})
+      len(_det18) >= 2 and set(_det18) == {"Items erkennen"})
 
 # **Mit offenem Scan sind die Items die Arbeit, nicht sein Name.** Wer einen
 # Scan lud, landete auf der Scan-Liste und sah den Namen, den er gerade
@@ -926,9 +926,9 @@ check("der Loesch-Knopf nennt den Scan seiner sichtbaren Maske",
 # ============================================================================
 section("Einen Item-Scan direkt aus seiner Maske löschen")
 
-_sandL18 = tempfile.mkdtemp(prefix="studioscanloeschen_")
+_sandboxL18 = tempfile.mkdtemp(prefix="studioscanloeschen_")
 _cwdL18 = _os.getcwd()
-_os.chdir(_sandL18)
+_os.chdir(_sandboxL18)
 try:
     Path("sequences/s").mkdir(parents=True)
     _bL18 = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -947,7 +947,7 @@ try:
           not _bL18.scans and "Zweiter" in _zL18["status"]["text"])
 finally:
     _os.chdir(_cwdL18)
-    shutil.rmtree(_sandL18, ignore_errors=True)
+    shutil.rmtree(_sandboxL18, ignore_errors=True)
 
 
 # ============================================================================
@@ -963,9 +963,9 @@ import dataclasses as _dcN
 check("ein Slot traegt jetzt eine eigene stabile ID",
       "id" in {f.name for f in _dcN.fields(_SLOT8)})
 
-_sandN = tempfile.mkdtemp(prefix="studionummer_")
+_sandboxN = tempfile.mkdtemp(prefix="studionummer_")
 _cwdN = _os.getcwd()
-_os.chdir(_sandN)
+_os.chdir(_sandboxN)
 try:
     Path("sequences/s").mkdir(parents=True)
     _bN = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1073,7 +1073,7 @@ try:
           and '{kind: kind, active: !anyOn}' in _html18)
 finally:
     _os.chdir(_cwdN)
-    shutil.rmtree(_sandN, ignore_errors=True)
+    shutil.rmtree(_sandboxN, ignore_errors=True)
 
 
 # ============================================================================
@@ -1084,9 +1084,9 @@ section("Altbestand ohne ID wird einmalig nachgezogen")
 # die Anzeige nicht dauerhaft „#0" fuer den halben Bestand zeigt, vergibt
 # `_slot_ids_assign()` beim ersten Laden frische IDs — in stabiler Reihenfolge
 # (Name), sonst hinge die Zuteilung von der Dict-Reihenfolge der JSON-Datei ab.
-_sandA = tempfile.mkdtemp(prefix="studioaltid_")
+_sandboxA = tempfile.mkdtemp(prefix="studioaltid_")
 _cwdA = _os.getcwd()
-_os.chdir(_sandA)
+_os.chdir(_sandboxA)
 try:
     Path("sequences/s/item_scans").mkdir(parents=True)
     import json as _jsonA
@@ -1114,16 +1114,16 @@ try:
           {s["name"]: s["id"] for s in _zA2["slots"]} == _idsA)
 finally:
     _os.chdir(_cwdA)
-    shutil.rmtree(_sandA, ignore_errors=True)
+    shutil.rmtree(_sandboxA, ignore_errors=True)
 
 # **Und zwar NATUERLICH sortiert, nicht Zeichen fuer Zeichen.** Ein reiner
 # String-Vergleich stellt „Slot 10" zwischen „Slot 1" und „Slot 2" — bei
 # sechzig durchnummerierten Slots bekam „Slot 2" dann die ID 12 und „Slot 3"
 # die 23. Die IDs waren stabil und trotzdem unbrauchbar, weil sie in Spruengen
 # dastanden.
-_sandA2 = tempfile.mkdtemp(prefix="studioaltid2_")
+_sandboxA2 = tempfile.mkdtemp(prefix="studioaltid2_")
 _cwdA2 = _os.getcwd()
-_os.chdir(_sandA2)
+_os.chdir(_sandboxA2)
 try:
     Path("sequences/s/item_scans").mkdir(parents=True)
     import json as _jsonA2
@@ -1142,7 +1142,7 @@ try:
           sorted(_idsA2.values()) == list(range(1, 21)))
 finally:
     _os.chdir(_cwdA2)
-    shutil.rmtree(_sandA2, ignore_errors=True)
+    shutil.rmtree(_sandboxA2, ignore_errors=True)
 
 
 # ============================================================================
@@ -1194,9 +1194,9 @@ section("Alle Slots / alle Items dieses Scans loeschen")
 # heraus - die Slots/Items bleiben im Bestand. `scan_delete_all` loescht sie
 # wirklich; einzeln durchklicken war bei fuenfzig Stueck der Grund, warum man
 # diesen Knopf sucht.
-_sandL = tempfile.mkdtemp(prefix="studioallelöschen_")
+_sandboxL = tempfile.mkdtemp(prefix="studioallelöschen_")
 _cwdL = _os.getcwd()
-_os.chdir(_sandL)
+_os.chdir(_sandboxL)
 try:
     Path("sequences/s").mkdir(parents=True)
     _bL = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1249,7 +1249,7 @@ try:
           _bL.scan_delete_all({"kind": "item"})["status"]["kind"] == "warn")
 finally:
     _os.chdir(_cwdL)
-    shutil.rmtree(_sandL, ignore_errors=True)
+    shutil.rmtree(_sandboxL, ignore_errors=True)
 
 check("die Ansicht bietet den Knopf pro Art an",
       'callScan("scan_delete_all", {kind: kind})' in _html18)
@@ -1321,9 +1321,9 @@ check("und das Feld selbst ist markiert",
       'class: collision.length ? "duplicate" : ""' in _html18
       and ".scan-card input.duplicate{" in _html18)
 
-_sandP = tempfile.mkdtemp(prefix="studioprio_")
+_sandboxP = tempfile.mkdtemp(prefix="studioprio_")
 _cwdP = _os.getcwd()
-_os.chdir(_sandP)
+_os.chdir(_sandboxP)
 try:
     Path("sequences").mkdir()
     _bP = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1366,7 +1366,7 @@ try:
           _bP.items["Solo"].priority == 1)
 finally:
     _os.chdir(_cwdP)
-    shutil.rmtree(_sandP, ignore_errors=True)
+    shutil.rmtree(_sandboxP, ignore_errors=True)
 
 
 # ============================================================================
@@ -1410,11 +1410,11 @@ check("der Phasen-Papierkorb ist vollständig entfernt",
 check("Entf löscht die ausgewählte Loop-Phase",
       'e.key === "Delete" && selectedPhase !== null' in _html18
       and 'call("phase_delete", {phase: phase})' in _html18)
-_frisch18 = ["scan_reload", "scan_learn_preview_apply", "scan_open"]
+_fresh18 = ["scan_reload", "scan_learn_preview_apply", "scan_open"]
 check("und beim Laden sortiert es von selbst",
       all(n in _html18[_html18.index("async function callScan("):
                        _html18.index("async function callScan(") + 1400]
-          for n in _frisch18))
+          for n in _fresh18))
 
 # **Der Kopf bleibt beim Scrollen stehen.** Bei sechzig Masken war die
 # Reiterleiste nach drei Umdrehungen weg — und mit ihr der Weg in eine andere
@@ -1467,9 +1467,9 @@ check("und schneiden dabei keine Beschriftung ab",
 # Der Wortschatz ist zu zweit vollstaendig: EIN Knopf ueber die volle Breite
 # ist `btn breit`, mehrere nebeneinander sind ein `knopfpaar`. Ein `wachse` in
 # einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
-_knopfzeilen18 = _html18.count('class: "button-pair"')
-check(f"und die Regel gilt ueberall ({_knopfzeilen18} Zeilen)",
-      _knopfzeilen18 >= 6)
+_button_rows18 = _html18.count('class: "button-pair"')
+check(f"und die Regel gilt ueberall ({_button_rows18} Zeilen)",
+      _button_rows18 >= 6)
 check("kein Knopf dehnt sich mehr auf Kosten seiner Nachbarn",
       '"btn grow"' not in _html18)
 check("und keiner davon dehnt sich mehr auf Kosten des anderen",
@@ -1480,9 +1480,9 @@ check("und keiner davon dehnt sich mehr auf Kosten des anderen",
 # ============================================================================
 section("Der Bestaetigungsklick eines Items")
 
-_sandB = tempfile.mkdtemp(prefix="studiobestaetigung_")
+_sandboxB = tempfile.mkdtemp(prefix="studiobestaetigung_")
 _cwdB = _os.getcwd()
-_os.chdir(_sandB)
+_os.chdir(_sandboxB)
 try:
     Path("sequences").mkdir()
     _bB = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1543,15 +1543,15 @@ try:
     check("und ohne gewaehltes Item nicht", _bB._target_check("scan") is None)
 finally:
     _os.chdir(_cwdB)
-    shutil.rmtree(_sandB, ignore_errors=True)
+    shutil.rmtree(_sandboxB, ignore_errors=True)
 
 
 # ============================================================================
 section("Was der eigene Schreibvorgang NICHT ist: eine Fremdaenderung")
 
-_sand19 = tempfile.mkdtemp(prefix="studioeigen_")
+_sandbox19 = tempfile.mkdtemp(prefix="studioeigen_")
 _cwd19 = _os.getcwd()
-_os.chdir(_sand19)
+_os.chdir(_sandbox19)
 try:
     Path("sequences").mkdir()
     _b19 = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1567,11 +1567,11 @@ try:
     if not _hat_pil18:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
-        _bild19 = _PILImage18.new("RGB", (200, 150), (20, 24, 30))
+        _image19 = _PILImage18.new("RGB", (200, 150), (20, 24, 30))
         _echt19 = _img18.take_screenshot
         _echtorg19 = _win18.get_virtual_origin
         _img18.take_screenshot = lambda region=None: (
-            _bild19.copy() if not region else _bild19.crop(tuple(region)))
+            _image19.copy() if not region else _image19.crop(tuple(region)))
         _win18.get_virtual_origin = lambda: (0, 0)
         try:
             check("frisch geladen ist nichts fremd", _b19.scan_data()["foreign"] is False)
@@ -1623,9 +1623,9 @@ finally:
 
 
 section("Studio-Items: fehlerhafte Vorlagen lassen sich gezielt lösen")
-_sand_vorlage = tempfile.mkdtemp(prefix="studiovorlage_")
-_cwd_vorlage = _os.getcwd()
-_os.chdir(_sand_vorlage)
+_sandbox_template = tempfile.mkdtemp(prefix="studiovorlage_")
+_cwd_template = _os.getcwd()
+_os.chdir(_sandbox_template)
 try:
     Path("sequences/s/templates").mkdir(parents=True)
     _bv = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1641,7 +1641,7 @@ try:
           "scan_item_remove_template" in studio_web_source()
           and "scanAutonameRun" in studio_web_source())
 finally:
-    _os.chdir(_cwd_vorlage)
+    _os.chdir(_cwd_template)
 
 
 # =============================================================================
@@ -1653,32 +1653,32 @@ section("Studio-Items: alle auf einmal per LLM benennen")
 import json as _json_an                                            # noqa: E402
 import autoclicker.llm_vision as _lv_an                            # noqa: E402
 
-_sand_an = tempfile.mkdtemp(prefix="studioautoname_")
-_cwd_an = _os.getcwd()
-_echt_an = _lv_an.suggest_item_name_with_reason
-_os.chdir(_sand_an)
+_sandbox_on = tempfile.mkdtemp(prefix="studioautoname_")
+_cwd_on = _os.getcwd()
+_real_on = _lv_an.suggest_item_name_with_reason
+_os.chdir(_sandbox_on)
 try:
-    _hat_pil_an = False
+    _has_pil_on = False
     try:
         from PIL import Image as _PILImage_an
-        _hat_pil_an = True
+        _has_pil_on = True
     except ImportError:
         pass
 
-    if not _hat_pil_an:
+    if not _has_pil_on:
         print("  ----  uebersprungen (Pillow nicht installiert)")
     else:
         Path("sequences/s/templates").mkdir(parents=True)
-        for _datei_an in ("a.png", "b.png"):
+        for _file_on in ("a.png", "b.png"):
             _PILImage_an.new("RGB", (8, 8), (200, 60, 60)).save(
-                Path("sequences/s/templates") / _datei_an)
+                Path("sequences/s/templates") / _file_on)
         # `scan_items_autoname` liest die Config von PLATTE (`load_config`) und
         # nicht das Modul-CONFIG: ohne Datei greift der Default und der Befehl
         # lehnt mit "nicht aktiviert" ab, bevor er irgendetwas tut.
         Path("config.json").write_text(
             _json_an.dumps({"llm_enabled": True}), encoding="utf-8")
 
-        def _bau_an():
+        def _build_on():
             _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
             # **Erst laden, dann stellen.** `_scan_load()` laeuft beim ersten
             # `scan_data()` und holt Slots, Items und Scans von Platte — was
@@ -1693,7 +1693,7 @@ try:
             }
             return _b
 
-        def _durchlauf_an(b, data, steps_list=None):
+        def _pass_on(b, data, steps_list=None):
             """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
 
             `steps` bricht nach so vielen ab — genau das, was der
@@ -1710,29 +1710,29 @@ try:
                 n += 1
             return b.scan_autoname_end()
 
-        _namen_an = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_namen_an, None), "")
+        _names_on = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_names_on, None), "")
 
-        _ba = _bau_an()
-        _vorher_an = _ba.scan_data()["undo"]["depth"]
-        _erg_an = _durchlauf_an(_ba, {"all_items": True})
+        _ba = _build_on()
+        _before_on = _ba.scan_data()["undo"]["depth"]
+        _res_on = _pass_on(_ba, {"all_items": True})
         check("'alle' benennt jedes Item mit Vorlage, nicht nur die Kategorie 'Auto'",
               "Godlike Bow" in _ba.items and "Citadel Helmet" in _ba.items)
         # Ein Item ohne Vorlage hat nichts, was man dem Modell zeigen koennte —
         # es faellt heraus, statt mit einem geratenen Namen dazustehen.
         check("ein Item ohne Vorlage bleibt unberuehrt", "Ohne Vorlage" in _ba.items)
         check("und die Meldung nennt beide Zahlen",
-              "2 von 2" in _erg_an["status"]["text"])
+              "2 von 2" in _res_on["status"]["text"])
         # **Ohne Katalog raet das Modell frei** und antwortet auf die deutsche
         # Frage deutsch: heraus kommt die Art ("Bogen") statt des Gegenstands.
         # Das sieht in der Liste wie ein Ergebnis aus und ist keins.
         check("und sagt dazu, dass ohne Katalog geraten wurde",
-              "ohne Katalog" in _erg_an["status"]["text"])
+              "ohne Katalog" in _res_on["status"]["text"])
         # **Ein Stand fuer den ganzen Durchgang.** Je Item abgelegt waere der
         # Zustand von VOR dem Durchgang nach dreissig Items aus dem Stapel
         # gefallen — also genau der, auf den man zurueck will.
         check("der ganze Durchgang ist EIN Rueckgaengig-Schritt",
-              _ba.scan_data()["undo"]["depth"] == _vorher_an + 1)
+              _ba.scan_data()["undo"]["depth"] == _before_on + 1)
         _ba.scan_undo()
         check("und ein Zurueck holt alle Namen auf einmal wieder",
               "Item 1" in _ba.items and "Item 2" in _ba.items
@@ -1741,19 +1741,19 @@ try:
         # Ohne Treffer darf kein Stand entstehen: ein STRG+Z, das nichts
         # zurueckdreht, ist eins, dem man danach nicht mehr traut.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, "")
-        _bl = _bau_an()
-        _leer_an = _bl.scan_data()["undo"]["depth"]
-        _erg_leer = _durchlauf_an(_bl, {"all_items": True})
+        _bl = _build_on()
+        _empty_on = _bl.scan_data()["undo"]["depth"]
+        _res_empty = _pass_on(_bl, {"all_items": True})
         check("erkennt das Modell nichts, entsteht kein Rueckgaengig-Stand",
-              _bl.scan_data()["undo"]["depth"] == _leer_an)
+              _bl.scan_data()["undo"]["depth"] == _empty_on)
         check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
-              "2 ohne Vorschlag" in _erg_leer["status"]["text"])
+              "2 ohne Vorschlag" in _res_empty["status"]["text"])
 
         # Ohne `all_of` und ohne Auswahl bleibt es beim vorsichtigen Standard —
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
-        _bs = _bau_an()
-        _erg_std = _durchlauf_an(_bs, {})
+        _bs = _build_on()
+        _erg_std = _pass_on(_bs, {})
         check("ohne 'alle' bleibt es bei den auto-gelernten Items",
               _erg_std["status"]["kind"] == "warn" and "Item 1" in _bs.items)
 
@@ -1770,10 +1770,10 @@ try:
             "Godlike Bow": {"kategorie": "Bogen", "wert": 900},
             "Citadel Helmet": {"kategorie": "Helm", "wert": 500},
         }}), encoding="utf-8")
-        _altkat_an = _CFG_an.scan_catalog_file
+        _oldcat_on = _CFG_an.scan_catalog_file
         _CFG_an.scan_catalog_file = str(Path("catalog.json").resolve())
         try:
-            _bk = _bau_an()
+            _bk = _build_on()
             # `item_names` gehoert NICHT in den Konstruktor: die Namen sind
             # die Wahrheit, aber abgeleitet — `sync_names()` fuellt sie aus den
             # Objekten (`__post_init__`).
@@ -1782,26 +1782,26 @@ try:
             _bk.open_scan = "S"
             _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
             _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_kat_namen, None), "")
-            _erg_kat = _durchlauf_an(_bk, {"all_items": True})
+            _erg_kat = _pass_on(_bk, {"all_items": True})
             check("ein Katalogname bleibt woertlich stehen",
                   "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
             # Ueber `.get()`, damit ein roter erster Check die restliche Suite
             # nicht mit einem KeyError abreisst — die Gegenprobe ("Fix
             # entschaerfen, Test muss rot werden") laeuft sonst nur bis hierhin.
-            _gb_an = _bk.items.get("Godlike Bow")
-            _ch_an = _bk.items.get("Citadel Helmet")
+            _gb_on = _bk.items.get("Godlike Bow")
+            _ch_on = _bk.items.get("Citadel Helmet")
             check("und wird deshalb auch eingeordnet",
-                  _gb_an is not None and _ch_an is not None
-                  and _gb_an.category == "Bogen" and _ch_an.category == "Helm")
+                  _gb_on is not None and _ch_on is not None
+                  and _gb_on.category == "Bogen" and _ch_on.category == "Helm")
             check("die Meldung nennt das Einordnen mit",
                   "eingeordnet" in _erg_kat["status"]["text"])
             # Der teurere von beiden bekommt den ersten Rang — aber innerhalb
             # SEINER Kategorie, und die haben hier je ein Item.
             check("und die Prioritaet steht dicht innerhalb der Kategorie",
-                  _gb_an is not None and _ch_an is not None
-                  and _gb_an.priority == 1 and _ch_an.priority == 1)
+                  _gb_on is not None and _ch_on is not None
+                  and _gb_on.priority == 1 and _ch_on.priority == 1)
         finally:
-            _CFG_an.scan_catalog_file = _altkat_an
+            _CFG_an.scan_catalog_file = _oldcat_on
 
         # --- Ein Timeout ist nicht "nicht erkannt" ---------------------------
         # **Die ersten Aufrufe an einen kalten Server dauern**: an einem echten
@@ -1809,30 +1809,30 @@ try:
         # genau die ersten Items stumm durch — und standen als "ohne Vorschlag"
         # da, als haette das Modell hingesehen und nichts erkannt.
         from autoclicker.llm_vision import TIMEOUT as _TO_an
-        _versuche_an = []
+        _attempts_on = []
 
         def _erst_timeout(*a, **kw):
-            _versuche_an.append(kw.get("timeout"))
+            _attempts_on.append(kw.get("timeout"))
             # Beim zweiten Versuch ist das Modell warm — genau der Fall, den
             # die Wiederholung abdecken soll.
-            return (("Godlike Bow", "") if len(_versuche_an) > 1
+            return (("Godlike Bow", "") if len(_attempts_on) > 1
                     else (None, _TO_an))
 
         _lv_an.suggest_item_name_with_reason = _erst_timeout
-        _bt = _bau_an()
+        _bt = _build_on()
         _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to = _durchlauf_an(_bt, {"all_items": True})
-        check("nach einem Timeout wird einmal wiederholt", len(_versuche_an) == 2)
+        _erg_to = _pass_on(_bt, {"all_items": True})
+        check("nach einem Timeout wird einmal wiederholt", len(_attempts_on) == 2)
         check("und der zweite Versuch bekommt mehr Zeit",
-              _versuche_an[1] > _versuche_an[0])
+              _attempts_on[1] > _attempts_on[0])
         check("dann traegt das Item seinen Namen", "Godlike Bow" in _bt.items)
 
         # Antwortet es auch beim zweiten Mal nicht, wird es als Zeitueber-
         # schreitung gezaehlt — mit der Abhilfe in der Meldung.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, _TO_an)
-        _bt2 = _bau_an()
+        _bt2 = _build_on()
         _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to2 = _durchlauf_an(_bt2, {"all_items": True})
+        _erg_to2 = _pass_on(_bt2, {"all_items": True})
         _txt_to = _erg_to2["status"]["text"]
         check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
               "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
@@ -1846,8 +1846,8 @@ try:
         # geklickt), und die zweite Vorlage gehoerte ohnehin zum selben
         # Gegenstand.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
-        _bd = _bau_an()
-        _erg_dop = _durchlauf_an(_bd, {"all_items": True})
+        _bd = _build_on()
+        _erg_dop = _pass_on(_bd, {"all_items": True})
         check("derselbe Name legt kein zweites Item an",
               "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
         check("die zweite Vorlage haengt als Variante am Item",
@@ -1864,18 +1864,18 @@ try:
               and "Item 1" in _bd.items and "Item 2" in _bd.items)
 
         # --- Abbrechen -------------------------------------------------------
-        _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
-        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_abb_namen, None), "")
-        _bab = _bau_an()
-        _erg_abb = _durchlauf_an(_bab, {"all_items": True}, steps_list=1)
+        _cancel_names = iter(["Godlike Bow", "Citadel Helmet"])
+        _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_cancel_names, None), "")
+        _bab = _build_on()
+        _res_cancel = _pass_on(_bab, {"all_items": True}, steps_list=1)
         # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
         # eine Modell-Antwort zu verbrennen, weil man die zweite nicht mehr
         # abwarten wollte — und STRG+Z holt den ganzen Durchgang zurueck.
         check("ein Abbruch behaelt, was bis dahin benannt wurde",
               "Godlike Bow" in _bab.items and "Item 2" in _bab.items)
         check("und die Meldung sagt, wie viele nicht angesehen wurden",
-              "abgebrochen" in _erg_abb["status"]["text"]
-              and "1 nicht angesehen" in _erg_abb["status"]["text"])
+              "abgebrochen" in _res_cancel["status"]["text"]
+              and "1 nicht angesehen" in _res_cancel["status"]["text"])
         check("danach laeuft kein Durchgang mehr",
               _bab.scan_data()["autoname"] is None)
         check("und ein weiterer Schritt sagt das, statt etwas zu tun",
@@ -1884,11 +1884,11 @@ try:
         # Der Fortschritt steht in der MOMENTAUFNAHME, nicht nur in der Antwort
         # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
-        _bfs = _bau_an()
+        _bfs = _build_on()
         _bfs.scan_autoname_start({"all_items": True})
-        _stand_an = _bfs.scan_data()["autoname"]
+        _state_on = _bfs.scan_data()["autoname"]
         check("die Momentaufnahme traegt den Fortschritt",
-              _stand_an and _stand_an["total"] == 2 and _stand_an["done"] == 0)
+              _state_on and _state_on["total"] == 2 and _state_on["done"] == 0)
         _bfs.scan_autoname_step()
         check("und er waechst mit jedem Schritt",
               _bfs.scan_data()["autoname"]["done"] == 1)
@@ -1896,29 +1896,29 @@ try:
 
         # Der Knopf steht im Kopf der rechten Spalte und schickt genau dieses
         # Feld; die Momentaufnahme sagt ihm, ob das LLM ueberhaupt an ist.
-        _quelle_an = studio_web_source()
+        _source_on = studio_web_source()
         check("die Seite treibt den Durchgang selbst",
-              "scanAutonameRun({all_items: true})" in _quelle_an
-              and 'callScan("scan_autoname_start"' in _quelle_an
-              and 'callScan("scan_autoname_step"' in _quelle_an
-              and 'callScan("scan_autoname_end"' in _quelle_an)
+              "scanAutonameRun({all_items: true})" in _source_on
+              and 'callScan("scan_autoname_start"' in _source_on
+              and 'callScan("scan_autoname_step"' in _source_on
+              and 'callScan("scan_autoname_end"' in _source_on)
         # **Ein Aufruf, der drei Minuten blockiert, laesst sich nicht abbrechen.**
         # Deshalb steht die Schleife in der Ansicht — und deshalb muss dort auch
         # der Knopf sein, der sie stoppt.
         check("und laesst sich dabei abbrechen",
-              "autonameCancel" in _quelle_an and "Abbrechen" in _quelle_an)
+              "autonameCancel" in _source_on and "Abbrechen" in _source_on)
         check("und fragt vorher, ob das LLM eingeschaltet ist",
-              "SC.llm_on" in _quelle_an
-              and "llm_on" in _bau_an().scan_data())
+              "SC.llm_on" in _source_on
+              and "llm_on" in _build_on().scan_data())
         # Ein Aufruf, der eine Minute lang rechnet, braucht einen Hinweis —
         # sonst sieht das Fenster tot aus. `withWait` passt nicht: dort wartet
         # die Bruecke auf ENTER und hat eine feste Grenze.
         check("und zeigt so lange, dass gearbeitet wird",
-              "withWork(" in _quelle_an and "showWork" in _quelle_an)
+              "withWork(" in _source_on and "showWork" in _source_on)
 finally:
-    _lv_an.suggest_item_name_with_reason = _echt_an
-    _os.chdir(_cwd_an)
-    shutil.rmtree(_sand_an, ignore_errors=True)
+    _lv_an.suggest_item_name_with_reason = _real_on
+    _os.chdir(_cwd_on)
+    shutil.rmtree(_sandbox_on, ignore_errors=True)
 
 
 # =============================================================================
@@ -1928,9 +1928,9 @@ section("Studio-Items: eine Kategorie umbenennen zieht alle ihre Items mit")
 # Zwei Gruppen zusammenzulegen hiess deshalb, jede Maske einzeln anzufassen —
 # und der Katalog ordnet bewusst ENG ein: an einem echten Bestand hatten
 # dreizehn von dreiundzwanzig Kategorien genau ein Item.
-_sand_kat = tempfile.mkdtemp(prefix="studiokategorie_")
+_sandbox_cat = tempfile.mkdtemp(prefix="studiokategorie_")
 _cwd_kat = _os.getcwd()
-_os.chdir(_sand_kat)
+_os.chdir(_sandbox_cat)
 try:
     def _bau_kat():
         _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
@@ -1955,10 +1955,10 @@ try:
     # Kategorie sind eine Rangfolge, die der Zufall entscheidet — in Modus
     # `all` gewinnt eines und das andere wird nie geklickt.
     _bk2 = _bau_kat()
-    _erg_zus = _bk2.scan_category_rename({"alt": "Crossbow", "neu": "Bow"})
-    _raenge = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
-    check("beim Zusammenlegen werden die Raenge dicht", _raenge == [1, 2, 3])
-    check("und es wird gesagt", "Rang" in _erg_zus["status"]["text"])
+    _res_extra = _bk2.scan_category_rename({"alt": "Crossbow", "neu": "Bow"})
+    _ranks = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
+    check("beim Zusammenlegen werden die Raenge dicht", _ranks == [1, 2, 3])
+    check("und es wird gesagt", "Rang" in _res_extra["status"]["text"])
     # Die Reihenfolge bleibt, wie sie war — die Werte des Katalogs holt man sich
     # mit „Aus Katalog einordnen". Ungefragt umzusortieren wuerde handgesetzte
     # Raenge ueberschreiben.
@@ -1985,15 +1985,15 @@ try:
     # Kein Rueckgaengig-Stand ohne Aenderung: ein STRG+Z, das nichts
     # zurueckdreht, ist eins, dem man danach nicht mehr traut.
     _bk5 = _bau_kat()
-    _tiefe_vorher = _bk5.scan_data()["undo"]["depth"]
-    _erg_leer_kat = _bk5.scan_category_rename({"alt": "Gibtsnicht", "neu": "X"})
+    _depth_before = _bk5.scan_data()["undo"]["depth"]
+    _res_empty_cat = _bk5.scan_category_rename({"alt": "Gibtsnicht", "neu": "X"})
     check("eine leere Gruppe aendert nichts",
-          _erg_leer_kat["status"]["kind"] == "warn"
-          and _bk5.scan_data()["undo"]["depth"] == _tiefe_vorher)
+          _res_empty_cat["status"]["kind"] == "warn"
+          and _bk5.scan_data()["undo"]["depth"] == _depth_before)
     _bk6 = _bau_kat()
     _bk6.scan_category_rename({"alt": "Bow", "neu": "Bow"})
     check("und derselbe Name auch nicht",
-          _bk6.scan_data()["undo"]["depth"] == _tiefe_vorher)
+          _bk6.scan_data()["undo"]["depth"] == _depth_before)
 
     # STRG+Z holt den ganzen Durchgang zurueck.
     _bk7 = _bau_kat()
@@ -2002,10 +2002,10 @@ try:
     check("STRG+Z stellt die alte Kategorie wieder her",
           _bk7.items["Bogen A"].category == "Bow")
 
-    _quelle_kat = studio_web_source()
+    _source_cat = studio_web_source()
     check("die Ueberschrift ist der Weg dorthin",
-          "scan_category_rename" in _quelle_kat
-          and "scanCategoryHeader" in _quelle_kat)
+          "scan_category_rename" in _source_cat
+          and "scanCategoryHeader" in _source_cat)
 finally:
     _os.chdir(_cwd_kat)
-    shutil.rmtree(_sand_kat, ignore_errors=True)
+    shutil.rmtree(_sandbox_cat, ignore_errors=True)

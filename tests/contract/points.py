@@ -34,9 +34,9 @@ from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 
 section("Duplizieren: die Kopie bekommt eigene Punkte")
 
-_sand = Path(tempfile.mkdtemp(prefix="punkte_"))
+_sandbox = Path(tempfile.mkdtemp(prefix="punkte_"))
 _cwd = _os.getcwd()
-_os.chdir(_sand)
+_os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import list_available_sequences, save_data
@@ -51,7 +51,7 @@ try:
         save_data(st)
         return _SB(seq, dict(list_available_sequences())["Farm"], "sequences")
 
-    def _waehle(b, *rows):
+    def _choose(b, *rows):
         b.sel_lane = b.board.lanes[1]      # INIT ist Lane 0, die Loop-Phase 1
         b.sel_rows = set(rows)
         b.sel_anchor = min(rows)
@@ -63,7 +63,7 @@ try:
     # --- der Fall, der es ausgeloest hat -----------------------------------
     _b = _bridge([_STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200, name="Bank", color=(10, 20, 30))])
-    _waehle(_b, 0)
+    _choose(_b, 0)
     _z = _b.selection_duplicate()
     _orig, _kopie = _steps(_b)
     check("das Duplikat steht dahinter", len(_steps(_b)) == 2)
@@ -86,7 +86,7 @@ try:
     # Knopf muessen zusammen umziehen, sonst waere jede Kalibrierung eine halbe.
     _b = _bridge([_STEP(point_id=1), _STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200)])
-    _waehle(_b, 0)
+    _choose(_b, 0)
     _b.point_set({"point": 1, "field": "x", "value": 777})
     check("ein geteilter Punkt wird verschoben, nicht gespalten",
           len(_b.points) == 1 and _b._point(1).x == 777)
@@ -96,7 +96,7 @@ try:
     # --- FARBE+KLICK: die Kopie wartet auf DIE Stelle, die sie klickt -------
     _b = _bridge([_STEP(point_id=1, wait_condition=_WAIT(point_id=1))],
                   [_CP(id=1, x=100, y=200)])
-    _waehle(_b, 0)
+    _choose(_b, 0)
     _b.selection_duplicate()
     _kopie = _steps(_b)[1]
     check("Klick und Pruef-Pixel der Kopie sind DERSELBE neue Punkt",
@@ -107,7 +107,7 @@ try:
     _b = _bridge([_STEP(point_id=1, verify_condition=_WAIT(point_id=2),
                          else_config=_ELSE(action="click", point_id=1))],
                   [_CP(id=1, x=10, y=20), _CP(id=2, x=30, y=40)])
-    _waehle(_b, 0)
+    _choose(_b, 0)
     _b.selection_duplicate()
     _kopie = _steps(_b)[1]
     check("zwei verschiedene Vorlagen ergeben zwei neue Punkte", len(_b.points) == 4)
@@ -121,7 +121,7 @@ try:
     # nicht auf zweien - sonst laegen drei Punkte auf derselben Stelle.
     _b = _bridge([_STEP(point_id=1), _STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200)])
-    _waehle(_b, 0, 1)
+    _choose(_b, 0, 1)
     _b.selection_duplicate()
     _a, _bb, _ka, _kb = _steps(_b)
     check("beide Kopien teilen sich EINEN neuen Punkt",
@@ -132,7 +132,7 @@ try:
 
     # --- Bloecke ohne Punkt legen keinen an -------------------------------
     _b = _bridge([_STEP(key_press="a"), _STEP(item_scan="Inventar")], [])
-    _waehle(_b, 0, 1)
+    _choose(_b, 0, 1)
     _b.selection_duplicate()
     check("ein Tasten- oder Scan-Block bekommt keinen Punkt geschenkt",
           len(_b.points) == 0 and len(_steps(_b)) == 4)
@@ -141,7 +141,7 @@ try:
     # Zeigt ein Schritt ins Leere, ist das ein Fehler, den man sehen soll —
     # eine erfundene Kopie machte daraus stillschweigend einen Klick auf (0,0).
     _b = _bridge([_STEP(point_id=99)], [_CP(id=1, x=10, y=20)])
-    _waehle(_b, 0)
+    _choose(_b, 0)
     _b.selection_duplicate()
     check("eine Referenz ins Leere bleibt eine Referenz ins Leere",
           _steps(_b)[1].point_id == 99 and len(_b.points) == 1)
@@ -168,10 +168,10 @@ try:
     _b.sequence_set({"field": "name", "value": "Frisch"})
     _b.save()
     import json as _js
-    _datei = _js.loads(
+    _file = _js.loads(
         Path("sequences/frisch/sequence.json").read_text(encoding="utf-8"))
     check("und die geschriebene Datei traegt keine fremden Punkte",
-          _datei.get("points") in (None, []))
+          _file.get("points") in (None, []))
     check("die Ausgangssequenz behaelt ihre eigenen",
           len(_js.loads(Path("sequences/farm/sequence.json").read_text(
               encoding="utf-8")).get("points", [])) == 2)
@@ -197,14 +197,14 @@ try:
     import autoclicker.editors.sequence_editor.loops as _LOOPS
     import autoclicker.editors.sequence_editor.steps as _STEPS
 
-    _folge = ["",        # Beschreibung behalten
+    _sequence_of = ["",        # Beschreibung behalten
               "done",    # INIT-Phase
               "done",    # Loop-Phasen
               "",        # Zyklen behalten
               "done"]    # END-Phase
 
-    def _naechste(_prompt=""):
-        return _folge.pop(0) if _folge else "done"
+    def _next(_prompt=""):
+        return _sequence_of.pop(0) if _sequence_of else "done"
 
     _st = _ST()
     _seq = _SEQ(name="Konsole",
@@ -216,19 +216,19 @@ try:
     save_data(_st)
 
     _old = (_ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input)
-    _ED.safe_input = _LOOPS.safe_input = _STEPS.safe_input = _naechste
+    _ED.safe_input = _LOOPS.safe_input = _STEPS.safe_input = _next
     try:
         with _cl.redirect_stdout(_io.StringIO()):
             _ED.edit_sequence(_st, _seq)
     finally:
         _ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input = _old
 
-    _nach = _js.loads(
+    _after = _js.loads(
         Path("sequences/konsole/sequence.json").read_text(encoding="utf-8"))
     check("die gespeicherte Sequenz hat ihren Punkt noch",
-          [pt.get("id") for pt in _nach.get("points", [])] == [1])
+          [pt.get("id") for pt in _after.get("points", [])] == [1])
     check("und der Schritt zeigt weiterhin darauf",
-          _nach["loop_phases"][0]["steps"][0].get("point_id") == 1)
+          _after["loop_phases"][0]["steps"][0].get("point_id") == 1)
     # Der State ist die zweite Haelfte: er zeigt nach dem Speichern auf die
     # Punkte DIESER Sequenz, nicht auf eine leere Liste daneben.
     check("und der State haelt dieselbe Liste wie die Sequenz",
@@ -305,7 +305,7 @@ try:
 finally:
     _os.chdir(_cwd)
     import shutil as _sh
-    _sh.rmtree(_sand, ignore_errors=True)
+    _sh.rmtree(_sandbox, ignore_errors=True)
 
 # ----------------------------------------------------------------------
 section("Die Farbe des Punkts steht auf jeder Karte, die einen hat")
@@ -391,7 +391,7 @@ _br_gp.select({"phase": 1, "row": 0})
 
 # Abtrennen: Loop 1 bekommt einen eigenen Punkt, Loop 4 behaelt #1 - und beim
 # FARBE+KLICK wandern Klick UND Pruef-Pixel gemeinsam (wie beim Duplizieren).
-_z_ab = _br_gp.point_detach()
+_z_from = _br_gp.point_detach()
 _s1 = _br_gp.board.lanes[1].steps[0]
 check("Abtrennen gibt dem Block einen eigenen Punkt",
       _s1.point_id not in (1, 2) and _s1.wait_condition.point_id == _s1.point_id)
@@ -400,7 +400,7 @@ check("der neue Punkt liegt erst einmal auf derselben Stelle",
 check("Loop 4 behaelt den alten Punkt",
       _br_gp.board.lanes[2].steps[1].point_id == 1)
 check("und die Meldung sagt beides",
-      f"#{_s1.point_id}" in _z_ab["status"]["text"] and "#1 bleibt bei" in _z_ab["status"]["text"])
+      f"#{_s1.point_id}" in _z_from["status"]["text"] and "#1 bleibt bei" in _z_from["status"]["text"])
 _br_gp.point_set({"point": _s1.point_id, "field": "x", "value": 30})
 check("danach verschiebt sich nur noch dieser Block",
       _s1.x == 30 and _br_gp.board.lanes[2].steps[1].x == 20)

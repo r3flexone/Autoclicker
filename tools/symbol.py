@@ -26,7 +26,7 @@ from autoclicker.symbol import pixel_rows          # noqa: E402
 # Was Windows tatsächlich anfragt: 16 (Titelleiste), 32 (ALT+TAB), 48 (grosse
 # Kacheln, 150 % Skalierung), 256 (Verknüpfung, Explorer-Vorschau). Die Grössen
 # dazwischen rechnet Windows sich selbst.
-GROESSEN = (16, 32, 48, 64, 128, 256)
+SIZES = (16, 32, 48, 64, 128, 256)
 
 
 def png_bytes(edge: int) -> bytes:
@@ -47,7 +47,7 @@ def png_bytes(edge: int) -> bytes:
             + stueck(b"IEND", b""))
 
 
-def ico_bytes(sizes=GROESSEN) -> bytes:
+def ico_bytes(sizes=SIZES) -> bytes:
     """Eine ICO-Datei mit mehreren Grössen, jede als eingebettetes PNG.
 
     Windows nimmt PNG-Einträge seit Vista; das spart das BMP-Format mit seiner
@@ -68,7 +68,7 @@ def ico_bytes(sizes=GROESSEN) -> bytes:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--target", default="symbol", help="Ordner für die Dateien")
-    p.add_argument("--sizes", default=",".join(str(g) for g in GROESSEN),
+    p.add_argument("--sizes", default=",".join(str(g) for g in SIZES),
                    help="Kantenlängen der PNGs, mit Komma getrennt")
     args = p.parse_args()
 

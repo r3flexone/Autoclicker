@@ -36,18 +36,18 @@ from autoclicker.persistence.sweep import collect_files, sweep  # noqa: E402
 
 
 def main() -> int:
-    schreiben = "--write" in sys.argv
+    write_out = "--write" in sys.argv
     print(f"Ziel-Schema: {SCHEMA_VERSION}")
-    print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if schreiben
+    print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if write_out
           else "nur anzeigen (--write zum Schreiben)")
 
-    dateien = collect_files()
-    if not dateien:
+    files = collect_files()
+    if not files:
         print("\nKeine Dateien gefunden - nichts zu tun.")
         return 0
-    print(f"Gefundene Dateien: {len(dateien)}\n")
+    print(f"Gefundene Dateien: {len(files)}\n")
 
-    result = sweep(write=schreiben)
+    result = sweep(write=write_out)
 
     for path, messages in result.changed:
         try:
@@ -62,7 +62,7 @@ def main() -> int:
 
     print(f"\n{result.changed_count} angepasst, {result.current} bereits aktuell, "
           f"{len(result.skipped)} uebersprungen.")
-    if result.changed and not schreiben:
+    if result.changed and not write_out:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")
     elif result.changed:
         print("Geschrieben. Ein zweiter Lauf sollte nichts mehr finden.")

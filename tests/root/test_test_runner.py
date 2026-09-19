@@ -14,13 +14,13 @@ class TestRunnerTest(unittest.TestCase):
         for ausgabe in ("", "Start ohne Abschluss", "0 PASS / 0 FAIL",
                         "8 PASS / 1 FAIL", "8 PASS / 0 FAIL\n9 PASS / 1 FAIL"):
             with self.subTest(ausgabe=ausgabe), \
-                    patch.object(all_tests, "_lauf", return_value=(0, ausgabe)):
+                    patch.object(all_tests, "_run", return_value=(0, ausgabe)):
                 self.assertFalse(all_tests.contract().ok)
-        with patch.object(all_tests, "_lauf", return_value=(0, "=== 8 PASS / 0 FAIL ===")):
+        with patch.object(all_tests, "_run", return_value=(0, "=== 8 PASS / 0 FAIL ===")):
             self.assertTrue(all_tests.contract().ok)
 
     def test_nicht_erkannter_mutant_macht_den_gesamtlauf_rot(self):
-        with patch.object(all_tests, "_lauf", side_effect=[(0, "OK"), (1, "LÜCKE")]), \
+        with patch.object(all_tests, "_run", side_effect=[(0, "OK"), (1, "LÜCKE")]), \
                 redirect_stdout(io.StringIO()) as ausgabe:
             self.assertEqual(all_tests.main(["runner", "--only", "root", "--mutations"]), 1)
         self.assertIn("Gegenproben", ausgabe.getvalue())
@@ -30,8 +30,8 @@ class TestRunnerTest(unittest.TestCase):
         for arguments, exitcode, message in (
                 ([], 0, "ÜBERSPRUNGEN"), (["--smoke-required"], 1, "FAIL")):
             with self.subTest(arguments=arguments), \
-                    patch("tests.smoke._bridge.playwright_da", return_value=(False, "Browser fehlt")), \
-                    patch.object(all_tests, "_lauf") as run, \
+                    patch("tests.smoke._bridge.playwright_available", return_value=(False, "Browser fehlt")), \
+                    patch.object(all_tests, "_run") as run, \
                     redirect_stdout(io.StringIO()) as ausgabe:
                 self.assertEqual(all_tests.main(["runner", "--only", "smoke", *arguments]), exitcode)
                 self.assertIn(message, ausgabe.getvalue())
@@ -41,8 +41,8 @@ class TestRunnerTest(unittest.TestCase):
                 run.assert_not_called()
 
     def test_roter_browserlauf_bleibt_rot(self):
-        with patch("tests.smoke._bridge.playwright_da", return_value=(True, "")), \
-                patch.object(all_tests, "_lauf", return_value=(1, "AssertionError")), \
+        with patch("tests.smoke._bridge.playwright_available", return_value=(True, "")), \
+                patch.object(all_tests, "_run", return_value=(1, "AssertionError")), \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(all_tests.main([
                 "runner", "--only", "smoke", "--smoke-required", "--smoke-test", "items"]), 1)
@@ -57,14 +57,14 @@ class TestRunnerTest(unittest.TestCase):
                     return code, "1 PASS / 0 FAIL " if code == 0 else "0 PASS / 1 FAIL "
                 return 0, "OK"
 
-            with self.subTest(code=code), patch.object(all_tests, "_lauf", side_effect=run), \
+            with self.subTest(code=code), patch.object(all_tests, "_run", side_effect=run), \
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(all_tests.main(["runner", "--only", "contract", "--only", "root"]), code)
             self.assertEqual(len(commands), 2)
             self.assertIn("--without-contract", commands[1])
 
     def test_wurzel_allein_behaelt_den_vertragswrapper(self):
-        with patch.object(all_tests, "_lauf", return_value=(0, "OK")) as run, \
+        with patch.object(all_tests, "_run", return_value=(0, "OK")) as run, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(all_tests.main(["runner", "--only", "root"]), 0)
         self.assertNotIn("--without-contract", run.call_args.args[0])
@@ -77,12 +77,12 @@ class TestRunnerTest(unittest.TestCase):
                 else:
                     yield test.id()
 
-        root_dir = Path(__file__).resolve().parent
-        full_value = set(ids(root_tests.sammeln(root_dir)))
-        einzeln = set(ids(root_tests.sammeln(root_dir, without_contract=True)))
-        self.assertEqual(full_value - einzeln, {"test_regression.RegressionSuiteTest.test_logic_regressions"})
-        self.assertEqual(einzeln - full_value, set())
-        self.assertTrue(einzeln)
+        root_layer = Path(__file__).resolve().parent
+        full_value = set(ids(root_tests.collect(root_layer)))
+        single = set(ids(root_tests.collect(root_layer, without_contract=True)))
+        self.assertEqual(full_value - single, {"test_regression.RegressionSuiteTest.test_logic_regressions"})
+        self.assertEqual(single - full_value, set())
+        self.assertTrue(single)
 
 
 if __name__ == "__main__":

@@ -478,7 +478,7 @@ class ScanInteractionMixin:
 
         Ein Modus lohnt sich, solange man dasselbe zwanzigmal tut; eine einzelne
         Korrektur am Slot unter dem Zeiger ist das Gegenteil davon.
-        `measure` = ALT-Klick, `click_value` = Doppelklick. Beides wählt den Slot mit aus.
+        `measure` = ALT-Klick, `click` = Doppelklick. Beides wählt den Slot mit aus.
         """
         locked = self._scan_requirement({"kind": "item"})
         if locked is not None:

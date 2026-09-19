@@ -38,10 +38,10 @@ import sys
 import time
 from pathlib import Path
 
-WURZEL = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 
 # **Der Runner darf nicht an der Konsole sterben, an der er berichtet.** Die
-# Unterprozesse laufen laengst auf UTF-8 (`_lauf`), ihre Ausgabe wird hier aber
+# Unterprozesse laufen laengst auf UTF-8 (`_run`), ihre Ausgabe wird hier aber
 # auf STDOUT DIESES Prozesses durchgereicht - und der ist auf einer deutschen
 # Windows-Konsole cp1252. Ein einziges Kaestchen aus einem Fortschrittsbalken
 # riss damit den ganzen Lauf mit `UnicodeEncodeError` ab, nachdem die
@@ -61,7 +61,7 @@ RAUCHTESTS = ("items", "detection", "sequences", "share", "tools",
 SCHICHTEN = ("contract", "root", "smoke")
 
 
-class Ergebnis:
+class Result:
     """Was eine Schicht ergeben hat. `skipped` ist kein Fehlschlag."""
 
     def __init__(self, name: str):
@@ -79,7 +79,7 @@ class Ergebnis:
                 f"  ({self.duration:.1f}s)")
 
 
-def _lauf(command: list[str], umgebung: dict | None = None) -> tuple[int, str]:
+def _run(command: list[str], environment: dict | None = None) -> tuple[int, str]:
     """Ein Unterprozess mit geerbter Ausgabe — und dem Text zum Auswerten.
 
     Warum als Unterprozess und nicht per Import: die Vertragssuite stubbt
@@ -89,18 +89,18 @@ def _lauf(command: list[str], umgebung: dict | None = None) -> tuple[int, str]:
     umw = os.environ.copy()
     umw["PYTHONUTF8"] = "1"
     umw["PYTHONIOENCODING"] = "utf-8"
-    umw.update(umgebung or {})
-    done = subprocess.run(command, cwd=WURZEL, env=umw, capture_output=True,
+    umw.update(environment or {})
+    done = subprocess.run(command, cwd=ROOT, env=umw, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     sys.stdout.write(done.stdout)
     sys.stderr.write(done.stderr)
     return done.returncode, done.stdout + done.stderr
 
 
-def contract() -> Ergebnis:
-    e = Ergebnis("Vertragssuite")
+def contract() -> Result:
+    e = Result("Vertragssuite")
     start = time.monotonic()
-    code, text = _lauf([sys.executable, str(WURZEL / "tests" / "test_logic.py")])
+    code, text = _run([sys.executable, str(ROOT / "tests" / "test_logic.py")])
     e.duration = time.monotonic() - start
     e.ok = code == 0
     for line in reversed(text.splitlines()):
@@ -114,18 +114,18 @@ def contract() -> Ergebnis:
     return e
 
 
-def root_dir(vertrag_separat: bool = False) -> Ergebnis:
+def root_layer(vertrag_separat: bool = False) -> Result:
     """Die Wurzeltests; im Gesamtlauf wurde der Vertragswrapper schon ausgeführt.
 
     `discover` statt eines Glob-Musters: die Shell expandiert `test_*.py` auf
     Linux und Windows verschieden, und PowerShell reicht es woertlich weiter.
     """
-    e = Ergebnis("Wurzelmodule")
+    e = Result("Wurzelmodule")
     start = time.monotonic()
     command = [sys.executable, "-m", "tests.root_tests"]
     if vertrag_separat:
         command.append("--without-contract")
-    code, text = _lauf(command)
+    code, text = _run(command)
     e.duration = time.monotonic() - start
     e.ok = code == 0
     for line in reversed(text.splitlines()):
@@ -135,12 +135,12 @@ def root_dir(vertrag_separat: bool = False) -> Ergebnis:
     return e
 
 
-def smoke(only: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
-    e = Ergebnis("Rauchtests")
-    sys.path.insert(0, str(WURZEL))
-    from tests.smoke._bridge import playwright_da
+def smoke(only: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Result:
+    e = Result("Rauchtests")
+    sys.path.insert(0, str(ROOT))
+    from tests.smoke._bridge import playwright_available
 
-    da, reason = playwright_da()
+    da, reason = playwright_available()
     if not da:
         if pflicht:
             e.ok = False
@@ -152,7 +152,7 @@ def smoke(only: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis
     start = time.monotonic()
     fehlgeschlagen = []
     for name in only:
-        code, _ = _lauf([sys.executable, "-m", f"tests.smoke.{name}"])
+        code, _ = _run([sys.executable, "-m", f"tests.smoke.{name}"])
         if code != 0:
             fehlgeschlagen.append(name)
     e.duration = time.monotonic() - start
@@ -173,22 +173,22 @@ def main(argv: list[str]) -> int:
     p.add_argument("--mutations", action="store_true",
                    help="zusätzlich gezielte Fehler einschleusen und ihre Erkennung prüfen")
     args = p.parse_args(argv[1:])
-    schichten = tuple(args.only) if args.only else SCHICHTEN
-    if args.smoke_required and "smoke" not in schichten:
+    layers = tuple(args.only) if args.only else SCHICHTEN
+    if args.smoke_required and "smoke" not in layers:
         p.error("--rauch-pflicht braucht die Schicht rauch")
 
     results_list = []
-    if "contract" in schichten:
+    if "contract" in layers:
         results_list.append(contract())
-    if "root" in schichten:
-        results_list.append(root_dir(vertrag_separat="contract" in schichten))
-    if "smoke" in schichten:
+    if "root" in layers:
+        results_list.append(root_layer(vertrag_separat="contract" in layers))
+    if "smoke" in layers:
         results_list.append(smoke(tuple(args.smoke_test) if args.smoke_test else RAUCHTESTS,
                                  pflicht=args.smoke_required))
     if args.mutations:
-        e = Ergebnis("Gegenproben")
+        e = Result("Gegenproben")
         start = time.monotonic()
-        code, _ = _lauf([sys.executable, str(WURZEL / "tests" / "mutation_check.py")])
+        code, _ = _run([sys.executable, str(ROOT / "tests" / "mutation_check.py")])
         e.ok = code == 0
         e.duration = time.monotonic() - start
         e.zusammenfassung = "gezielte Mutationsprüfung"

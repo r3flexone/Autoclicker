@@ -10,7 +10,7 @@ sofort auffallen (der Reiter bleibt leer) und im Test gar nicht.
 import csv
 from pathlib import Path
 
-from ._bridge import Fenster, main, sandkasten
+from ._bridge import Window, main, sandbox
 
 SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
@@ -23,7 +23,7 @@ def _log(path: Path, lines: list) -> None:
         w.writerows(lines)
 
 
-def aufbau():
+def setup():
     from autoclicker.config import CONFIG
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
     from autoclicker.models import (
@@ -31,7 +31,7 @@ def aufbau():
     )
     from autoclicker.persistence import list_available_sequences, save_data
 
-    sandkasten("rauch_bericht_")
+    sandbox("rauch_bericht_")
     st = AutoClickerState()
     seq = Sequence(name="Farm", loop_phases=[LoopPhase(name="A", steps=[
         SequenceStep(point_id=1)])],
@@ -64,56 +64,56 @@ def aufbau():
 
 
 def run():
-    b = aufbau()
+    b = setup()
     error = []
 
-    def pruefe(condition, text):
+    def expect(condition, text):
         if not condition:
             error.append(text)
 
-    with Fenster(b) as f:
-        f.reiter("report")
+    with Window(b) as f:
+        f.tab("report")
 
         left = f.text("#rep-left")
-        pruefe("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
-        pruefe(f.count(".rep-session") == 3,
+        expect("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
+        expect(f.count(".rep-session") == 3,
                f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.count('.rep-session')}")
 
         center = f.text("#rep-middle")
-        pruefe("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
-        pruefe("Bank oeffnen" in center, "der haengende Schritt wird nicht genannt")
+        expect("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
+        expect("Bank oeffnen" in center, "der haengende Schritt wird nicht genannt")
         # Fuenf Kennzahlen-Kacheln, dieselben wie im Werkzeuge-Reiter.
-        pruefe(f.count("#rep-middle .wz-metric") == 5,
+        expect(f.count("#rep-middle .wz-metric") == 5,
                f"5 Kennzahlen erwartet, da: {f.count('#rep-middle .wz-metric')}")
         # Jede Rangzeile hat ihren Balken — sonst steht die Liste ohne
         # Verhaeltnis da, und genau das ist der Unterschied zur Konsole.
-        pruefe(f.count("#rep-middle .rep-rank") == f.count("#rep-middle .rep-bar"),
+        expect(f.count("#rep-middle .rep-rank") == f.count("#rep-middle .rep-bar"),
                "nicht jede Rangzeile hat einen Balken")
 
         right = f.text("#rep-right")
-        pruefe("ERTRAG" in right, f"rechts steht kein Ertrag: {right[:120]!r}")
+        expect("ERTRAG" in right, f"rechts steht kein Ertrag: {right[:120]!r}")
         # 2x Erz a 100 = 200 Gold. Die Tausendertrennung macht daraus nichts
         # anderes, solange es unter 1000 bleibt.
-        pruefe("200" in right, f"die Goldsumme fehlt: {right[:200]!r}")
-        pruefe("Obergrenze" in right,
+        expect("200" in right, f"die Goldsumme fehlt: {right[:200]!r}")
+        expect("Obergrenze" in right,
                "der Vorbehalt fehlt — die Zahl waere sonst eine Behauptung")
         f.image("report")
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.
-        f.click_value(".rep-session:nth-of-type(2)")
-        pruefe(f.count(".rep-session.on") == 1,
+        f.click(".rep-session:nth-of-type(2)")
+        expect(f.count(".rep-session.on") == 1,
                "genau eine Sitzung muss markiert sein")
         center = f.text("#rep-middle")
-        pruefe("Keine Timeouts" in center,
+        expect("Keine Timeouts" in center,
                f"die gewaehlte Sitzung hat keine Timeouts: {center[:160]!r}")
-        pruefe(f.count(".rep-session") == 3,
+        expect(f.count(".rep-session") == 3,
                "die Liste links muss vollstaendig bleiben")
         f.image("bericht_eine")
 
         # Und zurueck auf alles zusammen.
-        f.click_value(".rep-session:nth-of-type(1)")
-        pruefe("Bank oeffnen" in f.text("#rep-middle"),
+        f.click(".rep-session:nth-of-type(1)")
+        expect("Bank oeffnen" in f.text("#rep-middle"),
                "zurueck auf „alle zusammen“ fehlt der Timeout wieder")
 
         error.extend(f.error)

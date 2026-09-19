@@ -33,9 +33,9 @@ class EditorPersistenzTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(os.chdir, self.cwd)
         self.ausgabe = io.StringIO()
-        self.umleitung = redirect_stdout(self.ausgabe)
-        self.umleitung.__enter__()
-        self.addCleanup(self.umleitung.__exit__, None, None, None)
+        self.redirect = redirect_stdout(self.ausgabe)
+        self.redirect.__enter__()
+        self.addCleanup(self.redirect.__exit__, None, None, None)
         self.state = AutoClickerState()
         self.state.active_sequence = Sequence(name="Alt")
         self.scan = ItemScanConfig("Inventar", items=[
@@ -73,9 +73,9 @@ class EditorPersistenzTest(unittest.TestCase):
     def test_anzeige_und_loeschen_verwenden_dieselbe_nummer(self):
         editor._dispatch_command(self.state, "show", "show")
         first = next(z for z in self.ausgabe.getvalue().splitlines() if z.strip().startswith("1."))
-        angezeigt = "A" if " A:" in first else "B"
+        displayed = "A" if " A:" in first else "B"
         editor._handle_delete_single(self.state, "del 1")
-        self.assertNotIn(angezeigt, self.state.global_items)
+        self.assertNotIn(displayed, self.state.global_items)
 
     def test_edit_fragt_vor_namenskollision(self):
         with patch.object(editor, "edit_item", return_value=ItemProfile("B")), \
@@ -194,35 +194,35 @@ class EditorPersistenzTest(unittest.TestCase):
                 self.assertEqual(file.read_bytes(), before)
 
     def test_scan_loader_fangen_falsche_json_strukturen_ab(self):
-        faelle = [(item_scans.load_item_scan_file, x) for x in (
+        cases = [(item_scans.load_item_scan_file, x) for x in (
             [], None, 3, {"name": "Scan", "items": {"A": []}},
             {"name": "Scan", "slots": {"S": None}},
             {"name": "Scan", "slots": []}, {"name": "Scan", "items": None},
         )]
-        faelle += [(boss_scans.load_boss_scan_file, []), (icon_scans.load_icon_scan_file, [])]
+        cases += [(boss_scans.load_boss_scan_file, []), (icon_scans.load_icon_scan_file, [])]
         file = Path("scan.json")
-        for loader, data in faelle:
+        for loader, data in cases:
             with self.subTest(loader=loader.__name__, data=data):
                 file.write_text(json.dumps(data), encoding="utf-8")
                 self.assertIsNone(loader(file))
 
     def test_defektes_preset_laesst_bestand_und_datei_unveraendert(self):
         item_scans.save_item_scan(self.scan)
-        scan_datei = Path("sequences/alt/item_scans/inventar.json")
-        before = scan_datei.read_bytes()
+        scan_file = Path("sequences/alt/item_scans/inventar.json")
+        before = scan_file.read_bytes()
         for kind, load, attribut in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
             file = Path("presets") / kind / "defekt.json"
             file.parent.mkdir(parents=True, exist_ok=True)
-            bestand_vorher = dict(getattr(self.state, attribut))
-            gueltig = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
-            for data in ([], {"Gueltig": gueltig, "Defekt": None}):
+            inventory_before = dict(getattr(self.state, attribut))
+            is_valid = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
+            for data in ([], {"Gueltig": is_valid, "Defekt": None}):
                 with self.subTest(kind=kind, data=data):
                     file.write_text(json.dumps(data), encoding="utf-8")
                     self.assertFalse(load(self.state, "broken"))
-                    self.assertEqual(getattr(self.state, attribut), bestand_vorher)
-                    self.assertEqual(scan_datei.read_bytes(), before)
+                    self.assertEqual(getattr(self.state, attribut), inventory_before)
+                    self.assertEqual(scan_file.read_bytes(), before)
 
     def test_preset_meldet_speicherfehler(self):
         for kind, load, save in (

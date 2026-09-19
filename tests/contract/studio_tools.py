@@ -20,7 +20,7 @@ from autoclicker.persistence import (
 import autoclicker.mailbox as _bf
 
 
-def _sandkasten():
+def _sandbox_dir():
     """Ein vollständiger kleiner Bestand auf Platte, plus die Brücke darauf."""
     sand = _tf.mkdtemp(prefix="wz_")
     _os.chdir(sand)
@@ -46,11 +46,11 @@ def _sandkasten():
     # Sonderzeichen), und die App holt ihn ueber `list_available_sequences()`. Ein
     # getippter Pfad geht daran vorbei - und genau der Unterschied entscheidet,
     # ob die Klick-Runde ihre Datei findet.
-    bruecke = _SB(seq, _P(dict(list_available_sequences())["Farm"]), "sequences")
+    bridge = _SB(seq, _P(dict(list_available_sequences())["Farm"]), "sequences")
     # Die Maus gibt es im Test nicht: die Stelle kommt aus dem Stub, alles
     # andere laeuft wie im Fenster.
-    bruecke._await_position = lambda: (140, 130, "")
-    return sand, bruecke
+    bridge._await_position = lambda: (140, 130, "")
+    return sand, bridge
 
 
 _cwd = _os.getcwd()
@@ -87,7 +87,7 @@ check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
 
 section("Studio-Werkzeuge: pruefen findet, was der Konsolen-`check` findet")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _d = _b.tool_data()
     check("die Punkte stehen zur Auswahl", [p["id"] for p in _d["points"]] == [1, 2, 3])
     # Die Kopfleiste blendet ihre Sequenz-Bedienelemente in diesem Reiter aus.
@@ -133,7 +133,7 @@ finally:
 
 section("Studio-Werkzeuge: kalibrieren")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     check("ohne Referenzpunkt gibt es nichts anzuwenden",
           _b.calib_apply({})["ok"] is False)
 
@@ -163,16 +163,16 @@ try:
     check("und es entsteht eine Sicherung vorher",
           bool(_erg["backup"]) and _P(_erg["backup"]).exists())
 
-    _punkte = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["points"]}
+    _points = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["points"]}
     check("jeder Punkt ist um den Versatz gewandert",
-          _punkte == {1: (150, 100), 2: (950, 600), 3: (450, 300)})
+          _points == {1: (150, 100), 2: (950, 600), 3: (450, 300)})
     # Der Reiter liest die Punkte danach neu ein - sonst zeigte er den Stand von
     # vor der Kalibrierung, waehrend auf Platte der neue steht.
     check("und der Reiter zeigt den neuen Stand",
           [(p.id, p.x) for p in _b.points] == [(1, 150), (2, 950), (3, 450)])
 
-    _scan_pfad = dict(list_available_item_scans("Farm"))["Inventar"]
-    _slot = _js.loads(_scan_pfad.read_text(encoding="utf-8"))["slots"]["Slot 1"]
+    _scan_path = dict(list_available_item_scans("Farm"))["Inventar"]
+    _slot = _js.loads(_scan_path.read_text(encoding="utf-8"))["slots"]["Slot 1"]
     check("die Slots bleiben stehen, wenn ihr Haken aus ist",
           tuple(_slot["scan_region"]) == (10, 20, 70, 80))
     check("nach dem Anwenden laeuft keine Kalibrierung mehr",
@@ -183,7 +183,7 @@ finally:
 
 section("Studio-Werkzeuge: was die Kalibrierung NICHT tut")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     # Ein Punkt, der sich nicht bewegt hat, ergibt einen Transform ohne Wirkung.
     # Ihn anzuwenden waere ein Schreibvorgang samt Sicherung fuer nichts.
     _b._await_position = lambda: (100, 100, "")
@@ -194,13 +194,13 @@ try:
           _b.tool_data()["calibration"]["identity"] is True)
 
     # Abbrechen darf nichts geschrieben haben - bis dahin steht alles nur im Kopf.
-    _sequenzdatei = _P("sequences/farm/sequence.json")
-    _vorher = _sequenzdatei.read_text(encoding="utf-8")
+    _sequence_file = _P("sequences/farm/sequence.json")
+    _before = _sequence_file.read_text(encoding="utf-8")
     _b._await_position = lambda: (500, 500, "")
     _b.calib_reference({"number": 1, "point_id": 1})
     check("abbrechen raeumt die Kalibrierung weg", _b.calib_cancel()["ok"])
     check("und hat nichts geschrieben",
-          _sequenzdatei.read_text(encoding="utf-8") == _vorher)
+          _sequence_file.read_text(encoding="utf-8") == _before)
     check("danach ist der Stand leer", _b.tool_data()["calibration"] == {})
 
     # Ein unbekannter Punkt ist kein Grund, irgendetwas zu rechnen.
@@ -222,7 +222,7 @@ finally:
 
 section("Studio-Werkzeuge: die Vorschau zaehlt keine Stelle doppelt")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _b.calib_reference({"number": 1, "point_id": 1})
     _was = [z["what"] for z in _b.tool_data()["calibration"]["preview"]]
     # Die Sequenz hat zwei Klick-Schritte, beide ueber `point_id`. Ihre x/y sind
@@ -251,7 +251,7 @@ finally:
 
 section("Studio: Sequenz-Aufnahme geht an den Hauptprozess")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _bf.COMMAND_PATH = _P("command.json")
     check("der Studio-Knopf kann eine Aufnahme starten",
           _b.recording_start({"name": "Aufnahme UI", "cycles": 3,
@@ -292,7 +292,7 @@ finally:
 
 section("Studio-Werkzeuge: Punkte sind vollständig verwaltbar")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _daten = _b.tool_data()
     _p1 = next(p for p in _daten["points"] if p["id"] == 1)
     check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["usages"]))
@@ -304,10 +304,10 @@ try:
     _b._await_position = lambda: (333, 444, "")
     _b._color_at = staticmethod(lambda x, y: (12, 34, 56))
     _erg = _b.tool_point_capture({"name": "Neu"})
-    _neu = _b._point_with_id(_erg.get("point_id"))
+    _new = _b._point_with_id(_erg.get("point_id"))
     check("ein freier Punkt lässt sich im Studio aufnehmen",
-          _erg["ok"] and (_neu.x, _neu.y) == (333, 444))
-    check("die Farbe wird dabei mitgemessen", _neu.color == (12, 34, 56))
+          _erg["ok"] and (_new.x, _new.y) == (333, 444))
+    check("die Farbe wird dabei mitgemessen", _new.color == (12, 34, 56))
     check("und die Sequenz ist danach ungespeichert", _b._dirty)
 
     _erg = _b.tool_colors({"kind": "point"})
@@ -320,7 +320,7 @@ finally:
 
 section("Studio: Phasen-Zeiten skalieren und Block testen")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _loop_index = next(i for i, lane in enumerate(_b.board.lanes) if lane.kind == "loop")
     _b.phase_scale({"phase": _loop_index, "factor": "0,5"})
     check("die Wartezeit wird mit deutschem Komma skaliert",
@@ -404,7 +404,7 @@ check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
 
 section("Studio-Aufnahme: kein unsichtbarer Prompt und kein UI-Klick im Block")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     import time as _time
     import autoclicker.editors.sequence_recorder as _rec
     from autoclicker.models import AutoClickerState as _State, RecordEvent as _RE, REC_CLICK as _RC
@@ -415,9 +415,9 @@ try:
     _st.recording_ui_name = "aufnahme_ui"
     _st.recording_ui_cycles = 2
     _st.recording_ui_description = "ohne Konsole"
-    _alt_input = _rec.safe_input
-    _alt_maus_weg = _rec.remove_mouse_hook
-    _alt_tasten_weg = _rec.remove_keyboard_hook
+    _old_input = _rec.safe_input
+    _old_mouse_gone = _rec.remove_mouse_hook
+    _old_keys_gone = _rec.remove_keyboard_hook
     _rec.safe_input = lambda *_a, **_k: (_ for _ in ()).throw(
         AssertionError("UI-Aufnahme darf nichts in der Konsole fragen"))
     _rec.remove_mouse_hook = lambda: None
@@ -425,9 +425,9 @@ try:
     try:
         _saved = _rec.stop_recording(_st)
     finally:
-        _rec.safe_input = _alt_input
-        _rec.remove_mouse_hook = _alt_maus_weg
-        _rec.remove_keyboard_hook = _alt_tasten_weg
+        _rec.safe_input = _old_input
+        _rec.remove_mouse_hook = _old_mouse_gone
+        _rec.remove_keyboard_hook = _old_keys_gone
     check("die UI-Vorgaben speichern ohne safe_input", _saved == "aufnahme_ui")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
     _geladen = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
@@ -446,43 +446,43 @@ try:
     # `#1C2333` = Panel-Grau des Studios). Derselbe Fehler wie in der
     # Klick-Runde, deshalb derselbe Helfer — und dieselben vier Faelle.
     import autoclicker.editors._click_window as _kf
-    _klick_state = _State(recording_active=True)
-    _vorn, _unter = ["Idle Clans"], [None]   # None = wie der Vordergrund
-    _alt_vorn, _alt_unter = _kf.get_foreground_window_title, _kf.get_window_title_at
-    _kf.get_foreground_window_title = lambda: _vorn[0]
+    _click_state = _State(recording_active=True)
+    _front, _unter = ["Idle Clans"], [None]   # None = wie der Vordergrund
+    _old_front, _old_below = _kf.get_foreground_window_title, _kf.get_window_title_at
+    _kf.get_foreground_window_title = lambda: _front[0]
     _kf.get_window_title_at = lambda x, y: (
-        _vorn[0] if _unter[0] is None else _unter[0])
-    _aufnehmen = _rec._on_click_factory(_klick_state)
+        _front[0] if _unter[0] is None else _unter[0])
+    _aufnehmen = _rec._on_click_factory(_click_state)
     try:
-        _vorn[0] = "Sequenz-Studio"
+        _front[0] = "Sequenz-Studio"
         _aufnehmen(10, 20, (1, 2, 3))
         check("der Stopp-Klick im Studio wird nicht aufgenommen",
-              not _klick_state.recording_events)
-        _vorn[0] = "Idle Clans"
+              not _click_state.recording_events)
+        _front[0] = "Idle Clans"
         _aufnehmen(10, 20, (1, 2, 3))
         check("derselbe Klick im Spiel wird aufgenommen",
-              len(_klick_state.recording_events) == 1)
+              len(_click_state.recording_events) == 1)
 
         # Der Fall, an dem jede Studio-Aufnahme ihren ersten Schritt verlor.
-        _vorn[0], _unter[0] = "Sequenz-Studio", "Idle Clans"
+        _front[0], _unter[0] = "Sequenz-Studio", "Idle Clans"
         _aufnehmen(4578, 490, (140, 77, 74))
         check("der erste Klick ins Spiel zaehlt, obwohl das Studio noch vorn ist",
-              [(e.x, e.y) for e in _klick_state.recording_events][-1] == (4578, 490))
+              [(e.x, e.y) for e in _click_state.recording_events][-1] == (4578, 490))
         # Und der Klick auf „Aufnahme stoppen" bei vorn stehendem Spiel.
-        _vorn[0], _unter[0] = "Idle Clans", "Sequenz-Studio"
-        _anzahl = len(_klick_state.recording_events)
+        _front[0], _unter[0] = "Idle Clans", "Sequenz-Studio"
+        _count = len(_click_state.recording_events)
         _aufnehmen(1347, 709, (28, 35, 51))
         check("der Stopp-Klick zaehlt nicht, obwohl das Spiel noch vorn ist",
-              len(_klick_state.recording_events) == _anzahl)
+              len(_click_state.recording_events) == _count)
         # Ohne auffindbares Fenster gilt der Vordergrund — ein Filter, der
         # dann alles wegwirft, saehe aus wie ein kaputter Hook.
-        _vorn[0], _unter[0] = "Idle Clans", ""
+        _front[0], _unter[0] = "Idle Clans", ""
         _aufnehmen(5, 5, (0, 0, 0))
         check("ohne Fenster unter dem Zeiger entscheidet der Vordergrund",
-              len(_klick_state.recording_events) == _anzahl + 1)
+              len(_click_state.recording_events) == _count + 1)
     finally:
-        _kf.get_foreground_window_title = _alt_vorn
-        _kf.get_window_title_at = _alt_unter
+        _kf.get_foreground_window_title = _old_front
+        _kf.get_window_title_at = _old_below
 
     _live_events = [
         _RE(_RC, 1.00, 10, 20, (1, 2, 3)),
@@ -508,7 +508,7 @@ finally:
 
 section("Studio-Werkzeuge: die Klick-Runde geht an den Hauptprozess")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _bf.COMMAND_PATH = _P("command.json")
     check("gestartet wird ueber den Briefkasten", _b.reclick_start()["ok"])
     _auftrag = _bf.fetch_command()
@@ -540,7 +540,7 @@ finally:
 
 section("Studio-Werkzeuge: die Klick-Runde nimmt die MITGESCHICKTE Sequenz")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     # Der Hauptprozess haelt eine andere Sequenz aktiv als die im Studio offene -
     # genau der Fall, in dem die alte Fassung die falsche nachklicken liess.
     _fremd = _SEQ(name="Fremd", loop_phases=[_LP(name="X", steps=[_SS(point_id=3)])])
@@ -592,7 +592,7 @@ finally:
 
 section("Studio-Werkzeuge: ein Referenzpunkt mit falscher Farbe fragt nach")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     # Punkt #1 bekommt eine gespeicherte Farbe; die Stelle, die angefahren wird,
     # zeigt eine ganz andere.
     _b.points[0].color = (10, 200, 30)
@@ -619,7 +619,7 @@ finally:
 
 section("Studio-Werkzeuge: wann NICHT nach der Farbe gefragt wird")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     # Passende Farbe: keine Rueckfrage, direkt gesetzt.
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: (12, 198, 33))
@@ -647,7 +647,7 @@ finally:
 
 section("Studio-Werkzeuge: die Klick-Runde laesst sich beenden")
 try:
-    _sand, _b = _sandkasten()
+    _sandbox, _b = _sandbox_dir()
     _bf.COMMAND_PATH = _P("command.json")
     check("beenden geht ueber den Briefkasten", _b.reclick_end()["ok"])
     _auftrag = _bf.fetch_command()
@@ -689,39 +689,39 @@ import re as _re_wt
 from pathlib import Path as _P_wt
 
 _studio_wt = _P_wt(__file__).resolve().parent.parent.parent / "autoclicker" / "editors" / "sequence_studio"
-_quellen_wt = {n: (_studio_wt / f"{n}.py").read_text(encoding="utf-8")
+_sources_wt = {n: (_studio_wt / f"{n}.py").read_text(encoding="utf-8")
                for n in ("bridge_editing", "bridge_tools")}
 _appjs_wt = (_studio_wt / "web" / "app.js").read_text(encoding="utf-8")
 
 # Welche oeffentlichen Methoden warten? Eine Methode wartet, wenn ihr Rumpf
 # `_await_position()` oder `wait_for_global_key(` enthaelt.
 _wartend = set()
-for _text in _quellen_wt.values():
-    _teile = _re_wt.split(r"\n    def ", _text)
-    for _teil in _teile[1:]:
-        _name = _teil.split("(", 1)[0]
+for _text in _sources_wt.values():
+    _parts = _re_wt.split(r"\n    def ", _text)
+    for _part in _parts[1:]:
+        _name = _part.split("(", 1)[0]
         if _name.startswith("_"):
             continue
-        if "_await_position()" in _teil or "wait_for_global_key(" in _teil:
+        if "_await_position()" in _part or "wait_for_global_key(" in _part:
             _wartend.add(_name)
 
 check("der Test findet ueberhaupt wartende Methoden", len(_wartend) >= 5)
 
-_tabelle_wt = _appjs_wt[_appjs_wt.index("const WAIT_ACTIONS = {"):]
-_tabelle_wt = _tabelle_wt[:_tabelle_wt.index("};")]
-_genannt = set(_re_wt.findall(r"^\s*(\w+):\s*\[", _tabelle_wt, _re_wt.M))
+_table_wt = _appjs_wt[_appjs_wt.index("const WAIT_ACTIONS = {"):]
+_table_wt = _table_wt[:_table_wt.index("};")]
+_named = set(_re_wt.findall(r"^\s*(\w+):\s*\[", _table_wt, _re_wt.M))
 
-_fehlt = sorted(_wartend - _genannt)
-check("jede wartende Bruecken-Methode steht in WAIT_ACTIONS", _fehlt == [])
-if _fehlt:
-    print("        ohne Hinweis: " + ", ".join(_fehlt))
+_missing = sorted(_wartend - _named)
+check("jede wartende Bruecken-Methode steht in WAIT_ACTIONS", _missing == [])
+if _missing:
+    print("        ohne Hinweis: " + ", ".join(_missing))
 
 # Gegenrichtung: ein Eintrag fuer etwas, das gar nicht mehr wartet, verspricht
 # einen Kasten, den niemand je sieht.
-_zuviel = sorted(_genannt - _wartend)
-check("und kein Eintrag fuer etwas, das nicht wartet", _zuviel == [])
-if _zuviel:
-    print("        wartet gar nicht: " + ", ".join(_zuviel))
+_too_many = sorted(_named - _wartend)
+check("und kein Eintrag fuer etwas, das nicht wartet", _too_many == [])
+if _too_many:
+    print("        wartet gar nicht: " + ", ".join(_too_many))
 
 # Und die Seite muss sie auch WIRKLICH ueber withWait() rufen — ein Eintrag in
 # der Tabelle allein zeigt noch keinen Kasten.
@@ -733,10 +733,10 @@ for _m in sorted(_wartend):
 # Countdown der Seite neben dem echten Zeitablauf der Bruecke.
 from autoclicker.editors.sequence_studio.bridge_contract import WAIT_TIMEOUT as _WT
 check("die Zeitgrenze ist eine Konstante, kein Literal im Aufruf",
-      all("timeout=60" not in t for t in _quellen_wt.values()))
+      all("timeout=60" not in t for t in _sources_wt.values()))
 check("und sie steht in der Momentaufnahme",
       '"wait_timeout": WAIT_TIMEOUT' in
       (_studio_wt / "bridge_view.py").read_text(encoding="utf-8"))
 check("wie auch in den Werkzeug-Daten",
-      '"wait_timeout": WAIT_TIMEOUT' in _quellen_wt["bridge_tools"])
+      '"wait_timeout": WAIT_TIMEOUT' in _sources_wt["bridge_tools"])
 check("der Wert ist eine sinnvolle Zeitgrenze", 10 <= _WT <= 300)

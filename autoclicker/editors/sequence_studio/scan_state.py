@@ -424,8 +424,8 @@ class ScanStateMixin:
         remaining = [nr for nr, _, _, done, _, _ in raw if not done]
         current = remaining[0] if remaining else 0
         return [{"nr": nr, "title": title, "what": what, "done": done,
-                 "current": nr == current, "command": command, "button": knopf}
-                for nr, title, what, done, command, knopf in raw]
+                 "current": nr == current, "command": command, "button": button}
+                for nr, title, what, done, command, button in raw]
 
     def _canvas_area(self) -> Optional[dict]:
         """Die Arbeitsfläche: das Bild, sonst das Rechteck um die Slots.

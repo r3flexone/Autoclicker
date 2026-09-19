@@ -923,7 +923,7 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
 
 
 def command_reclick(state: AutoClickerState, arguments: dict) -> None:
-    """Startet die Klick-Runde — der Studio-Knopf statt `click_value` im Punkte-Menü.
+    """Startet die Klick-Runde — der Studio-Knopf statt `click` im Punkte-Menü.
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys

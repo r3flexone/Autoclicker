@@ -28,7 +28,7 @@ section("Geteilte Capture-Helfer der Erkennungs-Editoren")
 import autoclicker.editors._detection_capture as _DC
 
 
-def _dc_folge(fn, inputs, **kw):
+def _dc_sequence(fn, inputs, **kw):
     """Ruft eine Capture-Funktion mit einer festen Tastenfolge auf."""
     consequence = list(inputs)
     _old = _DC.safe_input
@@ -42,73 +42,73 @@ def _dc_folge(fn, inputs, **kw):
 
 # --- prompt_key: nur Tasten, die send_key auch abspielen kann ---
 check("eine gueltige Taste kommt zurueck",
-      _dc_folge(_DC.prompt_key, ["enter"]) == "enter")
-check("Grossschreibung stoert nicht", _dc_folge(_DC.prompt_key, ["ENTER"]) == "enter")
-check("'cancel' bricht ab", _dc_folge(_DC.prompt_key, ["cancel"]) is None)
+      _dc_sequence(_DC.prompt_key, ["enter"]) == "enter")
+check("Grossschreibung stoert nicht", _dc_sequence(_DC.prompt_key, ["ENTER"]) == "enter")
+check("'cancel' bricht ab", _dc_sequence(_DC.prompt_key, ["cancel"]) is None)
 # Der Punkt der Uebung: ein Tippfehler kostet EINE Wiederholung, nicht den Editor.
 check("eine unbekannte Taste fragt erneut",
-      _dc_folge(_DC.prompt_key, ["gibtsnicht", "space"]) == "space")
+      _dc_sequence(_DC.prompt_key, ["gibtsnicht", "space"]) == "space")
 check("eine leere Eingabe ebenso",
-      _dc_folge(_DC.prompt_key, ["", "1"]) == "1")
+      _dc_sequence(_DC.prompt_key, ["", "1"]) == "1")
 
 # --- _prompt_region_coords: vier Zahlen, und x2>x1, y2>y1 ---
 _pr = _DC._prompt_region_coords
 check("vier Zahlen ergeben eine Region",
-      _dc_folge(_pr, ["100,200,400,500"]) == (100, 200, 400, 500))
+      _dc_sequence(_pr, ["100,200,400,500"]) == (100, 200, 400, 500))
 check("Leerzeichen dazwischen stoeren nicht",
-      _dc_folge(_pr, [" 10 , 20 , 30 , 40 "]) == (10, 20, 30, 40))
+      _dc_sequence(_pr, [" 10 , 20 , 30 , 40 "]) == (10, 20, 30, 40))
 check("zu wenige Werte fragen erneut",
-      _dc_folge(_pr, ["1,2,3", "1,2,3,4"]) == (1, 2, 3, 4))
+      _dc_sequence(_pr, ["1,2,3", "1,2,3,4"]) == (1, 2, 3, 4))
 check("Buchstaben fragen erneut",
-      _dc_folge(_pr, ["a,b,c,d", "1,2,3,4"]) == (1, 2, 3, 4))
+      _dc_sequence(_pr, ["a,b,c,d", "1,2,3,4"]) == (1, 2, 3, 4))
 # Ein verdrehtes Rechteck ist kein Rechteck - und faellt sonst erst beim Scannen auf.
 check("x2 <= x1 wird abgelehnt",
-      _dc_folge(_pr, ["400,200,100,500", "1,2,3,4"]) == (1, 2, 3, 4))
+      _dc_sequence(_pr, ["400,200,100,500", "1,2,3,4"]) == (1, 2, 3, 4))
 check("y2 <= y1 ebenso",
-      _dc_folge(_pr, ["100,500,400,200", "1,2,3,4"]) == (1, 2, 3, 4))
-check("'cancel' gibt None", _dc_folge(_pr, ["cancel"]) is None)
+      _dc_sequence(_pr, ["100,500,400,200", "1,2,3,4"]) == (1, 2, 3, 4))
+check("'cancel' gibt None", _dc_sequence(_pr, ["cancel"]) is None)
 
 # --- select_scan_region: beim Bearbeiten ist "beibehalten" vorausgewaehlt ---
 # `interactive_select` braucht eine Tastatur; gestellt wird deshalb die Auswahl,
 # nicht die Eingabe. Geprueft wird, dass die BESTEHENDE Region unveraendert
 # zurueckkommt - sonst verliert jedes Bearbeiten den Scan-Bereich.
-_alt_sel = _DC.interactive_select
+_old_sel = _DC.interactive_select
 try:
     _DC.interactive_select = lambda opts, default=0: default
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _behalten = _DC.select_scan_region((5, 6, 7, 8))
-    check("beim Bearbeiten ist 'beibehalten' vorausgewaehlt", _behalten == (5, 6, 7, 8))
+        _kept = _DC.select_scan_region((5, 6, 7, 8))
+    check("beim Bearbeiten ist 'beibehalten' vorausgewaehlt", _kept == (5, 6, 7, 8))
     _DC.interactive_select = lambda opts, default=0: -1
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _abbruch = _DC.select_scan_region((5, 6, 7, 8))
-    check("ESC im Menue bricht ab", _abbruch is None)
+        _cancel = _DC.select_scan_region((5, 6, 7, 8))
+    check("ESC im Menue bricht ab", _cancel is None)
     # Ohne bestehende Region gibt es den dritten Eintrag gar nicht - dann darf
     # "beibehalten" auch nicht versehentlich erreichbar sein.
     _DC.interactive_select = lambda opts, default=0: len(opts) - 1
     _DC.safe_input = lambda _p="": "1,2,3,4"
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _eingabe = _DC.select_scan_region(None)
+        _input = _DC.select_scan_region(None)
     check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
-          _eingabe == (1, 2, 3, 4))
+          _input == (1, 2, 3, 4))
 finally:
-    _DC.interactive_select = _alt_sel
+    _DC.interactive_select = _old_sel
 
 # --- capture_markers: mindestens einer, sonst ist der Scan blind ---
-_alt_cursor, _alt_pixel = _DC.get_cursor_pos, _DC.get_pixel_color
+_old_cursor, _old_pixel = _DC.get_cursor_pos, _DC.get_pixel_color
 try:
     _stellen = [(10, 10), (20, 20), (30, 30)]
     _DC.get_cursor_pos = lambda: _stellen.pop(0) if _stellen else (0, 0)
     _DC.get_pixel_color = lambda x, y: (x, y, 99)
     check("Enter nimmt die Farbe unter dem Zeiger auf",
-          _dc_folge(_DC.capture_markers, ["", "", "done"])
+          _dc_sequence(_DC.capture_markers, ["", "", "done"])
           == [(10, 10, 99), (20, 20, 99)])
     _stellen = [(1, 2)]
     # **'done' ohne einen einzigen Marker wird abgelehnt.** Ein Profil ohne Marker
     # und ohne Template wird nie erkannt - das faellt sonst erst im Lauf auf.
     check("'done' ohne Marker fragt erneut",
-          _dc_folge(_DC.capture_markers, ["done", "", "done"]) == [(1, 2, 99)])
+          _dc_sequence(_DC.capture_markers, ["done", "", "done"]) == [(1, 2, 99)])
     _stellen = [(1, 2)]
-    check("'cancel' gibt None", _dc_folge(_DC.capture_markers, ["cancel"]) is None)
+    check("'cancel' gibt None", _dc_sequence(_DC.capture_markers, ["cancel"]) is None)
     # Eine Stelle, an der sich nichts lesen laesst, legt KEINEN Marker an - sonst
     # stuende ein Profil mit einem Marker da, den es nie gab. Die Folge ist deshalb
     # dieselbe wie oben, nur liefert die Farbmessung nichts: zweimal Enter, dann
@@ -116,9 +116,9 @@ try:
     _DC.get_pixel_color = lambda x, y: None
     _stellen = [(1, 2), (3, 4)]
     check("eine unlesbare Stelle legt keinen Marker an",
-          _dc_folge(_DC.capture_markers, ["", "", "done", "cancel"]) is None)
+          _dc_sequence(_DC.capture_markers, ["", "", "done", "cancel"]) is None)
 finally:
-    _DC.get_cursor_pos, _DC.get_pixel_color = _alt_cursor, _alt_pixel
+    _DC.get_cursor_pos, _DC.get_pixel_color = _old_cursor, _old_pixel
 
 
 section("Item umbenennen: Template, Bestand und Scan ziehen mit")
@@ -185,7 +185,7 @@ import autoclicker.editors._item_fields as _IF
 from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
 
 
-def _feld_folge(fn, inputs, **kw):
+def _field_sequence(fn, inputs, **kw):
     """Ruft eine Feld-Abfrage mit einer festen Tastenfolge auf."""
     consequence = list(inputs)
     _old = _IF.safe_input
@@ -217,59 +217,59 @@ _st_f.lock = _MessLock()
 
 # --- Bestaetigungs-Klick ---
 check("ein bekannter Punkt kommt mit Wartezeit zurueck",
-      _feld_folge(_IF.ask_confirm_click, ["7", "1.5"],
+      _field_sequence(_IF.ask_confirm_click, ["7", "1.5"],
                   state=_st_f, default_delay=0.5) == (7, 1.5))
 # DIE Eigenschaft, um die es geht: `get_point_by_id()` liest `state.points` und
 # sperrt nicht selbst. Drei der vier Kopien taten es auch nicht.
 check("die Punktsuche laeuft unter state.lock", _st_f.lock.genommen >= 1)
 check("leere Eingabe heisst: kein Bestaetigungs-Klick",
-      _feld_folge(_IF.ask_confirm_click, [""],
+      _field_sequence(_IF.ask_confirm_click, [""],
                   state=_st_f, default_delay=0.5) == (None, 0.5))
 check("ein unbekannter Punkt setzt nichts und behaelt die Vorgabe",
-      _feld_folge(_IF.ask_confirm_click, ["99"],
+      _field_sequence(_IF.ask_confirm_click, ["99"],
                   state=_st_f, default_delay=0.5) == (None, 0.5))
 check("Zahlensalat setzt nichts",
-      _feld_folge(_IF.ask_confirm_click, ["abc"],
+      _field_sequence(_IF.ask_confirm_click, ["abc"],
                   state=_st_f, default_delay=0.5) == (None, 0.5))
 # Eine unbrauchbare Wartezeit behaelt die Vorgabe, statt den Punkt zu verlieren.
 check("eine unbrauchbare Wartezeit behaelt die Vorgabe",
-      _feld_folge(_IF.ask_confirm_click, ["7", "keine Zahl"],
+      _field_sequence(_IF.ask_confirm_click, ["7", "keine Zahl"],
                   state=_st_f, default_delay=0.5) == (7, 0.5))
 # Abbruch ist etwas anderes als „nichts eingegeben" — `None` als Punkt-ID ist
 # ein gueltiges Ergebnis und taugt deshalb nicht als Abbruch-Zeichen.
 check("abbrechbar: 'cancel' meldet ABBRUCH, nicht (None, delay)",
-      _feld_folge(_IF.ask_confirm_click, ["cancel"], state=_st_f,
+      _field_sequence(_IF.ask_confirm_click, ["cancel"], state=_st_f,
                   default_delay=0.5, cancellable=True) is _IF.CANCELLED)
 check("ohne `cancellable` ist 'cancel' nur eine unbrauchbare Eingabe",
-      _feld_folge(_IF.ask_confirm_click, ["cancel"],
+      _field_sequence(_IF.ask_confirm_click, ["cancel"],
                   state=_st_f, default_delay=0.5) == (None, 0.5))
 
 # --- Prioritaet ---
-_verschoben = []
-_alt_shift = _IF.shift_category_priorities
-_IF.shift_category_priorities = lambda st, kat: _verschoben.append(kat)
+_moved = []
+_old_shift = _IF.shift_category_priorities
+_IF.shift_category_priorities = lambda st, kat: _moved.append(kat)
 try:
     check("eine Zahl kommt als Prioritaet zurueck",
-          _feld_folge(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
+          _field_sequence(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
     check("leere Eingabe behaelt die Vorgabe",
-          _feld_folge(_IF.ask_priority, [""], state=_st_f,
+          _field_sequence(_IF.ask_priority, [""], state=_st_f,
                       category="Helme", default_value=4) == 4)
     check("Zahlensalat behaelt die Vorgabe",
-          _feld_folge(_IF.ask_priority, ["abc"], state=_st_f,
+          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f,
                       category="Helme", default_value=4) == 4)
     check("negative Zahlen werden auf 1 gehoben",
-          _feld_folge(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
+          _field_sequence(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
     # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.
     check("0 mit Kategorie verschiebt und ergibt 1",
-          _feld_folge(_IF.ask_priority, ["0"], state=_st_f,
-                      category="Helme") == 1 and _verschoben == ["Helme"])
+          _field_sequence(_IF.ask_priority, ["0"], state=_st_f,
+                      category="Helme") == 1 and _moved == ["Helme"])
     # Ohne Kategorie gibt es nichts zu verschieben — das wird gesagt, nicht getan.
-    _verschoben.clear()
+    _moved.clear()
     check("0 ohne Kategorie verschiebt nichts",
-          _feld_folge(_IF.ask_priority, ["0"], state=_st_f,
-                      category=None) == 1 and _verschoben == [])
+          _field_sequence(_IF.ask_priority, ["0"], state=_st_f,
+                      category=None) == 1 and _moved == [])
     check("abbrechbar: 'cancel' meldet ABBRUCH",
-          _feld_folge(_IF.ask_priority, ["cancel"], state=_st_f,
+          _field_sequence(_IF.ask_priority, ["cancel"], state=_st_f,
                       category="Helme", cancellable=True) is _IF.CANCELLED)
 finally:
-    _IF.shift_category_priorities = _alt_shift
+    _IF.shift_category_priorities = _old_shift

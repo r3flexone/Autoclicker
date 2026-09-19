@@ -65,19 +65,19 @@ check("leere Eingabe ergibt leere Raenge", ranks([]) == {})
 section("Katalog: Datei lesen (Fremdformat, faellt nie um)")
 # =============================================================================
 
-_sand = Path(tempfile.mkdtemp(prefix="katalog_test_"))
+_sandbox = Path(tempfile.mkdtemp(prefix="katalog_test_"))
 check("kein Pfad -> leer", not load_catalog(""))
-check("Datei fehlt -> leer", not load_catalog(str(_sand / "gibtsnicht.json")))
+check("Datei fehlt -> leer", not load_catalog(str(_sandbox / "gibtsnicht.json")))
 
-_kaputt = _sand / "kaputt.json"
+_kaputt = _sandbox / "kaputt.json"
 _kaputt.write_text("{ das ist kein json", encoding="utf-8")
 check("kaputte Datei -> leer statt Absturz", not load_catalog(str(_kaputt)))
 
-_liste = _sand / "liste.json"
-_liste.write_text("[1, 2, 3]", encoding="utf-8")
-check("Liste statt Objekt -> leer", not load_catalog(str(_liste)))
+_list = _sandbox / "liste.json"
+_list.write_text("[1, 2, 3]", encoding="utf-8")
+check("Liste statt Objekt -> leer", not load_catalog(str(_list)))
 
-_gut = _sand / "gut.json"
+_gut = _sandbox / "gut.json"
 _gut.write_text(json.dumps({
     "items": {
         "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
@@ -103,33 +103,33 @@ check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
 section("tools/catalog.py: die Kategorie wird ENG gebildet")
 # =============================================================================
 
-from tools.catalog import anzeigename, kategorie_fuer, baue_katalog  # noqa: E402
+from tools.catalog import display_name, category_for, build_catalog  # noqa: E402
 
-check("Schluessel wird Anzeigename", anzeigename("godlike_bow") == "Godlike Bow")
+check("Schluessel wird Anzeigename", display_name("godlike_bow") == "Godlike Bow")
 
 # EquipmentSlot traegt die Bedeutung schon: ein Helm, ein Schild, ein Paar Stiefel.
-check("Slot 11 ist der Helm", kategorie_fuer({"Name": "bronze_helmet", "EquipmentSlot": 11}) == "Helm")
-check("Slot 1 sind die Stiefel", kategorie_fuer({"Name": "iron_boots", "EquipmentSlot": 1}) == "Stiefel")
+check("Slot 11 ist der Helm", category_for({"Name": "bronze_helmet", "EquipmentSlot": 11}) == "Helm")
+check("Slot 1 sind die Stiefel", category_for({"Name": "iron_boots", "EquipmentSlot": 1}) == "Stiefel")
 check("Slot 10 ist der Umhang, auch mit Zahl im Namen",
-      kategorie_fuer({"Name": "archery_cape_tier_1", "EquipmentSlot": 10}) == "Umhang")
+      category_for({"Name": "archery_cape_tier_1", "EquipmentSlot": 10}) == "Umhang")
 
 # **Slot 7 MUSS aufgetrennt werden.** Dort liegen 200 Waffen UND Werkzeuge, weil
 # das Spiel sie in derselben Hand fuehrt. Als eine Kategorie hiesse das bei
 # `SCAN_MODE_ALL`: aus Spitzhacke, Beil und Bogen wird genau eines geklickt.
 check("Slot 7 wird am letzten Wort getrennt (Pickaxe)",
-      kategorie_fuer({"Name": "godlike_pickaxe", "EquipmentSlot": 7}) == "Pickaxe")
+      category_for({"Name": "godlike_pickaxe", "EquipmentSlot": 7}) == "Pickaxe")
 check("Slot 7: Beil ist etwas anderes als Spitzhacke",
-      kategorie_fuer({"Name": "godlike_hatchet", "EquipmentSlot": 7}) == "Hatchet")
+      category_for({"Name": "godlike_hatchet", "EquipmentSlot": 7}) == "Hatchet")
 check("Slot 7: Bogen ist etwas anderes als Werkzeug",
-      kategorie_fuer({"Name": "godlike_bow", "EquipmentSlot": 7}) == "Bow")
+      category_for({"Name": "godlike_bow", "EquipmentSlot": 7}) == "Bow")
 check("Slot 0 (keine Ausruestung) am letzten Wort",
-      kategorie_fuer({"Name": "diamond_ore", "EquipmentSlot": 0}) == "Ore")
+      category_for({"Name": "diamond_ore", "EquipmentSlot": 0}) == "Ore")
 check("ohne Slot-Angabe faellt nichts um",
-      kategorie_fuer({"Name": "spruce_log"}) == "Log")
+      category_for({"Name": "spruce_log"}) == "Log")
 check("ohne Namen gibt es eine Auffangkategorie",
-      kategorie_fuer({"Name": "", "EquipmentSlot": 0}) == "Sonstiges")
+      category_for({"Name": "", "EquipmentSlot": 0}) == "Sonstiges")
 
-_gebaut = baue_katalog({
+_gebaut = build_catalog({
     "Items": {"Items": [
         {"Name": "bronze_helmet", "EquipmentSlot": 11, "BaseValue": 32},
         {"Name": "godlike_bow", "EquipmentSlot": 7, "BaseValue": 333000},
@@ -145,10 +145,10 @@ check("Wert wandert mit", _gebaut["items"]["Godlike Bow"]["wert"] == 333000)
 # vergessen hiesse, dass die Boss-Liste unvollstaendig ist, ohne dass es auffaellt.
 check("Gegner aus allen drei Feldnamen",
       _gebaut["gegner"] == ["Banshee", "Black Dragon", "Malignant Spider"])
-check("Quelle steht in der Datei", "idleclans" in _gebaut["_quelle"])
+check("Quelle steht in der Datei", "idleclans" in _gebaut["_source"])
 
 # Beide Enden gegeneinander: was das Werkzeug schreibt, muss der Loader lesen.
-_rund = _sand / "rund.json"
+_rund = _sandbox / "rund.json"
 _rund.write_text(json.dumps(_gebaut), encoding="utf-8")
 _rl = load_catalog(str(_rund))
 check("was tools/catalog.py schreibt, liest autoclicker/katalog.py",
@@ -168,10 +168,10 @@ check("Standard ist aus", ItemScanConfig(name="x").use_catalog is False)
 # Aus ist der Normalfall und wird nicht geschrieben (`_without_defaults`).
 check("aus wird nicht in die Datei geschrieben",
       "use_catalog" not in _item_scan_to_dict(ItemScanConfig(name="x")))
-_an = ItemScanConfig(name="x", use_catalog=True)
-check("an wird geschrieben", _item_scan_to_dict(_an)["use_catalog"] is True)
+_on = ItemScanConfig(name="x", use_catalog=True)
+check("an wird geschrieben", _item_scan_to_dict(_on)["use_catalog"] is True)
 check("an ueberlebt den Roundtrip",
-      _item_scan_from_dict(_item_scan_to_dict(_an)).use_catalog is True)
+      _item_scan_from_dict(_item_scan_to_dict(_on)).use_catalog is True)
 check("eine alte Datei ohne das Feld bekommt den Default",
       _item_scan_from_dict({"name": "alt"}).use_catalog is False)
 
@@ -190,7 +190,7 @@ check("use_catalog ist KEIN Config-Feld", not hasattr(AppConfig(), "use_catalog"
 check("der Dateipfad dagegen schon (eine Datei je Spiel)",
       hasattr(AppConfig(), "scan_catalog_file"))
 
-shutil.rmtree(_sand, ignore_errors=True)
+shutil.rmtree(_sandbox, ignore_errors=True)
 
 
 # =============================================================================
@@ -202,13 +202,13 @@ from autoclicker.editors.sequence_studio.bridge import StudioBridge  # noqa: E40
 from autoclicker.models import ItemProfile, Sequence               # noqa: E402
 from autoclicker import config as _cfgmod                          # noqa: E402
 
-_sand2 = tempfile.mkdtemp(prefix="katalog_bridge_")
+_sandbox2 = tempfile.mkdtemp(prefix="katalog_bridge_")
 _cwd2 = _os.getcwd()
-_os.chdir(_sand2)
+_os.chdir(_sandbox2)
 try:
     Path("sequences").mkdir()
-    _kat_datei = Path("catalog.json").resolve()
-    _kat_datei.write_text(json.dumps({"items": {
+    _cat_file = Path("catalog.json").resolve()
+    _cat_file.write_text(json.dumps({"items": {
         "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
         "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
         "Godlike Pickaxe": {"kategorie": "Pickaxe", "wert": 500000},
@@ -219,7 +219,7 @@ try:
 
     # 1. Kein Scan offen — der Schalter haengt am Scan, also gibt es ohne Scan
     #    gar keine Antwort auf "benutzt du den Katalog?".
-    _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)
+    _cfgmod.CONFIG.scan_catalog_file = str(_cat_file)
     _a = _b.scan_catalog_apply()
     check("ohne offenen Scan wird auf den Scan verwiesen",
           "Scan öffnen" in _a["status"]["text"] and _a["status"]["kind"] == "err")
@@ -249,7 +249,7 @@ try:
           _b.scan_data()["catalog_on"] is False)
 
     # --- Jetzt greift es ---
-    _cfgmod.CONFIG.scan_catalog_file = str(_kat_datei)
+    _cfgmod.CONFIG.scan_catalog_file = str(_cat_file)
     _a = _b.scan_catalog_apply()
     check("zwei bekannte Items werden eingeordnet",
           _b.items["Citadel Helmet"].category == "Helm"
@@ -288,7 +288,7 @@ try:
     _cfgmod.CONFIG.scan_catalog_file = _merker
 finally:
     _os.chdir(_cwd2)
-    shutil.rmtree(_sand2, ignore_errors=True)
+    shutil.rmtree(_sandbox2, ignore_errors=True)
 
 
 # =============================================================================
@@ -298,53 +298,53 @@ section("Geschlossene LLM-Auswahl: nur echte Namen kommen zurueck")
 import autoclicker.llm_vision as _lv                               # noqa: E402
 
 _KANDIDATEN = ["Godlike Bow", "Citadel Helmet", "Godlike Pickaxe"]
-_gesehen = {}
+_seen = {}
 
 
-def _antworte(text):
+def _answer(text):
     """Ersetzt analyze_image durch eine feste Antwort und merkt den Prompt."""
     def _fake(**kw):
-        _gesehen.update(kw)
+        _seen.update(kw)
         return True, text, 1.0
     return _fake
 
 
 _echt = _lv.analyze_image
 try:
-    _lv.analyze_image = _antworte("Citadel Helmet")
+    _lv.analyze_image = _answer("Citadel Helmet")
     check("ein woertlicher Treffer kommt durch",
           _lv.suggest_item_name(None, candidates=_KANDIDATEN) == "Citadel Helmet")
     check("die Kandidaten stehen im System-Prompt",
-          "Citadel Helmet" in _gesehen["system_prompt"])
+          "Citadel Helmet" in _seen["system_prompt"])
     # Die Anweisung steht auf Englisch, und das ist gemessen: mit dem deutschen
     # Prompt antwortet das Modell deutsch ("Bogen") — in einer Sprache, in der
     # die Liste gar nicht steht.
     check("die Anweisung ist englisch, damit die Antwort zur Liste passt",
-          "CANDIDATES" in _gesehen["system_prompt"])
+          "CANDIDATES" in _seen["system_prompt"])
 
-    _lv.analyze_image = _antworte("citadel helmet")
+    _lv.analyze_image = _answer("citadel helmet")
     check("Schreibweise egal, zurueck kommt die Katalog-Form",
           _lv.suggest_item_name(None, candidates=_KANDIDATEN) == "Citadel Helmet")
 
     # Knapp daneben wird einmal herangezogen — das betraf 3 von 56 echten Vorlagen.
-    _lv.analyze_image = _antworte("Godlike Pickax")
+    _lv.analyze_image = _answer("Godlike Pickax")
     check("knapp daneben wird auf den Katalognamen gezogen",
           _lv.suggest_item_name(None, candidates=_KANDIDATEN) == "Godlike Pickaxe")
 
     # **Lieber kein Name als ein falscher**: ein falscher wird gespeichert und
     # zieht Kategorie und Prioritaet mit sich.
-    _lv.analyze_image = _antworte("Irgendein Schwert")
+    _lv.analyze_image = _answer("Irgendein Schwert")
     check("etwas voellig anderes wird verworfen",
           _lv.suggest_item_name(None, candidates=_KANDIDATEN) is None)
-    _lv.analyze_image = _antworte("UNKNOWN")
+    _lv.analyze_image = _answer("UNKNOWN")
     check("UNKNOWN ist kein Name", _lv.suggest_item_name(None, candidates=_KANDIDATEN) is None)
 
     # Ohne Liste bleibt alles wie vorher — der Katalog ist Zusatz, nie Voraussetzung.
-    _lv.analyze_image = _antworte("Irgendein Schwert")
+    _lv.analyze_image = _answer("Irgendein Schwert")
     check("ohne Kandidaten bleibt der freie Vorschlag",
           _lv.suggest_item_name(None) == "Irgendein Schwert")
     check("und der Prompt ist dann der alte deutsche",
-          "Gegenstände" in _gesehen["system_prompt"])
+          "Gegenstände" in _seen["system_prompt"])
 finally:
     _lv.analyze_image = _echt
 
@@ -363,7 +363,7 @@ import io as _io_mit                                               # noqa: E402
 import json as _json_mit                                           # noqa: E402
 from autoclicker.config import CONFIG as _CFG_mit                  # noqa: E402
 
-_ANTWORT_mit = {"choices": [{"message": {
+_ANSWER_with = {"choices": [{"message": {
     "content": "Kraken",
     # Das Denk-Feld verwirft `_extract_response_text` — genau deshalb muss es
     # in der Mitschrift stehen: ein Modell, das alle Tokens ins Denken steckt,
@@ -372,7 +372,7 @@ _ANTWORT_mit = {"choices": [{"message": {
 }}]}
 
 
-class _FakeAntwort_mit:
+class _FakeAnswer_with:
     def __init__(self, nutzlast):
         self._roh = _json_mit.dumps(nutzlast).encode("utf-8")
 
@@ -386,77 +386,77 @@ class _FakeAntwort_mit:
         return False
 
 
-def _lauf_mit(debug, nutzlast=None):
+def _run_with(debug, nutzlast=None):
     """analyze_image mit gestubbtem HTTP — gibt (Ergebnis, Konsolentext)."""
     _echt_open = _lv.urllib.request.urlopen
-    _alt_debug = _CFG_mit.llm_debug
+    _old_debug = _CFG_mit.llm_debug
     _CFG_mit.llm_debug = debug
-    _lv.urllib.request.urlopen = lambda *a, **kw: _FakeAntwort_mit(
-        nutzlast if nutzlast is not None else _ANTWORT_mit)
+    _lv.urllib.request.urlopen = lambda *a, **kw: _FakeAnswer_with(
+        nutzlast if nutzlast is not None else _ANSWER_with)
     buffer = _io_mit.StringIO()
     try:
         with _ctx_mit.redirect_stdout(buffer):
-            res = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
+            res = _lv.analyze_image(img=_IMAGE_with, provider="lmstudio",
                                     model="testmodell", prompt="Wer ist das?")
     finally:
         _lv.urllib.request.urlopen = _echt_open
-        _CFG_mit.llm_debug = _alt_debug
+        _CFG_mit.llm_debug = _old_debug
     return res, buffer.getvalue()
 
 
-_hat_pil_mit = False
+_has_pil_with = False
 try:
     from PIL import Image as _PIL_mit
-    _BILD_mit = _PIL_mit.new("RGB", (4, 4), (10, 20, 30))
-    _hat_pil_mit = True
+    _IMAGE_with = _PIL_mit.new("RGB", (4, 4), (10, 20, 30))
+    _has_pil_with = True
 except ImportError:
-    _BILD_mit = None
+    _IMAGE_with = None
 
-if not _hat_pil_mit:
+if not _has_pil_with:
     print("  ----  uebersprungen (Pillow nicht installiert)")
 else:
-    _erg_aus, _text_aus = _lauf_mit(False)
+    _res_off, _text_off = _run_with(False)
     check("ohne den Schalter aendert sich am Ergebnis nichts",
-          _erg_aus[0] is True and _erg_aus[1] == "Kraken")
-    check("und die Konsole bleibt still", _text_aus == "")
+          _res_off[0] is True and _res_off[1] == "Kraken")
+    check("und die Konsole bleibt still", _text_off == "")
 
-    _erg_an, _text_an = _lauf_mit(True)
+    _res_on, _text_on = _run_with(True)
     check("mit Schalter bleibt das Ergebnis dasselbe",
-          _erg_an[0] is True and _erg_an[1] == "Kraken")
+          _res_on[0] is True and _res_on[1] == "Kraken")
     check("die Mitschrift nennt Modell und Prompt",
-          "testmodell" in _text_an and "Wer ist das?" in _text_an)
-    check("und die rohe Antwort steht da", '"content": "Kraken"' in _text_an)
+          "testmodell" in _text_on and "Wer ist das?" in _text_on)
+    check("und die rohe Antwort steht da", '"content": "Kraken"' in _text_on)
     # Der Punkt der ganzen Mitschrift: das Denk-Feld, das der Code verwirft.
     check("samt dem Denk-Feld, das der Code selbst verwirft",
-          "reasoning_content" in _text_an
-          and "Tintenfisch" in _text_an)
-    check("und daneben, was daraus gelesen wurde", "gelesen:" in _text_an)
+          "reasoning_content" in _text_on
+          and "Tintenfisch" in _text_on)
+    check("und daneben, was daraus gelesen wurde", "gelesen:" in _text_on)
 
     # Eine leere Antwort ist der haeufigste Fall — und der, bei dem man ohne
     # Hinweis die Ursache raet.
-    _erg_leer, _text_leer = _lauf_mit(True, {"choices": [{"message": {"content": ""}}]})
+    _res_empty, _text_empty = _run_with(True, {"choices": [{"message": {"content": ""}}]})
     check("bei leerer Antwort nennt die Mitschrift die moeglichen Ursachen",
-          "leer" in _text_leer and "Bild-F" in _text_leer)
+          "leer" in _text_empty and "Bild-F" in _text_empty)
 
     # Auch ein Fehlschlag wird mitgeschrieben — sonst fehlt in der Mitschrift
     # ausgerechnet der Aufruf, der nicht funktioniert hat.
-    def _wirf_mit(*a, **kw):
+    def _throw_with(*a, **kw):
         raise _lv.urllib.error.URLError("kein Server")
 
-    _echt_open_mit = _lv.urllib.request.urlopen
-    _alt_debug_mit = _CFG_mit.llm_debug
+    _real_open_with = _lv.urllib.request.urlopen
+    _old_debug_with = _CFG_mit.llm_debug
     _CFG_mit.llm_debug = True
-    _lv.urllib.request.urlopen = _wirf_mit
-    _puffer_mit = _io_mit.StringIO()
+    _lv.urllib.request.urlopen = _throw_with
+    _buffer_with = _io_mit.StringIO()
     try:
-        with _ctx_mit.redirect_stdout(_puffer_mit):
-            _erg_fehl = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
+        with _ctx_mit.redirect_stdout(_buffer_with):
+            _res_miss = _lv.analyze_image(img=_IMAGE_with, provider="lmstudio",
                                           model="testmodell")
     finally:
-        _lv.urllib.request.urlopen = _echt_open_mit
-        _CFG_mit.llm_debug = _alt_debug_mit
+        _lv.urllib.request.urlopen = _real_open_with
+        _CFG_mit.llm_debug = _old_debug_with
     check("ein Fehlschlag steht ebenfalls in der Mitschrift",
-          _erg_fehl[0] is False and "kein Server" in _puffer_mit.getvalue())
+          _res_miss[0] is False and "kein Server" in _buffer_with.getvalue())
 
 
 # =============================================================================
@@ -484,25 +484,25 @@ _SPIELDATEN_kh = {"Items": {"Items": [
     {"Name": "citadel_helmet", "EquipmentSlot": 11, "BaseValue": 500},
 ]}, "Raids": [{"BossNameLocalizationKey": "kraken"}]}
 
-_sand_kh = _tmp_kh.mkdtemp(prefix="katalogholen_")
+_sandbox_kh = _tmp_kh.mkdtemp(prefix="katalogholen_")
 _cwd_kh = _os.getcwd()
-_echt_hole_kh = _tk_kh.hole_spieldaten
-_alt_pfad_kh = _CFG_mit.scan_catalog_file
-_os.chdir(_sand_kh)
+_echt_hole_kh = _tk_kh.fetch_game_data
+_old_path_kh = _CFG_mit.scan_catalog_file
+_os.chdir(_sandbox_kh)
 try:
     def _bau_kh():
         _P_kh("sequences").mkdir(exist_ok=True)
         return _SB_kh(_SEQ_kh(name="S"), _P_kh("sequences/s/sequence.json"), "sequences")
 
     _CFG_mit.scan_catalog_file = ""
-    _tk_kh.hole_spieldaten = lambda *a, **kw: _SPIELDATEN_kh
+    _tk_kh.fetch_game_data = lambda *a, **kw: _SPIELDATEN_kh
     _erg_kh = _bau_kh().catalog_fetch()
     check("der Knopf holt und schreibt die Datei",
           _erg_kh["ok"] and _P_kh("catalog.json").exists())
-    _inhalt_kh = _json_mit.loads(_P_kh("catalog.json").read_text(encoding="utf-8"))
+    _content_kh = _json_mit.loads(_P_kh("catalog.json").read_text(encoding="utf-8"))
     check("mit den echten Namen aus der API",
-          "Godlike Bow" in _inhalt_kh["items"]
-          and _inhalt_kh["items"]["Godlike Bow"]["kategorie"] == "Bow")
+          "Godlike Bow" in _content_kh["items"]
+          and _content_kh["items"]["Godlike Bow"]["kategorie"] == "Bow")
     # Ohne diesen Schritt hat man die Datei und trotzdem keine Wirkung — der
     # Scan liest den Pfad, nicht den Ordner.
     check("und traegt den Pfad gleich in die Config ein",
@@ -520,25 +520,25 @@ try:
     # Kein Netz ist der haeufigste Fehlerfall — und darf die vorhandene Datei
     # nicht zerstoeren. Dieselbe Haltung wie beim Start-Durchgang: lieber
     # nichts tun als halb schreiben.
-    _vorher_kh = _P_kh("catalog.json").read_text(encoding="utf-8")
+    _before_kh = _P_kh("catalog.json").read_text(encoding="utf-8")
 
     def _wirf_kh(*a, **kw):
         raise OSError("kein Netz")
 
-    _tk_kh.hole_spieldaten = _wirf_kh
+    _tk_kh.fetch_game_data = _wirf_kh
     _CFG_mit.scan_catalog_file = str(_P_kh("catalog.json"))
     _erg3_kh = _bau_kh().catalog_fetch()
     check("ohne Netz wird nichts geschrieben",
           _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["message"]
-          and _P_kh("catalog.json").read_text(encoding="utf-8") == _vorher_kh)
+          and _P_kh("catalog.json").read_text(encoding="utf-8") == _before_kh)
 
     # Eine Antwort ohne Items ist kein Katalog — eine leere Datei zu schreiben
     # hiesse, die brauchbare gegen eine unbrauchbare zu tauschen.
-    _tk_kh.hole_spieldaten = lambda *a, **kw: {"Items": {"Items": []}}
+    _tk_kh.fetch_game_data = lambda *a, **kw: {"Items": {"Items": []}}
     _erg4_kh = _bau_kh().catalog_fetch()
     check("und eine leere Antwort ueberschreibt die gute Datei nicht",
           _erg4_kh["ok"] is False
-          and _P_kh("catalog.json").read_text(encoding="utf-8") == _vorher_kh)
+          and _P_kh("catalog.json").read_text(encoding="utf-8") == _before_kh)
 
     # --- Ein Spiel-Update darf den Knopf nicht stoppen ---------------------
     # Die API schreibt Mongo-Shell-JSON, und der Bereiniger kannte genau EIN
@@ -550,7 +550,7 @@ try:
     _roh_kh = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
                ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
                ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
-    _json_kh, _unb_kh = _tk_kh.bereinige_extended_json(_roh_kh)
+    _json_kh, _unb_kh = _tk_kh.clean_extended_json(_roh_kh)
     _daten_kh = _json_mit.loads(_json_kh)
     check("ObjectId wird Text, NumberLong Zahl — mit und ohne Anfuehrungszeichen",
           _daten_kh["_id"] == "61e2b1b0" and _daten_kh["n"] == 0
@@ -565,12 +565,12 @@ try:
 
     # Der Knopf reicht die Meldung in die Statuszeile — auf stderr saehe sie
     # im Studio niemand — und schreibt die Datei trotzdem.
-    def _mit_hinweis_kh(*a, hints=None, **kw):
+    def _with_hint_kh(*a, hints=None, **kw):
         if hints is not None:
-            hints.extend(_tk_kh.extended_json_hinweise({"NumberFoo": 3}))
+            hints.extend(_tk_kh.extended_json_hints({"NumberFoo": 3}))
         return _SPIELDATEN_kh
 
-    _tk_kh.hole_spieldaten = _mit_hinweis_kh
+    _tk_kh.fetch_game_data = _with_hint_kh
     _erg5_kh = _bau_kh().catalog_fetch()
     check("der Knopf schreibt trotzdem und sagt, was fremd war",
           _erg5_kh["ok"] and _erg5_kh.get("kind") == "warn"
@@ -627,16 +627,16 @@ try:
     # Der Weg bis in die Ansicht: `config_read()` liefert ihn, und die Seite
     # zeichnet ihn unter dem Feld.
     _CFG_mit.scan_catalog_file = "stempel.json"
-    _staende_kh = _bau_kh().config_read()["states"]
+    _states_kh = _bau_kh().config_read()["states"]
     check("die Einstellungen liefern den Stand mit",
-          "2 Items" in _staende_kh.get("scan_catalog_file", ""))
+          "2 Items" in _states_kh.get("scan_catalog_file", ""))
     check("und die Ansicht zeichnet ihn",
           "C.states" in _studio_web_kh())
 finally:
-    _tk_kh.hole_spieldaten = _echt_hole_kh
-    _CFG_mit.scan_catalog_file = _alt_pfad_kh
+    _tk_kh.fetch_game_data = _echt_hole_kh
+    _CFG_mit.scan_catalog_file = _old_path_kh
     _os.chdir(_cwd_kh)
-    _sh_kh.rmtree(_sand_kh, ignore_errors=True)
+    _sh_kh.rmtree(_sandbox_kh, ignore_errors=True)
 
 
 # =============================================================================
@@ -676,7 +676,7 @@ _bosse_llm = [_BP_llm(name="Kraken")]
 _versuche_llm = []
 
 
-def _antworte_llm(**kw):
+def _answer_llm(**kw):
     """Erst ein Timeout, dann die Antwort — der gemessene Kaltstart."""
     _versuche_llm.append(kw.get("timeout"))
     if len(_versuche_llm) == 1:
@@ -685,10 +685,10 @@ def _antworte_llm(**kw):
 
 
 import autoclicker.llm_vision as _lv_llm                            # noqa: E402
-_echt_analyze_llm = _lv_llm.analyze_image
+_real_analyze_llm = _lv_llm.analyze_image
 try:
-    _lv_llm.analyze_image = _antworte_llm
-    _treffer_llm = _bd_llm._execute_llm_boss_detection(
+    _lv_llm.analyze_image = _answer_llm
+    _hits_llm = _bd_llm._execute_llm_boss_detection(
         _state_llm, _cfg_llm, object(), False, _bosse_llm)
     # **Hier stand `break`.** Ausgerechnet der ERSTE Boss-Scan eines Laufs
     # trifft ein kaltes Modell — und fiel damit aus, waehrend `llm_retry_count`
@@ -698,7 +698,7 @@ try:
     check("und der zweite Versuch bekommt mehr Zeit",
           _versuche_llm[1] > _versuche_llm[0])
     check("danach wird der Boss erkannt",
-          _treffer_llm is not None and _treffer_llm.name == "Kraken")
+          _hits_llm is not None and _hits_llm.name == "Kraken")
 
     # Ein Verbindungsfehler wiederholt NICHT: da antwortet niemand, und ein
     # zweiter Aufruf kostet nur die Wartezeit noch einmal.
@@ -709,7 +709,7 @@ try:
         _state_llm, _cfg_llm, object(), False, _bosse_llm)
     check("ein Verbindungsfehler wird nicht wiederholt", len(_versuche_llm) == 1)
 finally:
-    _lv_llm.analyze_image = _echt_analyze_llm
+    _lv_llm.analyze_image = _real_analyze_llm
 
 # --- Die Lampe sagt, ob das MODELL da ist -----------------------------------
 check("ein geladenes Modell wird gefunden",
@@ -733,12 +733,12 @@ check("ohne Liste gilt der Automatik-Wert", _tokens_llm(0, False, False) == 0)
 # --- …und die Benennung reicht die Felder ueberhaupt durch -------------------
 # `llm_reasoning` und `llm_max_tokens` galten nur fuer den Boss-Scan: wer sie
 # einschaltete, weil die BENENNUNG besser werden soll, aenderte nichts.
-_quelle_llm = (_P_kh(__file__).resolve().parents[2]
+_source_llm = (_P_kh(__file__).resolve().parents[2]
                / "autoclicker" / "editors" / "sequence_studio"
                / "scan_learning.py").read_text(encoding="utf-8")
 check("der Durchgang gibt Reasoning und Token-Grenze mit",
-      "reasoning=config.llm_reasoning" in _quelle_llm
-      and "max_tokens=config.llm_max_tokens" in _quelle_llm)
+      "reasoning=config.llm_reasoning" in _source_llm
+      and "max_tokens=config.llm_max_tokens" in _source_llm)
 _konsole_llm = (_P_kh(__file__).resolve().parents[2] / "autoclicker" / "editors"
                 / "item_editor" / "commands.py").read_text(encoding="utf-8")
 check("und der Konsolen-Weg ebenso",

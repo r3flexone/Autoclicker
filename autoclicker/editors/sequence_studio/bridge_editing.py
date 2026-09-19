@@ -239,7 +239,7 @@ class BridgeEditingMixin:
         """Ziel eines Drag&Drop mit Karten."""
         data = data or {}
         source = self._lane(data.get("von_phase"))
-        target = self._lane(data.get("nach_phase"))
+        target = self._lane(data.get("to_phase"))
         if source is None or target is None:
             return self.snapshot()
         from_row = int(data.get("from_row", 0))

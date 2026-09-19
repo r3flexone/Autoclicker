@@ -9,10 +9,10 @@ aus".
 
 from pathlib import Path
 
-from ._bridge import Fenster, main, sandkasten
+from ._bridge import Window, main, sandbox
 
 
-def aufbau():
+def setup():
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
     from autoclicker.models import (
         AutoClickerState, ClickPoint, ItemProfile, ItemScanConfig, ItemSlot,
@@ -23,9 +23,9 @@ def aufbau():
         sequence_templates_dir,
     )
 
-    sandkasten("rauch_seqloesch_")
+    sandbox("rauch_seqloesch_")
 
-    def anlegen(name):
+    def create_one(name):
         st = AutoClickerState()
         seq = Sequence(name=name, loop_phases=[LoopPhase(name="A", steps=[
             SequenceStep(point_id=1)])], points=[ClickPoint(id=1, x=10, y=20)])
@@ -35,8 +35,8 @@ def aufbau():
         save_data(st)
         return seq
 
-    farm = anlegen("Farm")
-    anlegen("Raid")
+    farm = create_one("Farm")
+    create_one("Raid")
     save_item_scan(ItemScanConfig(
         name="Inventar", owner_sequence="Raid",
         slots=[ItemSlot(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))],
@@ -56,62 +56,62 @@ def aufbau():
 
 
 def run():
-    b, ordner_raid = aufbau()
+    b, ordner_raid = setup()
     error = []
 
-    def pruefe(condition, text):
+    def expect(condition, text):
         if not condition:
             error.append(text)
 
-    with Fenster(b) as f:
-        f.reiter("sequences")
-        pruefe(f.count(".seq-card") == 2,
+    with Window(b) as f:
+        f.tab("sequences")
+        expect(f.count(".seq-card") == 2,
                f"2 Karten erwartet, da: {f.count('.seq-card')}")
 
         # **Gleiche Spalten heisst gleiche BREITE.** Genau dafuer ist der
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
-        widths = f.seite.eval_on_selector_all(
+        widths = f.page.eval_on_selector_all(
             ".seq-card .button-pair .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
-        pruefe(len(widths) == 4, f"4 Knoepfe erwartet, da: {len(widths)}")
-        pruefe(widths and max(widths) - min(widths) < 0.5,
+        expect(len(widths) == 4, f"4 Knoepfe erwartet, da: {len(widths)}")
+        expect(widths and max(widths) - min(widths) < 0.5,
                f"die Knoepfe sind verschieden breit: {widths}")
         # Und jede Karte gibt dem Paar dieselbe Breite. Gemessen wird die
         # BREITE, nicht die rechte Kante: die Karten stehen nebeneinander in
         # einem Raster, ihre Fusszeilen enden also zwangslaeufig an
         # verschiedenen Stellen. Hier stand erst die Kante, und der Rauchtest
         # meldete prompt „360 gegen 725" — richtig gemessen, falsch gefragt.
-        pairs = f.seite.eval_on_selector_all(
+        pairs = f.page.eval_on_selector_all(
             ".seq-card .button-pair",
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().width))")
-        pruefe(len(set(pairs)) == 1, f"die Knopfpaare sind verschieden breit: {pairs}")
+        expect(len(set(pairs)) == 1, f"die Knopfpaare sind verschieden breit: {pairs}")
         f.image("sequenzen_loeschen")
 
         # Der Dialog muss sagen, WAS weggeht — der Umfang ist der halbe Grund
         # fuer die Rueckfrage.
-        f.klick_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
-        pruefe(not f.seite.is_hidden("#veil"), "der Dialog geht nicht auf")
+        f.click_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
+        expect(not f.page.is_hidden("#veil"), "der Dialog geht nicht auf")
         text = f.text("#veil")
-        pruefe("Raid" in text, f"der Name fehlt im Dialog: {text!r}")
-        pruefe("Item-Scan" in text and "Vorlage" in text,
+        expect("Raid" in text, f"der Name fehlt im Dialog: {text!r}")
+        expect("Item-Scan" in text and "Vorlage" in text,
                f"der Umfang fehlt im Dialog: {text!r}")
-        pruefe("backups" in text, "der Dialog verschweigt, dass es eine Sicherung gibt")
+        expect("backups" in text, "der Dialog verschweigt, dass es eine Sicherung gibt")
         f.image("sequenzen_loeschen_dialog")
 
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
-        f.click_value("#dialog-cancel")
-        pruefe(f.count(".seq-card") == 2, "Abbrechen hat trotzdem geloescht")
-        pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
+        f.click("#dialog-cancel")
+        expect(f.count(".seq-card") == 2, "Abbrechen hat trotzdem geloescht")
+        expect(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
-        f.klick_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
-        f.click_value("#dialog-discard")
-        pruefe(f.count(".seq-card") == 1,
+        f.click_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
+        f.click("#dialog-discard")
+        expect(f.count(".seq-card") == 1,
                f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-card')}")
-        pruefe(not ordner_raid.exists(), "der Ordner steht noch")
+        expect(not ordner_raid.exists(), "der Ordner steht noch")
         # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
         backup = Path("backups/sequences") / ordner_raid.name
-        pruefe((backup / "templates/erz.png").exists(),
+        expect((backup / "templates/erz.png").exists(),
                "die Vorlage fehlt in der Sicherung")
-        pruefe("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")
+        expect("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")
         f.image("sequenzen_geloescht")
 
         error.extend(f.error)

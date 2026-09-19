@@ -2,17 +2,17 @@
 
 from pathlib import Path
 
-from ._image import flaeche_mit_marke, stelle_bildschirm
-from ._bridge import Fenster, main, sandkasten
+from ._image import area_with_badge, mock_screen
+from ._bridge import Window, main, sandbox
 
 
-def aufbau():
+def setup():
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
     from autoclicker.models import Sequence
 
-    sandkasten("rauch_erk_")
-    image, region = flaeche_mit_marke()
-    stelle_bildschirm(image)
+    sandbox("rauch_erk_")
+    image, region = area_with_badge()
+    mock_screen(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/smoke/sequence.json"), "sequences")
@@ -36,27 +36,27 @@ def aufbau():
 
 
 def run():
-    b = aufbau()
+    b = setup()
     error = []
 
-    def pruefe(condition, text):
+    def expect(condition, text):
         if not condition:
             error.append(text)
 
-    with Fenster(b) as f:
-        f.reiter("scans")
+    with Window(b) as f:
+        f.tab("scans")
         for kind in ("item", "boss", "icon"):
-            f.click_value(f'#scan-art button[data-scan-kind="{kind}"]')
-            pruefe(bool(f.text("#view-scans").strip()), f"{kind}: Ansicht leer")
+            f.click(f'#scan-art button[data-scan-kind="{kind}"]')
+            expect(bool(f.text("#view-scans").strip()), f"{kind}: Ansicht leer")
             if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
                 badge = "Boss-Scan testen" if kind == "boss" else "Icon-Scan testen"
-                f.klick_text("#view-scans button", badge)
-                pruefe(bool(f.status().strip()), f"{kind}: Test meldete nichts")
+                f.click_text("#view-scans button", badge)
+                expect(bool(f.status().strip()), f"{kind}: Test meldete nichts")
             f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.
-        f.click_value('#scan-art button[data-scan-kind="item"]')
-        pruefe("Aufnahme" in f.text("#view-scans"),
+        f.click('#scan-art button[data-scan-kind="item"]')
+        expect("Aufnahme" in f.text("#view-scans"),
                "die Aufnahme-Karte kam nicht zum Item-Assistenten zurueck")
         error.extend(f.error)
     return error

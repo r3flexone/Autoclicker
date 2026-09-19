@@ -8,7 +8,7 @@ weiter mit den echten Funktionen, sie bekommen nur ihre Pixel von hier.
 from __future__ import annotations
 
 
-def stelle_bildschirm(image) -> None:
+def mock_screen(image) -> None:
     """Biegt Aufnahme und Ursprung auf ein festes Bild um."""
     import autoclicker.imaging as img
     import autoclicker.winapi as win
@@ -17,15 +17,15 @@ def stelle_bildschirm(image) -> None:
     win.get_virtual_origin = lambda: (0, 0)
 
 
-def inventar(spalten: int = 3, lines: int = 2):
+def inventory_image(columns_list: int = 3, lines: int = 2):
     """Ein Raster aus verschiedenfarbigen Items. Gibt `(bild, slot_ecken)`."""
     from PIL import Image
     image = Image.new("RGB", (800, 600), (18, 21, 27))
     colors = [(200, 60, 60), (60, 200, 90), (70, 110, 230),
               (230, 190, 60), (180, 80, 210), (60, 200, 210)]
     corners = []
-    for i in range(spalten * lines):
-        sx, sy = 60 + (i % spalten) * 90, 80 + (i // spalten) * 90
+    for i in range(columns_list * lines):
+        sx, sy = 60 + (i % columns_list) * 90, 80 + (i // columns_list) * 90
         for x in range(sx, sx + 62):
             for y in range(sy, sy + 60):
                 image.putpixel((x, y), (48, 54, 68))     # Slot-Hintergrund
@@ -36,7 +36,7 @@ def inventar(spalten: int = 3, lines: int = 2):
     return image, corners
 
 
-def flaeche_mit_marke():
+def area_with_badge():
     """Ein dunkles Bild mit einem roten Fleck — reicht Boss- und Icon-Scans."""
     from PIL import Image
     image = Image.new("RGB", (800, 600), (24, 28, 36))

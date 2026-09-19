@@ -64,12 +64,12 @@ class RuntimeHardeningTest(unittest.TestCase):
             mailbox.send_command("start")
             lesen = Path.read_text
 
-            def mit_neuem_befehl(path, *args, **kwargs):
+            def with_new_command(path, *args, **kwargs):
                 text = lesen(path, *args, **kwargs)
                 mailbox.send_command("stop")
                 return text
 
-            with patch.object(Path, "read_text", mit_neuem_befehl):
+            with patch.object(Path, "read_text", with_new_command):
                 self.assertEqual(mailbox.fetch_command()["command"], "start")
             self.assertEqual(mailbox.fetch_command()["command"], "stop")
             self.assertIsNone(mailbox.fetch_command())
@@ -102,11 +102,11 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_pause_sperrt_auch_einen_klick_ohne_wartezeit(self):
         state = AutoClickerState()
         state.pause_event.set()
-        angekommen = threading.Event()
+        arrived = threading.Event()
         original = actions.wait_while_paused
 
         def waiting(s, text):
-            angekommen.set()
+            arrived.set()
             return original(s, text)
 
         with patch.object(steps, "check_failsafe", return_value=False), \
@@ -118,7 +118,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 state, SequenceStep(point_id=1, delay_before=0), 1, 1, "INIT"))
             t.start()
             try:
-                self.assertTrue(angekommen.wait(1), "Keine Pausenprüfung vor der Eingabe")
+                self.assertTrue(arrived.wait(1), "Keine Pausenprüfung vor der Eingabe")
                 senden.assert_not_called()
             finally:
                 state.pause_event.clear()
@@ -197,14 +197,14 @@ class RuntimeHardeningTest(unittest.TestCase):
         state = AutoClickerState()
         step = SequenceStep(x=10, y=20, delay_before=0.5, name="letzter Klick")
 
-        def skip_waehrend_warten(*_args, **_kwargs):
+        def skip_while_waiting(*_args, **_kwargs):
             state.skip_step_event.set()
             return True
 
         with patch.object(steps, "check_failsafe", return_value=False), \
                 patch.object(steps, "print_step_detail"), \
                 patch.object(steps, "wait_with_pause_skip",
-                             side_effect=skip_waehrend_warten), \
+                             side_effect=skip_while_waiting), \
                 patch.object(steps, "_execute_click") as klicken:
             self.assertTrue(steps.execute_step(state, step, 1, 1, "Ablauf"))
 
