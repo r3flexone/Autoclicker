@@ -617,50 +617,50 @@ class _PhaseEditor:
             return
 
         # Koordinate -> Punkte (mehrere = mehrdeutig)
-        nach_pos = {}
+        to_pos = {}
         for p in points:
-            nach_pos.setdefault((p.x, p.y), []).append(p)
+            to_pos.setdefault((p.x, p.y), []).append(p)
 
-        verknuepft, mehrdeutig, ohne_punkt, schon_ok = [], [], [], 0
+        linked, ambiguous, without_point, already_ok = [], [], [], 0
         for i, step in enumerate(self.steps, 1):
             if step.point_id is not None:
-                schon_ok += 1
+                already_ok += 1
                 continue
             # Schritte ohne echte Position (Taste/Scan/Wait) haben keinen Punkt
             if step.key_press or step.item_scan or step.boss_scan or step.boss_watcher \
                     or step.icon_scan or step.screenshot_only or step.wait_only:
                 continue
-            match = nach_pos.get((step.x, step.y), [])
+            match = to_pos.get((step.x, step.y), [])
             if len(match) == 1:
                 step.point_id = match[0].id
-                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
+                linked.append(f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
                                   f"'{match[0].name or '(ohne Name)'}'")
             elif len(match) > 1:
                 ids = ", ".join(f"#{p.id}" for p in match)
-                mehrdeutig.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                ambiguous.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
                                   f"mehrere Punkte passen ({ids}) - nicht verknüpft")
             else:
-                ohne_punkt.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                without_point.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
                                   "kein Punkt an dieser Stelle")
 
-        if verknuepft:
-            print(f"  {ok(f'{len(verknuepft)} Schritt(e) verknüpft:')}")
-            for z in verknuepft:
+        if linked:
+            print(f"  {ok(f'{len(linked)} Schritt(e) verknüpft:')}")
+            for z in linked:
                 print(f"    {z}")
-        if mehrdeutig:
-            print(f"  {warn(f'{len(mehrdeutig)} mehrdeutig:')}")
-            for z in mehrdeutig:
+        if ambiguous:
+            print(f"  {warn(f'{len(ambiguous)} mehrdeutig:')}")
+            for z in ambiguous:
                 print(f"    {z}")
-        if ohne_punkt:
-            print(f"  {warn(f'{len(ohne_punkt)} ohne passenden Punkt:')}")
-            for z in ohne_punkt:
+        if without_point:
+            print(f"  {warn(f'{len(without_point)} ohne passenden Punkt:')}")
+            for z in without_point:
                 print(f"    {z}")
             print(f"    {hint('Diese Schritte behalten ihre eigenen Koordinaten - das ist ok.')}")
-        if schon_ok:
-            print(f"  {hint(f'{schon_ok} Schritt(e) waren schon verknüpft.')}")
-        if not (verknuepft or mehrdeutig or ohne_punkt):
+        if already_ok:
+            print(f"  {hint(f'{already_ok} Schritt(e) waren schon verknüpft.')}")
+        if not (linked or ambiguous or without_point):
             print("  -> Nichts zu tun.")
-        elif verknuepft:
+        elif linked:
             print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
 
     def _handle_scroll(self, user_input: str) -> None:
@@ -691,38 +691,38 @@ class _PhaseEditor:
         if len(parts) >= 3:
             # Wartezeit dazwischen. Achtung: "-5" ist ein negativer Stufenwert, kein
             # Bereich - deshalb erst pruefen, ob es ueberhaupt wie ein Bereich aussieht.
-            zeit_arg = parts[1]
-            if "-" in zeit_arg.lstrip("-") :
-                range_val, range_err = parse_non_negative_range(zeit_arg, "Wartezeit")
+            time_arg = parts[1]
+            if "-" in time_arg.lstrip("-") :
+                range_val, range_err = parse_non_negative_range(time_arg, "Wartezeit")
                 if range_err:
                     print(f"  -> {range_err}")
                     return
                 delay, delay_max = range_val
             else:
-                delay_val, delay_err = parse_non_negative_float(zeit_arg, "Wartezeit")
+                delay_val, delay_err = parse_non_negative_float(time_arg, "Wartezeit")
                 if delay_err:
                     print(f"  -> {delay_err}")
                     return
                 delay = delay_val
-            stufen_raw = parts[2]
+            levels_raw = parts[2]
         else:
-            stufen_raw = parts[1]
+            levels_raw = parts[1]
 
         try:
-            stufen = int(stufen_raw)
+            levels = int(levels_raw)
         except ValueError:
-            print(f"  -> '{stufen_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
+            print(f"  -> '{levels_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
             return
-        if stufen == 0:
+        if levels == 0:
             print("  -> 0 Stufen waere ein Schritt ohne Wirkung.")
             return
 
-        richtung = "hoch" if stufen > 0 else "runter"
+        direction = "hoch" if levels > 0 else "runter"
         step = SequenceStep(
             x=point.x, y=point.y, delay_before=delay, delay_max=delay_max,
-            name=f"Scroll {richtung} x{abs(stufen)} @ {point.name or f'#{point_id}'}",
+            name=f"Scroll {direction} x{abs(levels)} @ {point.name or f'#{point_id}'}",
             point_id=point_id,
-            scroll=stufen,
+            scroll=levels,
         )
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)

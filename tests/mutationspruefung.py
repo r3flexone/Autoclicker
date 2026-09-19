@@ -61,14 +61,14 @@ FAELLE = {
 def pruefen(name: str, mutiert: bool) -> int:
     # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
     # `tests/wurzel` fuer die Testmodule, die `FAELLE` beim Namen nennt.
-    for _pfad in (WURZEL, WURZEL / "tests" / "wurzel"):
-        if str(_pfad) not in sys.path:
-            sys.path.insert(0, str(_pfad))
-    modul, path, old, new, test = FAELLE[name]
+    for _path in (WURZEL, WURZEL / "tests" / "wurzel"):
+        if str(_path) not in sys.path:
+            sys.path.insert(0, str(_path))
+    module_name, path, old, new, test = FAELLE[name]
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
-    funktion = importlib.import_module(modul)
-    for teil in path.split("."):
-        funktion = getattr(funktion, teil)
+    funktion = importlib.import_module(module_name)
+    for part in path.split("."):
+        funktion = getattr(funktion, part)
     original = funktion.__code__
     try:
         if mutiert:

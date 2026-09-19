@@ -120,12 +120,12 @@ def _tag(element) -> str:
 @lru_cache(maxsize=1)
 def _logo_geometry():
     """Liest Farbe, ViewBox, sichtbaren Grund und Aussparungen aus dem SVG."""
-    wurzel = ElementTree.parse(LOGO_PATH).getroot()
-    viewbox = tuple(float(w) for w in wurzel.attrib["viewBox"].split())
+    root_dir = ElementTree.parse(LOGO_PATH).getroot()
+    viewbox = tuple(float(w) for w in root_dir.attrib["viewBox"].split())
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
 
-    farb_rect = next((e for e in wurzel if _tag(e) == "rect" and "mask" in e.attrib), None)
+    farb_rect = next((e for e in root_dir if _tag(e) == "rect" and "mask" in e.attrib), None)
     if farb_rect is None:
         raise ValueError("Farbfläche im Studio-Logo fehlt")
     color_text = farb_rect.attrib.get("fill", "").lstrip("#")
@@ -133,7 +133,7 @@ def _logo_geometry():
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
     color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
-    maske = next((e for e in wurzel.iter() if _tag(e) == "mask"), None)
+    maske = next((e for e in root_dir.iter() if _tag(e) == "mask"), None)
     group = (next((e for e in maske.iter() if _tag(e) == "g"), None)
                if maske is not None else None)
     if group is None:
@@ -155,17 +155,17 @@ def _logo_geometry():
 def _intervals(polygone, y: float):
     """Gibt die nach Even/Odd-Regel gefüllten X-Intervalle einer Zeile zurück."""
     for polygon in polygone:
-        schnitte = []
+        cuts = []
         before = polygon[-1]
         for point in polygon:
             x1, y1 = before
             x2, y2 = point
             if (y1 > y) != (y2 > y):
-                schnitte.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
+                cuts.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
             before = point
-        schnitte.sort()
-        for i in range(0, len(schnitte) - 1, 2):
-            yield schnitte[i], schnitte[i + 1]
+        cuts.sort()
+        for i in range(0, len(cuts) - 1, 2):
+            yield cuts[i], cuts[i + 1]
 
 
 def _paint(line: bytearray, intervalle, value: int,
@@ -173,8 +173,8 @@ def _paint(line: bytearray, intervalle, value: int,
     """Setzt Subpixel, deren Mittelpunkt in einem der Intervalle liegt."""
     width = len(line)
     fuellung = bytes((value,))
-    for anfang, end in intervalle:
-        from_index = max(0, math.ceil((anfang - left) / step - 0.5))
+    for beginning, end in intervalle:
+        from_index = max(0, math.ceil((beginning - left) / step - 0.5))
         until = min(width, math.ceil((end - left) / step - 0.5))
         if until > from_index:
             line[from_index:until] = fuellung * (until - from_index)

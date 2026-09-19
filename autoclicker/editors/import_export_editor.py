@@ -403,10 +403,10 @@ def _run_import(state: AutoClickerState) -> None:
     # Was importieren?
     import_flags = {}
     print(f"  {col('Was importieren?', 'bold')}")
-    neues_layout = manifest.get("layout") == "sequence-folders"
+    new_layout = manifest.get("layout") == "sequence-folders"
     parts = ([('sequences', 'Sequenzordner inkl. Punkte, Scans und Vorlagen'),
               ('config', 'Config')]
-             if neues_layout else
+             if new_layout else
              [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
               ("items", "Items"), ("item_scans", "Item-Scans"),
               ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
@@ -415,10 +415,10 @@ def _run_import(state: AutoClickerState) -> None:
         if key in contents:
             choice = safe_input(f"    {label}? (j/n, Enter = ja): ").strip().lower()
             import_flags[f"import_{key}"] = choice != "n"
-    if neues_layout:
-        ganz = import_flags.get("import_sequences", False)
+    if new_layout:
+        whole = import_flags.get("import_sequences", False)
         for key in ("points", "slots", "items", "item_scans", "boss_scans", "icon_scans"):
-            import_flags[f"import_{key}"] = ganz
+            import_flags[f"import_{key}"] = whole
 
     # Merge oder ersetzen?
     print("\n  Bestehende Daten:")
@@ -509,8 +509,8 @@ def run_calibration(state: AutoClickerState) -> None:
     if ref1 is None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
-    p_alt, p_neu = ref1
-    transform = transform_from_offset(p_alt, p_neu)
+    p_old, p_new = ref1
+    transform = transform_from_offset(p_old, p_new)
 
     offset = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
     print()
@@ -523,12 +523,12 @@ def run_calibration(state: AutoClickerState) -> None:
         print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
         if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
             ref2 = _calibration_reference(state, points, "Zweiter Referenzpunkt",
-                                   except_step=p_alt)
+                                   except_step=p_old)
             if ref2 is None:
                 print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
             else:
-                q_alt, q_neu = ref2
-                transform = compute_transform(p_alt, q_alt, p_neu, q_neu)
+                q_old, q_new = ref2
+                transform = compute_transform(p_old, q_old, p_new, q_new)
                 factor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
                 print()
                 print(f"  Skalierung: {col(factor, 'yellow')}")
@@ -564,16 +564,16 @@ def run_calibration(state: AutoClickerState) -> None:
 
     # --- Umfang -------------------------------------------------------------------
     with state.lock:
-        anzahl_slots = len(state.global_slots)
+        slot_count = len(state.global_slots)
 
-    if anzahl_slots:
+    if slot_count:
         print()
         print(f"  {warn('Fuer Slots ist das nur eine Naeherung.')}")
         print("  Ein Klick-Ziel vertraegt ein paar Pixel Abweichung — eine Scan-Region")
         print("  nicht: die schneidet dann das Item-Icon an oder zieht Nachbarpixel")
         print("  rein, und das Template-Matching wird unzuverlaessig.")
         print(f"  {info('Genauer: Item-Scan -> Slots -> ' + col('repair', 'yellow'))}")
-        print(f"  {info('Das misst die ' + str(anzahl_slots) + ' Slots neu, statt sie zu verschieben.')}")
+        print(f"  {info('Das misst die ' + str(slot_count) + ' Slots neu, statt sie zu verschieben.')}")
 
     print()
     print(col("  Was soll mitgezogen werden?", 'bold'))
@@ -585,9 +585,9 @@ def run_calibration(state: AutoClickerState) -> None:
     if extent < 0:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
-    mit_slots = extent == 1
-    mit_scans = extent in (0, 1)
-    mit_sequenzen = extent in (0, 1)
+    with_slots = extent == 1
+    with_scans = extent in (0, 1)
+    with_sequences = extent in (0, 1)
 
     print()
     print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
@@ -602,25 +602,25 @@ def run_calibration(state: AutoClickerState) -> None:
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
-    number = calibrate_inventory(state, transform, mit_scans=mit_scans,
-                              mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
+    number = calibrate_inventory(state, transform, with_scans=with_scans,
+                              with_sequences=with_sequences, with_slots=with_slots)
 
     print()
     print(f"  {ok('Kalibriert:')}")
-    beschriftung = {"points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+    caption = {"points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
                     "bosses": "globale Bosse", "sequences": "Sequenzdateien"}
     for key_name, count in number.items():
         if count:
-            print(f"    {count:>4}  {beschriftung[key_name]}")
-    if mit_sequenzen:
+            print(f"    {count:>4}  {caption[key_name]}")
+    if with_sequences:
         print()
         print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
 
-    if anzahl_slots:
+    if slot_count:
         print()
-        if mit_slots:
+        if with_slots:
             print(f"  {warn('Die Slots wurden nur VERSCHOBEN, nicht neu vermessen —')}")
             print("  fuer Scan-Regionen ist das eine Naeherung.")
         else:
@@ -670,7 +670,7 @@ def _calibration_reference(state: AutoClickerState, points: list, title: str,
                     except_step: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
-    Gibt ((alt_x, alt_y), (neu_x, neu_y)) zurück oder None bei Abbruch.
+    Gibt ((alt_x, alt_y), (new_x, new_y)) zurück oder None bei Abbruch.
     """
     from ..winapi import set_cursor_pos
 
@@ -680,8 +680,8 @@ def _calibration_reference(state: AutoClickerState, points: list, title: str,
 
     print()
     print(col(f"  {title}:", 'bold'))
-    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in selection]
-    idx = interactive_select(beschriftung, default=0)
+    caption = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in selection]
+    idx = interactive_select(caption, default=0)
     if idx < 0:
         return None
     point = selection[idx]

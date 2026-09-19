@@ -49,10 +49,10 @@ class TestRunnerTest(unittest.TestCase):
 
     def test_vertragsfehler_wird_nicht_durch_gruene_wurzeltests_verdeckt(self):
         for code in (0, 1):
-            befehle = []
+            commands = []
 
             def run(command):
-                befehle.append(command)
+                commands.append(command)
                 if "test_logic.py" in command[-1]:
                     return code, "1 PASS / 0 FAIL " if code == 0 else "0 PASS / 1 FAIL "
                 return 0, "OK"
@@ -60,8 +60,8 @@ class TestRunnerTest(unittest.TestCase):
             with self.subTest(code=code), patch.object(alle_tests, "_lauf", side_effect=run), \
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(alle_tests.main(["runner", "--nur", "vertrag", "--nur", "wurzel"]), code)
-            self.assertEqual(len(befehle), 2)
-            self.assertIn("--ohne-vertrag", befehle[1])
+            self.assertEqual(len(commands), 2)
+            self.assertIn("--ohne-vertrag", commands[1])
 
     def test_wurzel_allein_behaelt_den_vertragswrapper(self):
         with patch.object(alle_tests, "_lauf", return_value=(0, "OK")) as run, \
@@ -77,11 +77,11 @@ class TestRunnerTest(unittest.TestCase):
                 else:
                     yield test.id()
 
-        wurzel = Path(__file__).resolve().parent
-        voll = set(ids(wurzeltests.sammeln(wurzel)))
-        einzeln = set(ids(wurzeltests.sammeln(wurzel, ohne_vertrag=True)))
-        self.assertEqual(voll - einzeln, {"test_regression.RegressionSuiteTest.test_logic_regressions"})
-        self.assertEqual(einzeln - voll, set())
+        root_dir = Path(__file__).resolve().parent
+        full_value = set(ids(wurzeltests.sammeln(root_dir)))
+        einzeln = set(ids(wurzeltests.sammeln(root_dir, ohne_vertrag=True)))
+        self.assertEqual(full_value - einzeln, {"test_regression.RegressionSuiteTest.test_logic_regressions"})
+        self.assertEqual(einzeln - full_value, set())
         self.assertTrue(einzeln)
 
 

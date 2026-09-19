@@ -31,7 +31,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
                 verloren = threading.Event()
                 wieder_da = threading.Event()
                 entschieden = threading.Event()
-                ergebnisse, error = [], []
+                results_list, error = [], []
                 aufrufe = 0
                 original_pause = actions.wait_while_paused
 
@@ -65,7 +65,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
 
                 def ausfuehren():
                     try:
-                        ergebnisse.append(getattr(actions, "safe_" + kind)(state, *arguments))
+                        results_list.append(getattr(actions, "safe_" + kind)(state, *arguments))
                     except BaseException as exc:
                         error.append(exc)
                         entschieden.set()
@@ -87,7 +87,7 @@ class EingabeSynchronisationTest(unittest.TestCase):
                     thread.join(3)
                     self.assertFalse(thread.is_alive(), "Eingabe-Thread hängt")
                     self.assertEqual(error, [])
-                    self.assertEqual(ergebnisse, [not stoppen])
+                    self.assertEqual(results_list, [not stoppen])
                     self.assertEqual(sum(s.call_count for s in sender), 0 if stoppen else 1)
                 finally:
                     state.stop_event.set()

@@ -233,9 +233,9 @@ class ScanLearningMixin:
             if detected_name and not as_other:
                 # Der Name ist die Identität des erkannten Items. Geändert wird
                 # er nur über die ausdrückliche Aktion „Als anderes Item lernen“.
-                basis = detected_name
+                base_name = detected_name
             else:
-                basis = (str(user_input.get("name") or line["name"]).strip()
+                base_name = (str(user_input.get("name") or line["name"]).strip()
                          or line["name"])
             slot = self.slots.get(line["slot"])
             if slot is None:
@@ -244,14 +244,14 @@ class ScanLearningMixin:
             # Ein bereits vorhandener Name bedeutet bewusst: dieses Bild ist
             # dasselbe Item in einem anderen Slot-Typ. Seine sichtbaren Daten
             # können bearbeitet werden; bei Bedarf kommt eine Bildvariante hinzu.
-            existing = self.items.get(basis)
+            existing = self.items.get(base_name)
             if existing is not None:
                 # Bei einem regulär erkannten Treffer stammen die sichtbaren
                 # Werte aus genau diesem Profil und dürfen direkt bearbeitet
                 # werden. Bei „anderes Item“ kann ein fremder vorhandener Name
                 # gewählt werden; dessen Metadaten werden nicht mit den leeren
                 # Standardfeldern überschrieben.
-                if detected_name and not as_other and basis not in metadata_set:
+                if detected_name and not as_other and base_name not in metadata_set:
                     before = (existing.category, existing.priority)
                     category = self._category_normalize(
                         user_input.get("category", line["category"]))
@@ -262,30 +262,30 @@ class ScanLearningMixin:
                     )
                     existing.category = category
                     existing.priority = priority
-                    metadata_set.add(basis)
+                    metadata_set.add(base_name)
                     if before != (category, priority) or moved:
-                        edited.append(basis)
+                        edited.append(base_name)
 
                 from ..item_editor.markers import _item_has_compatible_template
                 if _item_has_compatible_template(
                         existing, crop, self.filepath.parent / "templates"):
                     self._sync_objects()
-                    if basis not in edited:
-                        unchanged.add(basis)
+                    if base_name not in edited:
+                        unchanged.add(base_name)
                     continue
-                file = save_template(crop, basis,
+                file = save_template(crop, base_name,
                                       template_dir=self.filepath.parent / "templates")
                 if file:
                     if existing.template:
                         existing.template_variants.append(file)
                     else:
                         existing.template = file
-                    if basis not in variants:
-                        variants.append(basis)
+                    if base_name not in variants:
+                        variants.append(base_name)
                     self._sync_objects()
                 continue
 
-            name = unique_name(basis, assigned)
+            name = unique_name(base_name, assigned)
             assigned.add(name)
             marker = _collect_markers_silent(crop, slot.slot_color)
             category = self._category_normalize(user_input.get("category"))
@@ -561,8 +561,8 @@ class ScanLearningMixin:
         from ...utils import without_counter
         if katalog.match(name):
             return name
-        basis = without_counter(name)
-        return basis if basis != name and katalog.match(basis) else ""
+        base_name = without_counter(name)
+        return base_name if base_name != name and katalog.match(base_name) else ""
 
     def _catalog_plan(self, items: list, katalog) -> tuple:
         """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
@@ -885,14 +885,14 @@ class ScanLearningMixin:
         if reason == TIMEOUT:
             proposal, reason = ask_for(max(config.llm_timeout * 2, 120))
 
-        basis = clean_item_name(proposal) if proposal else ""
-        if not basis:
+        base_name = clean_item_name(proposal) if proposal else ""
+        if not base_name:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.
             run["timeouts" if reason == TIMEOUT else "without"] += 1
             return self.scan_data()
 
-        if basis == item.name:
+        if base_name == item.name:
             return self.scan_data()
 
         # **Zwei Slots mit demselben Gegenstand sind EIN Item, kein zweites.**
@@ -907,10 +907,10 @@ class ScanLearningMixin:
         # Irrt sich das Modell und benennt zwei verschiedene Dinge gleich, haengt
         # eine fremde Vorlage am Item — sichtbar in dessen Vorlagenliste, dort
         # einzeln loesbar, und STRG+Z holt den ganzen Durchgang zurueck.
-        inventory = self.items.get(basis)
+        inventory = self.items.get(base_name)
         if inventory is not None:
             return self._autoname_variant(inventory, item, run)
-        new = basis
+        new = base_name
 
         # **Ein Stand fuer den ganzen Durchgang, und erst beim ersten Treffer.**
         # Vorher abgelegt waere er ein STRG+Z, das nichts zurueckdreht, wenn das

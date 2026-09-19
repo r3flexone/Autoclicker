@@ -114,9 +114,9 @@ class BridgeReportMixin:
         Programm, sondern zum Repo. Fehlt es, soll der Reiter das sagen — nicht
         das Fenster beim Start damit umfallen.
         """
-        wurzel = Path(__file__).resolve().parents[3]
-        if str(wurzel) not in sys.path:
-            sys.path.insert(0, str(wurzel))
+        root_dir = Path(__file__).resolve().parents[3]
+        if str(root_dir) not in sys.path:
+            sys.path.insert(0, str(root_dir))
         try:
             from tools.log_report import evaluate
         except ImportError as e:

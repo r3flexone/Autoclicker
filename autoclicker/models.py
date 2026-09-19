@@ -244,9 +244,9 @@ class SequenceStep:
         if self.key_press:
             return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
         if self.scroll:
-            richtung = "hoch" if self.scroll > 0 else "runter"
+            direction = "hoch" if self.scroll > 0 else "runter"
             target = f"{self.name} " if self.name else ""
-            return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
+            return (f"{self._trigger_str()} → scrolle {direction} x{abs(self.scroll)} "
                     f"bei {target}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
@@ -482,10 +482,10 @@ class ItemProfile:
         return result
 
     def __str__(self) -> str:
-        vorlagen = self.template_names()
-        if vorlagen:
-            count = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
-            template_str = f"Template: {vorlagen[0]}{count} (≥{self.min_confidence:.0%})"
+        templates_list = self.template_names()
+        if templates_list:
+            count = f" +{len(templates_list) - 1} Variante(n)" if len(templates_list) > 1 else ""
+            template_str = f"Template: {templates_list[0]}{count} (≥{self.min_confidence:.0%})"
         else:
             colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:3]])
             if len(self.marker_colors) > 3:
@@ -752,8 +752,8 @@ class RecordEvent:
         if self.kind == REC_KEY:
             return f"Taste '{self.key}'"
         if self.kind == REC_SCROLL:
-            richtung = "hoch" if self.scroll > 0 else "runter"
-            return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
+            direction = "hoch" if self.scroll > 0 else "runter"
+            return f"Scroll {direction} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
             return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
         if self.kind == REC_SCREENSHOT:

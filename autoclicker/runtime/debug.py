@@ -128,8 +128,8 @@ def describe_step(step: SequenceStep) -> str:
     if step.screenshot_only:
         return "Screenshot"
     if step.scroll:
-        richtung = "hoch" if step.scroll > 0 else "runter"
-        return f"Mausrad {richtung} x{abs(step.scroll)} bei ({step.x}, {step.y})"
+        direction = "hoch" if step.scroll > 0 else "runter"
+        return f"Mausrad {direction} x{abs(step.scroll)} bei ({step.x}, {step.y})"
     if step.wait_only:
         return "nur warten, kein Klick"
     return f"Klick auf ({step.x}, {step.y})"
@@ -224,9 +224,9 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
     if not is_step_mode(state) and not breakpoint:
         return GATE_RUN
 
-    marke = "HALTEPUNKT" if breakpoint else "MANUELL"
+    badge = "HALTEPUNKT" if breakpoint else "MANUELL"
     print()
-    print(col(f"■ {marke} [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
+    print(col(f"■ {badge} [{phase}] Schritt {step_num}/{total_steps}: {step_label(step)}",
               "yellow"))
     print(col(f"   {describe_step(step)}", "gray"))
 
@@ -274,13 +274,13 @@ def step_gate(state: AutoClickerState, step: SequenceStep, phase: str,
         "blocks": total_steps,
         "title": step_label(step),
         "action": describe_step(step),
-    }}, sofort=True)
+    }}, immediately=True)
     try:
         command = _gate_studio(state) if studio else _gate_console(state)
     finally:
         with state.lock:
             state.gate_waiting = False
-        status.write_status(state, {"manual": None}, sofort=True)
+        status.write_status(state, {"manual": None}, immediately=True)
     return _gate_decide(state, command, studio)
 
 
@@ -408,39 +408,39 @@ def walk_points(state: AutoClickerState) -> None:
             continue
 
         if key == "n":
-            neu_x, neu_y = get_cursor_pos()
-            if (neu_x, neu_y) == (p.x, p.y):
+            new_x, new_y = get_cursor_pos()
+            if (new_x, new_y) == (p.x, p.y):
                 print(col("      Maus steht noch auf der alten Stelle - nichts geändert.",
                           "yellow"))
                 continue
             old = (p.x, p.y)
             with state.lock:
-                p.x, p.y = neu_x, neu_y
+                p.x, p.y = new_x, new_y
                 # Die Farbe gehört zur Position. Hatte der Punkt eine, wird sie
                 # mitgezogen — sonst zeigt ein Farb-Trigger auf die alte Farbe an
                 # der neuen Stelle und schlägt bei jedem Lauf fehl.
                 if p.color:
-                    neue_farbe = get_pixel_color(neu_x, neu_y)
-                    if neue_farbe:
-                        p.color = neue_farbe
+                    new_color = get_pixel_color(new_x, new_y)
+                    if new_color:
+                        p.color = new_color
             save_points(state)
             changed += 1
-            print(col(f"      gesetzt: {old} -> ({neu_x}, {neu_y})"
+            print(col(f"      gesetzt: {old} -> ({new_x}, {new_y})"
                       f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
             i += 1
             continue
 
         if key == "f":
-            neue_farbe = get_pixel_color(p.x, p.y)
-            if not neue_farbe:
+            new_color = get_pixel_color(p.x, p.y)
+            if not new_color:
                 print(col("      Farbe konnte nicht gelesen werden.", "yellow"))
                 continue
             with state.lock:
-                alt_farbe, p.color = p.color, neue_farbe
+                old_color, p.color = p.color, new_color
             save_points(state)
             changed += 1
-            print(col(f"      Farbe: {color_swatch(alt_farbe) if alt_farbe else '(keine)'}"
-                      f"  ->  {color_swatch(neue_farbe)}", "green"))
+            print(col(f"      Farbe: {color_swatch(old_color) if old_color else '(keine)'}"
+                      f"  ->  {color_swatch(new_color)}", "green"))
             continue
 
         if key in _KEYS_NEXT:

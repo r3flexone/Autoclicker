@@ -65,9 +65,9 @@ class _ItemTransaction:
                 state.global_items = {item.name: item for item in cfg.items}
 
 
-def _cancel(state, transaktion) -> bool:
+def _cancel(state, transaction) -> bool:
     try:
-        transaktion.discard(state)
+        transaction.discard(state)
     except OSError as e:
         print(err(f"Abbruch konnte nicht vollständig zurückgesetzt werden: {e}"))
         return False
@@ -86,7 +86,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
         return
 
     try:
-        transaktion = _ItemTransaction(state)
+        transaction = _ItemTransaction(state)
     except (OSError, ValueError) as e:
         print(err(f"Item-Editor konnte nicht vorbereitet werden: {e}"))
         return
@@ -109,7 +109,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 print(ok("Item-Editor beendet."))
                 return
             elif is_cancel(cmd):
-                if _cancel(state, transaktion):
+                if _cancel(state, transaction):
                     return
                 continue
             elif cmd == "":
@@ -123,7 +123,7 @@ def run_global_item_editor(state: AutoClickerState) -> None:
                 print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
 
         except (KeyboardInterrupt, EOFError):
-            if _cancel(state, transaktion):
+            if _cancel(state, transaction):
                 return
         except OSError as e:
             print(err(f"Dateioperation fehlgeschlagen: {e}"))
@@ -299,8 +299,8 @@ def _handle_edit(state: AutoClickerState, cmd: str) -> None:
         new_item = edit_item(state, item)
         if new_item:
             with state.lock:
-                kollision = new_item.name != name and new_item.name in state.global_items
-            if kollision and not confirm(f"  '{new_item.name}' existiert bereits. Überschreiben?"):
+                collision = new_item.name != name and new_item.name in state.global_items
+            if collision and not confirm(f"  '{new_item.name}' existiert bereits. Überschreiben?"):
                 print(col("[ABBRUCH]", "yellow") + " Item unverändert.")
                 return
             with state.lock:

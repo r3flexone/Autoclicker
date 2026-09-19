@@ -48,7 +48,7 @@ def load_item_scan_file(filepath: Path, owner: str = "") -> Optional[ItemScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_ITEM_SCAN)
+        data, _messages = migrate(data, KIND_ITEM_SCAN)
 
         config = _item_scan_from_dict(data)
         config.owner_sequence = owner or filepath.parent.parent.name
@@ -127,7 +127,7 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             bosses += list(cfg.bosses)
         icons = list(state.icon_scans.values())
 
-    def hol(pid, wo):
+    def fetch_value(pid, wo):
         point = points.get(pid)
         if point is None:
             messages.append(f"{wo} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
@@ -139,18 +139,18 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             if item.confirm_point_id is None:
                 item.confirm_point = None
                 continue
-            point = hol(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
+            point = fetch_value(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
             item.confirm_point = ClickPoint(point.x, point.y, point.name,
                                             point.id) if point else None
 
-        for traeger, wo in ([(b, f"Boss '{b.name}'") for b in bosses]
+        for carrier, wo in ([(b, f"Boss '{b.name}'") for b in bosses]
                             + [(i, f"Icon-Scan '{i.name}'") for i in icons]):
-            if traeger.action_point_id is None:
+            if carrier.action_point_id is None:
                 continue
-            point = hol(traeger.action_point_id, wo)
+            point = fetch_value(carrier.action_point_id, wo)
             if point is not None:
-                traeger.action_x, traeger.action_y = point.x, point.y
+                carrier.action_x, carrier.action_y = point.x, point.y
             else:
                 # Kein Rueckfall auf (0, 0): die Aktion wird uebersprungen.
-                traeger.action_x = traeger.action_y = 0
+                carrier.action_x = carrier.action_y = 0
     return messages

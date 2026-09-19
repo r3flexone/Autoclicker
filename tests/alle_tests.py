@@ -74,8 +74,8 @@ class Ergebnis:
     def __str__(self) -> str:
         if self.skipped:
             return f"  ÜBERSPRUNGEN  {self.name:<14} {self.skipped}"
-        marke = "OK  " if self.ok else "FAIL"
-        return (f"  {marke}          {self.name:<14} {self.zusammenfassung}"
+        badge = "OK  " if self.ok else "FAIL"
+        return (f"  {badge}          {self.name:<14} {self.zusammenfassung}"
                 f"  ({self.duration:.1f}s)")
 
 
@@ -114,7 +114,7 @@ def vertrag() -> Ergebnis:
     return e
 
 
-def wurzel(vertrag_separat: bool = False) -> Ergebnis:
+def root_dir(vertrag_separat: bool = False) -> Ergebnis:
     """Die Wurzeltests; im Gesamtlauf wurde der Vertragswrapper schon ausgeführt.
 
     `discover` statt eines Glob-Musters: die Shell expandiert `test_*.py` auf
@@ -177,13 +177,13 @@ def main(argv: list[str]) -> int:
     if args.rauch_pflicht and "rauch" not in schichten:
         p.error("--rauch-pflicht braucht die Schicht rauch")
 
-    ergebnisse = []
+    results_list = []
     if "vertrag" in schichten:
-        ergebnisse.append(vertrag())
+        results_list.append(vertrag())
     if "wurzel" in schichten:
-        ergebnisse.append(wurzel(vertrag_separat="vertrag" in schichten))
+        results_list.append(root_dir(vertrag_separat="vertrag" in schichten))
     if "rauch" in schichten:
-        ergebnisse.append(rauch(tuple(args.rauchtest) if args.rauchtest else RAUCHTESTS,
+        results_list.append(rauch(tuple(args.rauchtest) if args.rauchtest else RAUCHTESTS,
                                  pflicht=args.rauch_pflicht))
     if args.mutationen:
         e = Ergebnis("Gegenproben")
@@ -192,19 +192,19 @@ def main(argv: list[str]) -> int:
         e.ok = code == 0
         e.duration = time.monotonic() - start
         e.zusammenfassung = "gezielte Mutationsprüfung"
-        ergebnisse.append(e)
+        results_list.append(e)
 
     width = 78
     print("\n" + "=" * width)
-    for e in ergebnisse:
+    for e in results_list:
         print(e)
     print("=" * width)
 
-    rot = [e.name for e in ergebnisse if not e.ok]
+    rot = [e.name for e in results_list if not e.ok]
     if rot:
         print(f"  {len(rot)} Schicht(en) rot: {', '.join(rot)}")
         return 1
-    fehlt = [e for e in ergebnisse if e.skipped]
+    fehlt = [e for e in results_list if e.skipped]
     print("  alles grün"
           + (f" ({len(fehlt)} Schicht übersprungen)" if fehlt else ""))
     return 0

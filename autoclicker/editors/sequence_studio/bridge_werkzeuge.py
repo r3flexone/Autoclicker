@@ -28,9 +28,9 @@ from .bridge_contract import WAIT_TIMEOUT
 # Was die Kalibrierung anfasst. Steht als Tabelle da, weil die Ansicht dieselben
 # Schalter zeigt und der Test beide Seiten gegeneinander hält.
 CALIB_EXTENT = (
-    ("mit_scans", "Scan-Regionen und Klickpunkte", True),
-    ("mit_sequenzen", "Screenshot-Bereiche in den Sequenzen", True),
-    ("mit_slots", "Slots", False),
+    ("with_scans", "Scan-Regionen und Klickpunkte", True),
+    ("with_sequences", "Screenshot-Bereiche in den Sequenzen", True),
+    ("with_slots", "Slots", False),
 )
 
 
@@ -95,15 +95,15 @@ class BridgeToolsMixin:
             for nr, step in enumerate(lane.steps, 1):
                 if step is except_step:
                     continue
-                basis = f"{lane.name} · Block {nr}"
+                base_name = f"{lane.name} · Block {nr}"
                 if step.point_id == point_id:
-                    out.append(basis + " · Stelle")
+                    out.append(base_name + " · Stelle")
                 if step.wait_condition and step.wait_condition.point_id == point_id:
-                    out.append(basis + " · Prüf-Pixel")
+                    out.append(base_name + " · Prüf-Pixel")
                 if step.verify_condition and step.verify_condition.point_id == point_id:
-                    out.append(basis + " · Nachprüfung")
+                    out.append(base_name + " · Nachprüfung")
                 if step.else_config and step.else_config.point_id == point_id:
-                    out.append(basis + " · ELSE")
+                    out.append(base_name + " · ELSE")
         for item in self.items.values():
             if item.confirm_point_id == point_id:
                 out.append(f"Item '{item.name}' · Bestätigung")
@@ -451,7 +451,7 @@ class BridgeToolsMixin:
         Scans und Sequenzdateien in einem Rutsch um, und ohne Rückweg wäre ein
         danebenliegender Referenzpunkt teuer.
 
-        `mit_slots` steht getrennt und ist standardmässig AUS: eine aus einer
+        `with_slots` steht getrennt und ist standardmässig AUS: eine aus einer
         Mausposition abgeleitete Verschiebung ist für ein Klickziel gut genug,
         für eine Scan-Region aber nur eine Näherung — dafür gibt es `repair`,
         das die Slots misst. Nach einer Reparatur dürfen sie kein zweites Mal

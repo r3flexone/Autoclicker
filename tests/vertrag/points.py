@@ -215,13 +215,13 @@ try:
     _st.points = _seq.points
     save_data(_st)
 
-    _alt = (_ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input)
+    _old = (_ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input)
     _ED.safe_input = _LOOPS.safe_input = _STEPS.safe_input = _naechste
     try:
         with _cl.redirect_stdout(_io.StringIO()):
             _ED.edit_sequence(_st, _seq)
     finally:
-        _ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input = _alt
+        _ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input = _old
 
     _nach = _js.loads(
         Path("sequences/konsole/sequence.json").read_text(encoding="utf-8"))

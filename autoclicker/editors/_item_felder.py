@@ -33,7 +33,7 @@ CANCELLED = object()
 
 
 def ask_priority(state: AutoClickerState, category: Optional[str],
-                     default_value: int = 1, *, abbrechbar: bool = False):
+                     default_value: int = 1, *, cancellable: bool = False):
     """Fragt die Priorität ab. Gibt die Zahl zurück — oder `CANCELLED`.
 
     `0` heisst „beste": das Item bekommt Priorität 1 und alle anderen derselben
@@ -46,7 +46,7 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
     priority = max(1, int(default_value or 1))
     user_input = safe_input(
         f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
-    if abbrechbar and is_cancel(user_input):
+    if cancellable and is_cancel(user_input):
         return CANCELLED
     if not user_input:
         return priority
@@ -65,7 +65,7 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
 
 def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
                              prompt: str = "  Bestätigungs-Punkt-ID (Enter = keiner): ",
-                             abbrechbar: bool = False):
+                             cancellable: bool = False):
     """Fragt Punkt-ID und Wartezeit eines Bestätigungs-Klicks ab.
 
     Manche Spiele fragen nach („wirklich verkaufen?"); ohne den Klick danach
@@ -80,7 +80,7 @@ def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
     """
     wait_time = default_delay
     user_input = safe_input(prompt).strip()
-    if abbrechbar and is_cancel(user_input):
+    if cancellable and is_cancel(user_input):
         return CANCELLED
     if not user_input:
         return None, wait_time

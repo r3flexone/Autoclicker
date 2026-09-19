@@ -139,9 +139,9 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     seq_dir = _sequences_dir()
     if seq_dir.is_dir():
         for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
-            haupt = folder / "sequence.json"
-            if haupt.exists():
-                files.append((haupt, KIND_SEQUENCE, _rt_sequence))
+            main_part = folder / "sequence.json"
+            if main_part.exists():
+                files.append((main_part, KIND_SEQUENCE, _rt_sequence))
             for below, kind, rt in (
                 ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
                 ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
@@ -247,7 +247,7 @@ class SweepResult:
         self.changed: list[tuple[Path, list[str]]] = []
         self.current: int = 0
         self.skipped: list[Path] = []
-        self.geschrieben: bool = False
+        self.written: bool = False
 
     @property
     def changed_count(self) -> int:
@@ -268,7 +268,7 @@ def sweep(write: bool = False) -> SweepResult:
     eigenen Feld mit, `load_sequence_file()` loest sie daraus auf.
     """
     result = SweepResult()
-    result.geschrieben = write
+    result.written = write
 
     for path, kind, rt in collect_files():
         raw = _load(path)
@@ -282,13 +282,13 @@ def sweep(write: bool = False) -> SweepResult:
         # Die Loader melden ihre Migration selbst - hier stumm, sonst stehen dieselben
         # Zeilen doppelt im Protokoll.
         with contextlib.redirect_stdout(io.StringIO()):
-            sauber = rt(path)
+            clean = rt(path)
 
-        if sauber is None:
+        if clean is None:
             result.skipped.append(path)
             continue
 
-        if not messages and _equal(raw, sauber):
+        if not messages and _equal(raw, clean):
             result.current += 1
             continue
 
@@ -296,7 +296,7 @@ def sweep(write: bool = False) -> SweepResult:
             messages = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
         result.changed.append((path, messages))
         if write:
-            _write(path, sauber)
+            _write(path, clean)
 
     return result
 

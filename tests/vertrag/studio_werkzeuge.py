@@ -108,7 +108,7 @@ try:
     # Die Ansicht zeigt dieselben Schalter; laufen sie auseinander, schaltet ein
     # Haken etwas anderes als beschriftet.
     check("Slots sind standardmaessig AUS",
-          {u["key"]: u["default_value"] for u in _d["scope"]}["mit_slots"] is False)
+          {u["key"]: u["default_value"] for u in _d["scope"]}["with_slots"] is False)
 
     _sauber = _b.tool_check()
     check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["findings"])
@@ -157,8 +157,8 @@ try:
     check("Buchstaben statt Zahlen werden abgelehnt",
           _b.calib_offset({"x": "viel"})["ok"] is False)
 
-    _erg = _b.calib_apply({"mit_scans": True, "mit_sequenzen": True,
-                              "mit_slots": False})
+    _erg = _b.calib_apply({"with_scans": True, "with_sequences": True,
+                              "with_slots": False})
     check("angewendet wird mit Meldung", _erg["ok"] and "Kalibriert" in _erg["message"])
     check("und es entsteht eine Sicherung vorher",
           bool(_erg["backup"]) and _P(_erg["backup"]).exists())

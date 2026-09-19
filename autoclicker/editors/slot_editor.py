@@ -734,11 +734,11 @@ def slot_repair(state: AutoClickerState) -> bool:
             print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")
             return True
 
-        # mit_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
+        # with_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
         # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
         # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
-        number = calibrate_inventory(state, t, mit_scans=True, mit_sequenzen=True,
-                                  mit_slots=False)
+        number = calibrate_inventory(state, t, with_scans=True, with_sequences=True,
+                                  with_slots=False)
         print(f"  {ok('Uebernommen:')} "
               + ", ".join(f"{v} {k}" for k, v in number.items() if v))
         print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")

@@ -373,17 +373,17 @@ def install_keyboard_hook(on_key_down) -> bool:
     if _keyboard_hook_handle:
         return True
 
-    gedrueckt = set()  # welche VK-Codes gerade unten sind -> Auto-Repeat erkennen
+    pressed_keys = set()  # welche VK-Codes gerade unten sind -> Auto-Repeat erkennen
 
     def _hook_proc(nCode, wParam, lParam):
         if nCode >= 0:
             info = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
             vk = info.vkCode
             if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
-                if vk not in gedrueckt:
-                    gedrueckt.add(vk)
-                    hoch = user32.GetAsyncKeyState
-                    modifier = (hoch(_VK_CONTROL) & 0x8000) or (hoch(_VK_MENU) & 0x8000)
+                if vk not in pressed_keys:
+                    pressed_keys.add(vk)
+                    high = user32.GetAsyncKeyState
+                    modifier = (high(_VK_CONTROL) & 0x8000) or (high(_VK_MENU) & 0x8000)
                     name = VK_NAMES.get(vk)
                     if name and not modifier:
                         try:
@@ -391,7 +391,7 @@ def install_keyboard_hook(on_key_down) -> bool:
                         except Exception:
                             pass
             else:
-                gedrueckt.discard(vk)
+                pressed_keys.discard(vk)
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
 
     _keyboard_hook_proc = _HOOKPROC(_hook_proc)
@@ -631,8 +631,8 @@ def get_window_title_at(x: int, y: int) -> str:
         hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
-        wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _window_title(wurzel or hwnd)
+        root_dir = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+        return _window_title(root_dir or hwnd)
     except Exception:
         return ""
 
@@ -688,11 +688,11 @@ def list_windows() -> list:
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        laenge = user32.GetWindowTextLengthW(hwnd)
-        if laenge <= 0:
+        length_value = user32.GetWindowTextLengthW(hwnd)
+        if length_value <= 0:
             return True
-        buffer = ctypes.create_unicode_buffer(laenge + 1)
-        user32.GetWindowTextW(hwnd, buffer, laenge + 1)
+        buffer = ctypes.create_unicode_buffer(length_value + 1)
+        user32.GetWindowTextW(hwnd, buffer, length_value + 1)
         title = (buffer.value or "").strip()
         if not title:
             return True
@@ -1132,7 +1132,7 @@ def _icon_bits(edge: int = 32) -> bytes:
     return head + bytes(colors) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
-def set_window_icon(titel_substring: str, waiting: float = 0.0) -> bool:
+def set_window_icon(title_substring: str, waiting: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
@@ -1143,11 +1143,11 @@ def set_window_icon(titel_substring: str, waiting: float = 0.0) -> bool:
     Aufruf still auf `False`. Fehler werden geschluckt: ein fehlendes Symbol ist
     kein Grund, ein Fenster nicht zu öffnen.
     """
-    frist = time.monotonic() + max(0.0, waiting)
-    hwnd = _find_window_by_title(titel_substring)
-    while not hwnd and time.monotonic() < frist:
+    deadline = time.monotonic() + max(0.0, waiting)
+    hwnd = _find_window_by_title(title_substring)
+    while not hwnd and time.monotonic() < deadline:
         time.sleep(0.1)
-        hwnd = _find_window_by_title(titel_substring)
+        hwnd = _find_window_by_title(title_substring)
     if not hwnd:
         return False
     try:

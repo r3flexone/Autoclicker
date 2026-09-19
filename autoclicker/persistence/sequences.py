@@ -299,7 +299,7 @@ def get_next_point_id(state: AutoClickerState) -> int:
 
 def point_at_position(points, x: int, y: int, color=None,
                     radius: Optional[int] = None,
-                    farbtoleranz: Optional[int] = None):
+                    color_tol: Optional[int] = None):
     """Der vorhandene Punkt an dieser Stelle — oder None. Die eine Regel.
 
     Editor und Aufnahme stellen dieselbe Frage; mit exaktem Vergleich entstand
@@ -315,24 +315,24 @@ def point_at_position(points, x: int, y: int, color=None,
     """
     from ..config import CONFIG
     radius = CONFIG.punkt_radius if radius is None else radius
-    ftol = CONFIG.punkt_farbtoleranz if farbtoleranz is None else farbtoleranz
-    genau = None
+    ctol = CONFIG.punkt_farbtoleranz if color_tol is None else color_tol
+    exact = None
     for p in points:
         if (p.x, p.y) == (x, y):
-            genau = p
+            exact = p
             break
-    if genau is not None or radius <= 0 or not color:
-        return genau
-    beste, bester_abstand = None, None
+    if exact is not None or radius <= 0 or not color:
+        return exact
+    best, best_distance = None, None
     for p in points:
         if not p.color:
             continue
-        if max(abs(a - b) for a, b in zip(p.color, color)) > ftol:
+        if max(abs(a - b) for a, b in zip(p.color, color)) > ctol:
             continue
         distance = ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5
-        if distance <= radius and (bester_abstand is None or distance < bester_abstand):
-            beste, bester_abstand = p, distance
-    return beste
+        if distance <= radius and (best_distance is None or distance < best_distance):
+            best, best_distance = p, distance
+    return best
 
 
 def point_for_position(state: AutoClickerState, x: int, y: int,
@@ -405,7 +405,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
 
     for phase_name, steps in _phases(sequence):
         for i, step in enumerate(steps, 1):
-            ort = f"{phase_name}[{i}]"
+            location = f"{phase_name}[{i}]"
 
             if step.point_id is not None:
                 point = points.get(step.point_id)
@@ -414,7 +414,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # Der Schritt wird zur Laufzeit uebersprungen (siehe step_gate).
                     step.unresolved = True
                     messages.append(
-                        f"{ort} '{step.name or 'Klick'}' zeigt auf Punkt "
+                        f"{location} '{step.name or 'Klick'}' zeigt auf Punkt "
                         f"#{step.point_id}, den es nicht mehr gibt - wird uebersprungen")
                 else:
                     step.unresolved = False
@@ -423,7 +423,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     step.recorded_color = point.color
                     if old != (0, 0) and old != (point.x, point.y) and not still:
                         messages.append(
-                            f"{ort} '{step.name}' folgt Punkt #{point.id}: "
+                            f"{location} '{step.name}' folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")
 
             wc = step.wait_condition
@@ -432,7 +432,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                 if point is None:
                     step.unresolved = True
                     messages.append(
-                        f"{ort} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
+                        f"{location} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
                         f"den es nicht mehr gibt - wird uebersprungen")
                 else:
                     old = tuple(wc.pixel)
@@ -442,7 +442,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     wc.color = point.color if point.color else wc.color
                     if old != (0, 0) and old != wc.pixel and not still:
                         messages.append(
-                            f"{ort} Pruef-Pixel folgt Punkt #{point.id}: "
+                            f"{location} Pruef-Pixel folgt Punkt #{point.id}: "
                             f"{old} -> {wc.pixel}")
 
             vc = step.verify_condition
@@ -453,7 +453,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
                     # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
                     messages.append(
-                        f"{ort} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
+                        f"{location} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
                         f"den es nicht mehr gibt - wird nicht mehr geprueft")
                     step.verify_condition = None
                 else:
@@ -462,7 +462,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     vc.color = point.color if point.color else vc.color
                     if old != (0, 0) and old != vc.pixel and not still:
                         messages.append(
-                            f"{ort} Nachpruefung folgt Punkt #{point.id}: "
+                            f"{location} Nachpruefung folgt Punkt #{point.id}: "
                             f"{old} -> {vc.pixel}")
 
             ec = step.else_config
@@ -471,7 +471,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                 if point is None:
                     # Die else-Aktion faellt auf "skip" zurueck statt auf (0,0) zu klicken.
                     messages.append(
-                        f"{ort} Else-Klick zeigt auf Punkt #{ec.point_id}, "
+                        f"{location} Else-Klick zeigt auf Punkt #{ec.point_id}, "
                         f"den es nicht mehr gibt - else wird zu 'skip'")
                     ec.action = ELSE_SKIP
                     ec.point_id = None
@@ -480,7 +480,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     ec.x, ec.y, ec.name = point.x, point.y, point.name
                     if old != (0, 0) and old != (point.x, point.y) and not still:
                         messages.append(
-                            f"{ort} Else-Klick folgt Punkt #{point.id}: "
+                            f"{location} Else-Klick folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")
     return messages
 

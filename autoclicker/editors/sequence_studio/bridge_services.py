@@ -15,7 +15,7 @@ from .bridge_contract import (
     _same_value,
     _hex,
     _mtime,
-    scan_warnungen,
+    scan_warnings,
 )
 from .model import (
     BLOCK_COLORS,
@@ -36,12 +36,12 @@ class BridgeServicesMixin:
         Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
         out: list[dict] = []
-        wurzel = Path(self.sequences_dir)
+        root_dir = Path(self.sequences_dir)
         files = sorted(
-            (folder / "sequence.json" for folder in wurzel.iterdir()
+            (folder / "sequence.json" for folder in root_dir.iterdir()
              if folder.is_dir() and (folder / "sequence.json").exists()),
             key=lambda path: path.parent.name,
-        ) if wurzel.exists() else []
+        ) if root_dir.exists() else []
         for path in files:
             saved_name = path.parent.name
             try:
@@ -73,7 +73,7 @@ class BridgeServicesMixin:
                 "changed": changed,
                 "open": path == self.filepath,
                 "scope": self._sequence_extent(path.parent),
-                "warnings": scan_warnungen(sequence_to_board(seq)),
+                "warnings": scan_warnings(sequence_to_board(seq)),
             })
         return out
 
@@ -134,9 +134,9 @@ class BridgeServicesMixin:
         for entry, path in list_available_sequences():
             if entry == name:
                 return Path(path).parent
-        wurzel = Path(self.sequences_dir)
-        if wurzel.is_dir():
-            for folder in wurzel.iterdir():
+        root_dir = Path(self.sequences_dir)
+        if root_dir.is_dir():
+            for folder in root_dir.iterdir():
                 if folder.is_dir() and folder.name == name:
                     return folder
         return None
@@ -568,9 +568,9 @@ class BridgeServicesMixin:
         import sys
         from ...config import CONFIG
 
-        wurzel = Path(__file__).resolve().parents[3]
-        if str(wurzel) not in sys.path:
-            sys.path.insert(0, str(wurzel))
+        root_dir = Path(__file__).resolve().parents[3]
+        if str(root_dir) not in sys.path:
+            sys.path.insert(0, str(root_dir))
         try:
             from tools.katalog import (baue_katalog, hole_spieldaten,
                                        _zusammenfassung, STANDARD_ZIEL)
@@ -670,14 +670,14 @@ class BridgeServicesMixin:
                                    "Vor dem Anlegen speichern?",
                            "proceed_label": "Verwerfen", "save": True}
             return self.snapshot()
-        basis = f"Sequenz_{int(time.time())}"
+        base_name = f"Sequenz_{int(time.time())}"
         # Mit einer Loop-Phase, nicht nur INIT und END: fast jede Sequenz braucht
         # sie, und wer sie nicht braucht, laesst sie leer — eine leere Phase kostet
         # zur Laufzeit nichts (der Worker geht durch null Schritte). Ohne sie war
         # der erste Griff nach dem Anlegen immer derselbe: „+ Loop-Phase".
         self.board = sequence_to_board(Sequence(
-            name=basis, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
-        self.filepath = Path(self.sequences_dir) / sanitize_filename(basis) / "sequence.json"
+            name=base_name, loop_phases=[LoopPhase(name="Ablauf", repeat=1, steps=[])]))
+        self.filepath = Path(self.sequences_dir) / sanitize_filename(base_name) / "sequence.json"
         # **Die Punkte gehoeren der Sequenz, nicht dem Fenster.** `load()` ersetzt
         # sie, `new()` liess sie stehen — und `save()` schreibt `self.points`
         # in die Datei: eine frisch angelegte Sequenz kam damit mit dem ganzen
@@ -705,7 +705,7 @@ class BridgeServicesMixin:
 
     def _scan_without_name(self) -> Optional[str]:
         """Erster Scan-Block mit leerem Namen, als lesbare Stelle."""
-        remaining = scan_warnungen(self.board)
+        remaining = scan_warnings(self.board)
         return remaining[0] if remaining else None
 
     def save(self, data: Optional[dict] = None) -> dict:

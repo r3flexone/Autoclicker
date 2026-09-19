@@ -295,7 +295,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
 
     boss_names = [boss.name for boss in bosses_snapshot]
     max_attempts = 1 + max(0, state.config.llm_retry_count)
-    warm_versucht = False       # der Aufwaerm-Versuch gilt einmal je Scan
+    warm_tried = False       # der Aufwaerm-Versuch gilt einmal je Scan
 
     for attempt in range(1, max_attempts + 1):
         current_img = img if attempt == 1 else take_screenshot(config.scan_region)
@@ -330,8 +330,8 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
         # wiederholte. Der zweite Versuch trifft ein warmes Modell und kostet
         # fast nichts; er zaehlt bewusst NICHT gegen das Wiederholungs-Budget,
         # denn er beantwortet eine andere Frage.
-        if not success and is_timeout(response) and not warm_versucht:
-            warm_versucht = True
+        if not success and is_timeout(response) and not warm_tried:
+            warm_tried = True
             if debug:
                 print(dbg(f"  → LLM: Zeitüberschreitung nach {duration / 1000:.0f}s "
                           "— das Modell lädt gerade, zweiter Versuch …"))

@@ -93,12 +93,12 @@ def _playwright_eigener() -> bool:
     Meldung, die man sich abgewoehnt zu lesen.
     """
     if sys.platform == "win32":
-        basis = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"
+        base_name = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"
     elif sys.platform == "darwin":
-        basis = Path.home() / "Library" / "Caches" / "ms-playwright"
+        base_name = Path.home() / "Library" / "Caches" / "ms-playwright"
     else:
-        basis = Path.home() / ".cache" / "ms-playwright"
-    return basis.is_dir() and any(basis.glob("chromium*"))
+        base_name = Path.home() / ".cache" / "ms-playwright"
+    return base_name.is_dir() and any(base_name.glob("chromium*"))
 
 
 def _chromium() -> str:
@@ -110,25 +110,25 @@ def _chromium() -> str:
     raw = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if not raw:
         return ""
-    basis = Path(raw)
-    if not basis.is_dir():
+    base_name = Path(raw)
+    if not base_name.is_dir():
         return ""
     # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
     for pattern in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
                    "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
-        for kandidat in sorted(basis.glob(pattern)):
+        for kandidat in sorted(base_name.glob(pattern)):
             return str(kandidat)
-    direkt = basis / "chromium"
+    direkt = base_name / "chromium"
     return str(direkt) if direkt.exists() else ""
 
 
-def sandkasten(praefix: str) -> str:
+def sandkasten(prefix: str) -> str:
     """Ein leeres Datenverzeichnis, in das gewechselt wird.
 
     Die Pfad-Konstanten sind CWD-relativ (s. CLAUDE.md), also reicht ein
     `chdir` — kein Test schreibt damit je in den echten Datenbestand.
     """
-    sand = tempfile.mkdtemp(prefix=praefix)
+    sand = tempfile.mkdtemp(prefix=prefix)
     os.chdir(sand)
     Path("sequences").mkdir()
     return sand
@@ -229,7 +229,7 @@ class Fenster:
         # the DOM") — und das passiert hier staendig, weil jede Bruecken-Antwort
         # neu zeichnet. Ueber den Text einen Selektor zu bauen geht nicht: die
         # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
-        letzter = None
+        last_one = None
         for _ in range(3):
             match = [k for k in self.seite.query_selector_all(choice)
                        if text in (k.inner_text() or "")]
@@ -239,11 +239,11 @@ class Fenster:
             try:
                 match[0].click()
             except Exception as error:      # noqa: BLE001 - erneut versuchen
-                letzter = error
+                last_one = error
                 self.seite.wait_for_timeout(150)
                 continue
             return self.ruhe()
-        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({letzter})" if letzter else ""))
+        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({last_one})" if last_one else ""))
 
     # ---------------------------------------------------------------- Ablesen
 
@@ -262,7 +262,7 @@ class Fenster:
         return target
 
 
-def haupt(name: str, run) -> int:
+def main_part(name: str, run) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
     # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
     # `tests/alle_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
@@ -292,4 +292,4 @@ def haupt(name: str, run) -> int:
 
 
 def main(name: str, run) -> None:
-    sys.exit(haupt(name, run))
+    sys.exit(main_part(name, run))

@@ -217,7 +217,7 @@ import autoclicker.editors.nachklick as _nk
 
 _gesprungen = []
 _echt_springe = _nk._jump
-_nk._jump = lambda x, y, verzoegert=False: _gesprungen.append((x, y, verzoegert))
+_nk._jump = lambda x, y, delayed=False: _gesprungen.append((x, y, delayed))
 try:
     _s2 = _ST()
     _aktiv(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[

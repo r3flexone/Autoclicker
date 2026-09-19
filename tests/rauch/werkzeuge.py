@@ -117,9 +117,9 @@ def run():
                "Notiz der Aufnahme fehlt")
         pruefe(f.count(".wz-recording-output") == 1,
                "rollende Live-Ausgabe der Aufnahme fehlt")
-        tasten = [z.inner_text() for z in
+        keys_list = [z.inner_text() for z in
                   f.seite.query_selector_all("#wz-middle .wz-keys .wz-key")]
-        pruefe(len(tasten) == 8, f"acht Aufnahme-Hotkeys erwartet, da: {tasten}")
+        pruefe(len(keys_list) == 8, f"acht Aufnahme-Hotkeys erwartet, da: {keys_list}")
         pruefe("Aufnahme starten" in f.text("#wz-middle"), "sichtbarer Start fehlt")
         f.image("wz_aufnahme")
 
@@ -200,10 +200,10 @@ def run():
                f"starten + uebernehmen + verwerfen erwartet, da: {knoepfe}")
         # Die vier Griffe stehen als TABELLE da, nicht als Absatz - man schlaegt
         # sie mitten im Klicken nach.
-        tasten = [z.inner_text() for z in
+        keys_list = [z.inner_text() for z in
                   f.seite.query_selector_all("#wz-middle .wz-keys .wz-key")]
-        pruefe(len(tasten) == 4, f"vier Hotkeys erwartet, da: {tasten}")
-        pruefe("CTRL+ALT+J" in tasten, f"Uebernehmen-Taste fehlt: {tasten}")
+        pruefe(len(keys_list) == 4, f"vier Hotkeys erwartet, da: {keys_list}")
+        pruefe("CTRL+ALT+J" in keys_list, f"Uebernehmen-Taste fehlt: {keys_list}")
         pruefe("übernimmst" in f.text("#wz-middle .wz-rule"),
                "die Regel 'nichts wird geschrieben' fehlt")
         f.klick_text("#wz-middle button", "Runde starten")

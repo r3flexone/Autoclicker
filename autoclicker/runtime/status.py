@@ -20,7 +20,7 @@ from ..utils import atomic_write, compact_json
 STATUS_PATH = Path(RUN_STATUS_FILE)
 
 _MIN_INTERVAL = 0.2
-_zuletzt = 0.0
+_last = 0.0
 _state: dict = {}
 
 
@@ -32,20 +32,20 @@ def _counters(state) -> dict:
                 "skipped": state.skipped_cycles, "restarts": state.restarts}
 
 
-def write_status(state, teil: dict, sofort: bool = False) -> None:
-    """Führt `teil` in den Laufzustand ein und schreibt ihn auf Platte.
+def write_status(state, part: dict, immediately: bool = False) -> None:
+    """Führt `part` in den Laufzustand ein und schreibt ihn auf Platte.
 
     `sofort=True` umgeht die Drossel — für Ereignisse, die man nicht verpassen
     darf (Start, Phasen- und Zykluswechsel). Eingeführt wird immer, gedrosselt
     nur das Schreiben: sonst ginge die Information eines verworfenen Aufrufs
     verloren.
     """
-    global _zuletzt
-    _state.update(teil)
-    jetzt = time.monotonic()
-    if not sofort and jetzt - _zuletzt < _MIN_INTERVAL:
+    global _last
+    _state.update(part)
+    now = time.monotonic()
+    if not immediately and now - _last < _MIN_INTERVAL:
         return
-    _zuletzt = jetzt
+    _last = now
     try:
         _state["counters"] = _counters(state)
         _state["stamp"] = time.time()
@@ -54,7 +54,7 @@ def write_status(state, teil: dict, sofort: bool = False) -> None:
         pass
 
 
-def waiting_for(state, teil) -> None:
+def waiting_for(state, part) -> None:
     """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
 
     Zeiten stehen als absolute Zeitstempel darin (`since`, `until`), nicht als
@@ -64,7 +64,7 @@ def waiting_for(state, teil) -> None:
     Das Abmelden schreibt sofort — zwischen „Farbe erkannt" und dem nächsten
     Block liegt noch die eigene Aktion des Schritts.
     """
-    write_status(state, {"waiting": teil}, sofort=teil is None)
+    write_status(state, {"waiting": part}, immediately=part is None)
 
 
 def heartbeat(state) -> None:
@@ -78,7 +78,7 @@ def heartbeat(state) -> None:
     write_status(state, {})
 
 
-def schedule_run(sequence: str, zielzeit: float) -> None:
+def schedule_run(sequence: str, target_time: float) -> None:
     """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
 
     Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
@@ -86,15 +86,15 @@ def schedule_run(sequence: str, zielzeit: float) -> None:
     Vorheriger Laufzustand wird geleert: die nächste Worker-Meldung baut ihn
     ohnehin vollständig neu auf.
     """
-    global _zuletzt
+    global _last
     _state.clear()
-    _zuletzt = 0.0
+    _last = 0.0
     try:
         atomic_write(STATUS_PATH, compact_json({
             "active": False,
             "countdown": True,
             "sequence": sequence,
-            "target_time": float(zielzeit),
+            "target_time": float(target_time),
             "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError):
@@ -139,17 +139,17 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
     Die Altersregel gilt nur für den ersten Fall. Ohne `state` (der Lauf lief
     gar nicht erst an) wird gelöscht — eine Zusammenfassung ohne Zahlen wäre keine.
     """
-    global _zuletzt
-    letzter = dict(_state)
+    global _last
+    last_one = dict(_state)
     _state.clear()
-    _zuletzt = 0.0
+    _last = 0.0
     try:
-        if state is None or not letzter.get("sequence"):
+        if state is None or not last_one.get("sequence"):
             STATUS_PATH.unlink(missing_ok=True)
             return
         for field in _MOMENT_FIELDS:
-            letzter.pop(field, None)
-        letzter.update({
+            last_one.pop(field, None)
+        last_one.update({
             "active": False,
             "end": time.time(),
             "reason": reason,
@@ -158,6 +158,6 @@ def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 
             "counters": _counters(state),
             "stamp": time.time(),
         })
-        atomic_write(STATUS_PATH, compact_json(letzter))
+        atomic_write(STATUS_PATH, compact_json(last_one))
     except (OSError, TypeError, ValueError, AttributeError):
         pass

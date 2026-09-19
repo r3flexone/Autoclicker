@@ -160,7 +160,7 @@ def _blocks(count: int) -> str:
     return "1 Block" if count == 1 else f"{count} Blöcke"
 
 
-def scan_warnungen(board: SequenceBoard) -> list[str]:
+def scan_warnings(board: SequenceBoard) -> list[str]:
     """Alle Scan-Blöcke ohne Konfiguration, als lesbare Stellen.
 
     Steht ausserhalb der Klasse, weil es zwei Fragen beantwortet: „hat die

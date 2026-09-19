@@ -362,7 +362,7 @@ dazwischen festschreiben. Dann bleibt mitten im Lauf eine alte Status-Zeile steh
 statt überschrieben zu werden. Zusammen geschrieben gehört das `\r` untrennbar zu dem
 Text, der es benutzt.
 
-Die Löschbreite folgt der **vorher geschriebenen Zeile** (`_letzte_status_laenge`), nicht
+Die Löschbreite folgt der **vorher geschriebenen Zeile** (`_last_status_length`), nicht
 mehr festen 80 Spalten: ein langer Punkt-Name liess den Rest der alten Zeile hinter der
 neuen stehen. ANSI-Sequenzen zählen dabei nicht mit — sie belegen keine Spalte.
 
@@ -2668,7 +2668,7 @@ Vier Regeln, an denen der Reiter hängt:
   entsteht ein vollständiges Export-ZIP (`backup_before_calibration`), und ein
   laufender Lauf blockiert — er klickt sonst mitten im Umbau auf halb verschobene
   Stellen.
-- **`mit_slots` ist AUS.** Eine aus einer Mausposition abgeleitete Verschiebung ist
+- **`with_slots` ist AUS.** Eine aus einer Mausposition abgeleitete Verschiebung ist
   für ein Klickziel gut genug, für eine Scan-Region nur eine Näherung. Dafür gibt
   es `repair` im Konsolen-Slot-Editor, das die Slots **misst** — und nach einer
   Reparatur dürfen sie kein zweites Mal wandern. Der Reiter sagt das dazu, statt
@@ -3668,7 +3668,7 @@ Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
 `calibrate_inventory()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
 und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
 
-- **`mit_slots` steht getrennt von `mit_scans`.** Nach einer Reparatur dürfen die Slots
+- **`with_slots` steht getrennt von `with_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
 - **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
   zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`

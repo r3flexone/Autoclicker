@@ -27,7 +27,7 @@ from .bridge_contract import (
     _position,
     _wait_text,
     else_applies,
-    scan_warnungen,
+    scan_warnings,
     trigger_name,
 )
 from .bridge_bericht import BridgeReportMixin
@@ -58,7 +58,7 @@ __all__ = [
     "_position",
     "_wait_text",
     "else_applies",
-    "scan_warnungen",
+    "scan_warnings",
     "trigger_name",
 ]
 

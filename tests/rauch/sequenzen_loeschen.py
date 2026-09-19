@@ -46,9 +46,9 @@ def aufbau():
     # deshalb aus der Persistenz — hier stand einmal der Anzeigename, und der
     # Rauchtest lief damit an einem Ordner vorbei, den das Studio gar nicht
     # anfasst.
-    vorlagen = sequence_templates_dir("Raid")
-    vorlagen.mkdir(parents=True, exist_ok=True)
-    (vorlagen / "erz.png").write_bytes(b"x")
+    templates_list = sequence_templates_dir("Raid")
+    templates_list.mkdir(parents=True, exist_ok=True)
+    (templates_list / "erz.png").write_bytes(b"x")
 
     b = StudioBridge(farm, Path(dict(list_available_sequences())["Farm"]), "sequences")
     b._running = lambda: False

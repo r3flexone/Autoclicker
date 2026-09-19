@@ -180,10 +180,10 @@ def _pruefe_befehle(state) -> None:
     und zwar nur, weil er eine Datei liest, die niemand eilig braucht.
     """
     global _befehl_zuletzt
-    jetzt = time.monotonic()
-    if jetzt - _befehl_zuletzt < _BEFEHL_TAKT:
+    now = time.monotonic()
+    if now - _befehl_zuletzt < _BEFEHL_TAKT:
         return
-    _befehl_zuletzt = jetzt
+    _befehl_zuletzt = now
 
     auftrag = fetch_command()
     if auftrag is None:

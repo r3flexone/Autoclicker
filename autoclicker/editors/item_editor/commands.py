@@ -49,14 +49,14 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
                 print("  -> Abgebrochen")
                 return
 
-        if _apply_item_rename(state, old_name, new_name, ueberschreiben=name_exists):
+        if _apply_item_rename(state, old_name, new_name, overwrite=name_exists):
             print(f"  + Item umbenannt: '{old_name}' -> '{new_name}' (Übernehmen mit done)")
     except ValueError:
         print("  -> Format: rename <Nr>")
 
 
 def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
-                       *, ueberschreiben: bool = False) -> bool:
+                       *, overwrite: bool = False) -> bool:
     """Benennt ein Item mechanisch um: Template-Datei, global_items, Scan-Configs.
 
     Still (keine Prompts) — für programmatische Aufrufe wie 'autoname'. new_name
@@ -66,26 +66,26 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
     with state.lock:
         if old_name not in state.global_items:
             return False
-        if new_name != old_name and new_name in state.global_items and not ueberschreiben:
+        if new_name != old_name and new_name in state.global_items and not overwrite:
             print(err(f"'{new_name}' existiert bereits — Umbenennen abgebrochen."))
             return False
         item = state.global_items[old_name]
         old_template = item.template
         # Der Vorlagenordner gehört der Sequenz; andere Scans dürfen dieselbe
         # Datei verwenden. Deren Referenzen bleiben beim Umbenennen erhalten.
-        andere_items = [*state.global_items.values(),
+        other_items = [*state.global_items.values(),
                         *(i for cfg in state.item_scans.values() for i in cfg.items)]
-        erkenner = [*state.icon_scans.values(), *state.global_bosses,
+        detector = [*state.icon_scans.values(), *state.global_bosses,
                     *(b for cfg in state.boss_scans.values() for b in cfg.bosses)]
-        geteilt = old_template and (
-            any(i is not item and old_template in i.template_names() for i in andere_items)
+        shared = old_template and (
+            any(i is not item and old_template in i.template_names() for i in other_items)
             or old_template in item.template_variants
-            or any(e.template == old_template for e in erkenner))
+            or any(e.template == old_template for e in detector))
 
     new_template = None
     if old_template:
         old_path = active_templates_dir(state) / old_template
-        new_template = old_template if geteilt else f"{sanitize_filename(new_name)}.png"
+        new_template = old_template if shared else f"{sanitize_filename(new_name)}.png"
         new_path = active_templates_dir(state) / new_template
         try:
             if not old_path.is_file():
@@ -301,19 +301,19 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         return
 
     from ...imaging import template_size
-    passende = [name for name in item.template_names()
+    matching = [name for name in item.template_names()
                 if template_size(name, active_templates_dir(state)) == tuple(img.size)]
     safe_name = sanitize_filename(item.name)
-    if passende:
+    if matching:
         # Dieselbe Slot-Groesse wird bewusst aktualisiert.
-        template_file = passende[0]
+        template_file = matching[0]
     elif item.template_names():
         width, height = img.size
-        basis = f"{safe_name}_{width}x{height}"
-        template_file = f"{basis}.png"
+        base_name = f"{safe_name}_{width}x{height}"
+        template_file = f"{base_name}.png"
         number = 2
         while (active_templates_dir(state) / template_file).exists():
-            template_file = f"{basis}_{number}.png"
+            template_file = f"{base_name}_{number}.png"
             number += 1
     else:
         template_file = f"{safe_name}.png"

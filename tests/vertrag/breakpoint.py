@@ -143,8 +143,8 @@ def _studio_gate(st, step):
     t = threading.Thread(target=lambda: res.setdefault(
         "value", _dbg.step_gate(st, step, "LOOP", 1, 2)))
     t.start()
-    frist = time.time() + 1.0
-    while not _status._state.get("manual") and time.time() < frist:
+    deadline = time.time() + 1.0
+    while not _status._state.get("manual") and time.time() < deadline:
         time.sleep(0.01)
     return t, res
 

@@ -31,13 +31,13 @@ import autoclicker.editors._detection_capture as _DC
 def _dc_folge(fn, inputs, **kw):
     """Ruft eine Capture-Funktion mit einer festen Tastenfolge auf."""
     consequence = list(inputs)
-    _alt = _DC.safe_input
+    _old = _DC.safe_input
     _DC.safe_input = lambda _p="": consequence.pop(0) if consequence else "cancel"
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return fn(**kw)
     finally:
-        _DC.safe_input = _alt
+        _DC.safe_input = _old
 
 
 # --- prompt_key: nur Tasten, die send_key auch abspielen kann ---
@@ -188,13 +188,13 @@ from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
 def _feld_folge(fn, inputs, **kw):
     """Ruft eine Feld-Abfrage mit einer festen Tastenfolge auf."""
     consequence = list(inputs)
-    _alt = _IF.safe_input
+    _old = _IF.safe_input
     _IF.safe_input = lambda _p="": consequence.pop(0) if consequence else ""
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return fn(**kw)
     finally:
-        _IF.safe_input = _alt
+        _IF.safe_input = _old
 
 
 class _MessLock:
@@ -239,8 +239,8 @@ check("eine unbrauchbare Wartezeit behaelt die Vorgabe",
 # ein gueltiges Ergebnis und taugt deshalb nicht als Abbruch-Zeichen.
 check("abbrechbar: 'cancel' meldet ABBRUCH, nicht (None, delay)",
       _feld_folge(_IF.ask_confirm_click, ["cancel"], state=_st_f,
-                  default_delay=0.5, abbrechbar=True) is _IF.CANCELLED)
-check("ohne `abbrechbar` ist 'cancel' nur eine unbrauchbare Eingabe",
+                  default_delay=0.5, cancellable=True) is _IF.CANCELLED)
+check("ohne `cancellable` ist 'cancel' nur eine unbrauchbare Eingabe",
       _feld_folge(_IF.ask_confirm_click, ["cancel"],
                   state=_st_f, default_delay=0.5) == (None, 0.5))
 
@@ -270,6 +270,6 @@ try:
                       category=None) == 1 and _verschoben == [])
     check("abbrechbar: 'cancel' meldet ABBRUCH",
           _feld_folge(_IF.ask_priority, ["cancel"], state=_st_f,
-                      category="Helme", abbrechbar=True) is _IF.CANCELLED)
+                      category="Helme", cancellable=True) is _IF.CANCELLED)
 finally:
     _IF.shift_category_priorities = _alt_shift

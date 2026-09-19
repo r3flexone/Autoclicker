@@ -50,8 +50,8 @@ def run():
             pruefe(bool(f.text("#view-scans").strip()), f"{kind}: Ansicht leer")
             if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
-                marke = "Boss-Scan testen" if kind == "boss" else "Icon-Scan testen"
-                f.klick_text("#view-scans button", marke)
+                badge = "Boss-Scan testen" if kind == "boss" else "Icon-Scan testen"
+                f.klick_text("#view-scans button", badge)
                 pruefe(bool(f.status().strip()), f"{kind}: Test meldete nichts")
             f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.

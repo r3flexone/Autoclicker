@@ -54,10 +54,10 @@ def environment_warnings() -> list[str]:
             "Fensteraufnahme benötigen eine X11-Sitzung.")
     elif not os.environ.get("DISPLAY"):
         messages.append("Keine X11-Sitzung gefunden: DISPLAY ist nicht gesetzt.")
-    for modul, paket in (
+    for module_name, package in (
             ("pynput", "pynput"), ("Xlib", "python-xlib"), ("mss", "mss")):
-        if find_spec(modul) is None:
-            messages.append(f"Linux-Abhängigkeit fehlt: pip install {paket}")
+        if find_spec(module_name) is None:
+            messages.append(f"Linux-Abhängigkeit fehlt: pip install {package}")
     return messages
 
 
@@ -81,8 +81,8 @@ def _mss_desktop():
 
 def get_virtual_desktop() -> tuple[int, int, int, int] | None:
     try:
-        with _mss_desktop() as bildschirm:
-            monitor = bildschirm.monitors[0]
+        with _mss_desktop() as screen:
+            monitor = screen.monitors[0]
             return (
                 int(monitor["left"]), int(monitor["top"]),
                 int(monitor["left"] + monitor["width"]),
@@ -94,8 +94,8 @@ def get_virtual_desktop() -> tuple[int, int, int, int] | None:
 
 def get_screen_size() -> tuple[int, int] | None:
     try:
-        with _mss_desktop() as bildschirm:
-            monitor = bildschirm.monitors[1]
+        with _mss_desktop() as screen:
+            monitor = screen.monitors[1]
             return int(monitor["width"]), int(monitor["height"])
     except (ImportError, OSError, RuntimeError, IndexError):
         return None
@@ -119,7 +119,7 @@ def capture_screen(region=None):
     """Screenshot über MSS; Ergebnis ist ein PIL-RGB-Bild."""
     try:
         from PIL import Image
-        with _mss_desktop() as bildschirm:
+        with _mss_desktop() as screen:
             if region:
                 left, top, right, bottom = (int(v) for v in region)
                 if right <= left or bottom <= top:
@@ -129,8 +129,8 @@ def capture_screen(region=None):
                     "width": right - left, "height": bottom - top,
                 }
             else:
-                monitor = bildschirm.monitors[0]
-            raw = bildschirm.grab(monitor)
+                monitor = screen.monitors[0]
+            raw = screen.grab(monitor)
             return Image.frombytes("RGB", raw.size, raw.rgb)
     except (ImportError, OSError, RuntimeError, ValueError) as error:
         logger.error("Linux-Screenshot fehlgeschlagen: %s", error)
@@ -199,7 +199,7 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
 
 
 def _keyboard_key(keyboard, name: str):
-    sondertasten = {
+    special_keys = {
         "enter": keyboard.Key.enter, "return": keyboard.Key.enter,
         "tab": keyboard.Key.tab, "space": keyboard.Key.space,
         "leertaste": keyboard.Key.space, "escape": keyboard.Key.esc,
@@ -209,8 +209,8 @@ def _keyboard_key(keyboard, name: str):
         "up": keyboard.Key.up, "down": keyboard.Key.down,
     }
     for number in range(1, 13):
-        sondertasten[f"f{number}"] = getattr(keyboard.Key, f"f{number}")
-    return sondertasten.get(name, name if len(name) == 1 else None)
+        special_keys[f"f{number}"] = getattr(keyboard.Key, f"f{number}")
+    return special_keys.get(name, name if len(name) == 1 else None)
 
 
 def send_key(key_name: str) -> bool:
@@ -520,9 +520,9 @@ def register_hotkeys() -> bool:
     try:
         keyboard, _ = _pynput()
         callbacks = {
-            kombination: (lambda hotkey_id=hotkey_id:
+            combination: (lambda hotkey_id=hotkey_id:
                           _hotkey_queue.put(hotkey_id))
-            for hotkey_id, kombination in HOTKEY_BINDINGS.items()
+            for hotkey_id, combination in HOTKEY_BINDINGS.items()
         }
         _hotkey_listener = keyboard.GlobalHotKeys(callbacks)
         _hotkey_listener.start()
@@ -589,7 +589,7 @@ def set_app_id(_app_id: str = APP_ID) -> bool:
     return False
 
 
-def set_window_icon(_titel_substring: str, waiting: float = 0.0) -> bool:
+def set_window_icon(_title_substring: str, waiting: float = 0.0) -> bool:
     if waiting > 0:
         time.sleep(min(float(waiting), 0.05))
     return False

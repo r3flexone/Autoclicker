@@ -249,10 +249,10 @@ def _debug_print(lines: list) -> None:
     try:
         from .utils import clear_line, dbg
         clear_line()
-        marke = dbg("[LLM]")
+        badge = dbg("[LLM]")
     except Exception:
-        marke = "[LLM]"
-    print("\n".join(f"{marke} {z}" for z in lines), flush=True)
+        badge = "[LLM]"
+    print("\n".join(f"{badge} {z}" for z in lines), flush=True)
 
 
 def _debug_request(provider: str, model: str, endpoint: str, prompt: str,
@@ -669,8 +669,8 @@ def suggest_item_name_with_reason(
         return None, ""
     if candidates:
         # Woertlich aus der Liste? Sonst einmal heranziehen, sonst nichts.
-        genau = {k.casefold(): k for k in candidates}.get(name.casefold())
-        return (genau or _closest_candidate(name, candidates)), ""
+        exact = {k.casefold(): k for k in candidates}.get(name.casefold())
+        return (exact or _closest_candidate(name, candidates)), ""
     # Auf eine sinnvolle Länge kürzen (Modelle plappern manchmal doch)
     return name[:40].strip(), ""
 

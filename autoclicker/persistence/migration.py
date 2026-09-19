@@ -104,26 +104,26 @@ def _norm_points(data, context: dict) -> list[str]:
     if not isinstance(data, list):
         return []
     messages = []
-    ohne_id = [p for p in data if isinstance(p, dict) and p.get("id") is None]
-    if ohne_id:
+    without_id = [p for p in data if isinstance(p, dict) and p.get("id") is None]
+    if without_id:
         assigned = {p["id"] for p in data if isinstance(p, dict) and p.get("id") is not None}
         next_one = 1
-        for p in ohne_id:
+        for p in without_id:
             while next_one in assigned:
                 next_one += 1
             p["id"] = next_one
             assigned.add(next_one)
-        messages.append(f"{len(ohne_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
+        messages.append(f"{len(without_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
 
-    entfernt = set()
+    removed_count = set()
     for p in data:
         if not isinstance(p, dict):
             continue
         for key in [k for k in p if k not in _POINT_KEYS]:
             del p[key]
-            entfernt.add(key)
-    if entfernt:
-        messages.append(f"tote Punkt-Felder entfernt: {', '.join(sorted(entfernt))}")
+            removed_count.add(key)
+    if removed_count:
+        messages.append(f"tote Punkt-Felder entfernt: {', '.join(sorted(removed_count))}")
     return messages
 
 
@@ -181,7 +181,7 @@ def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
     if not isinstance(data, dict):
         return data, []
 
-    kette = _CHAINS.get(kind, [])
+    chain = _CHAINS.get(kind, [])
     version = file_version(data)
     messages = []
 
@@ -191,11 +191,11 @@ def migrate(data, kind: str, context: Optional[dict] = None) -> tuple:
                       "- unbekannte Felder bleiben unangetastet"]
 
     while version < SCHEMA_VERSION:
-        if version >= len(kette):
+        if version >= len(chain):
             # Kein Schritt hinterlegt: Version anheben, nichts zu tun.
             version += 1
             continue
-        messages.extend(kette[version](data, context))
+        messages.extend(chain[version](data, context))
         version += 1
 
     data[VERSION_KEY] = SCHEMA_VERSION

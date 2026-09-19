@@ -199,7 +199,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
 
     category = select_category(state)
 
-    priority = ask_priority(state, category, abbrechbar=True)
+    priority = ask_priority(state, category, cancellable=True)
     if priority is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()
@@ -210,7 +210,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
     confirmation = ask_confirm_click(
         state, state.config.scan_confirm_delay,
-        prompt="  Punkt-ID für Bestätigung (Enter = keiner): ", abbrechbar=True)
+        prompt="  Punkt-ID für Bestätigung (Enter = keiner): ", cancellable=True)
     if confirmation is CANCELLED:
         print("  -> Abgebrochen")
         _cleanup_cached_template()

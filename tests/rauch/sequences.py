@@ -59,12 +59,12 @@ def run():
         # **Die Karten messen sich aneinander ein.** Fehlt einer die Notiz,
         # rutschte alles darunter hoch: der Phasenbalken der einen lag auf Höhe
         # der Kennzahlen der anderen, und die Übersicht war keine mehr.
-        for teil in ("seq-bar", "seq-numbers", "seq-footer"):
+        for part in ("seq-bar", "seq-numbers", "seq-footer"):
             kanten = f.seite.eval_on_selector_all(
-                f".seq-card .{teil}",
+                f".seq-card .{part}",
                 "ns => ns.map(n => Math.round(n.getBoundingClientRect().top))")
             pruefe(len(set(kanten)) == 1,
-                   f".{teil} liegt nicht auf einer Linie: {kanten}")
+                   f".{part} liegt nicht auf einer Linie: {kanten}")
         # Der Pfad der langen dritten Sequenz darf nicht über den Öffnen-Knopf
         # und in die Nachbarkarte malen. `min-width:0` allein reicht dafür nicht:
         # der Text schrumpft rechnerisch, bleibt bei overflow:visible aber sichtbar.

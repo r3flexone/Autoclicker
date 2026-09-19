@@ -72,7 +72,7 @@ MATCH_TOLERANCE = 2
 
 # Welche fremden Fenster schon gemeldet wurden — einmal je Titel. Ohne die Sperre
 # stünde bei jedem Klick in einem Menü dieselbe Zeile.
-_gemeldete_fenster: set = set()
+_reported_windows: set = set()
 
 # Der Rückkanal zum Studio-Fenster: dieselbe Bauart wie `.aufnahme.json` bei der
 # Aufnahme und `.lauf.json` beim Lauf. Kein Log — die Datei beschreibt den Stand
@@ -235,7 +235,7 @@ def prepare_reclick(state: AutoClickerState, seq: Sequence = None) -> tuple:
         state.reclick_target = target
         state.reclick_name = seq.name
         state.reclick_sequence = seq
-    _gemeldete_fenster.clear()
+    _reported_windows.clear()
     _write_status(state)
     return ids, others
 
@@ -295,10 +295,10 @@ def _in_target_window(target: str, x: int, y: int) -> bool:
 
 def start_reclick(state: AutoClickerState, seq: Sequence = None) -> bool:
     """Startet die Runde samt Maus-Hook. False = konnte nicht starten (mit Meldung)."""
-    geruestet = prepare_reclick(state, seq)
-    if geruestet is None:
+    prepared = prepare_reclick(state, seq)
+    if prepared is None:
         return False
-    ids, others = geruestet
+    ids, others = prepared
 
     if not install_mouse_hook(_on_click_factory(state), None):
         with state.lock:
@@ -339,9 +339,9 @@ def _banner(name: str, count: int, target: str, others: list) -> None:
               "jedem anderen")
         print("  Fenster kannst du klicken, ohne einen Punkt zu verbrauchen.")
     print()
-    for key, what, warum in KEYS:
+    for key, what, why in KEYS:
         print(f"    {col(key.ljust(11), 'yellow')} {what.ljust(13)}"
-              f"{hint(warum)}")
+              f"{hint(why)}")
     print()
     # **Der wichtigste Satz steht allein.** Alles bleibt in der Schwebe, bis
     # jemand übernimmt — wer das nicht weiss, hält eine abgebrochene Runde für
@@ -376,7 +376,7 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde —
     # ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
     # Dieselbe Regel wie `status.finish_run()`: die Zusammenfassung bleibt stehen.
-    abschluss = _status_data(state) if reclick_running(state) else None
+    summary = _status_data(state) if reclick_running(state) else None
     with state.lock:
         if not state.reclick_active:
             return
@@ -384,11 +384,11 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
         state.reclick_paused = False
         placed = list(state.reclick_set)
         remaining = len(state.reclick_points) - state.reclick_index
-        ziel_sequence = state.reclick_sequence
+        target_sequence = state.reclick_sequence
         points = {p.id: p for p in (
-            ziel_sequence.points if ziel_sequence is not None else state.points)}
+            target_sequence.points if target_sequence is not None else state.points)}
         if apply_config:
-            for point_id, _alt, new, neue_farbe in placed:
+            for point_id, _old, new, new_color in placed:
                 point = points.get(point_id)
                 if point is None:
                     continue
@@ -396,8 +396,8 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
                 # Die Farbe gehört zur Position — aber nur, wenn der Punkt vorher
                 # eine hatte. Sonst schliche sich ein Farb-Trigger ein, den
                 # niemand gesetzt hat. Dieselbe Regel wie in `walk_points`.
-                if point.color and neue_farbe:
-                    point.color = neue_farbe
+                if point.color and new_color:
+                    point.color = new_color
         state.reclick_points = []
         state.reclick_index = 0
         state.reclick_set = []
@@ -407,16 +407,16 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
         state.reclick_name = ""
         state.reclick_sequence = None
     remove_mouse_hook()
-    _gemeldete_fenster.clear()
+    _reported_windows.clear()
     # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
     # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
     # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
-    if abschluss is not None:
-        abschluss.update({"active": False, "paused": False, "point": {},
+    if summary is not None:
+        summary.update({"active": False, "paused": False, "point": {},
                           "reason": reason, "applied": bool(apply_config),
                           "stamp": time.time()})
         try:
-            atomic_write(_STATUS_PATH, compact_json(abschluss))
+            atomic_write(_STATUS_PATH, compact_json(summary))
         except (OSError, TypeError, ValueError):
             pass
 
@@ -426,16 +426,16 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
     if placed and apply_config:
         from ..persistence import save_sequence_file, sequence_file
-        if ziel_sequence is not None:
-            save_sequence_file(ziel_sequence, sequence_file(ziel_sequence.name))
+        if target_sequence is not None:
+            save_sequence_file(target_sequence, sequence_file(target_sequence.name))
 
     print(f"\n{col('[NACHKLICK]', 'cyan')} {reason}.")
     if not placed:
         print("  Nichts geändert.")
     elif apply_config:
         print(f"  {ok(f'{len(placed)} Punkt(e) neu gesetzt und gespeichert.')}")
-        for point_id, altpos, new, _f in placed[:12]:
-            print(hint(f"     #{point_id}  ({altpos[0]}, {altpos[1]}) → "
+        for point_id, old_pos, new, _f in placed[:12]:
+            print(hint(f"     #{point_id}  ({old_pos[0]}, {old_pos[1]}) → "
                        f"({new[0]}, {new[1]})"))
         if len(placed) > 12:
             print(hint(f"     … und {len(placed) - 12} weitere"))
@@ -454,9 +454,9 @@ def reclick_pause(state: AutoClickerState) -> None:
         if not state.reclick_active:
             return
         state.reclick_paused = not state.reclick_paused
-        pausiert = state.reclick_paused
+        paused = state.reclick_paused
     _write_status(state)
-    if pausiert:
+    if paused:
         print(f"\n{col('[PAUSE]', 'yellow')} Klicks setzen KEINEN Punkt — "
               "navigiere, wie du willst.")
         print(f"  Fortsetzen: {col('CTRL+ALT+H', 'yellow')} erneut drücken")
@@ -548,8 +548,8 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
     # schnell zurück muss.
     if not _in_target_window(target, x, y):
         foreign = clicked_window(x, y) or "?"
-        if foreign not in _gemeldete_fenster:
-            _gemeldete_fenster.add(foreign)
+        if foreign not in _reported_windows:
+            _reported_windows.add(foreign)
             print(f"\n  {warn('[IGNORIERT]')} Klick in „{foreign}“ — Punkte werden "
                   f"nur in „{target}“ gesetzt.")
             print(hint("     Fenster wechseln und weiterklicken; der Punkt ist "
@@ -600,17 +600,17 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
     if done:
         stop_reclick(state, "alle Punkte durch")
     else:
-        _show_current(state, verzoegert=True)
+        _show_current(state, delayed=True)
 
 
-def _jump(x: int, y: int, verzoegert: bool = False) -> None:
+def _jump(x: int, y: int, delayed: bool = False) -> None:
     """Setzt den Zeiger auf eine Stelle — nach einem Klick erst nach kurzer Frist.
 
     Die Frist ist der ganze Grund, warum das eine eigene Funktion ist: der
     Maus-Hook meldet den DRUCK, das Loslassen kommt erst danach. Sofort zu
     springen machte aus jedem Klick ein Ziehen.
     """
-    if not verzoegert:
+    if not delayed:
         set_cursor_pos(x, y)
         return
     time_value = threading.Timer(JUMP_DELAY, set_cursor_pos, args=(x, y))
@@ -618,7 +618,7 @@ def _jump(x: int, y: int, verzoegert: bool = False) -> None:
     time_value.start()
 
 
-def _show_current(state: AutoClickerState, verzoegert: bool = False) -> None:
+def _show_current(state: AutoClickerState, delayed: bool = False) -> None:
     """Sagt, welcher Punkt als Nächstes dran ist — und fährt ihn an.
 
     **Der Zeiger steht immer schon auf der gespeicherten Stelle.** Damit ist ein
@@ -651,4 +651,4 @@ def _show_current(state: AutoClickerState, verzoegert: bool = False) -> None:
     print(f"  {col(f'→ {i + 1}/{total}', 'cyan')}  #{point.id} "
           f"{point.name or '(ohne Name)'}   Zeiger steht auf "
           f"({point.x}, {point.y}){color_text}")
-    _jump(point.x, point.y, verzoegert)
+    _jump(point.x, point.y, delayed)

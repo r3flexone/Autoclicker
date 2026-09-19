@@ -358,7 +358,7 @@ def handle_show(state: AutoClickerState) -> None:
         return
     with state.lock:
         active = state.active_sequence.name if state.active_sequence else None
-    vorauswahl = next((i for i, (name, _pfad) in enumerate(sequences)
+    vorauswahl = next((i for i, (name, _path) in enumerate(sequences)
                        if name == active), 0)
     selection = interactive_select(
         [name + (" *AKTIV*" if name == active else "") for name, _ in sequences],
@@ -761,7 +761,7 @@ def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
         handle_toggle(state, aus_studio=None)
         return True
 
-    zielzeit = zielstempel if zielstempel is not None else time.time() + seconds
+    target_time = zielstempel if zielstempel is not None else time.time() + seconds
     with state.lock:
         if state.countdown_active or state.is_running:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
@@ -770,13 +770,13 @@ def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
         name = state.active_sequence.name if state.active_sequence else "?"
 
     from .runtime import status as laufstatus
-    laufstatus.schedule_run(name, zielzeit)
+    laufstatus.schedule_run(name, target_time)
 
     def countdown_worker():
         starten = False
         try:
             while not state.stop_event.is_set() and not state.quit_event.is_set():
-                remainder = zielzeit - time.time()
+                remainder = target_time - time.time()
                 if remainder <= 0:
                     starten = True
                     break
@@ -844,20 +844,20 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
     number = arguments.get("point")
     head = f"#{number} " if number else ""
     print(f"\n{col('[STUDIO]', 'cyan')} {head}{name} {coord_context(x, y)}")
-    jetzt = get_screen_pixel(x, y)
-    if jetzt:
-        print(f"       Dort jetzt:  {describe_color(jetzt)}")
+    now = get_screen_pixel(x, y)
+    if now:
+        print(f"       Dort jetzt:  {describe_color(now)}")
     expected = arguments.get("color")
-    if expected and jetzt:
+    if expected and now:
         try:
             from .imaging import color_distance
-            distance = color_distance(tuple(expected), jetzt)
+            distance = color_distance(tuple(expected), now)
         except (TypeError, ValueError):
             distance = None
         if distance is not None:
             same = distance <= state.config.pixel_wait_tolerance
-            marke = ok("passt") if same else warn("weicht ab")
-            print(f"       Gespeichert: {describe_color(tuple(expected))}  {marke}")
+            badge = ok("passt") if same else warn("weicht ab")
+            print(f"       Gespeichert: {describe_color(tuple(expected))}  {badge}")
     print(hint("       Maus steht jetzt auf der Stelle."))
 
 

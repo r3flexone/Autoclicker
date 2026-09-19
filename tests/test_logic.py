@@ -248,7 +248,7 @@ st = AutoClickerState()
 from autoclicker.import_export import export_bundle, read_manifest
 import os as _os_bundle
 _bundle_alt = Path.cwd()
-_bundle_root = tmp / "neues_layout"
+_bundle_root = tmp / "new_layout"
 (_bundle_root / "sequences" / "Test" / "item_scans").mkdir(parents=True)
 _seq_json = {"name": "Test", "points": [_point_to_dict(
     ClickPoint(1, 2, "P1", 1, color=(3, 4, 5), source="Aufnahme 'A'"))],
@@ -372,9 +372,9 @@ check("scroll ueberlebt Round-Trip", _back[0].scroll == -3)
 check("check_only ueberlebt Round-Trip", _back[1].wait_condition.check_only is True)
 check("until_gone ueberlebt Round-Trip", _back[1].wait_condition.until_gone is True)
 
-_alt = _parse_steps([{"x": 1, "y": 2, "delay_before": 1, "name": "alt"}])
-check("alte Schritte ohne neue Keys: scroll=None", _alt[0].scroll is None)
-check("alte Schritte ohne neue Keys: keine WaitCondition", _alt[0].wait_condition is None)
+_old = _parse_steps([{"x": 1, "y": 2, "delay_before": 1, "name": "alt"}])
+check("alte Schritte ohne neue Keys: scroll=None", _old[0].scroll is None)
+check("alte Schritte ohne neue Keys: keine WaitCondition", _old[0].wait_condition is None)
 _alt_color = _parse_steps([{"x": 1, "y": 2, "delay_before": 0, "wait_pixel": [3, 4],
                             "wait_color": [5, 6, 7]}])
 check("alter Farb-Trigger bleibt Warten (check_only=False)",
@@ -558,7 +558,7 @@ _st2.active_sequence = _seq
 for _p in _st2.points:
     _p.x += 8
     _p.y += 5
-_meldungen = _resolve(_st2, _seq)
+_messages = _resolve(_st2, _seq)
 _s = _seq.loop_phases[0].steps
 
 check("verknuepfter Schritt folgt dem Punkt", (_s[0].x, _s[0].y) == (108, 205))
@@ -575,7 +575,7 @@ check("Pruef-Pixel an eigenem Punkt folgt DIESEM Punkt",
       tuple(_s[1].wait_condition.pixel) == (1007, 1004))
 check("Schritt ohne Stelle bleibt bei (0, 0)", (_s[2].x, _s[2].y) == (0, 0))
 check("verwaiste Referenz wird gemeldet",
-      any("#42" in m and "nicht mehr gibt" in m for m in _meldungen))
+      any("#42" in m and "nicht mehr gibt" in m for m in _messages))
 
 # Der Kern der Umstellung: eine tote Referenz hat KEINE Rueckfall-Koordinate mehr.
 # Frueher blieb der Schritt auf seinem alten x/y stehen und klickte dorthin - also auf
@@ -1500,12 +1500,12 @@ _st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True,
                                  default_scan="gibtsnicht")}
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
 
-_ber = check_setup(_st6, mit_sequenzen=False)
+_ber = check_setup(_st6, with_sequences=False)
 _texte = [f"{b.area}: {b.text}" for b in _ber.befunde]
 
 
-def _hat(teil):
-    return any(teil in t for t in _texte)
+def _hat(part):
+    return any(part in t for t in _texte)
 
 
 check("fehlendes Template wird gefunden", _hat("gibtsnicht.png"))
@@ -1534,7 +1534,7 @@ _st_fb.item_scans = {"inv": _ISC3(
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
 _st_fb.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra", template="t.png")],
                                 default_scan="inv")}
-_fb = check_setup(_st_fb, mit_sequenzen=False)
+_fb = check_setup(_st_fb, with_sequences=False)
 check("ein Fallback-Scan, den es GIBT, wird nicht gemeldet",
       not any("Fallback-Scan" in f"{b.area}: {b.text}" for b in _fb.befunde))
 
@@ -1543,7 +1543,7 @@ _st7 = _ACS()
 _st7.item_scans = {"inv": _ISC3(
     name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
-_sauber = check_setup(_st7, mit_sequenzen=False)
+_sauber = check_setup(_st7, with_sequences=False)
 check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
 check("trotzdem steht da, was geprueft wurde", len(_sauber.checked) >= 3)
 
@@ -1694,8 +1694,8 @@ def _immediate_lauf(items, slots, match):
     _orig_exec = _IS.execute_item_scan
     def _prof(profile, img, tol, state, debug, label="gefunden",
               return_score=False):
-        passt = match.get(state_value["slot"]) == profile.name
-        return (passt, 1.0 if passt else 0.0) if return_score else passt
+        fits = match.get(state_value["slot"]) == profile.name
+        return (fits, 1.0 if fits else 0.0) if return_score else fits
     _IS._check_profile_match = _prof
     def _exec(state, name, mode="all", slots_override=None):
         state_value["slot"] = slots_override[0].name if slots_override else None
@@ -2224,7 +2224,7 @@ _os.chdir(_kalib_tmp)
 try:
     _st, _schritt, _trig, _shot = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _zahl = _IE.calibrate_inventory(_st, _t, mit_scans=True, mit_sequenzen=True)
+        _zahl = _IE.calibrate_inventory(_st, _t, with_scans=True, with_sequences=True)
 
     for _was, _ist, _soll in [
         ("Punkt (der Referenzpunkt selbst)", (_st.points[0].x, _st.points[0].y), (140, 175)),
@@ -2260,7 +2260,7 @@ try:
     # Umfang muss sich begrenzen lassen
     _st2, _schritt2, _, _ = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _IE.calibrate_inventory(_st2, _t, mit_scans=False, mit_sequenzen=False)
+        _IE.calibrate_inventory(_st2, _t, with_scans=False, with_sequences=False)
     check("nur Punkte: Punkt wandert",
           (_st2.points[0].x, _st2.points[0].y) == (140, 175))
     check("nur Punkte: Slot bleibt unberuehrt",
@@ -2273,8 +2273,8 @@ try:
     # Nach einer Reparatur duerfen die Slots kein zweites Mal wandern.
     _st4, _schritt4, _, _ = _kalib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _z4 = _IE.calibrate_inventory(_st4, _t, mit_scans=True, mit_sequenzen=True,
-                                     mit_slots=False)
+        _z4 = _IE.calibrate_inventory(_st4, _t, with_scans=True, with_sequences=True,
+                                     with_slots=False)
     check("ohne Slots: Slot-Region bleibt exakt stehen",
           _st4.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
     check("ohne Slots: Slot-Klickposition bleibt stehen",
@@ -2307,7 +2307,7 @@ try:
         "end_steps": []}), encoding="utf-8")
     _st3 = AutoClickerState()
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _IE.calibrate_inventory(_st3, _t, mit_scans=False, mit_sequenzen=True)
+        _IE.calibrate_inventory(_st3, _t, with_scans=False, with_sequences=True)
     _d = json.loads(_sq.read_text(encoding="utf-8"))
     _s0, _s1 = _d["init_steps"][0], _d["loop_phases"][0]["steps"][0]
     check("nicht geladene Sequenzdatei wird mitgerechnet",
@@ -2360,7 +2360,7 @@ try:
     # Gegen-Verschiebung muss exakt zum Ausgangswert zurueckfuehren
     with _cl2.redirect_stdout(_io2.StringIO()):
         _IE.calibrate_inventory(_st3, _IE.transform_from_offset((140, 175), (100, 200)),
-                               mit_scans=False, mit_sequenzen=True)
+                               with_scans=False, with_sequences=True)
     _d2 = json.loads(_sq.read_text(encoding="utf-8"))
     check("Rueckrechnung trifft den Ausgangswert genau",
           (_d2["init_steps"][0]["x"], _d2["init_steps"][0]["y"]) == (100, 200))
@@ -2485,12 +2485,12 @@ import autoclicker.runtime.debug as _DBG
 from autoclicker.models import ClickPoint as _WCP
 
 
-def _walk_pfad(tasten):
+def _walk_pfad(keys_list):
     """Gibt die Reihenfolge der besuchten Punkt-Indizes zurueck."""
     st = AutoClickerState()
     st.points = [_WCP(x=i * 10, y=i * 10, name=f"P{i}", id=i) for i in range(1, 6)]
     besucht = []
-    consequence = list(tasten)
+    consequence = list(keys_list)
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
     _DBG.read_command = lambda *a, **k: consequence.pop(0) if consequence else "q"
     _DBG.set_cursor_pos = lambda x, y: besucht.append(x // 10)
@@ -2529,12 +2529,12 @@ check("walk: unbekannte Taste bleibt stehen",
 
 # 'n' setzt den Punkt auf die aktuelle Mausposition — damit repariert man eine Sequenz,
 # ohne Wartezeiten/else/Scans anzufassen: Schritte mit point_id ziehen automatisch nach.
-def _walk_setzen(tasten, maus, color=(9, 9, 9)):
+def _walk_setzen(keys_list, maus, color=(9, 9, 9)):
     """Gibt die Punkte nach dem Durchgang zurueck."""
     st = AutoClickerState()
     st.points = [_WCP(x=10, y=10, name="P1", id=1, color=(1, 2, 3)),
                  _WCP(x=20, y=20, name="P2", id=2)]
-    consequence = list(tasten)
+    consequence = list(keys_list)
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
     _o_get = _DBG.get_cursor_pos
     import autoclicker.imaging as _IMG
@@ -2638,11 +2638,11 @@ _WIN_MUSTER = _re_p.compile(r"ctypes\.(windll|WinDLL|WINFUNCTYPE)|\bwintypes\b|\
 
 _paket = Path(__file__).resolve().parent.parent / "autoclicker"
 _ausreisser = []
-for _pfad in sorted(_paket.rglob("*.py")):
-    _rel = _pfad.relative_to(_paket.parent).as_posix()
+for _path in sorted(_paket.rglob("*.py")):
+    _rel = _path.relative_to(_paket.parent).as_posix()
     if _rel in PLATTFORM_MODULE:
         continue
-    _matches = _WIN_MUSTER.findall(_pfad.read_text(encoding="utf-8"))
+    _matches = _WIN_MUSTER.findall(_path.read_text(encoding="utf-8"))
     if _matches:
         _ausreisser.append(f"{_rel} ({len(_matches)}x)")
 
@@ -3338,7 +3338,7 @@ class _Mitschnitt:
         pass
 
 
-_CONS._letzte_status_laenge = 0
+_CONS._last_status_length = 0
 _mit = _Mitschnitt()
 _echt_out = sys.stdout
 try:
@@ -3363,7 +3363,7 @@ check("die Loeschbreite folgt der vorherigen Zeile statt fixer 80",
       _breite >= len("[Loop] Schritt 2/50 | ") + 90)
 
 # ANSI-Sequenzen belegen keine Spalte — mitgezaehlt waere die Breite absurd gross
-_CONS._letzte_status_laenge = 0
+_CONS._last_status_length = 0
 _mit2 = _Mitschnitt()
 try:
     sys.stdout = _mit2
@@ -3375,7 +3375,7 @@ check("ANSI-Codes zaehlen nicht zur Zeilenbreite",
 
 # Eine Meldung, die die Status-Zeile bewusst abschliesst (\n mittendrin), darf die
 # Breite nicht aus dem Teil DAVOR nehmen — dort steht nichts mehr zu ueberschreiben.
-_CONS._letzte_status_laenge = 0
+_CONS._last_status_length = 0
 _mit3 = _Mitschnitt()
 try:
     sys.stdout = _mit3
@@ -3383,8 +3383,8 @@ try:
 finally:
     sys.stdout = _echt_out
 check("nach einem \\n zaehlt nur der Teil dahinter",
-      _CONS._letzte_status_laenge == 4)
-_CONS._letzte_status_laenge = 0
+      _CONS._last_status_length == 4)
+_CONS._last_status_length = 0
 
 # CTRL+ALT+U trifft waehrend der Aufnahme die Aufnahme, sonst die Punkte
 from autoclicker.handlers import handle_undo as _hu
@@ -3522,27 +3522,27 @@ check("ungueltige Nummer aendert nichts", _selection(["9", "1", "done"]) == ["A"
 check("unbekannter Befehl aendert nichts", _selection(["quatsch", "1", "done"]) == ["A"])
 check("'show' aendert die Auswahl nicht", _selection(["1", "show", "done"]) == ["A"])
 
-# leer_fehler erzwingt mindestens einen Eintrag — 'done' darf dann nicht durchgehen
-check("leer_fehler: 'done' ohne Auswahl wird abgelehnt",
-      _selection(["done", "1", "done"], leer_fehler="Mindestens 1!") == ["A"])
-check("ohne leer_fehler ist eine leere Auswahl erlaubt", _selection(["done"]) == [])
+# empty_error erzwingt mindestens einen Eintrag — 'done' darf dann nicht durchgehen
+check("empty_error: 'done' ohne Auswahl wird abgelehnt",
+      _selection(["done", "1", "done"], empty_error="Mindestens 1!") == ["A"])
+check("ohne empty_error ist eine leere Auswahl erlaubt", _selection(["done"]) == [])
 
 # Der 'new'-Befehl haengt einen Eintrag an UND waehlt ihn aus
 _neu_liste = ["A", "B"]
 _ergebnis = _selection(["new 1", "done"], entries=_neu_liste,
-                     extra_praefix="new", extra_fn=lambda raw: "Frisch")
+                     extra_prefix="new", extra_fn=lambda raw: "Frisch")
 check("'new' waehlt den neuen Eintrag gleich mit", _ergebnis == ["Frisch"])
 check("'new' bekommt die Roh-Eingabe (Slot-Nummer bleibt lesbar)",
-      _selection(["new 3", "done"], extra_praefix="new",
+      _selection(["new 3", "done"], extra_prefix="new",
                extra_fn=lambda raw: raw) == ["new 3"])
 check("'new' ohne Ergebnis aendert nichts",
-      _selection(["new 1", "done"], extra_praefix="new",
+      _selection(["new 1", "done"], extra_prefix="new",
                extra_fn=lambda raw: None) == [])
 
 # Regression: '1-5' darf nicht als unbekannter Befehl durchfallen, und 'new' nicht
 # als Bereich gelesen werden (beides stand vorher in derselben elif-Kette)
 check("'new' wird nicht als Bereich missverstanden",
-      _selection(["new-quatsch", "1", "done"], extra_praefix="new",
+      _selection(["new-quatsch", "1", "done"], extra_prefix="new",
                extra_fn=lambda raw: None) == ["A"])
 
 
@@ -5249,7 +5249,7 @@ section("Sequenz-Studio: Uebersicht und Laufstatus")
 # ueber `call()` landete die Antwort in `S`, und ein Blick in die Uebersicht waere
 # ein Datenverlust im Editor.
 import threading as _thr16, time as _time16
-from autoclicker.editors.sequence_studio.bridge import scan_warnungen as _sw16
+from autoclicker.editors.sequence_studio.bridge import scan_warnings as _sw16
 from autoclicker.editors.sequence_studio.model import sequence_to_board as _s2b16
 
 _st16 = tempfile.mkdtemp()
@@ -5304,7 +5304,7 @@ try:
           Path(_nach16["kaputt"]["file"]) == _kaputt16)
 
     # Gegenprobe zur Wiederverwendung: Speichern und Uebersicht duerfen nicht zwei
-    # getrennte Regeln haben. Beide fragen scan_warnungen() - der Test misst das,
+    # getrennte Regeln haben. Beide fragen scan_warnings() - der Test misst das,
     # indem er beide Seiten befragt und vergleicht.
     _b16b = _SB8(_SEQ8(name="gross"),
                  Path("sequences") / "gross" / "sequence.json", "sequences")
@@ -5410,7 +5410,7 @@ try:
     _schritt19 = _b19.board.lanes[_lane19].steps[0]
     _alt19 = (_io18.wait_for_global_key, _wa18.get_cursor_pos, _wa18.get_screen_pixel)
     try:
-        _io18.wait_for_global_key = lambda tasten, timeout=0: "enter"
+        _io18.wait_for_global_key = lambda keys_list, timeout=0: "enter"
         _wa18.get_cursor_pos = lambda: (640, 480)
         _wa18.get_screen_pixel = lambda x, y: (10, 20, 30)
         _z19 = _b19.point_capture()
@@ -5430,7 +5430,7 @@ try:
               len(_b19.points) == _vorher19 and (_schritt19.x, _schritt19.y) == (700, 500))
 
         # ESC laesst alles, wie es war.
-        _io18.wait_for_global_key = lambda tasten, timeout=0: "escape"
+        _io18.wait_for_global_key = lambda keys_list, timeout=0: "escape"
         _z19 = _b19.point_capture()
         check("ESC aendert nichts", (_schritt19.x, _schritt19.y) == (700, 500)
               and _z19["status"]["kind"] == "warn")
@@ -5534,8 +5534,8 @@ try:
 
     _fs16 = _FakeState16()
     _stat16.finish_run()
-    _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A"}, sofort=True)
-    _stat16.write_status(_fs16, {"block": 3, "blocks": 9}, sofort=True)
+    _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A"}, immediately=True)
+    _stat16.write_status(_fs16, {"block": 3, "blocks": 9}, immediately=True)
     # .get() statt [] ueberall hier unten: faellt der Merge weg, fehlt der
     # Schluessel ganz - und ein KeyError risse die restliche Suite mit, statt
     # eine Zeile FAIL zu melden. Genau der Fall, den dieser Test faengt.
@@ -5552,7 +5552,7 @@ try:
     # der naechste Schreibvorgang einen Block, der laengst durch ist.
     _stat16.write_status(_fs16, {"block": 4})
     check("ein gedrosselter Aufruf schreibt nicht", _lauf16().get("block") == 3)
-    _stat16.write_status(_fs16, {}, sofort=True)
+    _stat16.write_status(_fs16, {}, immediately=True)
     check("aber seine Information ist nicht verloren", _lauf16().get("block") == 4)
 
     # Ein wartender Lauf ist kein toter Lauf: das Lebenszeichen haelt `stamp`
@@ -5600,7 +5600,7 @@ try:
     # --- Der Warte-Kasten: worauf der Block gerade wartet ---
     # "seit 12 s" allein beantwortet die Frage nicht: bei 15 s Wartezeit sind
     # zwoelf Sekunden fast geschafft, bei 300 s Timeout gerade erst angefangen.
-    _stat16.write_status(_fs16, {"block": 5}, sofort=True)
+    _stat16.write_status(_fs16, {"block": 5}, immediately=True)
     _time16.sleep(0.25)     # Setzen ist gedrosselt wie jeder andere Schreibvorgang
     _stat16.waiting_for(_fs16, {"kind": "time", "text": "Vor Klick", "since": 1.0,
                            "until": 7.0, "total": 6.0})
@@ -5761,7 +5761,7 @@ try:
     # geworden ist.
     _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A",
                              "phase_pos": 1, "block": 5, "waiting": {"kind": "time"}},
-                     sofort=True)
+                     immediately=True)
     _stat16.finish_run(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
     _ende16 = _lauf16()
     check("am Ende steht die Zusammenfassung da", Path(_rsf16).exists())
@@ -5792,7 +5792,7 @@ try:
 
     # Vergessen gehoert trotzdem dazu: der naechste Lauf ist eine andere Sequenz,
     # und ein stehengebliebener Block stuende sonst in seiner ersten Momentaufnahme.
-    _stat16.write_status(_fs16, {"active": True}, sofort=True)
+    _stat16.write_status(_fs16, {"active": True}, immediately=True)
     check("und der naechste Lauf faengt bei null an", "block" not in _lauf16())
 
     # Ohne State (der Lauf lief gar nicht erst an) gibt es nichts zusammenzufassen.

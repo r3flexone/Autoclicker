@@ -101,16 +101,16 @@ def _write_status(state: AutoClickerState, events: list | None = None,
     """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören."""
     try:
         with state.lock:
-            liste = list(state.recording_events) if events is None else list(events)
+            listing = list(state.recording_events) if events is None else list(events)
             running = state.recording_active if active is None else active
-            pausiert = state.recording_paused
+            paused = state.recording_paused
             name = state.recording_ui_name
         atomic_write(_RECORDING_STATUS, compact_json({
             "active": bool(running),
-            "paused": bool(pausiert and running),
+            "paused": bool(paused and running),
             "name": name,
-            "count": len(liste),
-            "events": _status_events(liste),
+            "count": len(listing),
+            "events": _status_events(listing),
             "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError, AttributeError):
@@ -133,14 +133,14 @@ def _append_event(state: AutoClickerState, event: RecordEvent) -> bool:
     with state.lock:
         if not state.recording_active or state.recording_paused:
             return False
-        vorherige = state.recording_events[-1] if state.recording_events else None
-        delay = None if vorherige is None else round(event.t - vorherige.t, 2)
-        if (event.kind == REC_SCROLL and vorherige is not None
-                and vorherige.kind == REC_SCROLL
-                and event.t - vorherige.t <= _SCROLL_MERGE_GAP):
-            vorherige.scroll += event.scroll
-            vorherige.t = event.t
-            idx, event = len(state.recording_events), vorherige
+        previous = state.recording_events[-1] if state.recording_events else None
+        delay = None if previous is None else round(event.t - previous.t, 2)
+        if (event.kind == REC_SCROLL and previous is not None
+                and previous.kind == REC_SCROLL
+                and event.t - previous.t <= _SCROLL_MERGE_GAP):
+            previous.scroll += event.scroll
+            previous.t = event.t
+            idx, event = len(state.recording_events), previous
         else:
             state.recording_events.append(event)
             idx = len(state.recording_events)
@@ -184,10 +184,10 @@ def _on_wheel_factory(state: AutoClickerState):
         return None
 
     def _on_wheel(x: int, y: int, delta: int) -> None:
-        stufen = int(delta / WHEEL_DELTA)  # Richtung TRUNKIEREN, nicht abrunden
-        if stufen:
+        levels = int(delta / WHEEL_DELTA)  # Richtung TRUNKIEREN, nicht abrunden
+        if levels:
             _append_event(state, RecordEvent(REC_SCROLL, time.monotonic(), x, y,
-                                          scroll=stufen))
+                                          scroll=levels))
     return _on_wheel
 
 
@@ -232,8 +232,8 @@ def _recording_running(state: AutoClickerState) -> bool:
         if not state.recording_active:
             print(f"\n{hint('Keine Aufnahme aktiv — CTRL+ALT+J startet eine.')}")
             return False
-        pausiert = state.recording_paused
-    if pausiert:
+        paused = state.recording_paused
+    if paused:
         print(f"\n{hint('Aufnahme pausiert — CTRL+ALT+H setzt sie fort.')}")
         return False
     return True
@@ -298,14 +298,14 @@ def discard_last(state: AutoClickerState) -> None:
     eigenen Buchstaben — und es sind ohnehin nur noch vier frei.
     """
     with state.lock:
-        entfernt = state.recording_events.pop() if state.recording_events else None
+        removed_count = state.recording_events.pop() if state.recording_events else None
         remainder = len(state.recording_events)
         events = list(state.recording_events)
-    if entfernt is None:
+    if removed_count is None:
         print(f"\n{col('[UNDO]', 'yellow')} Nichts aufgezeichnet, nichts zurückzunehmen.")
         return
     _write_status(state, events)
-    print(f"\n{col('[UNDO]', 'yellow')} Verworfen: {entfernt}  "
+    print(f"\n{col('[UNDO]', 'yellow')} Verworfen: {removed_count}  "
           f"{hint(f'({remainder} übrig)')}")
 
 
@@ -326,31 +326,31 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         state.recording_ui_description = str(description or "").strip()
 
     # None = Mausrad abgeschaltet (record_scroll). Der Hook laeuft dann ohne Rad-Zweig.
-    rad = _on_wheel_factory(state)
+    wheel = _on_wheel_factory(state)
 
-    if install_mouse_hook(_on_click_factory(state), rad):
+    if install_mouse_hook(_on_click_factory(state), wheel):
         # Die Tastatur ist die Kür: klappt sie nicht, laeuft die Aufnahme trotzdem —
         # nur eben ohne Tastendrücke. Umgekehrt waere eine Aufnahme ohne Klicks sinnlos.
-        tasten = install_keyboard_hook(_on_key_factory(state))
-        arten = "Linksklick"
-        if rad:
-            arten += ", Mausrad"
-        if tasten:
-            arten += ", Tastendruck"
+        keys_list = install_keyboard_hook(_on_key_factory(state))
+        kinds = "Linksklick"
+        if wheel:
+            kinds += ", Mausrad"
+        if keys_list:
+            kinds += ", Tastendruck"
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print("  Klicke die gewünschten Positionen im Spiel.")
-        print(f"  Aufgezeichnet: {arten}")
+        print(f"  Aufgezeichnet: {kinds}")
         for key, action, label in RECORDING_HOTKEYS:
             print(f"  {action + ':':24} {col(key, 'yellow')} "
                   f"{hint('(' + label + ')')}")
-        if not tasten:
+        if not keys_list:
             print(f"  {warn('Tastatur-Hook nicht installierbar — Tastendrücke fehlen.')}")
         else:
             print(hint("  Tasten mit CTRL oder ALT werden nicht aufgezeichnet —"))
             print(hint("  dort liegen die Hotkeys der App."))
         # Abgeschaltet wird per Config, nicht per Hotkey — dann muss die Aufnahme aber
         # sagen, dass Drehen folgenlos bleibt. Sonst sucht man den Fehler beim Hook.
-        if not rad:
+        if not wheel:
             print(hint("  Mausrad wird nicht aufgezeichnet (record_scroll=false)."))
         _write_status(state)
     else:
@@ -446,19 +446,19 @@ def phase_boundaries(events: list) -> tuple[list, list[int]]:
     des nächsten Schritts und dessen Wartezeit begänne am Tastendruck. Gezählt
     wird in Schritten, denn Warte-Marker erzeugen keinen eigenen.
     """
-    keep, grenzen = [], []
-    erzeugte = 0
+    keep, limits = [], []
+    created_ones = 0
     for ev in events:
         if ev.kind == REC_PHASE:
-            grenzen.append(erzeugte)
+            limits.append(created_ones)
             continue
         if ev.kind != REC_WAIT_COLOR:
-            erzeugte += 1
+            created_ones += 1
         keep.append(ev)
-    return keep, grenzen
+    return keep, limits
 
 
-def build_phases(steps: list, grenzen: list[int]) -> list:
+def build_phases(steps: list, limits: list[int]) -> list:
     """Schneidet die fertige Schrittliste an den Grenzen in Loop-Phasen.
 
     Ohne Grenze bleibt alles in EINER Phase — exakt das bisherige Verhalten.
@@ -470,15 +470,15 @@ def build_phases(steps: list, grenzen: list[int]) -> list:
     zurück; eine Sequenz ohne jede Loop-Phase hat keine Stelle, an der man
     danach etwas einfügen könnte.
     """
-    schnitte = [0] + [min(g, len(steps)) for g in grenzen] + [len(steps)]
+    cuts = [0] + [min(g, len(steps)) for g in limits] + [len(steps)]
     phases = []
-    for anfang, ende_ in zip(schnitte, schnitte[1:]):
-        teil = list(steps[anfang:ende_])
-        if not teil:
+    for beginning, end_ in zip(cuts, cuts[1:]):
+        part = list(steps[beginning:end_])
+        if not part:
             continue
         number = len(phases) + 1
         name = "Loop" if number == 1 else f"Loop {number}"
-        phases.append(LoopPhase(name=name, steps=teil, repeat=1))
+        phases.append(LoopPhase(name=name, steps=part, repeat=1))
     if not phases:
         phases.append(LoopPhase(name="Loop", steps=[], repeat=1))
     return phases
@@ -495,8 +495,8 @@ def check_markers(events: list) -> tuple[list, int]:
     keep, discarded = [], 0
     for i, ev in enumerate(events):
         if ev.kind == REC_WAIT_COLOR:
-            naechster = events[i + 1] if i + 1 < len(events) else None
-            if naechster is None or naechster.kind not in (REC_CLICK, REC_SCROLL):
+            next_item = events[i + 1] if i + 1 < len(events) else None
+            if next_item is None or next_item.kind not in (REC_CLICK, REC_SCROLL):
                 discarded += 1
                 continue
         keep.append(ev)
@@ -527,8 +527,8 @@ def steps_from_events(events: list, point_id_for: dict) -> list:
             pid = point_id_for.get(i)
             condition = WaitCondition(point_id=pid)
             # Uhr anhalten: die Zeit bis zum MARKER zaehlt, die danach ist das Warten.
-            davor = events[i - 2] if i > 1 else None
-            delay = 0.0 if davor is None else round(before.t - davor.t, 2)
+            before_that = events[i - 2] if i > 1 else None
+            delay = 0.0 if before_that is None else round(before.t - before_that.t, 2)
 
         pid = point_id_for.get(i)
         if ev.kind == REC_KEY:
@@ -587,12 +587,12 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     # Feste Reihenfolge - jede Stufe entfernt eine Sonderform: Bereichs-Ecken
     # falten, Phasengrenzen herausziehen, haltlose Warte-Marker verwerfen.
-    events, halbe_ecke = merge_regions(events)
-    if halbe_ecke:
+    events, half_corner = merge_regions(events)
+    if half_corner:
         print(f"\n{warn('Einzelne Bereichs-Ecke verworfen — die zweite fehlt.')}")
         print(hint("       Ein Bereich braucht ZWEI Drücke: eine Ecke, dann die andere."))
 
-    events, grenzen = phase_boundaries(events)
+    events, limits = phase_boundaries(events)
 
     events, discarded = check_markers(events)
     if discarded:
@@ -614,19 +614,19 @@ def stop_recording(state: AutoClickerState) -> str | None:
     def _phase_name(number):
         return "Loop" if number == 1 else f"Loop {number}"
 
-    _schnitt = {g: _phase_name(nr + 2) for nr, g in enumerate(grenzen)}
-    if grenzen:
+    _cut = {g: _phase_name(nr + 2) for nr, g in enumerate(limits)}
+    if limits:
         print(f"\n{col('Aufgezeichnet:', 'bold')} {hint('(Phasen sind markiert)')}")
         print(f"  {col('┌─ ' + _phase_name(1), 'magenta')}")
     else:
         print(f"\n{col('Aufgezeichnet:', 'bold')}")
     fast_clicks = 0
-    erzeugte = 0
+    created_ones = 0
     for i, ev in enumerate(events):
         if ev.kind != REC_WAIT_COLOR:
-            if erzeugte in _schnitt:
-                print(f"  {col('├─ ' + _schnitt.pop(erzeugte), 'magenta')}")
-            erzeugte += 1
+            if created_ones in _cut:
+                print(f"  {col('├─ ' + _cut.pop(created_ones), 'magenta')}")
+            created_ones += 1
         color_str = f"  {describe_color(ev.color)}" if ev.color else ""
         if i == 0:
             delay_str = "sofort"
@@ -694,7 +694,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
     steps = steps_from_events(events, point_id_for)
     # INIT und END bleiben leer: eine Aufnahme sieht nicht, welcher Abschnitt
     # nur einmal laufen soll. Das steht im Studio an der Phase.
-    loop_phases = build_phases(steps, grenzen)
+    loop_phases = build_phases(steps, limits)
     seq = Sequence(name=seq_name, loop_phases=loop_phases, total_cycles=total_cycles,
                    description=description, points=points)
 
@@ -719,8 +719,8 @@ def stop_recording(state: AutoClickerState) -> str | None:
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')
         print(f"\n{saved_msg}")
         if len(loop_phases) > 1:
-            aufteilung = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
-            print(f"  {aufteilung}  |  Zyklen: {cycles_str}")
+            partition = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
+            print(f"  {partition}  |  Zyklen: {cycles_str}")
         else:
             print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
         if points:

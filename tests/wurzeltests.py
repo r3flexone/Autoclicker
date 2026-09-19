@@ -19,13 +19,13 @@ if str(WURZEL) not in sys.path:
 MODULE = Path(__file__).resolve().parent / "wurzel"
 
 
-def sammeln(wurzel: Path, ohne_vertrag: bool = False) -> unittest.TestSuite:
+def sammeln(root_dir: Path, ohne_vertrag: bool = False) -> unittest.TestSuite:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
-    for file in sorted(wurzel.glob("test_*.py")):
+    for file in sorted(root_dir.glob("test_*.py")):
         if ohne_vertrag and file.name == "test_regression.py":
             continue
-        suite.addTests(loader.discover(str(wurzel), pattern=file.name))
+        suite.addTests(loader.discover(str(root_dir), pattern=file.name))
     return suite
 
 

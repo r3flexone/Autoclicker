@@ -263,15 +263,15 @@ def _truncated(entries: list[str]) -> list[str]:
 # Öffentliche API
 # ---------------------------------------------------------------------------
 
-def check_setup(state: AutoClickerState, mit_sequenzen: bool = True) -> CheckReport:
-    """Prüft das geladene Setup. `mit_sequenzen=False` lässt den Datei-Scan weg."""
+def check_setup(state: AutoClickerState, with_sequences: bool = True) -> CheckReport:
+    """Prüft das geladene Setup. `with_sequences=False` lässt den Datei-Scan weg."""
     report = CheckReport()
     _check_templates(state, report)
     _check_detection(state, report)
     _check_scan_references(state, report)
     _check_llm_ocr(state, report)
     _check_coordinates(state, report)
-    if mit_sequenzen:
+    if with_sequences:
         _check_sequences(state, report)
     return report
 
@@ -289,15 +289,15 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
     print(col("  SETUP-PRÜFUNG", "bold"))
     print(col("=" * 60, "cyan"))
 
-    for heading, liste, stil in (
+    for heading, listing, stil in (
         (f"{len(report.errors)} Fehler — so läuft es nicht:", report.errors, err),
         (f"{len(report.hints)} Hinweis(e) — läuft, ist aber evtl. nicht gewollt:",
          report.hints, warn),
     ):
-        if not liste:
+        if not listing:
             continue
         print(f"\n{stil(heading)}")
-        for b in liste:
+        for b in listing:
             print(f"  {col(b.area, 'cyan')}: {b.text}")
             if b.tip:
                 print(f"    {hint('→ ' + b.tip)}")
@@ -309,7 +309,7 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
 
 def check_on_start(state: AutoClickerState) -> CheckReport:
     """Start-Prüfung: ohne Sequenzdateien, und still wenn alles in Ordnung ist."""
-    report = check_setup(state, mit_sequenzen=False)
+    report = check_setup(state, with_sequences=False)
     if report:
         print_report(report)
         print(f"{hint('Vollständige Prüfung inkl. Sequenzen: CTRL+ALT+P → check')}")

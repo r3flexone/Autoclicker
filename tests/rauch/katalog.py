@@ -71,10 +71,10 @@ def aufbau():
     # Reiterwechsel nicht neu von der Bruecke geholt (das ist Absicht — der
     # Scans-Reiter haelt seinen eigenen Zustand), also saehe die Seite eine
     # Aenderung, die erst danach passiert, ueberhaupt nicht.
-    vorlagen = Path("sequences/rauch/templates")
-    vorlagen.mkdir(parents=True, exist_ok=True)
+    templates_list = Path("sequences/rauch/templates")
+    templates_list.mkdir(parents=True, exist_ok=True)
     for i, name in enumerate(BEKANNT + [FREMD]):
-        mini_png(vorlagen / f"t{i}.png")
+        mini_png(templates_list / f"t{i}.png")
         b.items[name] = ItemProfile(name=name, template=f"t{i}.png")
         b._add_to_scan("item", name)
     return b

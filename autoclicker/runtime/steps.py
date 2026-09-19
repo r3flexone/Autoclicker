@@ -101,8 +101,8 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
         if config is None:
             return True
         slots = [slot for slot in config.slots if slot.enabled]
-        rueckwaerts = config.reverse
-    if rueckwaerts:
+        backwards = config.reverse
+    if backwards:
         slots = list(reversed(slots))
 
     # state.clicked_categories wird bewusst NICHT gesondert verwaltet: _click_scan_result
@@ -370,11 +370,11 @@ def _execute_scroll(state: AutoClickerState, step: SequenceStep,
                        step_num: int, total_steps: int, phase: str) -> bool:
     """Dreht das Mausrad. Gewartet (Zeit oder Farb-Bedingung) hat execute_step bereits."""
     debug = is_verbose_debug(state)
-    richtung = "hoch" if step.scroll > 0 else "runter"
-    label = step.name or f"Scroll {richtung}"
+    direction = "hoch" if step.scroll > 0 else "runter"
+    label = step.name or f"Scroll {direction}"
     _step_status(debug, phase, step_num, total_steps,
-                 f"Scroll {richtung} x{abs(step.scroll)}",
-                 f"Scroll {richtung} x{abs(step.scroll)} an ({step.x}, {step.y})")
+                 f"Scroll {direction} x{abs(step.scroll)}",
+                 f"Scroll {direction} x{abs(step.scroll)} an ({step.x}, {step.y})")
     if not safe_scroll(state, step.scroll, step.x, step.y, label):
         return False
     with state.lock:
@@ -442,7 +442,7 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
     """Der Rumpf von `_execute_wait_for_color` — ausgelagert nur wegen des `finally`."""
     # Das zuletzt aufgenommene Bild wird weitergereicht, statt jedes Mal neu
     # aufgenommen zu werden: sonst hinge die Anzeige an der Schleifenfrequenz.
-    letztes_bild, image = 0.0, None
+    last_image, image = 0.0, None
     while not state.stop_event.is_set():
         if state.skip_step_event.is_set():
             state.skip_step_event.clear()
@@ -488,9 +488,9 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
         # gehört dazu: „wartet seit 40 s" beantwortet nicht, ob überhaupt etwas
         # Passendes in Sicht ist; Ist-Farbe und Abstand tun es. Das Bild
         # beantwortet die nächste Frage: was ist da statt dessen zu sehen?
-        jetzt = time.time()
-        if jetzt - letztes_bild >= _LIVE_INTERVAL:
-            letztes_bild, image = jetzt, _pixel_crop(wc.pixel[0], wc.pixel[1])
+        now = time.time()
+        if now - last_image >= _LIVE_INTERVAL:
+            last_image, image = now, _pixel_crop(wc.pixel[0], wc.pixel[1])
         status.waiting_for(state, _color_wait_status(state, step, wc, current_color, dist,
                                                start_time, timeout, image))
 
@@ -599,18 +599,18 @@ def _check_color_once(state: AutoClickerState, step: SequenceStep,
 
     current = img.getpixel((0, 0))[:3]
     dist = color_distance(current, wc.color)
-    passt = dist <= tol
+    fits = dist <= tol
     if wc.until_gone:
-        passt = not passt
+        fits = not fits
 
-    vergleich = color_comparison(wc.color, current, dist, tol)
-    if passt:
+    comparison = color_comparison(wc.color, current, dist, tol)
+    if fits:
         _step_status(debug, phase, step_num, total_steps, "Farbe passt",
-                     f"Farbprüfung erfüllt | {vergleich}")
+                     f"Farbprüfung erfüllt | {comparison}")
         return GATE_RUN
 
     _step_status(debug, phase, step_num, total_steps, "Farbe passt nicht - übersprungen",
-                 f"Farbprüfung NICHT erfüllt | {vergleich}")
+                 f"Farbprüfung NICHT erfüllt | {comparison}")
     if step.else_config is not None:
         return _gate_after_else(state, step, phase, step_num, total_steps)
     return GATE_SKIP
@@ -789,10 +789,10 @@ _SCAN_FIELDS = (
 
 def _scan_without_name(step: SequenceStep) -> "str | None":
     """Beschriftung der Scan-Art, wenn deren Name gesetzt aber leer ist."""
-    for field, beschriftung in _SCAN_FIELDS:
+    for field, caption in _SCAN_FIELDS:
         value = getattr(step, field, None)
         if value is not None and not str(value).strip():
-            return beschriftung
+            return caption
     return None
 
 
@@ -817,7 +817,7 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         state.stop_event.set()
         return False
 
-    # Laufstatus für das Sequenz-Studio. Gedrosselt (kein `sofort`): die Phasen-
+    # Laufstatus für das Sequenz-Studio. Gedrosselt (kein `immediately`): die Phasen-
     # und Zykluswechsel im Worker schreiben immer, ein einzelner Block darf
     # ausgelassen werden. `describe_step` statt eines Typ-Kürzels, weil es hier
     # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
@@ -857,10 +857,10 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # die ist bei einem Scan-Block (0, 0) — die Bildschirmecke. Deshalb hier raus,
     # mit Ansage. Dieselbe Haltung wie bei einer toten `point_id`: ein Schritt, der
     # stehenbleibt, ist besser als einer, der irgendwohin klickt.
-    unfertig = _scan_without_name(step)
-    if unfertig is not None:
+    unfinished = _scan_without_name(step)
+    if unfinished is not None:
         print(warn(f"[{phase}] Schritt {step_num}/{total_steps} übersprungen: "
-                   f"{unfertig} ohne Konfiguration"))
+                   f"{unfinished} ohne Konfiguration"))
         print(hint("       Im Sequenz-Editor oder -Studio eine Konfiguration "
                    "auswählen (angelegt mit CTRL+ALT+N)."))
         return True
@@ -884,10 +884,10 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # Farb-Trigger an einem Tasten- oder Scroll-Schritt wurde dadurch stillschweigend
     # ignoriert (und mit ihm dessen else-Aktion).
     if step.wait_condition:
-        farb_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
-        if farb_gate == GATE_SKIP:
+        color_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
+        if color_gate == GATE_SKIP:
             return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — keine eigene Aktion
-        if farb_gate != GATE_RUN:
+        if color_gate != GATE_RUN:
             return False
     elif not skip_waits(state):
         actual_delay = step.get_actual_delay()
@@ -928,26 +928,26 @@ def _effect_occurred(state: AutoClickerState, vc, timeout: float) -> tuple[bool,
     "nicht erfuellt" gemeldet — der Aufrufer prueft stop_event ohnehin selbst.
     """
     tol = state.config.pixel_wait_tolerance
-    intervall = max(0.05, state.config.verify_interval)
+    interval_value = max(0.05, state.config.verify_interval)
     end = time.time() + max(0.0, timeout)
-    letzter = "kein Screenshot"
+    last_one = "kein Screenshot"
     while True:
         if state.skip_step_event.is_set():
-            return False, letzter
+            return False, last_one
         img = take_screenshot((vc.pixel[0], vc.pixel[1], vc.pixel[0] + 1, vc.pixel[1] + 1))
         if img is not None:
             current = img.getpixel((0, 0))[:3]
             dist = color_distance(current, vc.color)
-            passt = dist <= tol
+            fits = dist <= tol
             if vc.until_gone:
-                passt = not passt
-            letzter = color_comparison(vc.color, current, dist, tol)
-            if passt:
-                return True, letzter
+                fits = not fits
+            last_one = color_comparison(vc.color, current, dist, tol)
+            if fits:
+                return True, last_one
         if time.time() >= end or state.stop_event.is_set():
-            return False, letzter
-        if state.stop_event.wait(intervall):
-            return False, letzter
+            return False, last_one
+        if state.stop_event.wait(interval_value):
+            return False, last_one
 
 
 def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: int,
@@ -966,10 +966,10 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
         return action(state, step, step_num, total_steps, phase)
 
     debug = is_verbose_debug(state)
-    versuche = max(0, state.config.verify_retries) + 1
+    attempts = max(0, state.config.verify_retries) + 1
     timeout = state.config.verify_timeout
 
-    for versuch in range(1, versuche + 1):
+    for attempt_nr in range(1, attempts + 1):
         if _block_skip(state, phase, step_num, total_steps):
             return True
         if not action(state, step, step_num, total_steps, phase):
@@ -977,29 +977,29 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
         if state.stop_event.is_set():
             return False
 
-        erfuellt, vergleich = _effect_occurred(state, vc, timeout)
+        fulfilled, comparison = _effect_occurred(state, vc, timeout)
         if _block_skip(state, phase, step_num, total_steps):
             return True
-        if erfuellt:
+        if fulfilled:
             _step_status(debug, phase, step_num, total_steps, "Wirkung bestaetigt",
-                         f"Nachpruefung erfuellt | {vergleich}")
+                         f"Nachpruefung erfuellt | {comparison}")
             log_event(state, "verify_ok", detail=step.name or "step",
-                      x=vc.pixel[0], y=vc.pixel[1], extra=f"versuch={versuch}")
+                      x=vc.pixel[0], y=vc.pixel[1], extra=f"versuch={attempt_nr}")
             return True
 
         if state.stop_event.is_set():
             return False
         log_event(state, "verify_miss", detail=step.name or "step",
                   x=vc.pixel[0], y=vc.pixel[1],
-                  extra=f"versuch={versuch}/{versuche}")
-        if versuch < versuche:
+                  extra=f"versuch={attempt_nr}/{attempts}")
+        if attempt_nr < attempts:
             _step_status(debug, phase, step_num, total_steps,
-                         f"keine Wirkung - wiederhole ({versuch}/{versuche - 1})",
-                         f"Nachpruefung nicht erfuellt | {vergleich} - Wiederholung {versuch}")
+                         f"keine Wirkung - wiederhole ({attempt_nr}/{attempts - 1})",
+                         f"Nachpruefung nicht erfuellt | {comparison} - Wiederholung {attempt_nr}")
 
     _step_status(debug, phase, step_num, total_steps,
                  "keine Wirkung - aufgegeben",
-                 f"Nachpruefung nach {versuche} Versuch(en) nicht erfuellt")
+                 f"Nachpruefung nach {attempts} Versuch(en) nicht erfuellt")
     if step.else_config is not None:
         return _gate_after_else(state, step, phase, step_num, total_steps) != GATE_STOP
     return True

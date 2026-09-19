@@ -134,7 +134,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(Path("points.json").exists())
 
     def test_failed_import_rolls_back_state_and_files(self):
-        from autoclicker import import_export as modul
+        from autoclicker import import_export as module_name
         original = _write_sequence("inventory")
         before = (original / "sequence.json").read_bytes()
         manifest = _manifest()
@@ -146,7 +146,7 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
-        echtes_copytree = modul.shutil.copytree
+        echtes_copytree = module_name.shutil.copytree
         mutiert = []
 
         def kopieren(source, target, *args, **kwargs):
@@ -155,7 +155,7 @@ class ImportExportSecurityTest(unittest.TestCase):
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
             return echtes_copytree(source, target, *args, **kwargs)
 
-        with patch.object(modul.shutil, "copytree", side_effect=kopieren):
+        with patch.object(module_name.shutil, "copytree", side_effect=kopieren):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
 
         self.assertFalse(ok)
@@ -282,8 +282,8 @@ class ImportExportSecurityTest(unittest.TestCase):
                      "offset_x": 50, "offset_y": -10}
 
         counts = calibrate_inventory(
-            state, transform, mit_scans=True, mit_sequenzen=False,
-            mit_slots=True)
+            state, transform, with_scans=True, with_sequences=False,
+            with_slots=True)
 
         self.assertEqual(slot.scan_region, (60, 10, 80, 30))
         self.assertEqual(

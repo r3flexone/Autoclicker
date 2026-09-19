@@ -21,8 +21,8 @@ from .scan_model import existing_categories
 
 def _natural_key(name: str) -> list:
     """Sortierschlüssel, der Zahlen als Zahlen liest: "Slot 2" vor "Slot 10"."""
-    return [int(teil) if teil.isdigit() else teil.casefold()
-            for teil in _re.split(r"(\d+)", name or "")]
+    return [int(part) if part.isdigit() else part.casefold()
+            for part in _re.split(r"(\d+)", name or "")]
 
 
 class ScanStateMixin:
@@ -606,7 +606,7 @@ class ScanStateMixin:
 
     def _slot_json(self, slot: ItemSlot, included: bool = False,
                    number: Optional[int] = None, total: int = 0,
-                   rueckwaerts: bool = False) -> dict:
+                   backwards: bool = False) -> dict:
         match = self._matches.get(slot.name)
         width = slot.scan_region[2] - slot.scan_region[0]
         height = slot.scan_region[3] - slot.scan_region[1]
@@ -632,7 +632,7 @@ class ScanStateMixin:
             # die beiden gehen auseinander, sobald „Slots rückwärts" an ist.
             # Nur für den Tooltip und die Vorsortierung; angezeigt wird die ID.
             "number": number,
-            "run_index": (total - number + 1) if (number and rueckwaerts) else number,
+            "run_index": (total - number + 1) if (number and backwards) else number,
             "total": total,
         }
 
@@ -653,9 +653,9 @@ class ScanStateMixin:
     def _item_json(self, item: ItemProfile, included: bool = False,
                    detected_in=None) -> dict:
         from ...imaging import template_size
-        vorlagen = item.template_names()
+        templates_list = item.template_names()
         sizes = []
-        for name in vorlagen:
+        for name in templates_list:
             size = template_size(name, self.filepath.parent / "templates")
             if size and list(size) not in sizes:
                 sizes.append(list(size))
@@ -671,7 +671,7 @@ class ScanStateMixin:
                 if size not in scan_groessen:
                     scan_groessen.append(size)
         fehlende_groessen = ([g for g in scan_groessen if g not in sizes]
-                             if vorlagen else [])
+                             if templates_list else [])
         return {
             "included": included,
             "active": bool(item.enabled),
@@ -688,8 +688,8 @@ class ScanStateMixin:
             "category": item.category,
             "priority": item.priority,
             "confidence": item.min_confidence,
-            "template": vorlagen[0] if vorlagen else None,
-            "templates": vorlagen,
+            "template": templates_list[0] if templates_list else None,
+            "templates": templates_list,
             "template_sizes": sizes,
             "missing_scan_sizes": fehlende_groessen,
             "marker": [hex_color(c) for c in item.marker_colors],
@@ -702,7 +702,7 @@ class ScanStateMixin:
             "confirmation_delay": item.confirm_delay,
             # Ein Profil ohne Template UND ohne Marker wird nie erkannt — das
             # sagt die Selbstdiagnose auch, nur eben erst beim Start.
-            "silent": not vorlagen and not item.marker_colors,
+            "silent": not templates_list and not item.marker_colors,
         }
 
     def _confirmation_json(self, item: ItemProfile) -> Optional[dict]:

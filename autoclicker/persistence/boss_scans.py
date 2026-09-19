@@ -51,7 +51,7 @@ def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_BOSS_SCAN)
+        data, _messages = migrate(data, KIND_BOSS_SCAN)
         if not isinstance(data, dict):
             raise TypeError("Boss-Scan muss ein JSON-Objekt sein")
 
@@ -112,7 +112,7 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_GLOBAL_BOSSES)
+        data, _messages = migrate(data, KIND_GLOBAL_BOSSES)
         if not isinstance(data, list):
             raise TypeError("Boss-Bibliothek muss eine JSON-Liste sein")
         loaded = [_boss_profile_from_dict(b) for b in data]

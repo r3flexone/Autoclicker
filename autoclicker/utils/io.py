@@ -208,25 +208,25 @@ def _read_key_polling(extra: dict | None = None,
 
     Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL zaehlt.
     """
-    tasten = dict(_VK_MAP)
+    keys_list = dict(_VK_MAP)
     if extra:
-        tasten.update(extra)
+        keys_list.update(extra)
 
     if sys.platform != "win32":
         from ..winapi import wait_for_key
-        key = wait_for_key(tuple(dict.fromkeys(tasten.values())), timeout)
+        key = wait_for_key(tuple(dict.fromkeys(keys_list.values())), timeout)
         return key or ("" if timeout is not None else "unknown")
 
     user32 = ctypes.windll.user32
 
     # Vorherige Zustände initialisieren (Flanken-Erkennung)
     prev_states = {}
-    for vk in tasten:
+    for vk in keys_list:
         prev_states[vk] = bool(user32.GetAsyncKeyState(vk) & 0x8000)
 
-    frist = None if timeout is None else time.monotonic() + timeout
+    deadline = None if timeout is None else time.monotonic() + timeout
     while True:
-        for vk, name in tasten.items():
+        for vk, name in keys_list.items():
             is_down = bool(user32.GetAsyncKeyState(vk) & 0x8000)
             was_down = prev_states[vk]
             prev_states[vk] = is_down
@@ -235,7 +235,7 @@ def _read_key_polling(extra: dict | None = None,
             if is_down and not was_down:
                 return name
 
-        if frist is not None and time.monotonic() >= frist:
+        if deadline is not None and time.monotonic() >= deadline:
             return ""
         time.sleep(0.02)  # 50Hz Polling - reaktionsschnell, CPU-schonend
 
@@ -251,7 +251,7 @@ def read_key() -> str:
     return _read_key_polling()
 
 
-def key_newly_pressed(state_value: int, war_unten: bool) -> bool:
+def key_newly_pressed(state_value: int, was_down_before: bool) -> bool:
     """Bedeutet dieser GetAsyncKeyState-Wert einen NEUEN Tastendruck?
 
     Zwei Wege, und beide werden gebraucht: `0x8000` ("haelt gerade") plus Flanke
@@ -260,10 +260,10 @@ def key_newly_pressed(state_value: int, war_unten: bool) -> bool:
     Druck von Mikrosekunden. Das Bit wird beim Lesen geleert — der Wert darf
     also nur EINMAL pro Runde geholt werden.
     """
-    return (bool(state_value & 0x8000) and not war_unten) or bool(state_value & 0x0001)
+    return (bool(state_value & 0x8000) and not was_down_before) or bool(state_value & 0x0001)
 
 
-def wait_for_global_key(tasten: tuple = ("enter", "escape"),
+def wait_for_global_key(keys_list: tuple = ("enter", "escape"),
                     timeout: float = 60.0) -> "str | None":
     """Wartet global auf eine der Tasten — ohne Konsole, ohne Fenster-Fokus.
 
@@ -273,7 +273,7 @@ def wait_for_global_key(tasten: tuple = ("enter", "escape"),
     Gibt den Namen der gedrueckten Taste zurueck, oder None bei Zeitablauf.
     """
     from ..winapi import wait_for_key
-    return wait_for_key(tuple(tasten), timeout)
+    return wait_for_key(tuple(keys_list), timeout)
 
 
 # Buchstabentasten fuer Menue-Befehle (w/a/s/c/q ...). Bewusst NICHT in _VK_MAP:
@@ -294,9 +294,9 @@ def read_command(timeout: float | None = None) -> str:
     """
     if _REAL_CONSOLE and msvcrt is not None:
         if timeout is not None:
-            frist = time.monotonic() + timeout
+            deadline = time.monotonic() + timeout
             while not msvcrt.kbhit():
-                if time.monotonic() >= frist:
+                if time.monotonic() >= deadline:
                     return ""
                 time.sleep(0.02)
         return (read_key() or "").lower()

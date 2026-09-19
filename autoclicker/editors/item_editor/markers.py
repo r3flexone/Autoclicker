@@ -149,14 +149,14 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
     # hoch-/herunterskalierte. Erst wenn keine davon passt, darf die zweite Runde
     # ein Item aus einem anderen Slot-Typ als moegliche Identitaet erkennen.
     for same_size in (True, False):
-        bester_name = None
-        beste_konfidenz = -1.0
+        best_name = None
+        best_confidence = -1.0
         for name, item in existing_items:
-            vorlagen = (item.template_names() if hasattr(item, "template_names")
+            templates_list = (item.template_names() if hasattr(item, "template_names")
                          else ([item.template] if item.template else []))
-            for template_value in vorlagen:
-                passt_groesse = template_size(template_value, template_root) == tuple(img.size)
-                if passt_groesse != same_size:
+            for template_value in templates_list:
+                size_fits = template_size(template_value, template_root) == tuple(img.size)
+                if size_fits != same_size:
                     continue
                 match, confidence, _pos = match_template_in_image(
                     img, template_value, min_confidence,
@@ -164,10 +164,10 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
                     report_size_mismatch=False,
                     template_root=template_root,
                 )
-                if match and confidence > beste_konfidenz:
-                    bester_name, beste_konfidenz = name, confidence
-        if bester_name is not None:
-            return bester_name
+                if match and confidence > best_confidence:
+                    best_name, best_confidence = name, confidence
+        if best_name is not None:
+            return best_name
 
     return None
 
@@ -175,7 +175,7 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
 def _item_has_compatible_template(item, img: 'Image.Image', template_root=None) -> bool:
     """Hat das Item bereits eine Vorlage exakt fuer diese Slot-Groesse?"""
     from ...imaging import template_size
-    vorlagen = (item.template_names() if hasattr(item, "template_names")
+    templates_list = (item.template_names() if hasattr(item, "template_names")
                  else ([item.template] if item.template else []))
     return any(template_size(template_value, template_root) == tuple(img.size)
-               for template_value in vorlagen)
+               for template_value in templates_list)

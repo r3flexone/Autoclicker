@@ -236,17 +236,17 @@ def backup_before_calibration(state: 'AutoClickerState') -> str | None:
 
 
 def calibrate_inventory(state: 'AutoClickerState', transform: dict,
-                       mit_scans: bool = True, mit_sequenzen: bool = True,
-                       mit_slots: bool = True) -> dict:
+                       with_scans: bool = True, with_sequences: bool = True,
+                       with_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `mit_scans` zieht die vollständigen Bestände der Item-Scans
-    sowie Boss-/Icon-Scans mit, `mit_sequenzen` die Screenshot-Regionen in den
+    Punkte immer; `with_scans` zieht die vollständigen Bestände der Item-Scans
+    sowie Boss-/Icon-Scans mit, `with_sequences` die Screenshot-Regionen in den
     Sequenz-DATEIEN.
     Die Klick-Stellen der Sequenzen stehen NICHT in der Liste — sie sind Punkte
     und oben schon umgerechnet.
 
-    `mit_slots` ist getrennt schaltbar, obwohl Slots zu den Scans gehören: nach
+    `with_slots` ist getrennt schaltbar, obwohl Slots zu den Scans gehören: nach
     einer `slot_repair()`-Reparatur dürfen sie kein zweites Mal wandern.
 
     Gibt eine Zählung nach Bereich zurück.
@@ -263,11 +263,11 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
             p.x, p.y = remap_point(p.x, p.y, transform)
             number["points"] += 1
 
-        if mit_scans:
+        if with_scans:
             for cfg in state.item_scans.values():
                 if not cfg.owner_sequence and state.active_sequence is not None:
                     cfg.owner_sequence = state.active_sequence.name
-                if mit_slots:
+                if with_slots:
                     for slot in cfg.slots:
                         slot.scan_region = remap_region(slot.scan_region, transform)
                         slot.click_pos = remap_point(
@@ -307,16 +307,16 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
 
         # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
         # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
-        if mit_sequenzen:
+        if with_sequences:
             for seq in state.sequences.values():
                 _remap_sequence_obj(seq, transform)
 
-        boss_scans = list(state.boss_scans.values()) if mit_scans else []
-        icon_scans = list(state.icon_scans.values()) if mit_scans else []
-        item_scans = list(state.item_scans.values()) if mit_scans else []
+        boss_scans = list(state.boss_scans.values()) if with_scans else []
+        icon_scans = list(state.icon_scans.values()) if with_scans else []
+        item_scans = list(state.item_scans.values()) if with_scans else []
 
     save_points(state)
-    if mit_scans:
+    if with_scans:
         save_global_bosses(state)
         for cfg in item_scans:
             save_item_scan(cfg)
@@ -326,7 +326,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
             save_icon_scan(cfg)
 
     # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
-    if mit_sequenzen:
+    if with_sequences:
         for _name, path in list_available_sequences():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -696,14 +696,14 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                 if not isinstance(data, dict):
                     raise ValueError(f"{source.name}/sequence.json ist ungültig")
 
-                basis = sanitize_filename(str(data.get("name") or source.name))
-                target = ensure_sequences_dir() / basis
+                base_name = sanitize_filename(str(data.get("name") or source.name))
+                target = ensure_sequences_dir() / base_name
                 if merge:
                     number = 2
                     while target.exists():
-                        target = ensure_sequences_dir() / f"{basis}_{number}"
+                        target = ensure_sequences_dir() / f"{base_name}_{number}"
                         number += 1
-                    if target.name != basis:
+                    if target.name != base_name:
                         data["name"] = target.name
                         atomic_write(hauptdatei, compact_json(data))
                 elif target.exists():

@@ -54,23 +54,23 @@ def parse_range(user_input: str, count: int) -> Optional[tuple[int, int]]:
 
 
 def multi_select(prompt: str, entries: list, selected: list,
-                     line, extra_praefix: str = "", extra_fn=None,
-                     leer_fehler: str = "") -> Optional[list]:
+                     line, extra_prefix: str = "", extra_fn=None,
+                     empty_error: str = "") -> Optional[list]:
     """Mehrfachauswahl aus einer nummerierten Liste. None = Abbruch.
 
     `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `selected`
     die Vorauswahl. `line(index, name, markiert)` liefert die Anzeigezeile.
 
-    `extra_praefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
+    `extra_prefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
     'new <Slot-Nr>'): `extra_fn(eingabe)` gibt den Namen des neu angelegten Eintrags
     zurueck oder None. Der wird angehaengt UND ausgewaehlt.
 
-    `leer_fehler` erzwingt mindestens einen Eintrag bei 'done'.
+    `empty_error` erzwingt mindestens einen Eintrag bei 'done'.
     """
     selected = list(selected)
-    befehle = ["done", "cancel", "all", "clear", "show"]
-    if extra_praefix:
-        befehle.append(extra_praefix)
+    commands = ["done", "cancel", "all", "clear", "show"]
+    if extra_prefix:
+        commands.append(extra_prefix)
 
     def _show():
         print(f"\n{len(selected)}/{len(entries)} ausgewählt:")
@@ -85,8 +85,8 @@ def multi_select(prompt: str, entries: list, selected: list,
             inp = raw.lower()
 
             if inp in ("done", "d"):
-                if leer_fehler and not selected:
-                    print("  " + err(leer_fehler) + " "
+                if empty_error and not selected:
+                    print("  " + err(empty_error) + " "
                           + hint("('<Nr>' = wählen, 'cancel' = Editor verlassen)"))
                     continue
                 return selected
@@ -103,13 +103,13 @@ def multi_select(prompt: str, entries: list, selected: list,
             if inp in ("show", "s"):
                 _show()
                 continue
-            if extra_praefix and inp.startswith(extra_praefix):
-                neuer = extra_fn(raw)
-                if neuer:
-                    if neuer not in entries:
-                        entries.append(neuer)
-                    if neuer not in selected:
-                        selected.append(neuer)
+            if extra_prefix and inp.startswith(extra_prefix):
+                newer = extra_fn(raw)
+                if newer:
+                    if newer not in entries:
+                        entries.append(newer)
+                    if newer not in selected:
+                        selected.append(newer)
                 continue
 
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
@@ -122,14 +122,14 @@ def multi_select(prompt: str, entries: list, selected: list,
                         selected.append(name)
                 print(f"  + {from_index}-{until} hinzugefügt")
                 continue
-            if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
+            if "-" in inp and not (extra_prefix and inp.startswith(extra_prefix)):
                 print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(entries)}")
                 continue
 
             try:
                 nr = int(inp)
             except ValueError:
-                print(f"  -> Unbekannter Befehl.{suggest_command(inp, befehle)}")
+                print(f"  -> Unbekannter Befehl.{suggest_command(inp, commands)}")
                 continue
             if not (1 <= nr <= len(entries)):
                 print(f"  -> Ungültig! 1-{len(entries)}")
@@ -156,10 +156,10 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         scan_count = len(state.item_scans)
         boss_count = len(state.boss_scans)
         icon_count = len(state.icon_scans)
-        aktiver_scan = state.active_item_scan or "keiner"
+        active_scan = state.active_item_scan or "keiner"
 
     menu_options = [
-        f"Item-Scan wählen     ({aktiver_scan})",
+        f"Item-Scan wählen     ({active_scan})",
         f"Slots bearbeiten     ({slot_count} vorhanden)",
         f"Items bearbeiten     ({item_count} vorhanden)",
         f"Scans bearbeiten     ({scan_count} vorhanden)",
@@ -274,7 +274,7 @@ def _step_presets(state: AutoClickerState) -> bool:
             continue
         kind = title.split("-")[0]
         print(f"\n{title}:")
-        for i, (name, _pfad, count) in enumerate(presets):
+        for i, (name, _path, count) in enumerate(presets):
             print(f"  [{i+1}] {name} ({count} {kind}s)")
         print(f"  [0] Aktuelle {kind}s verwenden ({current} geladen)")
 
@@ -502,15 +502,15 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     slot_list = list(available_slots.keys())
     print("\nVerfügbare Slots:")
     for i, name in enumerate(slot_list):
-        markiert = "X" if name in selected_slot_names else " "
-        print(f"  [{markiert}] {i+1}. {available_slots[name]}")
+        marked = "X" if name in selected_slot_names else " "
+        print(f"  [{marked}] {i+1}. {available_slots[name]}")
     print(f"\nBefehle: '<Nr>', '<Von>-<Bis>' (z.B. 1-5), 'all', 'clear', "
           f"'show / s', 'done / d', 'cancel / {cancel_hint()}")
 
     selected = multi_select(
         "[Slots] > ", slot_list, selected_slot_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_slots[name]}",
-        leer_fehler="Mindestens 1 Slot erforderlich!")
+        empty_error="Mindestens 1 Slot erforderlich!")
     if selected is None:
         return
     selected_slot_names = selected
@@ -533,8 +533,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print("\nVerfügbare Items:")
     if item_list:
         for i, name in enumerate(item_list):
-            markiert = "X" if name in selected_item_names else " "
-            print(f"  [{markiert}] {i+1}. {available_items[name]}")
+            marked = "X" if name in selected_item_names else " "
+            print(f"  [{marked}] {i+1}. {available_items[name]}")
     else:
         print("  (Keine Items - erstelle welche mit 'new')")
 
@@ -550,7 +550,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     selected = multi_select(
         "[Items] > ", item_list, selected_item_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_items[name]}",
-        extra_praefix="new",
+        extra_prefix="new",
         extra_fn=lambda raw: _new_item_from_template(
             state, raw, slot_list, available_slots, available_items))
     if selected is None:

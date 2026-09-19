@@ -94,15 +94,15 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_SLOTS)
+        data, _messages = migrate(data, KIND_SLOTS)
         if not isinstance(data, dict):
             raise TypeError("Slot-Preset muss ein JSON-Objekt sein")
         loaded = {name: _slot_from_dict(name, s) for name, s in data.items()}
         with state.lock:
             state.global_slots = loaded
-            hat_scan = state.active_item_scan in state.item_scans
+            has_scan = state.active_item_scan in state.item_scans
         # Der Assistent lädt Presets auch vor dem Anlegen seines ersten Scans.
-        if hat_scan and not save_global_slots(state):
+        if has_scan and not save_global_slots(state):
             return False
         print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(loaded)} Slots)"))
         return True
@@ -147,14 +147,14 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_ITEMS)
+        data, _messages = migrate(data, KIND_ITEMS)
         if not isinstance(data, dict):
             raise TypeError("Item-Preset muss ein JSON-Objekt sein")
         loaded = {name: _item_from_dict(i, name) for name, i in data.items()}
         with state.lock:
             state.global_items = loaded
-            hat_scan = state.active_item_scan in state.item_scans
-        if hat_scan and not save_global_items(state):
+            has_scan = state.active_item_scan in state.item_scans
+        if has_scan and not save_global_items(state):
             return False
         print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(loaded)} Items)"))
         return True
