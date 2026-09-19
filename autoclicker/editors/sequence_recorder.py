@@ -20,7 +20,7 @@ from ..winapi import (
     install_mouse_hook, remove_mouse_hook, install_keyboard_hook, remove_keyboard_hook,
     get_cursor_pos, WHEEL_DELTA,
 )
-from ._klickfenster import geklicktes_fenster
+from ._click_window import clicked_window
 from ..imaging import get_pixel_color
 from ..config import RECORD_STATUS_FILE
 from ..utils import (
@@ -42,13 +42,13 @@ _FAST_CLICK_GAP = 0.08
 # und werden zu einem Schritt zusammengefasst. Ohne das würde ein einziges Drehen
 # um fünf Rasten zu fünf Schritten — das Rad feuert pro Raste ein eigenes Ereignis.
 _SCROLL_MERGE_GAP = 0.25
-_AUFNAHME_STATUS = Path(RECORD_STATUS_FILE)
+_RECORDING_STATUS = Path(RECORD_STATUS_FILE)
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 # Dieselben Griffe zeigt das Studio im Werkzeug „Sequenz aufnehmen". Eine
 # zentrale Liste verhindert, dass dort eine Taste fehlt oder anders beschrieben
 # ist als in der Konsole, in der die Aufnahme tatsächlich läuft.
-AUFNAHME_HOTKEYS = (
+RECORDING_HOTKEYS = (
     ("CTRL+ALT+J", "starten / beenden",
      "beim Beenden werden die Ereignisse zu Blöcken einer neuen Sequenz"),
     ("CTRL+ALT+H", "pausieren / fortsetzen",
@@ -66,12 +66,12 @@ AUFNAHME_HOTKEYS = (
 )
 
 
-def aufnahme_datei(seq_name: str):
+def recording_file(seq_name: str):
     """Ziel einer neuen Aufnahme im einheitlichen Sequenzordner."""
     return sequence_file(seq_name)
 
 
-def _farbtext(color) -> str:
+def _color_text(color) -> str:
     """Farbname ohne Konsolensteuerzeichen für die Weboberfläche."""
     if not color:
         return ""
@@ -79,52 +79,52 @@ def _farbtext(color) -> str:
     return text[1:].strip() if text.startswith("█") else text
 
 
-def _status_ereignisse(events: list) -> list[dict]:
+def _status_events(events: list) -> list[dict]:
     """Die letzten drei Ereignisse als feste, webtaugliche Ausgabezeilen."""
     start = max(0, len(events) - 3)
-    raus = []
+    out = []
     for i in range(start, len(events)):
         event = events[i]
         delay = None if i == 0 else round(event.t - events[i - 1].t, 2)
-        raus.append({
-            "nummer": i + 1,
+        out.append({
+            "number": i + 1,
             "text": str(event),
-            "zeit": "sofort" if delay is None else f"+{delay:.2f}s",
-            "farbe": list(event.color) if event.color else None,
-            "farbtext": _farbtext(event.color),
+            "time": "sofort" if delay is None else f"+{delay:.2f}s",
+            "color": list(event.color) if event.color else None,
+            "color_text": _color_text(event.color),
         })
-    return raus
+    return out
 
 
-def _status_schreiben(state: AutoClickerState, events: list | None = None,
+def _write_status(state: AutoClickerState, events: list | None = None,
                        active: bool | None = None) -> None:
     """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören."""
     try:
         with state.lock:
-            liste = list(state.recording_events) if events is None else list(events)
-            laeuft = state.recording_active if active is None else active
-            pausiert = state.recording_paused
+            listing = list(state.recording_events) if events is None else list(events)
+            running = state.recording_active if active is None else active
+            paused = state.recording_paused
             name = state.recording_ui_name
-        atomic_write(_AUFNAHME_STATUS, compact_json({
-            "aktiv": bool(laeuft),
-            "pausiert": bool(pausiert and laeuft),
+        atomic_write(_RECORDING_STATUS, compact_json({
+            "active": bool(running),
+            "paused": bool(paused and running),
             "name": name,
-            "anzahl": len(liste),
-            "ereignisse": _status_ereignisse(liste),
-            "stand": time.time(),
+            "count": len(listing),
+            "events": _status_events(listing),
+            "stamp": time.time(),
         }))
     except (OSError, TypeError, ValueError, AttributeError):
         pass
 
 
-def _melde(ereignis: RecordEvent, idx: int, delay: float | None) -> None:
+def _report_event(event: RecordEvent, idx: int, delay: float | None) -> None:
     """Eine Zeile pro aufgezeichnetem Ereignis — der Nutzer sieht nur die Konsole."""
-    color = f" {describe_color(ereignis.color)}" if ereignis.color else ""
-    zeit = "sofort" if delay is None else f"+{delay:.2f}s"
-    print(f"  {col('[REC]', 'red')} #{idx} {ereignis}  {zeit}{color}")
+    color = f" {describe_color(event.color)}" if event.color else ""
+    time_value = "sofort" if delay is None else f"+{delay:.2f}s"
+    print(f"  {col('[REC]', 'red')} #{idx} {event}  {time_value}{color}")
 
 
-def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
+def _append_event(state: AutoClickerState, event: RecordEvent) -> bool:
     """Hängt ein Ereignis an die Aufnahme. False = Aufnahme aus oder pausiert.
 
     Mausrad-Ereignisse werden mit dem direkt davor verschmolzen (siehe
@@ -133,20 +133,20 @@ def _anhaengen(state: AutoClickerState, ereignis: RecordEvent) -> bool:
     with state.lock:
         if not state.recording_active or state.recording_paused:
             return False
-        vorherige = state.recording_events[-1] if state.recording_events else None
-        delay = None if vorherige is None else round(ereignis.t - vorherige.t, 2)
-        if (ereignis.kind == REC_SCROLL and vorherige is not None
-                and vorherige.kind == REC_SCROLL
-                and ereignis.t - vorherige.t <= _SCROLL_MERGE_GAP):
-            vorherige.scroll += ereignis.scroll
-            vorherige.t = ereignis.t
-            idx, ereignis = len(state.recording_events), vorherige
+        previous = state.recording_events[-1] if state.recording_events else None
+        delay = None if previous is None else round(event.t - previous.t, 2)
+        if (event.kind == REC_SCROLL and previous is not None
+                and previous.kind == REC_SCROLL
+                and event.t - previous.t <= _SCROLL_MERGE_GAP):
+            previous.scroll += event.scroll
+            previous.t = event.t
+            idx, event = len(state.recording_events), previous
         else:
-            state.recording_events.append(ereignis)
+            state.recording_events.append(event)
             idx = len(state.recording_events)
         events = list(state.recording_events)
-    _status_schreiben(state, events)
-    _melde(ereignis, idx, delay)
+    _write_status(state, events)
+    _report_event(event, idx, delay)
     return True
 
 
@@ -168,9 +168,9 @@ def _on_click_factory(state: AutoClickerState):
         # Aufnahme: letzter Schritt `(1347, 709)`, Farbe `#1C2333` = das
         # Panel-Grau des Studios). Derselbe Fehler wie einmal in der
         # Klick-Runde, deshalb derselbe Helfer.
-        if "sequenz-studio" in geklicktes_fenster(x, y).casefold():
+        if "sequenz-studio" in clicked_window(x, y).casefold():
             return
-        _anhaengen(state, RecordEvent(REC_CLICK, time.monotonic(), x, y, color))
+        _append_event(state, RecordEvent(REC_CLICK, time.monotonic(), x, y, color))
     return _on_click
 
 
@@ -184,45 +184,45 @@ def _on_wheel_factory(state: AutoClickerState):
         return None
 
     def _on_wheel(x: int, y: int, delta: int) -> None:
-        stufen = int(delta / WHEEL_DELTA)  # Richtung TRUNKIEREN, nicht abrunden
-        if stufen:
-            _anhaengen(state, RecordEvent(REC_SCROLL, time.monotonic(), x, y,
-                                          scroll=stufen))
+        levels = int(delta / WHEEL_DELTA)  # Richtung TRUNKIEREN, nicht abrunden
+        if levels:
+            _append_event(state, RecordEvent(REC_SCROLL, time.monotonic(), x, y,
+                                          scroll=levels))
     return _on_wheel
 
 
 def _on_key_factory(state: AutoClickerState):
     """Erstellt den Tasten-Callback. `name` ist bereits ein send_key()-Name."""
     def _on_key(name: str) -> None:
-        _anhaengen(state, RecordEvent(REC_KEY, time.monotonic(), key=name))
+        _append_event(state, RecordEvent(REC_KEY, time.monotonic(), key=name))
     return _on_key
 
 
-def merke_farbe(state: AutoClickerState) -> None:
+def mark_color(state: AutoClickerState) -> None:
     """Setzt einen Warte-Marker (CTRL+ALT+M): "ab hier warte ich".
 
     Er hat keine eigene Stelle — beim Drücken parkt die Maus zufällig irgendwo.
     Gewartet wird auf die Farbe des Klicks, der als nächstes kommt; der Marker
     hält also nur die Uhr an. Für eine Stelle, die man NICHT klickt:
-    `merke_beobachten()`.
+    `mark_watch()`.
     """
-    if not _aufnahme_laeuft(state):
+    if not _recording_running(state):
         return
-    _anhaengen(state, RecordEvent(REC_WAIT_COLOR, time.monotonic()))
+    _append_event(state, RecordEvent(REC_WAIT_COLOR, time.monotonic()))
 
 
-def merke_screenshot(state: AutoClickerState) -> None:
+def mark_screenshot(state: AutoClickerState) -> None:
     """Setzt einen Screenshot-Marker (CTRL+ALT+D): Vollbild an dieser Stelle.
 
     Wird ein eigener Schritt (anders als der Warte-Marker): keine Folge-Aktion,
-    an die er sich hängen könnte. Für einen Bereich: `merke_bereich()`.
+    an die er sich hängen könnte. Für einen Bereich: `mark_region()`.
     """
-    if not _aufnahme_laeuft(state):
+    if not _recording_running(state):
         return
-    _anhaengen(state, RecordEvent(REC_SCREENSHOT, time.monotonic()))
+    _append_event(state, RecordEvent(REC_SCREENSHOT, time.monotonic()))
 
 
-def _aufnahme_laeuft(state: AutoClickerState) -> bool:
+def _recording_running(state: AutoClickerState) -> bool:
     """True = es wird gerade aufgezeichnet. Meldet selbst, wenn nicht.
 
     Jeder Marker braucht dieselbe Vorprüfung: keine Aufnahme heisst, es gibt nichts zu
@@ -232,43 +232,43 @@ def _aufnahme_laeuft(state: AutoClickerState) -> bool:
         if not state.recording_active:
             print(f"\n{hint('Keine Aufnahme aktiv — CTRL+ALT+J startet eine.')}")
             return False
-        pausiert = state.recording_paused
-    if pausiert:
+        paused = state.recording_paused
+    if paused:
         print(f"\n{hint('Aufnahme pausiert — CTRL+ALT+H setzt sie fort.')}")
         return False
     return True
 
 
-def merke_bereich(state: AutoClickerState) -> None:
+def mark_region(state: AutoClickerState) -> None:
     """Setzt eine Bereichs-Ecke (CTRL+ALT+SHIFT+D). Zwei Ecken = ein Rechteck.
 
     Die Mausposition ist hier — anders als beim Warte-Marker — bewusst
     angefahren und darf deshalb verwendet werden. Gefaltet wird beim Stoppen
-    in `bereiche_zusammenfassen()`.
+    in `merge_regions()`.
     """
-    if not _aufnahme_laeuft(state):
+    if not _recording_running(state):
         return
     x, y = get_cursor_pos()
-    _anhaengen(state, RecordEvent(REC_REGION, time.monotonic(), x, y))
+    _append_event(state, RecordEvent(REC_REGION, time.monotonic(), x, y))
 
 
-def merke_beobachten(state: AutoClickerState) -> None:
+def mark_watch(state: AutoClickerState) -> None:
     """Warten auf die Farbe UNTER der Maus, ohne dorthin zu klicken (CTRL+ALT+SHIFT+M).
 
     Entspricht `wait pixel` im Editor. Unterschied zu CTRL+ALT+M: dort steht die
     Maus zufällig, hier legt man sie absichtlich auf das Beobachtete.
     """
-    if not _aufnahme_laeuft(state):
+    if not _recording_running(state):
         return
     x, y = get_cursor_pos()
     color = get_pixel_color(x, y)
     if color is None:
         print(f"\n{err('Farbe an der Mausposition nicht lesbar — nichts aufgezeichnet.')}")
         return
-    _anhaengen(state, RecordEvent(REC_WATCH, time.monotonic(), x, y, color))
+    _append_event(state, RecordEvent(REC_WATCH, time.monotonic(), x, y, color))
 
 
-def merke_phase(state: AutoClickerState) -> None:
+def mark_phase(state: AutoClickerState) -> None:
     """Setzt eine Phasengrenze (CTRL+ALT+SHIFT+P): ab hier die nächste Phase.
 
     Jeder Druck macht eine neue Loop-Phase auf, ohne Obergrenze. Vorher trennte
@@ -282,15 +282,15 @@ def merke_phase(state: AutoClickerState) -> None:
     eine Vermutung darüber, was gemeint ist; welche Phase einmalig laufen soll,
     sagt man im Studio an der Phase selbst.
     """
-    if not _aufnahme_laeuft(state):
+    if not _recording_running(state):
         return
     with state.lock:
-        gesetzt = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
-    _anhaengen(state, RecordEvent(REC_PHASE, time.monotonic()))
-    print(f"       {hint(f'ab hier: Phase {gesetzt + 2}')}")
+        placed = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
+    _append_event(state, RecordEvent(REC_PHASE, time.monotonic()))
+    print(f"       {hint(f'ab hier: Phase {placed + 2}')}")
 
 
-def verwirf_letztes(state: AutoClickerState) -> None:
+def discard_last(state: AutoClickerState) -> None:
     """Nimmt das zuletzt aufgezeichnete Ereignis zurück (CTRL+ALT+U während Aufnahme).
 
     Derselbe Hotkey wie das Zurücknehmen eines Punktes: die Bedeutung ist dieselbe
@@ -298,14 +298,14 @@ def verwirf_letztes(state: AutoClickerState) -> None:
     eigenen Buchstaben — und es sind ohnehin nur noch vier frei.
     """
     with state.lock:
-        entfernt = state.recording_events.pop() if state.recording_events else None
+        removed_count = state.recording_events.pop() if state.recording_events else None
         remainder = len(state.recording_events)
         events = list(state.recording_events)
-    if entfernt is None:
+    if removed_count is None:
         print(f"\n{col('[UNDO]', 'yellow')} Nichts aufgezeichnet, nichts zurückzunehmen.")
         return
-    _status_schreiben(state, events)
-    print(f"\n{col('[UNDO]', 'yellow')} Verworfen: {entfernt}  "
+    _write_status(state, events)
+    print(f"\n{col('[UNDO]', 'yellow')} Verworfen: {removed_count}  "
           f"{hint(f'({remainder} übrig)')}")
 
 
@@ -326,33 +326,33 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         state.recording_ui_description = str(description or "").strip()
 
     # None = Mausrad abgeschaltet (record_scroll). Der Hook laeuft dann ohne Rad-Zweig.
-    rad = _on_wheel_factory(state)
+    wheel = _on_wheel_factory(state)
 
-    if install_mouse_hook(_on_click_factory(state), rad):
+    if install_mouse_hook(_on_click_factory(state), wheel):
         # Die Tastatur ist die Kür: klappt sie nicht, laeuft die Aufnahme trotzdem —
         # nur eben ohne Tastendrücke. Umgekehrt waere eine Aufnahme ohne Klicks sinnlos.
-        tasten = install_keyboard_hook(_on_key_factory(state))
-        arten = "Linksklick"
-        if rad:
-            arten += ", Mausrad"
-        if tasten:
-            arten += ", Tastendruck"
+        keys_list = install_keyboard_hook(_on_key_factory(state))
+        kinds = "Linksklick"
+        if wheel:
+            kinds += ", Mausrad"
+        if keys_list:
+            kinds += ", Tastendruck"
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
         print("  Klicke die gewünschten Positionen im Spiel.")
-        print(f"  Aufgezeichnet: {arten}")
-        for key, aktion, label in AUFNAHME_HOTKEYS:
-            print(f"  {aktion + ':':24} {col(key, 'yellow')} "
+        print(f"  Aufgezeichnet: {kinds}")
+        for key, action, label in RECORDING_HOTKEYS:
+            print(f"  {action + ':':24} {col(key, 'yellow')} "
                   f"{hint('(' + label + ')')}")
-        if not tasten:
+        if not keys_list:
             print(f"  {warn('Tastatur-Hook nicht installierbar — Tastendrücke fehlen.')}")
         else:
             print(hint("  Tasten mit CTRL oder ALT werden nicht aufgezeichnet —"))
             print(hint("  dort liegen die Hotkeys der App."))
         # Abgeschaltet wird per Config, nicht per Hotkey — dann muss die Aufnahme aber
         # sagen, dass Drehen folgenlos bleibt. Sonst sucht man den Fehler beim Hook.
-        if not rad:
+        if not wheel:
             print(hint("  Mausrad wird nicht aufgezeichnet (record_scroll=false)."))
-        _status_schreiben(state)
+        _write_status(state)
     else:
         with state.lock:
             state.recording_active = False
@@ -363,10 +363,10 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
             state.recording_ui_description = ""
         print(f"\n{err('Maus-Hook konnte nicht installiert werden!')}")
         print("  Mögliche Ursache: Administratorrechte erforderlich.")
-        _status_schreiben(state, [], active=False)
+        _write_status(state, [], active=False)
 
 
-def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
+def points_for_events(events: list) -> tuple[dict, list[ClickPoint]]:
     """Sorgt dafür, dass jedes aufgenommene Ereignis mit Stelle einen Punkt hat.
 
     Gibt `({event_index: point_id}, Punkte)` zurück; ein Punkt an
@@ -393,24 +393,24 @@ def punkte_fuer_events(events: list) -> tuple[dict, list[ClickPoint]]:
     Sequenz hineinlecken konnten.
     """
     from ..persistence.sequences import point_at_position
-    punkt_id_fuer: dict[int, int] = {}
+    point_id_for: dict[int, int] = {}
     points: list[ClickPoint] = []
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
         match = point_at_position(points, ev.x, ev.y, ev.color)
         if match is not None:
-            punkt_id_fuer[i] = match.id
+            point_id_for[i] = match.id
             continue
         pid = max((p.id for p in points), default=0) + 1
         point = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
                            color=ev.color, source="Aufnahme")
         points.append(point)
-        punkt_id_fuer[i] = pid
-    return punkt_id_fuer, points
+        point_id_for[i] = pid
+    return point_id_for, points
 
 
-def bereiche_zusammenfassen(events: list) -> tuple[list, int]:
+def merge_regions(events: list) -> tuple[list, int]:
     """Faltet je zwei Bereichs-Ecken zu EINEM Screenshot-Ereignis mit Rechteck.
 
     Läuft als erster Schritt beim Stoppen; danach kennt niemand mehr
@@ -420,25 +420,25 @@ def bereiche_zusammenfassen(events: list) -> tuple[list, int]:
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener Einzel-Ecken)` zurück.
     """
-    behalten, verworfen = [], 0
-    offen = None
+    keep, discarded = [], 0
+    remaining = None
     for ev in events:
         if ev.kind != REC_REGION:
-            behalten.append(ev)
+            keep.append(ev)
             continue
-        if offen is None:
-            offen = ev
+        if remaining is None:
+            remaining = ev
             continue
-        x1, x2 = sorted((offen.x, ev.x))
-        y1, y2 = sorted((offen.y, ev.y))
-        behalten.append(RecordEvent(REC_SCREENSHOT, offen.t, region=(x1, y1, x2, y2)))
-        offen = None
-    if offen is not None:
-        verworfen = 1
-    return behalten, verworfen
+        x1, x2 = sorted((remaining.x, ev.x))
+        y1, y2 = sorted((remaining.y, ev.y))
+        keep.append(RecordEvent(REC_SCREENSHOT, remaining.t, region=(x1, y1, x2, y2)))
+        remaining = None
+    if remaining is not None:
+        discarded = 1
+    return keep, discarded
 
 
-def phasen_grenzen(events: list) -> tuple[list, list[int]]:
+def phase_boundaries(events: list) -> tuple[list, list[int]]:
     """Zieht die Phasengrenzen aus dem Ereignisstrom heraus.
 
     Gibt `(Ereignisse OHNE Grenzen, Schnittstellen als Schritt-Indizes)` zurück.
@@ -446,19 +446,19 @@ def phasen_grenzen(events: list) -> tuple[list, list[int]]:
     des nächsten Schritts und dessen Wartezeit begänne am Tastendruck. Gezählt
     wird in Schritten, denn Warte-Marker erzeugen keinen eigenen.
     """
-    behalten, grenzen = [], []
-    erzeugte = 0
+    keep, limits = [], []
+    created_ones = 0
     for ev in events:
         if ev.kind == REC_PHASE:
-            grenzen.append(erzeugte)
+            limits.append(created_ones)
             continue
         if ev.kind != REC_WAIT_COLOR:
-            erzeugte += 1
-        behalten.append(ev)
-    return behalten, grenzen
+            created_ones += 1
+        keep.append(ev)
+    return keep, limits
 
 
-def phasen_bauen(steps: list, grenzen: list[int]) -> list:
+def build_phases(steps: list, limits: list[int]) -> list:
     """Schneidet die fertige Schrittliste an den Grenzen in Loop-Phasen.
 
     Ohne Grenze bleibt alles in EINER Phase — exakt das bisherige Verhalten.
@@ -470,21 +470,21 @@ def phasen_bauen(steps: list, grenzen: list[int]) -> list:
     zurück; eine Sequenz ohne jede Loop-Phase hat keine Stelle, an der man
     danach etwas einfügen könnte.
     """
-    schnitte = [0] + [min(g, len(steps)) for g in grenzen] + [len(steps)]
-    phasen = []
-    for anfang, ende_ in zip(schnitte, schnitte[1:]):
-        teil = list(steps[anfang:ende_])
-        if not teil:
+    cuts = [0] + [min(g, len(steps)) for g in limits] + [len(steps)]
+    phases = []
+    for beginning, end_ in zip(cuts, cuts[1:]):
+        part = list(steps[beginning:end_])
+        if not part:
             continue
-        nummer = len(phasen) + 1
-        name = "Loop" if nummer == 1 else f"Loop {nummer}"
-        phasen.append(LoopPhase(name=name, steps=teil, repeat=1))
-    if not phasen:
-        phasen.append(LoopPhase(name="Loop", steps=[], repeat=1))
-    return phasen
+        number = len(phases) + 1
+        name = "Loop" if number == 1 else f"Loop {number}"
+        phases.append(LoopPhase(name=name, steps=part, repeat=1))
+    if not phases:
+        phases.append(LoopPhase(name="Loop", steps=[], repeat=1))
+    return phases
 
 
-def marker_pruefen(events: list) -> tuple[list, int]:
+def check_markers(events: list) -> tuple[list, int]:
     """Wirft Warte-Marker weg, die sich an nichts hängen können.
 
     Ein Marker braucht einen Klick oder ein Scroll nach sich — von dort holt er
@@ -492,18 +492,18 @@ def marker_pruefen(events: list) -> tuple[list, int]:
 
     Gibt `(bereinigte Ereignisse, Anzahl verworfener)` zurück.
     """
-    behalten, verworfen = [], 0
+    keep, discarded = [], 0
     for i, ev in enumerate(events):
         if ev.kind == REC_WAIT_COLOR:
-            naechster = events[i + 1] if i + 1 < len(events) else None
-            if naechster is None or naechster.kind not in (REC_CLICK, REC_SCROLL):
-                verworfen += 1
+            next_item = events[i + 1] if i + 1 < len(events) else None
+            if next_item is None or next_item.kind not in (REC_CLICK, REC_SCROLL):
+                discarded += 1
                 continue
-        behalten.append(ev)
-    return behalten, verworfen
+        keep.append(ev)
+    return keep, discarded
 
 
-def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
+def steps_from_events(events: list, point_id_for: dict) -> list:
     """Baut die SequenceSteps.
 
     Ein Warte-Marker wird kein eigener Schritt: er hängt sich an den folgenden
@@ -513,24 +513,24 @@ def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
 
     Screenshot- und Beobachtungs-Marker werden dagegen eigene Schritte.
 
-    Erwartet Ereignisse, die `bereiche_zusammenfassen()`, `phasen_grenzen()` und
-    `marker_pruefen()` schon durchlaufen haben.
+    Erwartet Ereignisse, die `merge_regions()`, `phase_boundaries()` und
+    `check_markers()` schon durchlaufen haben.
     """
     steps = []
     for i, ev in enumerate(events):
         if ev.kind == REC_WAIT_COLOR:
             continue                      # geht in den naechsten Schritt ein
         delay = 0.0 if i == 0 else round(ev.t - events[i - 1].t, 2)
-        bedingung = None
-        vorher = events[i - 1] if i > 0 else None
-        if vorher is not None and vorher.kind == REC_WAIT_COLOR:
-            pid = punkt_id_fuer.get(i)
-            bedingung = WaitCondition(point_id=pid)
+        condition = None
+        before = events[i - 1] if i > 0 else None
+        if before is not None and before.kind == REC_WAIT_COLOR:
+            pid = point_id_for.get(i)
+            condition = WaitCondition(point_id=pid)
             # Uhr anhalten: die Zeit bis zum MARKER zaehlt, die danach ist das Warten.
-            davor = events[i - 2] if i > 1 else None
-            delay = 0.0 if davor is None else round(vorher.t - davor.t, 2)
+            before_that = events[i - 2] if i > 1 else None
+            delay = 0.0 if before_that is None else round(before.t - before_that.t, 2)
 
-        pid = punkt_id_fuer.get(i)
+        pid = point_id_for.get(i)
         if ev.kind == REC_KEY:
             steps.append(SequenceStep(delay_before=delay, key_press=ev.key))
         elif ev.kind == REC_SCREENSHOT:
@@ -548,16 +548,16 @@ def schritte_aus_events(events: list, punkt_id_fuer: dict) -> list:
             steps.append(SequenceStep(
                 delay_before=delay, wait_only=True, name="Beobachten",
                 recorded_color=ev.color,
-                wait_condition=WaitCondition(point_id=punkt_id_fuer.get(i))))
+                wait_condition=WaitCondition(point_id=point_id_for.get(i))))
         elif ev.kind == REC_SCROLL:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay, scroll=ev.scroll,
                                       point_id=pid, recorded_color=ev.color,
-                                      wait_condition=bedingung))
+                                      wait_condition=condition))
         else:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay,
                                       name=f"Klick {len(steps) + 1}",
                                       recorded_color=ev.color, point_id=pid,
-                                      wait_condition=bedingung))
+                                      wait_condition=condition))
     return steps
 
 
@@ -579,7 +579,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     remove_mouse_hook()
     remove_keyboard_hook()
-    _status_schreiben(state, events, active=False)
+    _write_status(state, events, active=False)
 
     if not events:
         print(f"\n{col('[AUFNAHME]', 'yellow')} Gestoppt — nichts aufgezeichnet.")
@@ -587,16 +587,16 @@ def stop_recording(state: AutoClickerState) -> str | None:
 
     # Feste Reihenfolge - jede Stufe entfernt eine Sonderform: Bereichs-Ecken
     # falten, Phasengrenzen herausziehen, haltlose Warte-Marker verwerfen.
-    events, halbe_ecke = bereiche_zusammenfassen(events)
-    if halbe_ecke:
+    events, half_corner = merge_regions(events)
+    if half_corner:
         print(f"\n{warn('Einzelne Bereichs-Ecke verworfen — die zweite fehlt.')}")
         print(hint("       Ein Bereich braucht ZWEI Drücke: eine Ecke, dann die andere."))
 
-    events, grenzen = phasen_grenzen(events)
+    events, limits = phase_boundaries(events)
 
-    events, verworfen = marker_pruefen(events)
-    if verworfen:
-        print(f"\n{warn(f'{verworfen} Warte-Marker verworfen — danach kam kein Klick.')}")
+    events, discarded = check_markers(events)
+    if discarded:
+        print(f"\n{warn(f'{discarded} Warte-Marker verworfen — danach kam kein Klick.')}")
         print(hint("       Ein Marker wartet auf die Farbe DES Klicks, der ihm folgt."))
 
     if not events:
@@ -609,24 +609,24 @@ def stop_recording(state: AutoClickerState) -> str | None:
     # Aufgezeichnetes zeigen. Die Phasengrenzen stehen nicht mehr im Strom (sie wurden
     # oben herausgezogen), muessen hier aber sichtbar sein — sonst sieht der Nutzer die
     # Aufteilung erst im Editor und kann sie beim Benennen nicht mehr einordnen.
-    # Namen wie in phasen_bauen(), damit hier dasselbe steht wie danach in der
+    # Namen wie in build_phases(), damit hier dasselbe steht wie danach in der
     # Datei. Der Schnitt liegt VOR dem Schritt mit diesem Index.
-    def _phasenname(nummer):
-        return "Loop" if nummer == 1 else f"Loop {nummer}"
+    def _phase_name(number):
+        return "Loop" if number == 1 else f"Loop {number}"
 
-    _schnitt = {g: _phasenname(nr + 2) for nr, g in enumerate(grenzen)}
-    if grenzen:
+    _cut = {g: _phase_name(nr + 2) for nr, g in enumerate(limits)}
+    if limits:
         print(f"\n{col('Aufgezeichnet:', 'bold')} {hint('(Phasen sind markiert)')}")
-        print(f"  {col('┌─ ' + _phasenname(1), 'magenta')}")
+        print(f"  {col('┌─ ' + _phase_name(1), 'magenta')}")
     else:
         print(f"\n{col('Aufgezeichnet:', 'bold')}")
     fast_clicks = 0
-    erzeugte = 0
+    created_ones = 0
     for i, ev in enumerate(events):
         if ev.kind != REC_WAIT_COLOR:
-            if erzeugte in _schnitt:
-                print(f"  {col('├─ ' + _schnitt.pop(erzeugte), 'magenta')}")
-            erzeugte += 1
+            if created_ones in _cut:
+                print(f"  {col('├─ ' + _cut.pop(created_ones), 'magenta')}")
+            created_ones += 1
         color_str = f"  {describe_color(ev.color)}" if ev.color else ""
         if i == 0:
             delay_str = "sofort"
@@ -634,7 +634,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
             d = ev.t - events[i - 1].t
             delay_str = f"+{d:.2f}s"
             if events[i - 1].kind == REC_WAIT_COLOR:
-                # Diese Spanne ersetzt die Farb-Bedingung (siehe schritte_aus_events);
+                # Diese Spanne ersetzt die Farb-Bedingung (siehe steps_from_events);
                 # sie als Wartezeit oder gar als Doppelklick zu zeigen waere falsch.
                 delay_str = col(f"wartet auf {describe_color(ev.color)}", "cyan") \
                     if ev.color else col("wartet auf die Farbe hier", "cyan")
@@ -688,13 +688,13 @@ def stop_recording(state: AutoClickerState) -> str | None:
             description = ""
 
     # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
-    punkt_id_fuer, points = punkte_fuer_events(events)
+    point_id_for, points = points_for_events(events)
 
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
-    steps = schritte_aus_events(events, punkt_id_fuer)
+    steps = steps_from_events(events, point_id_for)
     # INIT und END bleiben leer: eine Aufnahme sieht nicht, welcher Abschnitt
     # nur einmal laufen soll. Das steht im Studio an der Phase.
-    loop_phases = phasen_bauen(steps, grenzen)
+    loop_phases = build_phases(steps, limits)
     seq = Sequence(name=seq_name, loop_phases=loop_phases, total_cycles=total_cycles,
                    description=description, points=points)
 
@@ -704,7 +704,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
     # Besitzeinheit wie jede im Studio angelegte: sequences/<name>/sequence.json.
     # Direkte JSON-Dateien unter sequences/ waeren wieder das alte Mischlayout,
     # in dem Scans und Vorlagen nicht eindeutig zugeordnet werden konnten.
-    filepath = aufnahme_datei(seq_name)
+    filepath = recording_file(seq_name)
 
     if save_sequence_file(seq, filepath):
         with state.lock:
@@ -719,8 +719,8 @@ def stop_recording(state: AutoClickerState) -> str | None:
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')
         print(f"\n{saved_msg}")
         if len(loop_phases) > 1:
-            aufteilung = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
-            print(f"  {aufteilung}  |  Zyklen: {cycles_str}")
+            partition = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
+            print(f"  {partition}  |  Zyklen: {cycles_str}")
         else:
             print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
         if points:
@@ -768,4 +768,4 @@ def handle_record_pause(state: AutoClickerState) -> None:
         print(f"  Fortsetzen: {col('CTRL+ALT+H', 'yellow')} erneut drücken")
     else:
         print(f"\n{col('[REC]', 'red')} Aufnahme fortgesetzt — Klicks werden wieder aufgezeichnet.")
-    _status_schreiben(state)
+    _write_status(state)

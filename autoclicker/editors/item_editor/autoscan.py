@@ -13,7 +13,7 @@ from ...persistence import save_global_items, active_templates_dir
 from ...utils import (
     col, confirm, err, header, hint, safe_input, sanitize_filename,
 )
-from .._item_felder import frage_bestaetigungsklick
+from .._item_fields import ask_confirm_click
 from ..scan_services import crop_screen_region
 from .items import select_category
 from .markers import (
@@ -77,9 +77,9 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
     auto_priority = prio_choice != "2"
 
     # Bestätigungs-Punkt
-    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+    confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
-        frage="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
+        prompt="\n  Bestätigungs-Punkt-ID für alle Items (Enter = keiner): ")
 
     # Konfidenz
     min_confidence = state.config.scan_min_confidence
@@ -211,10 +211,10 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                 width, height = template_img.size
                 safe_name = sanitize_filename(f"{matched_item}_{width}x{height}")
                 template_file = f"{safe_name}.png"
-                nummer = 2
+                number = 2
                 while (active_templates_dir(state) / template_file).exists():
-                    template_file = f"{safe_name}_{nummer}.png"
-                    nummer += 1
+                    template_file = f"{safe_name}_{number}.png"
+                    number += 1
                 template_path = active_templates_dir(state) / template_file
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 template_img.save(template_path)

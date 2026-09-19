@@ -74,22 +74,22 @@ CLAN_GATHERERS_SPEED_BOOST = 0.05    # Clan-Upgrade "Gatherers", nur is_gatherin
 # "Materialkosten"-Prozentwert waere kuerzer und waere falsch - man koennte ihn
 # fuer den eigenen Account nicht mehr richtig einstellen.
 #
-# Kombiniert wird MULTIPLIKATIV (`spar_faktor`): zwei Upgrades, die je 10% sparen,
+# Kombiniert wird MULTIPLIKATIV (`saving_factor`): zwei Upgrades, die je 10% sparen,
 # sparen zusammen 19%, nicht 20%. Jedes greift auf das, was nach dem vorigen noch
 # uebrig ist - genauso wie Clan- und Equipment-Boost bei der Geschwindigkeit, und
 # an derselben Stelle schon einmal per Stoppuhr bestaetigt.
 
-def spar_faktor(*paare: tuple[bool, float]) -> float:
+def saving_factor(*pairs: tuple[bool, float]) -> float:
     """Mehrere Ersparnisse zu einem Kostenfaktor kombinieren.
 
     `(aktiv, anteil)`-Paare, inaktive zaehlen nicht mit. Ergebnis ist der Anteil
-    der Kosten, der UEBRIG bleibt: `spar_faktor((True, 0.25), (True, 0.10))` = 0.675.
+    der Kosten, der UEBRIG bleibt: `saving_factor((True, 0.25), (True, 0.10))` = 0.675.
     """
-    faktor = 1.0
-    for active, anteil in paare:
+    factor = 1.0
+    for active, fraction in pairs:
         if active:
-            faktor *= (1.0 - anteil)
-    return faktor
+            factor *= (1.0 - fraction)
+    return factor
 
 
 # Potion of Trickery: spart Saatgut beim Farming. Seit dem Update vom 18.08.2026
@@ -109,7 +109,7 @@ ORE_STORAGE_ACTIVE = False
 ORE_STORAGE_SAVE = 0.10
 
 # Kostenanteil, der beim Farming uebrig bleibt (Saatgut).
-FARMING_COST_MULTIPLIER = spar_faktor(
+FARMING_COST_MULTIPLIER = saving_factor(
     (POTION_OF_TRICKERY_ACTIVE, POTION_OF_TRICKERY_SAVE),
     (SEED_STORAGE_ACTIVE, SEED_STORAGE_SAVE),
 )
@@ -142,7 +142,7 @@ PLAYER_MARKET_TAX = 0.01
 PLAYER_MARKET_TAX_MIN_TOTAL = 100.0
 
 
-def net_player_price(preis: float, menge: float = 1.0) -> float:
+def net_player_price(price_value: float, amount_value: float = 1.0) -> float:
     """Was je Stueck nach Marktsteuer beim Verkaeufer ankommt.
 
     Die Steuer greift erst ab `PLAYER_MARKET_TAX_MIN_TOTAL` Gold GESAMTWERT eines
@@ -151,9 +151,9 @@ def net_player_price(preis: float, menge: float = 1.0) -> float:
     weglaesst, fragt nach genau einem Stueck - und bekommt bei billigen Items dann
     auch den steuerfreien Preis, statt stillschweigend 1% zu verlieren.
     """
-    if preis <= 0 or preis * max(menge, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
-        return preis
-    return preis * (1.0 - PLAYER_MARKET_TAX)
+    if price_value <= 0 or price_value * max(amount_value, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
+        return price_value
+    return price_value * (1.0 - PLAYER_MARKET_TAX)
 
 
 # Gold ist in der API ein Item wie jedes andere und taucht als Kostenzeile auf
@@ -192,7 +192,7 @@ SMELTING_MAGIC_SAVE = 0.30
 
 # Was von der Erz-Zeile eines *_bar-Rezepts uebrig bleibt: Smelting Magic und Ore
 # Storage greifen an derselben Stelle und werden multiplikativ kombiniert.
-SMITHING_SMELTING_COST_MULTIPLIER = spar_faktor(
+SMITHING_SMELTING_COST_MULTIPLIER = saving_factor(
     (SMELTING_MAGIC_ACTIVE, SMELTING_MAGIC_SAVE),
     (ORE_STORAGE_ACTIVE, ORE_STORAGE_SAVE),
 )
@@ -201,7 +201,7 @@ SMITHING_SMELTING_COST_MULTIPLIER = spar_faktor(
 # (SMELTING_MAGIC_EXCLUDED_ITEM_NAMES) und - im Worst Case - fuer die Nebenzutaten,
 # auf die Smelting Magic moeglicherweise gar nicht wirkt. Das Lager ist ein eigenes
 # Upgrade; dass der Perk eine Zeile auslaesst, macht das Lager dort nicht unwirksam.
-ORE_STORAGE_COST_MULTIPLIER = spar_faktor((ORE_STORAGE_ACTIVE, ORE_STORAGE_SAVE))
+ORE_STORAGE_COST_MULTIPLIER = saving_factor((ORE_STORAGE_ACTIVE, ORE_STORAGE_SAVE))
 
 # Zutaten, auf die der Perk laut Wiki NICHT wirkt. Abgleich ueber den Item-Namen, damit
 # auch otherworldly_bar erfasst wird (enthaelt Astronomical ore, heisst aber nicht so).
@@ -338,7 +338,7 @@ REASON_CANDIDATES = 30
 # Wartezeit aufs Netz; nacheinander waren 164 davon eine Minute, in der nichts zu
 # sehen war. Acht parallel bringen es auf rund zehn Sekunden. Hoeher lohnt kaum,
 # und irgendwann drosselt die API - 1 heisst wieder streng nacheinander.
-ORDERBUCH_PARALLEL = 8
+ORDERBOOK_PARALLEL = 8
 
 # Preis-Position: aktueller Erloes gegen den 30-Tage-Schnitt desselben Items. Ab dieser
 # Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).

@@ -20,24 +20,24 @@
 </head>
 <body>
 <div class="app">
-  <header class="kopf">
-    <div class="reihe">
+  <header class="header">
+    <div class="row">
       <!-- Dieselbe SVG-Datei ist auch die Quelle fuer Browser-, Fenster- und
            Taskleisten-Symbol. So kann das Motiv nicht an drei Stellen auseinanderlaufen. -->
-      <div class="marke">
+      <div class="badge">
         <img src="sequenz-studio-logo.svg" alt="" aria-hidden="true" draggable="false">
       </div>
-      <span class="titel">SEQUENZ-STUDIO</span>
+      <span class="title">SEQUENZ-STUDIO</span>
     </div>
     <div class="tabs">
-      <button class="tab an" data-ansicht="editor">Editor</button>
-      <button class="tab" data-ansicht="sequenzen">Sequenzen</button>
-      <button class="tab" data-ansicht="lauf">Live-Run</button>
-      <button class="tab" data-ansicht="scans">Scans</button>
-      <button class="tab" data-ansicht="teilen">Teilen</button>
-      <button class="tab" data-ansicht="werkzeuge">Werkzeuge</button>
-      <button class="tab" data-ansicht="bericht">Bericht</button>
-      <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
+      <button class="tab on" data-view="editor">Editor</button>
+      <button class="tab" data-view="sequences">Sequenzen</button>
+      <button class="tab" data-view="run">Live-Run</button>
+      <button class="tab" data-view="scans">Scans</button>
+      <button class="tab" data-view="share">Teilen</button>
+      <button class="tab" data-view="tools">Werkzeuge</button>
+      <button class="tab" data-view="report">Bericht</button>
+      <button class="tab" data-view="settings">Einstellungen</button>
     </div>
     <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
          Auswahl ueberall, ohne Ausnahme. Sie war frueher mit dem Rest
@@ -48,123 +48,123 @@
          Sequenz haengen: Scans, Teilen und Werkzeuge arbeiten alle in
          `sequences/<name>/`. Nebenbei behaelt der Kopf damit in jedem Reiter
          dieselbe Gestalt, statt beim Umschalten drei Gruppen zu verlieren. -->
-    <div class="trenner"></div>
-    <div class="reihe">
-      <select id="seq-auswahl" style="width:200px"></select>
-      <button class="btn" id="btn-laden">Laden</button>
-      <button class="btn" id="btn-neu">Neu</button>
+    <div class="divider"></div>
+    <div class="row">
+      <select id="seq-select" style="width:200px"></select>
+      <button class="btn" id="btn-load">Laden</button>
+      <button class="btn" id="btn-new">Neu</button>
     </div>
     <!-- Das SPEICHERN bleibt dagegen bei der Sequenz. Scans, Teilen, Werkzeuge
          und Einstellungen schreiben andere Dateien und haben ihren eigenen
          Knopf; zwei Speichern-Knoepfe fuer zwei Dateien in einer Leiste sind
          die Falle, um die es hier geht. Dasselbe gilt fuer „Starten": es
          startet die Sequenz, nicht den Reiter. -->
-    <div class="trenner" data-sequenz></div>
-    <div class="reihe" data-sequenz>
-      <button class="btn haupt" id="btn-speichern">Speichern</button>
-      <span class="punkt-offen" id="punkt-offen" hidden title="ungespeicherte Änderungen"></span>
+    <div class="divider" data-sequence></div>
+    <div class="row" data-sequence>
+      <button class="btn primary" id="btn-save">Speichern</button>
+      <span class="dirty-dot" id="dirty-dot" hidden title="ungespeicherte Änderungen"></span>
     </div>
-    <div class="trenner" data-sequenz></div>
+    <div class="divider" data-sequence></div>
     <!-- Starten aus dem Editor heraus: das ist der Weg, den man beim Bauen einer
          Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst in
          den Live-Run, deshalb braucht der Knopf dort keinen Zwilling. -->
-    <button class="btn" id="btn-lauf" data-sequenz>▶ Starten</button>
+    <button class="btn" id="btn-run" data-sequence>▶ Starten</button>
   </header>
 
-  <div class="rumpf" id="rumpf">
-    <aside class="seite links">
+  <div class="body" id="editor-body">
+    <aside class="page left">
       <!-- Bleibt beim Scrollen stehen — dieselbe Regel wie im Kopf der rechten
            Spalte des Scans-Reiters: darunter liegt eine Liste, die laenger wird
            als das Fenster (die Punkte), und dann ist Name, Zyklenzahl und Notiz
            weg. Das ist aber genau die Auskunft, an der man sich beim Arbeiten
            orientiert: WELCHE Sequenz habe ich hier offen. -->
-      <div class="abschnitt klebt">
-        <span class="ueberschrift">SEQUENZ</span>
-        <label class="feld">Name
+      <div class="section sticky">
+        <span class="heading">SEQUENZ</span>
+        <label class="field">Name
           <input id="seq-name" autocomplete="off">
         </label>
-        <div class="gitter2">
-          <label class="feld">Zyklen (0 = endlos)
-            <input id="seq-zyklen" type="number" min="0" step="1">
+        <div class="grid2">
+          <label class="field">Zyklen (0 = endlos)
+            <input id="seq-cycles" type="number" min="0" step="1">
           </label>
-          <div class="feld-still">Blöcke
-            <output class="mono" id="seq-bloecke">0</output>
+          <div class="field-quiet">Blöcke
+            <output class="mono" id="seq-blocks">0</output>
           </div>
         </div>
-        <label class="feld">Notiz
+        <label class="field">Notiz
           <textarea id="seq-info"></textarea>
         </label>
         <!-- Nur ein Verweis auf das Aufnahme-Werkzeug. Er steht bei den
              Sequenzangaben, weil dort Name, Zyklen und Notiz festgelegt werden,
              und bleibt zusammen mit ihnen ueber der langen Punkteliste sichtbar. -->
-        <div class="aufnahme-zeile">
-          <button class="btn breit" id="btn-aufnahme">● Neue Sequenz aufnehmen</button>
+        <div class="recording-row">
+          <button class="btn wide" id="btn-recording">● Neue Sequenz aufnehmen</button>
         </div>
       </div>
-      <div class="abschnitt wachsend">
-        <div class="reihe">
-          <span class="ueberschrift wachse">PUNKTE</span>
-          <span class="klein mono" id="punkte-zahl"></span>
+      <div class="section growing">
+        <div class="row">
+          <span class="heading grow">PUNKTE</span>
+          <span class="small mono" id="points-count"></span>
         </div>
-        <input id="punkt-filter" placeholder="filtern…" autocomplete="off">
-        <div class="spalte" id="punkte" style="gap:4px"></div>
+        <input id="point-filter" placeholder="filtern…" autocomplete="off">
+        <div class="column" id="points" style="gap:4px"></div>
       </div>
     </aside>
 
     <main class="board" id="board">
-      <div class="phasen" id="phasen"></div>
+      <div class="phases" id="phases"></div>
     </main>
 
-    <aside class="seite rechts">
-      <div class="insp-kopf">
-        <span class="insp-punkt" id="insp-punkt"></span>
-        <span class="ueberschrift wachse" id="insp-titel">KEIN BLOCK</span>
+    <aside class="page right">
+      <div class="insp-header">
+        <span class="insp-point" id="insp-point"></span>
+        <span class="heading grow" id="insp-title">KEIN BLOCK</span>
         <!-- Duplizieren steht neben Löschen, weil beide dasselbe meinen: „mit
              der Auswahl". Ein Block, der einem vorhandenen fast gleicht, ist
              beim Bauen der Normalfall — Wartezeit, Trigger, Nachprüfung und
              ELSE von Hand nachzustellen sind ein Dutzend Klicks. -->
-        <button class="btn still" id="btn-block-kopie"
+        <button class="btn quiet" id="btn-block-copy"
                 title="Auswahl duplizieren (STRG+D)">duplizieren</button>
-        <button class="btn still" id="btn-block-weg" title="Auswahl löschen (Entf)">löschen</button>
+        <button class="btn quiet" id="btn-block-delete" title="Auswahl löschen (Entf)">löschen</button>
       </div>
-      <div class="abschnitt wachsend" id="inspektor"></div>
+      <div class="section growing" id="inspector"></div>
     </aside>
   </div>
 
   <!-- Die beiden anderen Ansichten. Sie liegen im Dokument statt gebaut zu
-       werden, damit `setzeAnsicht()` nur `hidden` umlegen muss: der Editor
+       werden, damit `setView()` nur `hidden` umlegen muss: der Editor
        behaelt so seinen DOM (und mit ihm Scrollstand und Tippfokus), waehrend
        man drueben nachsieht, was gerade laeuft. -->
-  <div class="karten" id="sicht-sequenzen" hidden></div>
-  <div class="lauf" id="sicht-lauf" hidden></div>
+  <div class="cards" id="view-sequences" hidden></div>
+  <div class="run" id="view-run" hidden></div>
 
   <!-- Scans: links die Werkzeuge und die Listen, in der Mitte der eingefrorene
        Screenshot als Arbeitsflaeche, rechts die Eigenschaften. Ein Slot wird
        dort aufgezogen, wo er im Spiel liegt — Koordinaten tippt hier niemand. -->
-  <div class="scans" id="sicht-scans" hidden>
-    <aside class="seite links">
+  <div class="scans" id="view-scans" hidden>
+    <aside class="page left">
       <!-- **Drei Scan-Arten, ein Reiter.** Boss- und Icon-Scans waren nur ueber
            die Konsolen-Editoren erreichbar: linear durch Schritt 1-6, und fuer
            jede spaetere Aenderung derselbe Ablauf noch einmal. Die Sache, um die
            es geht, ist aber ein Rechteck auf einem Bild — sie gehoert dorthin,
            wo das Bild steht.
 
-           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanArt`) wie
-           `ansicht` und `scanListe`: er aendert nichts an den Daten. Die Buehne
+           Welche Art offen ist, ist reiner Oberflaechenzustand (`scanKind`) wie
+           `view` und `scanList`: er aendert nichts an den Daten. Die Buehne
            (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
            dasselbe Bild, nur eine andere Frage daran. -->
-      <div class="abschnitt" id="ab-scanart">
-        <span class="ueberschrift">SCAN-ART</span>
+      <div class="section" id="sec-scan-kind">
+        <span class="heading">SCAN-ART</span>
         <div class="segment" id="scan-art">
-          <button data-scan-art="item">Items</button>
-          <button data-scan-art="boss">Bosse</button>
-          <button data-scan-art="icon">Icons</button>
+          <button data-scan-kind="item">Items</button>
+          <button data-scan-kind="boss">Bosse</button>
+          <button data-scan-kind="icon">Icons</button>
         </div>
         <!-- Kein Info-i: Das Speicherziel ist vor jeder Aufnahme notwendiger
              Kontext und muss deshalb ohne weiteren Klick sichtbar sein. -->
-        <div class="scan-sequenzbezug">
+        <div class="scan-sequence-ref">
           <span>Zielsequenz</span>
-          <strong id="scan-sequenz">—</strong>
+          <strong id="scan-sequence">—</strong>
           <small>Neue und geänderte Scans werden in dieser Sequenz gespeichert.</small>
         </div>
       </div>
@@ -173,116 +173,116 @@
            Geruestbloecke im Dokument statt eines im JavaScript gebauten
            Abschnitts — dann bleibt die Reihenfolge der linken Spalte hier
            ablesbar. -->
-      <div class="abschnitt" id="ab-erk-wahl" hidden></div>
-      <div class="abschnitt" id="ab-erk-weg" hidden></div>
+      <div class="section" id="sec-det-choice" hidden></div>
+      <div class="section" id="sec-det-steps" hidden></div>
       <!-- Der Item-Scan ist hier das Uebergeordnete: er sagt, an welchem Spiel
            gerade gearbeitet wird. Ohne ihn liegen bei mehreren Spielen alle
            Slots und Items aller Spiele in einer Liste. -->
-      <div class="abschnitt" id="ab-itemwahl">
-        <span class="ueberschrift">ITEM-SCAN</span>
-        <select id="scan-offen"></select>
+      <div class="section" id="sec-item-choice">
+        <span class="heading">ITEM-SCAN</span>
+        <select id="scan-open"></select>
         <!-- Die Auswahl sagt, WORAN gearbeitet wird; das Feld darunter ändert
              dessen Namen. Die Scan-Maske rechts ist im geführten Arbeitsweg
              nicht sichtbar und deshalb kein Ersatz für diese Bearbeitungsfläche. -->
-        <label class="feld"><span>Scan-Name</span>
+        <label class="field"><span>Scan-Name</span>
           <input id="scan-name" autocomplete="off" placeholder="Name des Item-Scans">
         </label>
         <!-- Zwei Knoepfe, gleiche Haelften — dieselbe Regel wie im Kopf der
              rechten Spalte. Vorher waren sie verschieden breit (Textbreite) und
              die Zahl dahinter wurde abgeschnitten oder brach um; drei Breiten
              untereinander lesen sich wie drei Rangstufen. -->
-        <div class="knopfpaar">
-          <button class="btn still" id="scan-neu">+ neuer Scan</button>
-          <button class="btn still" id="scan-frei">Freier Modus</button>
+        <div class="button-pair">
+          <button class="btn quiet" id="scan-new">+ neuer Scan</button>
+          <button class="btn quiet" id="scan-free">Freier Modus</button>
         </div>
-        <span class="klein mono scan-umfang" id="scan-umfang"></span>
+        <span class="small mono scan-scope" id="scan-scope"></span>
       </div>
-      <div class="abschnitt" id="ab-weg">
-        <span class="ueberschrift">SCAN EINRICHTEN</span>
-        <div class="scan-assistent" id="scan-schritte">
-          <div class="scan-assistent-schritt" id="scan-assistent-1">
-            <button class="scan-assistent-kopf" data-scan-schritt="1">
-              <span class="nr" id="scan-schritt-1-nr">1</span>
-              <span class="wachse"><b>Aufnahme</b><small id="scan-schritt-1-status">Noch kein Bild</small></span>
-              <span class="pfeil">›</span>
+      <div class="section" id="sec-steps">
+        <span class="heading">SCAN EINRICHTEN</span>
+        <div class="scan-wizard" id="scan-steps">
+          <div class="scan-wizard-step" id="scan-wizard-1">
+            <button class="scan-wizard-header" data-scan-step="1">
+              <span class="nr" id="scan-step-1-nr">1</span>
+              <span class="grow"><b>Aufnahme</b><small id="scan-step-1-status">Noch kein Bild</small></span>
+              <span class="arrow">›</span>
             </button>
-            <div class="scan-assistent-inhalt" id="scan-schritt-1-inhalt">
-              <label class="feld"><span>Was soll aufgenommen werden?</span>
-                <span class="scan-fensterzeile">
-                  <select id="scan-fenster" class="scan-fensterwahl"></select>
-                  <button class="btn still" id="scan-fenster-neu" type="button"
+            <div class="scan-wizard-body" id="scan-step-1-body">
+              <label class="field"><span>Was soll aufgenommen werden?</span>
+                <span class="scan-window-row">
+                  <select id="scan-window" class="scan-window-select"></select>
+                  <button class="btn quiet" id="scan-window-capture" type="button"
                           title="Offene Fenster neu einlesen">↻ Aktualisieren</button>
                 </span>
               </label>
-              <div class="scan-quellenstand">
-                <span class="scan-quelleninfo" id="scan-quelleninfo">
-                  <span class="scan-quelle-titel" id="scan-quellenname">Ganzer Bildschirm</span>
-                  <span class="klein mono" id="scan-bereich" hidden></span>
+              <div class="scan-source-state">
+                <span class="scan-source-info" id="scan-source-info">
+                  <span class="scan-source-title" id="scan-source-name">Ganzer Bildschirm</span>
+                  <span class="small mono" id="scan-area" hidden></span>
                 </span>
-                <button class="btn still" id="scan-vollbild">Zurück auf Vollbild</button>
+                <button class="btn quiet" id="scan-fullscreen">Zurück auf Vollbild</button>
               </div>
-              <button class="btn still" id="scan-aufziehen"
+              <button class="btn quiet" id="scan-draw-area"
                       title="Im vorhandenen Bild zwei Ecken anklicken">Eigenen Ausschnitt wählen</button>
-              <button class="btn haupt scan-assistent-haupt" id="scan-foto">Screenshot aufnehmen</button>
+              <button class="btn primary scan-wizard-main" id="scan-photo">Screenshot aufnehmen</button>
               <!-- Erklaerung ins ⓘ: sie gilt immer und aendert sich nie, steht
                    also bei jedem Blick auf den Schritt im Weg. Was hier bleibt,
                    ist der STAND (Groesse der Aufnahme). -->
-              <span class="ueberschrift mitinfo" id="scan-foto-info"></span>
-              <span class="klein mono" id="scan-groesse"></span>
+              <span class="heading with-info" id="scan-photo-info"></span>
+              <span class="small mono" id="scan-size"></span>
             </div>
           </div>
-          <div class="scan-assistent-schritt" id="scan-assistent-2">
-            <button class="scan-assistent-kopf" data-scan-schritt="2">
-              <span class="nr" id="scan-schritt-2-nr">2</span>
-              <span class="wachse"><b>Slots festlegen</b><small id="scan-schritt-2-status">Noch keine Slots</small></span>
-              <span class="pfeil">›</span>
+          <div class="scan-wizard-step" id="scan-wizard-2">
+            <button class="scan-wizard-header" data-scan-step="2">
+              <span class="nr" id="scan-step-2-nr">2</span>
+              <span class="grow"><b>Slots festlegen</b><small id="scan-step-2-status">Noch keine Slots</small></span>
+              <span class="arrow">›</span>
             </button>
-            <div class="scan-assistent-inhalt" id="scan-schritt-2-inhalt" hidden>
-              <p class="hinweis">Am einfachsten mit einem leeren Inventar: Bereich markieren und
+            <div class="scan-wizard-body" id="scan-step-2-body" hidden>
+              <p class="hint">Am einfachsten mit einem leeren Inventar: Bereich markieren und
                 danach auf den Hintergrund eines leeren Slots klicken. Die Ecken dürfen in der
                 mittleren Arbeitsfläche über das Bild hinausgehen; sie rasten am Bildrand ein.</p>
-              <button class="btn haupt scan-assistent-haupt" id="scan-slots-finden">Slots automatisch finden</button>
-              <button class="btn still scan-assistent-haupt" id="scan-slot-neu">Einzelnen Slot zeichnen</button>
+              <button class="btn primary scan-wizard-main" id="scan-slots-find">Slots automatisch finden</button>
+              <button class="btn quiet scan-wizard-main" id="scan-slot-new">Einzelnen Slot zeichnen</button>
             </div>
           </div>
-          <div class="scan-assistent-schritt" id="scan-assistent-3">
-            <button class="scan-assistent-kopf" data-scan-schritt="3">
-              <span class="nr" id="scan-schritt-3-nr">3</span>
-              <span class="wachse"><b>Items lernen</b><small id="scan-schritt-3-status">Noch keine Items</small></span>
-              <span class="pfeil">›</span>
+          <div class="scan-wizard-step" id="scan-wizard-3">
+            <button class="scan-wizard-header" data-scan-step="3">
+              <span class="nr" id="scan-step-3-nr">3</span>
+              <span class="grow"><b>Items lernen</b><small id="scan-step-3-status">Noch keine Items</small></span>
+              <span class="arrow">›</span>
             </button>
-            <div class="scan-assistent-inhalt" id="scan-schritt-3-inhalt" hidden>
-              <p class="hinweis">Inventar füllen, Schritt 1 öffnen und einen neuen Screenshot
+            <div class="scan-wizard-body" id="scan-step-3-body" hidden>
+              <p class="hint">Inventar füllen, Schritt 1 öffnen und einen neuen Screenshot
                 aufnehmen. Gelernt wird anschließend genau aus diesem Bild.</p>
               <!-- Derselbe Befehl wie der Knopf rechts oben, also derselbe Name.
                    Er hiess hier „Erkennung testen" und dort „Items erkennen" —
                    zwei Namen fuer einen Knopf, und man probiert beide aus. -->
               <button class="btn" id="scan-test"
                       title="Hält jeden Slot gegen die Item-Profile und schreibt das Ergebnis an Bild und Item-Liste">Items erkennen</button>
-              <button class="btn haupt scan-assistent-haupt" id="scan-lernen">Items prüfen &amp; lernen</button>
+              <button class="btn primary scan-wizard-main" id="scan-learn">Items prüfen &amp; lernen</button>
             </div>
           </div>
         </div>
       </div>
-      <div class="abschnitt klappbar" id="ab-modi">
-        <button class="klapp-kopf" data-klapp="modi">
-          <span class="pfeil"></span>
-          <span class="ueberschrift wachse">WAS EIN KLICK TUT</span>
-          <span class="klein mono" id="scan-modus-kurz"></span>
+      <div class="section klappbar" id="sec-modes">
+        <button class="collapse-header" data-collapse="modes">
+          <span class="arrow"></span>
+          <span class="heading grow">WAS EIN KLICK TUT</span>
+          <span class="small mono" id="scan-mode-short"></span>
         </button>
-        <div class="klapp-rumpf spalte">
-          <div class="spalte" id="scan-modi" style="gap:4px"></div>
+        <div class="collapse-body column">
+          <div class="column" id="scan-modes" style="gap:4px"></div>
           <!-- Der Rueckweg gehoert dazu, sonst ist jeder Modus eine Falltuer:
                hinein kommt man mit einem Klick, heraus nur mit einer Taste, die
                man kennen muss. Steht nur da, wenn es etwas zu verlassen gibt. -->
-          <p class="hinweis" id="scan-modi-zurueck" hidden>Nochmal auf die
+          <p class="hint" id="scan-modes-back" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
           <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
-               Modus (scan_direkt in scans.py). Sie gehoeren hierher, weil hier
+               Modus (scan_direct in scans.py). Sie gehoeren hierher, weil hier
                steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
                ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
                und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
-          <span class="ueberschrift mitinfo" id="scan-modi-direkt"></span>
+          <span class="heading with-info" id="scan-modes-direct"></span>
         </div>
       </div>
       <!-- Hier stand die Liste (Scans/Slots/Items bzw. Bosse/Icons). Sie ist
@@ -295,50 +295,50 @@
            Verantwortung — links, wie der Scan entsteht, rechts, was drin ist. -->
     </aside>
 
-    <main class="scan-buehne" id="scan-buehne">
+    <main class="scan-stage" id="scan-stage">
       <div class="scan-canvas-bar" id="scan-canvas-bar">
         <button class="scan-tool" data-scan-tool="wahl">Auswählen</button>
         <!-- Die beiden Werkzeuge der Erkennungs-Scans. Sie stehen in derselben
              Leiste wie „Auswaehlen", weil sie dieselbe Frage beantworten: was
              tut ein Klick jetzt. Sichtbar nur bei Bossen und Icons — bei Slots
              gibt es keine Region und keinen Aktionspunkt. -->
-        <button class="scan-tool" data-erk-tool="region" hidden>Region aufziehen</button>
-        <button class="scan-tool" data-erk-tool="aktion" hidden>Klickpunkt</button>
-        <span class="klein" id="scan-werkzeugstand"></span>
-        <button class="scan-tool" id="scan-pin" title="Werkzeug für mehrere Aktionen anheften"><span class="scan-weit" id="scan-pin-lang">Anheften</span><span class="scan-kurz" id="scan-pin-kurz">Pin</span></button>
-        <span class="trenner"></span>
+        <button class="scan-tool" data-det-tool="region" hidden>Region aufziehen</button>
+        <button class="scan-tool" data-det-tool="action" hidden>Klickpunkt</button>
+        <span class="small" id="scan-tool-state"></span>
+        <button class="scan-tool" id="scan-pin" title="Werkzeug für mehrere Aktionen anheften"><span class="scan-wide" id="scan-pin-long">Anheften</span><span class="scan-short" id="scan-pin-short">Pin</span></button>
+        <span class="divider"></span>
         <button class="scan-tool" id="scan-fit" title="Bild ins Fenster einpassen">Einpassen</button>
-        <button class="scan-tool" id="scan-1zu1" title="Originalgröße">1:1</button>
-        <span class="klein mono" id="scan-zoom"></span>
-        <span class="wachse"></span>
-        <span class="scan-speicherstand" id="scan-speicherstand"></span>
+        <button class="scan-tool" id="scan-actual-size" title="Originalgröße">1:1</button>
+        <span class="small mono" id="scan-zoom"></span>
+        <span class="grow"></span>
+        <span class="scan-save-state" id="scan-save-state"></span>
       </div>
-      <div class="scan-ergebnis" id="scan-ergebnis" hidden></div>
-      <div class="scan-flaeche" id="scan-flaeche">
-        <img id="scan-bild" alt="">
+      <div class="scan-result" id="scan-result" hidden></div>
+      <div class="scan-surface" id="scan-surface">
+        <img id="scan-image" alt="">
         <svg id="scan-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
-      <p id="scan-ohne-bild" hidden>kein Bild gemerkt — die Slots stehen an ihrer
+      <p id="scan-no-image" hidden>kein Bild gemerkt — die Slots stehen an ihrer
         Stelle. „Screenshot aufnehmen“ legt das Spiel dahinter.</p>
-      <p class="leer" id="scan-leer">Noch kein Bild. „Screenshot aufnehmen" friert
+      <p class="empty" id="scan-empty">Noch kein Bild. „Screenshot aufnehmen" friert
         den Bildschirm ein — darauf werden die Slots aufgezogen.</p>
       <!-- Die Boss-Bibliothek ist kein Rechteck auf dem Bild, sondern eine
            Sammlung: Bosse, die in JEDEM Boss-Scan zusaetzlich gelten. Deshalb
            steht sie als Kartenraster an der Stelle der Buehne und nicht als
            weitere Liste links. -->
-      <div class="scan-karten" id="scan-bibliothek" hidden></div>
+      <div class="scan-cards" id="scan-library" hidden></div>
     </main>
 
-    <aside class="seite rechts" id="scan-insp"></aside>
+    <aside class="page right" id="scan-insp"></aside>
   </div>
 
   <!-- Teilen: links was ins Bündel kommt, in der Mitte die vorhandenen Bündel,
        rechts das Einlesen. Beide Seiten arbeiten auf dem GESPEICHERTEN Stand —
        was im Fenster offen ist, liegt nicht auf Platte. -->
-  <div class="teilen" id="sicht-teilen" hidden>
-    <aside class="seite links" id="teilen-export"></aside>
-    <main class="cfg-mitte" id="teilen-mitte"></main>
-    <aside class="seite rechts" id="teilen-import"></aside>
+  <div class="share" id="view-share" hidden>
+    <aside class="page left" id="share-export"></aside>
+    <main class="cfg-middle" id="share-middle"></main>
+    <aside class="page right" id="share-import"></aside>
   </div>
 
   <!-- Werkzeuge: was bisher nur im Punkte-Menue der Konsole ging. Links die
@@ -346,10 +346,10 @@
        selbst, rechts das Ergebnis. Dieselbe Dreiteilung wie ueberall - hier
        traegt sie zusaetzlich, dass eine Kalibrierung eine VORSCHAU hat: in der
        Konsole scrollt die Liste weg, hier steht sie neben dem Knopf. -->
-  <div class="cfg" id="sicht-werkzeuge" hidden>
-    <aside class="seite links" id="wz-links"></aside>
-    <main class="cfg-mitte" id="wz-mitte"></main>
-    <aside class="seite rechts" id="wz-rechts"></aside>
+  <div class="cfg" id="view-tools" hidden>
+    <aside class="page left" id="wz-left"></aside>
+    <main class="cfg-middle" id="wz-middle"></main>
+    <aside class="page right" id="wz-right"></aside>
   </div>
 
   <!-- Bericht: was die vergangenen Laeufe hinterlassen haben. Der Live-Run
@@ -358,49 +358,49 @@
        Dieselbe Dreiteilung wie Werkzeuge und Einstellungen (Auswahl, Inhalt,
        was daran haengt) und dieselben Klassen: ein Reiter, der sich seine
        eigene Gestalt gibt, kostet mehr als er einbringt. -->
-  <div class="cfg" id="sicht-bericht" hidden>
-    <aside class="seite links" id="ber-links"></aside>
-    <main class="cfg-mitte" id="ber-mitte"></main>
-    <aside class="seite rechts" id="ber-rechts"></aside>
+  <div class="cfg" id="view-report" hidden>
+    <aside class="page left" id="rep-left"></aside>
+    <main class="cfg-middle" id="rep-middle"></main>
+    <aside class="page right" id="rep-right"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,
        was gerade offen ist). Die Felder stehen einzeln untereinander statt in
        einem Raster — jedes traegt einen Satz Erklaerung, und nebeneinander
        waere davon nichts mehr lesbar. -->
-  <div class="cfg" id="sicht-config" hidden>
-    <aside class="seite links">
-      <div class="abschnitt">
-        <span class="ueberschrift">EINSTELLUNGEN</span>
-        <input id="cfg-suche" placeholder="filtern…" autocomplete="off">
+  <div class="cfg" id="view-settings" hidden>
+    <aside class="page left">
+      <div class="section">
+        <span class="heading">EINSTELLUNGEN</span>
+        <input id="cfg-search" placeholder="filtern…" autocomplete="off">
       </div>
-      <div class="abschnitt wachsend" id="cfg-liste" style="gap:2px"></div>
+      <div class="section growing" id="cfg-list" style="gap:2px"></div>
     </aside>
-    <main class="cfg-mitte" id="cfg-felder"></main>
-    <aside class="seite rechts" id="cfg-rechts"></aside>
+    <main class="cfg-middle" id="cfg-fields"></main>
+    <aside class="page right" id="cfg-right"></aside>
   </div>
 
   <!-- Die Statusleiste sitzt unten und nicht oben rechts: dort stand sie
        zwischen den Bedienelementen und nahm dem Kopf den Platz, den er fuer
        weitere braucht. Unten liest man sie nach einer Aktion genau dort, wo
        sonst nichts passiert — und lange Meldungen haben die ganze Breite. -->
-  <footer class="fusszeile">
-    <span class="lampe-klein" id="fuss-lampe"></span>
+  <footer class="footer">
+    <span class="lamp-small" id="footer-lamp"></span>
     <span class="status" id="status"></span>
-    <span class="wachse"></span>
-    <span class="klein mono" id="fuss-datei"></span>
-    <span class="klein" id="fuss-punkte"></span>
+    <span class="grow"></span>
+    <span class="small mono" id="footer-file"></span>
+    <span class="small" id="footer-points"></span>
   </footer>
 </div>
 
-<div class="schleier" id="schleier" hidden>
+<div class="veil" id="veil" hidden>
   <div class="dialog">
-    <h2 id="dialog-titel">Ungespeicherte Änderungen</h2>
+    <h2 id="dialog-title">Ungespeicherte Änderungen</h2>
     <p id="dialog-text"></p>
-    <div class="knoepfe">
-      <button class="btn" id="dialog-ab">Abbrechen</button>
-      <button class="btn gefahr" id="dialog-weg">Verwerfen</button>
-      <button class="btn haupt" id="dialog-speichern">Speichern &amp; weiter</button>
+    <div class="buttons">
+      <button class="btn" id="dialog-cancel">Abbrechen</button>
+      <button class="btn danger" id="dialog-discard">Verwerfen</button>
+      <button class="btn primary" id="dialog-save">Speichern &amp; weiter</button>
     </div>
   </div>
 </div>

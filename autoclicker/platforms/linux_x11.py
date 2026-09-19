@@ -54,10 +54,10 @@ def environment_warnings() -> list[str]:
             "Fensteraufnahme benötigen eine X11-Sitzung.")
     elif not os.environ.get("DISPLAY"):
         messages.append("Keine X11-Sitzung gefunden: DISPLAY ist nicht gesetzt.")
-    for modul, paket in (
+    for module_name, package in (
             ("pynput", "pynput"), ("Xlib", "python-xlib"), ("mss", "mss")):
-        if find_spec(modul) is None:
-            messages.append(f"Linux-Abhängigkeit fehlt: pip install {paket}")
+        if find_spec(module_name) is None:
+            messages.append(f"Linux-Abhängigkeit fehlt: pip install {package}")
     return messages
 
 
@@ -75,14 +75,14 @@ def _mss_desktop():
     from mss.exception import ScreenShotError
     try:
         return mss()
-    except ScreenShotError as fehler:
-        raise RuntimeError(f"X11-Bildschirmaufnahme nicht verfügbar: {fehler}") from fehler
+    except ScreenShotError as error:
+        raise RuntimeError(f"X11-Bildschirmaufnahme nicht verfügbar: {error}") from error
 
 
 def get_virtual_desktop() -> tuple[int, int, int, int] | None:
     try:
-        with _mss_desktop() as bildschirm:
-            monitor = bildschirm.monitors[0]
+        with _mss_desktop() as screen:
+            monitor = screen.monitors[0]
             return (
                 int(monitor["left"]), int(monitor["top"]),
                 int(monitor["left"] + monitor["width"]),
@@ -94,23 +94,23 @@ def get_virtual_desktop() -> tuple[int, int, int, int] | None:
 
 def get_screen_size() -> tuple[int, int] | None:
     try:
-        with _mss_desktop() as bildschirm:
-            monitor = bildschirm.monitors[1]
+        with _mss_desktop() as screen:
+            monitor = screen.monitors[1]
             return int(monitor["width"]), int(monitor["height"])
     except (ImportError, OSError, RuntimeError, IndexError):
         return None
 
 
 def get_virtual_origin() -> tuple[int, int]:
-    rechteck = get_virtual_desktop()
-    return (rechteck[0], rechteck[1]) if rechteck else (0, 0)
+    rect_value = get_virtual_desktop()
+    return (rect_value[0], rect_value[1]) if rect_value else (0, 0)
 
 
 def get_screen_center() -> tuple[int, int]:
-    rechteck = get_virtual_desktop()
-    if rechteck:
-        return ((rechteck[0] + rechteck[2]) // 2,
-                (rechteck[1] + rechteck[3]) // 2)
+    rect_value = get_virtual_desktop()
+    if rect_value:
+        return ((rect_value[0] + rect_value[2]) // 2,
+                (rect_value[1] + rect_value[3]) // 2)
     size = get_screen_size()
     return (size[0] // 2, size[1] // 2) if size else (960, 540)
 
@@ -119,7 +119,7 @@ def capture_screen(region=None):
     """Screenshot über MSS; Ergebnis ist ein PIL-RGB-Bild."""
     try:
         from PIL import Image
-        with _mss_desktop() as bildschirm:
+        with _mss_desktop() as screen:
             if region:
                 left, top, right, bottom = (int(v) for v in region)
                 if right <= left or bottom <= top:
@@ -129,11 +129,11 @@ def capture_screen(region=None):
                     "width": right - left, "height": bottom - top,
                 }
             else:
-                monitor = bildschirm.monitors[0]
-            raw = bildschirm.grab(monitor)
+                monitor = screen.monitors[0]
+            raw = screen.grab(monitor)
             return Image.frombytes("RGB", raw.size, raw.rgb)
-    except (ImportError, OSError, RuntimeError, ValueError) as fehler:
-        logger.error("Linux-Screenshot fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        logger.error("Linux-Screenshot fehlgeschlagen: %s", error)
         return None
 
 
@@ -152,8 +152,8 @@ def get_cursor_pos() -> tuple[int, int]:
         _, mouse = _pynput()
         x, y = mouse.Controller().position
         return int(x), int(y)
-    except (ImportError, OSError, RuntimeError) as fehler:
-        raise PlatformError(f"Linux konnte die Mausposition nicht lesen: {fehler}") from fehler
+    except (ImportError, OSError, RuntimeError) as error:
+        raise PlatformError(f"Linux konnte die Mausposition nicht lesen: {error}") from error
 
 
 def set_cursor_pos(x: int, y: int) -> bool:
@@ -175,8 +175,8 @@ def send_click(x: int, y: int, move_delay: float = 0.01,
         controller.click(mouse.Button.left)
         time.sleep(max(0.0, post_delay))
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Klick fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Klick fehlgeschlagen: %s", error)
         return False
 
 
@@ -193,13 +193,13 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
         controller.scroll(0, int(clicks))
         time.sleep(max(0.0, post_delay))
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Scrollen fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Scrollen fehlgeschlagen: %s", error)
         return False
 
 
 def _keyboard_key(keyboard, name: str):
-    sondertasten = {
+    special_keys = {
         "enter": keyboard.Key.enter, "return": keyboard.Key.enter,
         "tab": keyboard.Key.tab, "space": keyboard.Key.space,
         "leertaste": keyboard.Key.space, "escape": keyboard.Key.esc,
@@ -208,9 +208,9 @@ def _keyboard_key(keyboard, name: str):
         "left": keyboard.Key.left, "right": keyboard.Key.right,
         "up": keyboard.Key.up, "down": keyboard.Key.down,
     }
-    for nummer in range(1, 13):
-        sondertasten[f"f{nummer}"] = getattr(keyboard.Key, f"f{nummer}")
-    return sondertasten.get(name, name if len(name) == 1 else None)
+    for number in range(1, 13):
+        special_keys[f"f{number}"] = getattr(keyboard.Key, f"f{number}")
+    return special_keys.get(name, name if len(name) == 1 else None)
 
 
 def send_key(key_name: str) -> bool:
@@ -225,8 +225,8 @@ def send_key(key_name: str) -> bool:
         controller.press(key)
         controller.release(key)
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Tastendruck fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Tastendruck fehlgeschlagen: %s", error)
         return False
 
 
@@ -248,8 +248,8 @@ def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
         _mouse_listener = mouse.Listener(on_click=on_click, on_scroll=on_scroll)
         _mouse_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Maushook fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Maushook fehlgeschlagen: %s", error)
         _mouse_listener = None
         return False
 
@@ -272,8 +272,8 @@ def _key_name(keyboard, key) -> str | None:
         keyboard.Key.left: "left", keyboard.Key.right: "right",
         keyboard.Key.up: "up", keyboard.Key.down: "down",
     }
-    for nummer in range(1, 13):
-        mapping[getattr(keyboard.Key, f"f{nummer}")] = f"f{nummer}"
+    for number in range(1, 13):
+        mapping[getattr(keyboard.Key, f"f{number}")] = f"f{number}"
     return mapping.get(key)
 
 
@@ -284,12 +284,12 @@ def install_keyboard_hook(on_key_down) -> bool:
     try:
         keyboard, _ = _pynput()
         modifier = set()
-        steuerung = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
+        controls = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
         old = {keyboard.Key.old, keyboard.Key.alt_l, keyboard.Key.alt_r,
                keyboard.Key.alt_gr}
 
         def on_press(key):
-            if key in steuerung or key in old:
+            if key in controls or key in old:
                 modifier.add(key)
                 return
             name = _key_name(keyboard, key)
@@ -303,8 +303,8 @@ def install_keyboard_hook(on_key_down) -> bool:
             on_press=on_press, on_release=on_release)
         _keyboard_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Tastaturhook fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Tastaturhook fehlgeschlagen: %s", error)
         _keyboard_listener = None
         return False
 
@@ -378,10 +378,10 @@ def list_windows() -> list:
                 window = display.create_resource_object("window", xid)
                 if window.get_attributes().map_state != X.IsViewable:
                     continue
-                titel = _window_title(display, window)
+                title = _window_title(display, window)
                 rect = _window_rect(window, root)
-                if titel and rect and rect[2] - rect[0] >= 80 and rect[3] - rect[1] >= 80:
-                    found.append((titel, rect, xid))
+                if title and rect and rect[2] - rect[0] >= 80 and rect[3] - rect[1] >= 80:
+                    found.append((title, rect, xid))
             except (AttributeError, TypeError, xerror.XError):
                 continue
         return sorted(found, key=lambda entry: (entry[1][1], entry[1][0]))
@@ -416,10 +416,10 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     if not isinstance(title, str) or not title.strip():
         return None
     target = title.strip().casefold()
-    fenster = list_windows()
-    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    window = list_windows()
+    candidates = [e for e in window if e[0].strip().casefold() == target]
     if not candidates:
-        candidates = [e for e in fenster if target in e[0].casefold()]
+        candidates = [e for e in window if target in e[0].casefold()]
     if not candidates:
         return None
     try:
@@ -488,12 +488,12 @@ def get_window_title_at(x: int, y: int) -> str:
     match = []
     for entry in list_windows():
         try:
-            titel, rect = entry[0], entry[1]
+            title, rect = entry[0], entry[1]
             left, top, right, bottom = rect
         except (TypeError, ValueError, IndexError):
             continue
         if left <= x < right and top <= y < bottom:
-            match.append(((right - left) * (bottom - top), titel))
+            match.append(((right - left) * (bottom - top), title))
     if not match:
         return ""
     return min(match)[1]
@@ -520,15 +520,15 @@ def register_hotkeys() -> bool:
     try:
         keyboard, _ = _pynput()
         callbacks = {
-            kombination: (lambda hotkey_id=hotkey_id:
+            combination: (lambda hotkey_id=hotkey_id:
                           _hotkey_queue.put(hotkey_id))
-            for hotkey_id, kombination in HOTKEY_BINDINGS.items()
+            for hotkey_id, combination in HOTKEY_BINDINGS.items()
         }
         _hotkey_listener = keyboard.GlobalHotKeys(callbacks)
         _hotkey_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        print(warn(f"Linux-Hotkeys konnten nicht registriert werden: {fehler}"))
+    except (ImportError, OSError, RuntimeError) as error:
+        print(warn(f"Linux-Hotkeys konnten nicht registriert werden: {error}"))
         _hotkey_listener = None
         return False
 
@@ -589,7 +589,7 @@ def set_app_id(_app_id: str = APP_ID) -> bool:
     return False
 
 
-def set_window_icon(_titel_substring: str, warten: float = 0.0) -> bool:
-    if warten > 0:
-        time.sleep(min(float(warten), 0.05))
+def set_window_icon(_title_substring: str, waiting: float = 0.0) -> bool:
+    if waiting > 0:
+        time.sleep(min(float(waiting), 0.05))
     return False

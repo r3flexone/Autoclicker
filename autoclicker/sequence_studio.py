@@ -35,27 +35,27 @@ def last_edited() -> "Path | None":
     danach von einem anderen Programmteil gespeicherte sequence.json gewinnt
     trotzdem — entscheidend ist das jüngere der beiden Ereignisse.
     """
-    verfuegbar = list_available_sequences()
-    neueste, zeit = None, -1
-    for _, path in verfuegbar:
+    available = list_available_sequences()
+    newest, time_value = None, -1
+    for _, path in available:
         try:
             m = path.stat().st_mtime_ns
         except OSError:
             continue
-        if m > zeit:
-            neueste, zeit = path, m
+        if m > time_value:
+            newest, time_value = path, m
 
     marker = Path(STUDIO_LAST_SEQUENCE_FILE)
     try:
         data = json.loads(marker.read_text(encoding="utf-8"))
-        folder = str(data.get("ordner") or "") if isinstance(data, dict) else ""
-        gemerkt = next((path for _, path in verfuegbar
+        folder = str(data.get("folder") or "") if isinstance(data, dict) else ""
+        remembered = next((path for _, path in available
                         if path.parent.name == folder), None)
-        if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
-            return gemerkt
+        if remembered is not None and marker.stat().st_mtime_ns >= time_value:
+            return remembered
     except (OSError, ValueError, TypeError):
         pass
-    return neueste
+    return newest
 
 
 def remember_last_used(path) -> bool:
@@ -65,7 +65,7 @@ def remember_last_used(path) -> bool:
         return False
     try:
         atomic_write(Path(STUDIO_LAST_SEQUENCE_FILE), compact_json({
-            "ordner": path.parent.name,
+            "folder": path.parent.name,
         }))
         return True
     except OSError:
@@ -88,11 +88,11 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
                 if seq:
                     return seq, path
     else:
-        letzte = last_edited()
-        if letzte is not None:
-            seq = load_sequence_file(letzte)
+        last = last_edited()
+        if last is not None:
+            seq = load_sequence_file(last)
             if seq:
-                return seq, letzte
+                return seq, last
 
     base = name or f"Sequenz_{int(time.time())}"
     path = sequence_file(base)
@@ -112,9 +112,9 @@ def _save_scans_on_close(bridge) -> bool:
     if not getattr(bridge, "_scan_dirty", False):
         return False
 
-    antwort = bridge.scan_speichern()
-    status = antwort.get("status", {}) if isinstance(antwort, dict) else {}
-    if status.get("art") == "err":
+    answer = bridge.scan_save()
+    status = answer.get("status", {}) if isinstance(answer, dict) else {}
+    if status.get("kind") == "err":
         print(f"\nItem-Scans konnten nicht gespeichert werden: "
               f"{status.get('text', 'unbekannter Fehler')}")
         return False
@@ -123,7 +123,7 @@ def _save_scans_on_close(bridge) -> bool:
     return True
 
 
-def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
+def _on_close(bridge, quit_with_window: bool = False) -> None:
     """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
     # Zuerst die Klick-Runde: sie haengt im Hauptprozess an einem systemweiten
     # Maus-Hook, und ihre Bedienung steht nur in diesem Fenster. Bleibt sie
@@ -131,44 +131,44 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
     # er nirgends mehr sieht. Verworfen, nicht uebernommen: wer zumacht, hat
     # nicht uebernommen.
     try:
-        bridge.nachklick_beim_schliessen()
+        bridge.reclick_on_close()
     except Exception:
         pass
     _save_scans_on_close(bridge)
 
-    target = bridge.rettung_schreiben()
+    target = bridge.rescue_write()
     if target is not None:
         print(f"\nUngespeicherte Aenderungen gesichert: {target}")
         print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
-    if beenden_mit_fenster and not getattr(bridge, "_beenden_gesendet", False):
+    if quit_with_window and not getattr(bridge, "_quit_sent", False):
         # Nur das automatisch gestartete Hauptfenster besitzt den Hauptprozess.
         # Ein per Hotkey zusätzlich geöffnetes Studio darf ihn beim Schliessen
         # nicht überraschend mitnehmen.
         from .mailbox import send_command
-        bridge._beenden_gesendet = True
-        send_command("programm_beenden")
+        bridge._quit_sent = True
+        send_command("quit_program")
 
 
-def _attach_close_handler(fenster, bridge,
-                          beenden_mit_fenster: bool = False) -> None:
+def _attach_close_handler(window, bridge,
+                          quit_with_window: bool = False) -> None:
     """Hängt `_on_close` ans Fenster — über beide pywebview-Schreibweisen.
 
-    Bis pywebview 3.5 hiess das Ereignis `fenster.closing`, danach
-    `fenster.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
+    Bis pywebview 3.5 hiess das Ereignis `window.closing`, danach
+    `window.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
     """
-    for besitzer in (getattr(fenster, "events", None), fenster):
-        ereignis = getattr(besitzer, "closing", None) if besitzer is not None else None
-        if ereignis is not None and hasattr(ereignis, "__iadd__"):
-            ereignis += lambda: _on_close(bridge, beenden_mit_fenster)
+    for owner_name in (getattr(window, "events", None), window):
+        event = getattr(owner_name, "closing", None) if owner_name is not None else None
+        if event is not None and hasattr(event, "__iadd__"):
+            event += lambda: _on_close(bridge, quit_with_window)
             return
 
 
 def main(argv: list[str]) -> int:
     # `--scans` waehlt nur den Reiter vor; ein leeres erstes Argument ist erlaubt.
     scans = "--scans" in argv[1:]
-    beenden_mit_fenster = "--beenden-mit-fenster" in argv[1:]
-    stellen = [a for a in argv[1:] if not a.startswith("--")]
-    seq_name = stellen[0] if stellen else ""
+    quit_with_window = "--beenden-mit-fenster" in argv[1:]
+    positions = [a for a in argv[1:] if not a.startswith("--")]
+    seq_name = positions[0] if positions else ""
 
     try:
         import webview
@@ -187,7 +187,7 @@ def main(argv: list[str]) -> int:
     from .editors.sequence_studio.bridge import StudioBridge
     bridge = StudioBridge(seq, path, SEQUENCES_DIR)
     if scans:
-        bridge.start_ansicht = "scans"
+        bridge.start_view = "scans"
 
     # VOR dem ersten Fenster: sonst sortiert die Taskleiste es unter python.exe
     # ein. Die Titelleiste bekommt ihr Symbol weiter unten - zwei Mechanismen.
@@ -199,7 +199,7 @@ def main(argv: list[str]) -> int:
 
     # Titel ohne Sequenznamen: der Name steht im Kopf der Oberflaeche, und
     # `set_window_icon()` findet das Fenster ueber den festen Titel.
-    fenster = webview.create_window(
+    window = webview.create_window(
         WINDOW_TITLE,
         url=INDEX.as_uri(),
         js_api=bridge,
@@ -207,7 +207,7 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _attach_close_handler(fenster, bridge, beenden_mit_fenster)
+    _attach_close_handler(window, bridge, quit_with_window)
 
     def _after_start() -> None:
         """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
@@ -217,7 +217,7 @@ def main(argv: list[str]) -> int:
         """
         try:
             from .winapi import set_window_icon
-            set_window_icon(WINDOW_TITLE, warten=15.0)
+            set_window_icon(WINDOW_TITLE, waiting=15.0)
         except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
             pass
 
@@ -241,7 +241,7 @@ def _closing_message(bridge) -> None:
     Zweck und erscheint nur, wenn wirklich gespeichert wurde.
     """
     tag = col("[SEQUENZ-STUDIO]", "cyan")
-    if getattr(bridge, "_gespeichert", False):
+    if getattr(bridge, "_saved", False):
         print(f"\n{tag} Geschlossen — '{bridge.board.name}' gespeichert.")
         print(f"     Im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     else:

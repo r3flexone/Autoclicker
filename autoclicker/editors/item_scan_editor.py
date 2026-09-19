@@ -18,7 +18,7 @@ from ..persistence import (
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
     save_global_items, active_templates_dir
 )
-from ._item_felder import frage_bestaetigungsklick, frage_prioritaet
+from ._item_fields import ask_confirm_click, ask_priority
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
@@ -33,51 +33,51 @@ from .icon_scan_editor import run_icon_scan_editor
 # ausgeschrieben: <Nr>, <Von>-<Bis>, all, clear, show, done, cancel. Zwei Kopien sind
 # zwei Verhaltensweisen — eine Korrektur an der einen ging an der anderen vorbei.
 
-def bereich_parsen(eingabe: str, count: int) -> Optional[tuple[int, int]]:
+def parse_range(user_input: str, count: int) -> Optional[tuple[int, int]]:
     """'1-5' → (1, 5), aufsteigend normalisiert.
 
     None, wenn es kein Bereich ist oder eine Grenze ausserhalb 1..anzahl liegt.
     '5-1' ergibt (1, 5) — wer rueckwaerts tippt, meint dasselbe.
     """
-    if "-" not in eingabe:
+    if "-" not in user_input:
         return None
-    parts = eingabe.split("-")
+    parts = user_input.split("-")
     if len(parts) != 2:
         return None
     try:
-        von, bis = int(parts[0]), int(parts[1])
+        from_index, until = int(parts[0]), int(parts[1])
     except ValueError:
         return None
-    if not (1 <= von <= count and 1 <= bis <= count):
+    if not (1 <= from_index <= count and 1 <= until <= count):
         return None
-    return (min(von, bis), max(von, bis))
+    return (min(from_index, until), max(from_index, until))
 
 
-def mehrfach_auswahl(prompt: str, entries: list, gewaehlt: list,
-                     line, extra_praefix: str = "", extra_fn=None,
-                     leer_fehler: str = "") -> Optional[list]:
+def multi_select(prompt: str, entries: list, selected: list,
+                     line, extra_prefix: str = "", extra_fn=None,
+                     empty_error: str = "") -> Optional[list]:
     """Mehrfachauswahl aus einer nummerierten Liste. None = Abbruch.
 
-    `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `gewaehlt`
+    `entries` ist die Namensliste (wird von `extra_fn` ggf. erweitert), `selected`
     die Vorauswahl. `line(index, name, markiert)` liefert die Anzeigezeile.
 
-    `extra_praefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
+    `extra_prefix`/`extra_fn` haengen einen zusaetzlichen Befehl an (im Item-Schritt
     'new <Slot-Nr>'): `extra_fn(eingabe)` gibt den Namen des neu angelegten Eintrags
     zurueck oder None. Der wird angehaengt UND ausgewaehlt.
 
-    `leer_fehler` erzwingt mindestens einen Eintrag bei 'done'.
+    `empty_error` erzwingt mindestens einen Eintrag bei 'done'.
     """
-    gewaehlt = list(gewaehlt)
-    befehle = ["done", "cancel", "all", "clear", "show"]
-    if extra_praefix:
-        befehle.append(extra_praefix)
+    selected = list(selected)
+    commands = ["done", "cancel", "all", "clear", "show"]
+    if extra_prefix:
+        commands.append(extra_prefix)
 
-    def _zeige():
-        print(f"\n{len(gewaehlt)}/{len(entries)} ausgewählt:")
+    def _show():
+        print(f"\n{len(selected)}/{len(entries)} ausgewählt:")
         if not entries:
             print("  (nichts vorhanden)")
         for i, name in enumerate(entries):
-            print(line(i, name, name in gewaehlt))
+            print(line(i, name, name in selected))
 
     while True:
         try:
@@ -85,61 +85,61 @@ def mehrfach_auswahl(prompt: str, entries: list, gewaehlt: list,
             inp = raw.lower()
 
             if inp in ("done", "d"):
-                if leer_fehler and not gewaehlt:
-                    print("  " + err(leer_fehler) + " "
+                if empty_error and not selected:
+                    print("  " + err(empty_error) + " "
                           + hint("('<Nr>' = wählen, 'cancel' = Editor verlassen)"))
                     continue
-                return gewaehlt
+                return selected
             if is_cancel(inp):
                 return None
             if inp == "all":
-                gewaehlt = list(entries)
+                selected = list(entries)
                 print(f"  + Alle {len(entries)} ausgewählt")
                 continue
             if inp == "clear":
-                gewaehlt = []
+                selected = []
                 print("  + Auswahl gelöscht")
                 continue
             if inp in ("show", "s"):
-                _zeige()
+                _show()
                 continue
-            if extra_praefix and inp.startswith(extra_praefix):
-                neuer = extra_fn(raw)
-                if neuer:
-                    if neuer not in entries:
-                        entries.append(neuer)
-                    if neuer not in gewaehlt:
-                        gewaehlt.append(neuer)
+            if extra_prefix and inp.startswith(extra_prefix):
+                newer = extra_fn(raw)
+                if newer:
+                    if newer not in entries:
+                        entries.append(newer)
+                    if newer not in selected:
+                        selected.append(newer)
                 continue
 
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
-            area = bereich_parsen(inp, len(entries))
+            area = parse_range(inp, len(entries))
             if area:
-                von, bis = area
-                for nr in range(von, bis + 1):
+                from_index, until = area
+                for nr in range(from_index, until + 1):
                     name = entries[nr - 1]
-                    if name not in gewaehlt:
-                        gewaehlt.append(name)
-                print(f"  + {von}-{bis} hinzugefügt")
+                    if name not in selected:
+                        selected.append(name)
+                print(f"  + {from_index}-{until} hinzugefügt")
                 continue
-            if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
+            if "-" in inp and not (extra_prefix and inp.startswith(extra_prefix)):
                 print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(entries)}")
                 continue
 
             try:
                 nr = int(inp)
             except ValueError:
-                print(f"  -> Unbekannter Befehl.{suggest_command(inp, befehle)}")
+                print(f"  -> Unbekannter Befehl.{suggest_command(inp, commands)}")
                 continue
             if not (1 <= nr <= len(entries)):
                 print(f"  -> Ungültig! 1-{len(entries)}")
                 continue
             name = entries[nr - 1]
-            if name in gewaehlt:
-                gewaehlt.remove(name)
+            if name in selected:
+                selected.remove(name)
                 print(f"  - {name} entfernt")
             else:
-                gewaehlt.append(name)
+                selected.append(name)
                 print(f"  + {name} hinzugefügt")
         except (KeyboardInterrupt, EOFError):
             return None
@@ -156,10 +156,10 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         scan_count = len(state.item_scans)
         boss_count = len(state.boss_scans)
         icon_count = len(state.icon_scans)
-        aktiver_scan = state.active_item_scan or "keiner"
+        active_scan = state.active_item_scan or "keiner"
 
     menu_options = [
-        f"Item-Scan wählen     ({aktiver_scan})",
+        f"Item-Scan wählen     ({active_scan})",
         f"Slots bearbeiten     ({slot_count} vorhanden)",
         f"Items bearbeiten     ({item_count} vorhanden)",
         f"Scans bearbeiten     ({scan_count} vorhanden)",
@@ -251,7 +251,7 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         edit_item_scan(state, config)
 
 
-def _schritt_presets(state: AutoClickerState) -> bool:
+def _step_presets(state: AutoClickerState) -> bool:
     """Schritt 0: Slot-/Item-Preset laden. False = abgebrochen.
 
     Laeuft nur, wenn es ueberhaupt Presets gibt — sonst gibt es nichts zu waehlen.
@@ -266,29 +266,29 @@ def _schritt_presets(state: AutoClickerState) -> bool:
         cur_slots = len(state.global_slots)
         cur_items = len(state.global_items)
 
-    for presets, titel, aktuell, laden in (
+    for presets, title, current, load in (
         (slot_presets, "Slot-Presets", cur_slots, load_slot_preset),
         (item_presets, "Item-Presets", cur_items, load_item_preset),
     ):
         if not presets:
             continue
-        kind = titel.split("-")[0]
-        print(f"\n{titel}:")
-        for i, (name, _pfad, count) in enumerate(presets):
+        kind = title.split("-")[0]
+        print(f"\n{title}:")
+        for i, (name, _path, count) in enumerate(presets):
             print(f"  [{i+1}] {name} ({count} {kind}s)")
-        print(f"  [0] Aktuelle {kind}s verwenden ({aktuell} geladen)")
+        print(f"  [0] Aktuelle {kind}s verwenden ({current} geladen)")
 
         while True:
             try:
-                wahl = safe_input(f"\n{kind}-Preset wählen (Enter=0, 'cancel'): ").strip()
-                if is_cancel(wahl):
+                choice = safe_input(f"\n{kind}-Preset wählen (Enter=0, 'cancel'): ").strip()
+                if is_cancel(choice):
                     print("  -> Abgebrochen")
                     return False
-                if not wahl or wahl == "0":
+                if not choice or choice == "0":
                     break
-                nr = int(wahl)
+                nr = int(choice)
                 if 1 <= nr <= len(presets):
-                    laden(state, presets[nr - 1][0])
+                    load(state, presets[nr - 1][0])
                     break
                 print(f"  -> Ungültig! 0-{len(presets)}")
             except ValueError:
@@ -298,7 +298,7 @@ def _schritt_presets(state: AutoClickerState) -> bool:
     return True
 
 
-def _neues_item_per_template(state: AutoClickerState, eingabe: str,
+def _new_item_from_template(state: AutoClickerState, user_input: str,
                              slot_list: list, available_slots: dict,
                              available_items: dict) -> Optional[str]:
     """Legt ein Item aus einem Slot-Screenshot an. Gibt den Namen zurück, oder None.
@@ -311,9 +311,9 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
         return None
 
     slot_num = None
-    if eingabe.lower().startswith("new "):
+    if user_input.lower().startswith("new "):
         try:
-            slot_num = int(eingabe[4:])
+            slot_num = int(user_input[4:])
         except ValueError:
             pass
     if slot_num is None:
@@ -352,7 +352,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
 
     category = select_category(state)      # zuerst: die Prioritaets-Verschiebung braucht sie
 
-    priority = frage_prioritaet(state, category)
+    priority = ask_priority(state, category)
 
     min_confidence = state.config.scan_min_confidence
     try:
@@ -363,9 +363,9 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
     except ValueError:
         print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
 
-    confirm_point_id, confirm_delay = frage_bestaetigungsklick(
+    confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
-        frage="  Bestätigungs-Punkt-ID (Enter = keiner): ")
+        prompt="  Bestätigungs-Punkt-ID (Enter = keiner): ")
 
     new_item = ItemProfile(
         name=item_name, marker_colors=[], category=category, priority=priority,
@@ -384,7 +384,7 @@ def _neues_item_per_template(state: AutoClickerState, eingabe: str,
     return item_name
 
 
-def _schritt_toleranz(tolerance: int) -> int:
+def _step_tolerance(tolerance: int) -> int:
     """Schritt 3: Farbtoleranz. Fehleingabe behaelt den alten Wert."""
     print(header("SCHRITT 3: FARBTOLERANZ"))
     print(f"\nAktuelle Toleranz: {tolerance}")
@@ -399,7 +399,7 @@ def _schritt_toleranz(tolerance: int) -> int:
     return tolerance
 
 
-def _schritt_auto_lernen(learn_unknown: bool) -> bool:
+def _step_auto_learn(learn_unknown: bool) -> bool:
     """Schritt 4: Auto-Lernen unbekannter Slot-Inhalte (opt-in)."""
     print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
     print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
@@ -414,7 +414,7 @@ def _schritt_auto_lernen(learn_unknown: bool) -> bool:
     return learn_unknown
 
 
-def _schritt_richtung(reverse: bool) -> bool:
+def _step_direction(reverse: bool) -> bool:
     """Schritt 5: In welcher Richtung die Slots abgearbeitet werden."""
     print(header("SCHRITT 5: REIHENFOLGE (optional)"))
     print("\n  Rückwärts heisst von hinten nach vorn (4, 3, 2, 1). Sinnvoll,")
@@ -424,7 +424,7 @@ def _schritt_richtung(reverse: bool) -> bool:
     return confirm("  Slots rückwärts abarbeiten?", default=reverse)
 
 
-def _schritt_katalog(use_catalog: bool, state: AutoClickerState) -> bool:
+def _step_catalog(use_catalog: bool, state: AutoClickerState) -> bool:
     """Schritt 6: Ob dieser Scan den Item-Katalog benutzt.
 
     Der Schalter gehoert zum Scan und nicht in die Config: wer zwei Spiele
@@ -438,7 +438,7 @@ def _schritt_katalog(use_catalog: bool, state: AutoClickerState) -> bool:
     print("  LLM-Benennung wählt aus den echten Namen statt frei zu raten.")
     if not path:
         print("  " + warn("Noch keine Katalog-Datei eingetragen."))
-        print("  " + hint("Anlegen mit: python tools/katalog.py"))
+        print("  " + hint("Anlegen mit: python tools/catalog.py"))
         print("  " + hint("Eintragen unter scan_catalog_file (Studio: Einstellungen)."))
     else:
         print(f"  Katalog: {path}")
@@ -453,7 +453,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     ihr Ergebnis zurück oder signalisiert Abbruch — vorher waren es 450 Zeilen am Stück,
     und die Auswahl-Schleife stand zweimal darin.
     """
-    if not _schritt_presets(state):
+    if not _step_presets(state):
         return
 
     with state.lock:
@@ -472,7 +472,7 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         print(f"\n--- Bearbeite Scan: {existing.name} ---")
         scan_name = existing.name
         # Der Assistent arbeitet mit Namen; die Objekte dazu traegt der Scan selbst
-        # (`slots`/`items`), und `mehrfach_auswahl()` waehlt ueber die Namen.
+        # (`slots`/`items`), und `multi_select()` waehlt ueber die Namen.
         selected_slot_names = [slot.name for slot in existing.slots if slot.enabled]
         selected_item_names = list(existing.item_names)
         tolerance = existing.color_tolerance
@@ -502,18 +502,18 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     slot_list = list(available_slots.keys())
     print("\nVerfügbare Slots:")
     for i, name in enumerate(slot_list):
-        markiert = "X" if name in selected_slot_names else " "
-        print(f"  [{markiert}] {i+1}. {available_slots[name]}")
+        marked = "X" if name in selected_slot_names else " "
+        print(f"  [{marked}] {i+1}. {available_slots[name]}")
     print(f"\nBefehle: '<Nr>', '<Von>-<Bis>' (z.B. 1-5), 'all', 'clear', "
           f"'show / s', 'done / d', 'cancel / {cancel_hint()}")
 
-    gewaehlt = mehrfach_auswahl(
+    selected = multi_select(
         "[Slots] > ", slot_list, selected_slot_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_slots[name]}",
-        leer_fehler="Mindestens 1 Slot erforderlich!")
-    if gewaehlt is None:
+        empty_error="Mindestens 1 Slot erforderlich!")
+    if selected is None:
         return
-    selected_slot_names = gewaehlt
+    selected_slot_names = selected
 
     # --- Schritt 2: Items ---------------------------------------------------------
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))
@@ -533,8 +533,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print("\nVerfügbare Items:")
     if item_list:
         for i, name in enumerate(item_list):
-            markiert = "X" if name in selected_item_names else " "
-            print(f"  [{markiert}] {i+1}. {available_items[name]}")
+            marked = "X" if name in selected_item_names else " "
+            print(f"  [{marked}] {i+1}. {available_items[name]}")
     else:
         print("  (Keine Items - erstelle welche mit 'new')")
 
@@ -547,15 +547,15 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     print(f"  show / s | done / d | cancel / {cancel_hint()}")
     print("-" * 40)
 
-    gewaehlt = mehrfach_auswahl(
+    selected = multi_select(
         "[Items] > ", item_list, selected_item_names,
         lambda i, name, an: f"  [{'X' if an else ' '}] {i+1}. {available_items[name]}",
-        extra_praefix="new",
-        extra_fn=lambda raw: _neues_item_per_template(
+        extra_prefix="new",
+        extra_fn=lambda raw: _new_item_from_template(
             state, raw, slot_list, available_slots, available_items))
-    if gewaehlt is None:
+    if selected is None:
         return
-    selected_item_names = gewaehlt
+    selected_item_names = selected
 
     if not selected_item_names:
         print(f"\n{info('Keine Items ausgewählt.')}")
@@ -564,10 +564,10 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
             return
 
     # --- Schritt 3 + 4 ------------------------------------------------------------
-    tolerance = _schritt_toleranz(tolerance)
-    learn_unknown = _schritt_auto_lernen(learn_unknown)
-    reverse = _schritt_richtung(reverse)
-    use_catalog = _schritt_katalog(use_catalog, state)
+    tolerance = _step_tolerance(tolerance)
+    learn_unknown = _step_auto_learn(learn_unknown)
+    reverse = _step_direction(reverse)
+    use_catalog = _step_catalog(use_catalog, state)
 
     # --- Speichern ----------------------------------------------------------------
     with state.lock:

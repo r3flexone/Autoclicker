@@ -65,37 +65,37 @@ def _check_profile_match(profile, img, color_tolerance: int,
     marker_info = ""
     marker_score = None
 
-    ist_item = isinstance(profile, ItemProfile)
+    is_item = isinstance(profile, ItemProfile)
     if template_root is None and state is not None and getattr(state, "active_sequence", None) is not None:
         from ..persistence.sequences import sequence_dir
         template_root = sequence_dir(state.active_sequence.name) / "templates"
-    vorlagen = (profile.template_names() if ist_item
+    templates_list = (profile.template_names() if is_item
                  else ([profile.template] if profile.template else []))
-    if vorlagen:
-        if ist_item:
+    if templates_list:
+        if is_item:
             # Ein Item wird nur mit einer fuer diesen Slot gelernten Variante
             # verglichen. Damit gibt es keine halbgültigen Resize-Ergebnisse.
-            candidates = [name for name in vorlagen
+            candidates = [name for name in templates_list
                            if template_size(name, template_root) == tuple(img.size)]
         else:
             # Boss-/Icon-Profile behalten ihr bisheriges Resize-Verhalten.
-            candidates = vorlagen
+            candidates = templates_list
 
         if not candidates:
             template_ok = False
             template_score = 0.0
             template_info = f"für Slot {img.size[0]}×{img.size[1]} nicht gelernt"
         else:
-            ergebnisse = [
+            results_list = [
                 match_template_in_image(
                     img, name, profile.min_confidence,
-                    resize_template=not ist_item,
-                    report_size_mismatch=not ist_item,
+                    resize_template=not is_item,
+                    report_size_mismatch=not is_item,
                     template_root=template_root,
                 )
                 for name in candidates
             ]
-            match, confidence, _pos = max(ergebnisse, key=lambda value: value[1])
+            match, confidence, _pos = max(results_list, key=lambda value: value[1])
             template_ok = match
             template_score = max(0.0, min(1.0, float(confidence)))
             template_info = (f"Template {confidence:.1%}" if match
@@ -118,7 +118,7 @@ def _check_profile_match(profile, img, color_tolerance: int,
 
     if debug:
         info_parts = []
-        if vorlagen:
+        if templates_list:
             info_parts.append(template_info)
         if profile.marker_colors:
             info_parts.append(marker_info)
@@ -130,7 +130,7 @@ def _check_profile_match(profile, img, color_tolerance: int,
         else:
             print(dbg(f"  → {profile.name}: {', '.join(info_parts)}"))
 
-    matched = template_ok and marker_ok and bool(vorlagen or profile.marker_colors)
+    matched = template_ok and marker_ok and bool(templates_list or profile.marker_colors)
     scores = [score for score in (template_score, marker_score) if score is not None]
     score = sum(scores) / len(scores) if scores else 0.0
     return (matched, score) if return_score else matched
@@ -208,10 +208,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         learn_unknown = config.learn_unknown
         # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
         # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
-        rueckwaerts = config.reverse
-        fenster_titel = config.capture_window_title
-        fenster_index = config.capture_window_index
-        fenster_referenz = (tuple(config.capture_window_rect)
+        backwards = config.reverse
+        window_title = config.capture_window_title
+        window_index = config.capture_window_index
+        window_reference = (tuple(config.capture_window_rect)
                             if config.capture_window_rect else None)
 
     found_items = []
@@ -220,7 +220,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         slots_to_scan = [slot for slot in slots_override if slot.enabled]
     else:
         slots_to_scan = slots_snapshot
-        if rueckwaerts:
+        if backwards:
             slots_to_scan = list(reversed(slots_to_scan))
 
     scan_delay = state.config.scan_slot_delay
@@ -231,42 +231,42 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     # Ein Fenster-Scan arbeitet auf EINEM eingefrorenen Bild — genau wie der
     # Editor. Damit können sich Items nicht mitten im Durchgang verschieben, und
     # beide Wege sehen wirklich dieselben Pixel aus derselben Aufnahmemethode.
-    fensterbild = None
+    window_image = None
     window_rect = None
-    if fenster_titel:
-        fenster = resolve_window(fenster_titel, fenster_index, fenster_referenz)
-        if fenster is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' nicht "
+    if window_title:
+        window = resolve_window(window_title, window_index, window_reference)
+        if window is None:
+            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' nicht "
                       "gefunden. Spiel öffnen oder die Aufnahmequelle im Studio "
                       "neu wählen."))
             return []
         if debug:
             screenshot_start = time.time()
-        aufnahme = take_consistent_window_screenshot(fenster[2])
-        if aufnahme is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{fenster_titel}' konnte "
+        capture = take_consistent_window_screenshot(window[2])
+        if capture is None:
+            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' konnte "
                       "nicht aufgenommen werden."))
             return []
-        fensterbild, window_rect, hinweis = aufnahme
-        if hinweis:
-            key_name = (scan_name, hinweis)
+        window_image, window_rect, hint = capture
+        if hint:
+            key_name = (scan_name, hint)
             if key_name not in _window_capture_warnings:
                 _window_capture_warnings.add(key_name)
-                print(warn(f"Item-Scan '{scan_name}':{hinweis}"))
+                print(warn(f"Item-Scan '{scan_name}':{hint}"))
         if debug:
             screenshot_ms = (time.time() - screenshot_start) * 1000
-            print(dbg(f"Fenster '{fenster_titel}' einmal aufgenommen: "
-                      f"{fensterbild.size[0]}x{fensterbild.size[1]}px "
+            print(dbg(f"Fenster '{window_title}' einmal aufgenommen: "
+                      f"{window_image.size[0]}x{window_image.size[1]}px "
                       f"in {screenshot_ms:.0f}ms"))
 
-        referenz = fenster_referenz or window_rect
+        reference = window_reference or window_rect
         try:
             slots_to_scan = [ItemSlot(
                 name=slot.name,
                 scan_region=map_region_between_rects(
-                    slot.scan_region, referenz, window_rect),
+                    slot.scan_region, reference, window_rect),
                 click_pos=map_point_between_rects(
-                    slot.click_pos, referenz, window_rect),
+                    slot.click_pos, reference, window_rect),
                 slot_color=slot.slot_color,
                 enabled=slot.enabled,
                 id=slot.id,
@@ -291,15 +291,15 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
             break
 
-        if fensterbild is None and scan_delay > 0 and idx > 0:
+        if window_image is None and scan_delay > 0 and idx > 0:
             if state.stop_event.wait(scan_delay):
                 break
 
         if debug:
             screenshot_start = time.time()
-        if fensterbild is not None:
+        if window_image is not None:
             img = crop_screen_region(
-                fensterbild, slot.scan_region,
+                window_image, slot.scan_region,
                 (window_rect[0], window_rect[1]))
         else:
             img = take_screenshot(slot.scan_region)
@@ -313,7 +313,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
 
         candidates = []
-        for reihenfolge, item in enumerate(items_snapshot):
+        for order, item in enumerate(items_snapshot):
             result = _check_profile_match(
                 item, img, color_tolerance, state, debug, "gefunden!",
                 return_score=True,
@@ -321,20 +321,20 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             # Kompatibel mit Tests/Erweiterungen, die den internen Bool-Helfer
             # ersetzen: ein einfaches True ist ein vollwertiger Treffer.
             if isinstance(result, tuple):
-                passt, qualitaet = result
+                fits, quality = result
             else:
-                passt, qualitaet = bool(result), 1.0 if result else 0.0
-            if passt:
-                candidates.append((qualitaet, -reihenfolge, item))
+                fits, quality = bool(result), 1.0 if result else 0.0
+            if fits:
+                candidates.append((quality, -order, item))
 
         matched = bool(candidates)
         if matched:
-            qualitaet, _neg_reihenfolge, item = max(
-                candidates, key=lambda kandidat: (kandidat[0], kandidat[1]))
+            quality, _neg_order, item = max(
+                candidates, key=lambda candidate: (candidate[0], candidate[1]))
             found_items.append((slot, item, item.priority))
             if debug and len(candidates) > 1:
                 print(dbg(f"  → {item.name}: bester von {len(candidates)} Treffern "
-                          f"({qualitaet:.1%})"))
+                          f"({quality:.1%})"))
 
         if not matched and learn_unknown:
             _learn_unknown_slot_item(state, slot, img, debug)
@@ -365,7 +365,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     from ..persistence import save_global_items, active_templates_dir
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
-    maskiert, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
+    masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
     if is_blank:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
@@ -382,25 +382,25 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     # Vorlage None, die Dedup-Pruefung findet nie einen Treffer - und
     # `learn_unknown` legt denselben Slot in jedem Zyklus erneut als neues Item
     # an. Vier Zeilen tiefer stand der richtige Ordner laengst da.
-    vorlagen_ordner = active_templates_dir(state)
+    templates_folder = active_templates_dir(state)
     known = _find_matching_existing_item(img, existing, min_confidence,
-                                         vorlagen_ordner)
+                                         templates_folder)
     if known:
         with state.lock:
             known_item = state.global_items.get(known)
         if known_item is not None and not _item_has_compatible_template(
-                known_item, img, vorlagen_ordner):
+                known_item, img, templates_folder):
             width, height = img.size
-            basis = f"{sanitize_filename(known)}_{width}x{height}"
-            template_file = f"{basis}.png"
-            nummer = 2
+            base_name = f"{sanitize_filename(known)}_{width}x{height}"
+            template_file = f"{base_name}.png"
+            number = 2
             while (active_templates_dir(state) / template_file).exists():
-                template_file = f"{basis}_{nummer}.png"
-                nummer += 1
+                template_file = f"{base_name}_{number}.png"
+                number += 1
             template_path = active_templates_dir(state) / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)
-                maskiert.save(template_path)
+                masked.save(template_path)
             except (OSError, ValueError) as e:
                 print(warn(f"Auto-Lernen: Vorlage für '{known}' konnte nicht "
                            f"gespeichert werden: {e}"))
@@ -444,7 +444,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     template_path = active_templates_dir(state) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
-        maskiert.save(template_path)
+        masked.save(template_path)
     except (OSError, ValueError) as e:
         with state.lock:
             state.global_items.pop(name, None)
@@ -490,10 +490,10 @@ def load_market_values(path: str) -> dict:
         st = os.stat(path)
     except OSError:
         return {}
-    stand = (st.st_mtime, st.st_size)
+    stamp = (st.st_mtime, st.st_size)
     entry = _marktwert_cache.get(path)
-    if entry is not None and entry["stand"] == stand:
-        return entry["werte"]
+    if entry is not None and entry["stamp"] == stamp:
+        return entry["values"]
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -509,11 +509,11 @@ def load_market_values(path: str) -> dict:
             values[str(name)] = float(value)
         except (TypeError, ValueError):
             continue
-    _marktwert_cache[path] = {"stand": stand, "werte": values}
+    _marktwert_cache[path] = {"stamp": stamp, "values": values}
     return values
 
 
-def _effective_priority(item, gespeichert: int, values: dict) -> float:
+def _effective_priority(item, saved: int, values: dict) -> float:
     """Wonach sortiert wird - kleiner gewinnt, wie bei der gespeicherten Prioritaet.
 
     Hat das Item einen Marktwert, zaehlt der (negiert, damit "wertvoller" = "kleiner").
@@ -529,7 +529,7 @@ def _effective_priority(item, gespeichert: int, values: dict) -> float:
     bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
     """
     value = values.get(item.name)
-    return -value if value is not None else float(gespeichert)
+    return -value if value is not None else float(saved)
 
 
 def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, debug: bool) -> list:

@@ -1,72 +1,72 @@
 """
 Kompatible Fassade für den Scan-Teil des Sequenz-Studios.
 
-Die Implementierung ist nach Verantwortlichkeiten getrennt; `ScanTeil` und die
+Die Implementierung ist nach Verantwortlichkeiten getrennt; `ScanPart` und die
 bisher öffentlich importierten Konstanten bleiben an derselben Stelle verfügbar.
 """
 
 from .scan_capture import ScanCaptureMixin
 from .scan_contract import (
-    ART_BIBLIOTHEK,
-    ART_BOSS,
-    ART_BOSS_SCAN,
-    ART_ICON_SCAN,
-    ART_ITEM,
-    ART_SCAN,
-    ART_SLOT,
+    KIND_LIBRARY,
+    KIND_BOSS,
+    KIND_BOSS_SCAN,
+    KIND_ICON_SCAN,
+    KIND_ITEM,
+    KIND_SCAN,
+    KIND_SLOT,
     SCAN_KINDS,
     MIN_REGION,
     MIN_SLOT,
-    MODI,
-    MODI_ALLE,
-    MODI_ERKENNUNG,
-    MODUS_AKTION,
-    MODUS_BEREICH,
-    MODUS_FINDEN,
-    MODUS_KLICK,
-    MODUS_MESSEN,
-    MODUS_REGION,
-    MODUS_SLOT,
-    MODUS_WAHL,
-    TREFFER_MIN,
-    UNDO_TIEFE,
+    MODES,
+    MODES_ALL,
+    MODES_DETECTION,
+    MODE_ACTION,
+    MODE_AREA,
+    MODE_FIND,
+    MODE_CLICK,
+    MODE_MEASURE,
+    MODE_REGION,
+    MODE_SLOT,
+    MODE_CHOICE,
+    HIT_MIN,
+    UNDO_DEPTH,
 )
 from .scan_detect import ScanDetectMixin
 from .scan_interaction import ScanInteractionMixin
-from .scan_learning import ScanLearningMixin, _NurConfig
+from .scan_learning import ScanLearningMixin, _ConfigOnly
 from .scan_library import ScanLibraryMixin
 from .scan_state import ScanStateMixin
 
 __all__ = [
-    "ART_BIBLIOTHEK",
-    "ART_BOSS",
-    "ART_BOSS_SCAN",
-    "ART_ICON_SCAN",
-    "ART_ITEM",
-    "ART_SCAN",
-    "ART_SLOT",
+    "KIND_LIBRARY",
+    "KIND_BOSS",
+    "KIND_BOSS_SCAN",
+    "KIND_ICON_SCAN",
+    "KIND_ITEM",
+    "KIND_SCAN",
+    "KIND_SLOT",
     "SCAN_KINDS",
     "MIN_REGION",
     "MIN_SLOT",
-    "MODI",
-    "MODI_ALLE",
-    "MODI_ERKENNUNG",
-    "MODUS_AKTION",
-    "MODUS_BEREICH",
-    "MODUS_FINDEN",
-    "MODUS_KLICK",
-    "MODUS_MESSEN",
-    "MODUS_REGION",
-    "MODUS_SLOT",
-    "MODUS_WAHL",
-    "ScanTeil",
-    "TREFFER_MIN",
-    "UNDO_TIEFE",
-    "_NurConfig",
+    "MODES",
+    "MODES_ALL",
+    "MODES_DETECTION",
+    "MODE_ACTION",
+    "MODE_AREA",
+    "MODE_FIND",
+    "MODE_CLICK",
+    "MODE_MEASURE",
+    "MODE_REGION",
+    "MODE_SLOT",
+    "MODE_CHOICE",
+    "ScanPart",
+    "HIT_MIN",
+    "UNDO_DEPTH",
+    "_ConfigOnly",
 ]
 
 
-class ScanTeil(
+class ScanPart(
     ScanLibraryMixin,
     ScanLearningMixin,
     ScanDetectMixin,

@@ -1,0 +1,295 @@
+"""Gerüst für die Rauchtests: eine echte Brücke hinter einem echten Browser.
+
+**Warum es diese Schicht ueberhaupt gibt.** Die Vertragssuite prueft die Bruecke,
+und das ist der grosse Teil — aber sie ruft deren Methoden DIREKT auf, also
+genau so, wie die Seite es nicht tut. Was dazwischen liegt (ein Tippfehler in
+einem Methodennamen, ein `appendChild` mit einer Liste, ein Zustand, der einen
+Neuaufbau nicht ueberlebt), faellt dort nicht auf und im Fenster sofort.
+
+Deshalb hier ein Chromium mit der echten `index.html` davor und der echten
+`StudioBridge` dahinter: `window.pywebview.api` ist ein Proxy, der jeden Aufruf
+an Python weiterreicht. Kein Nachbau, keine Attrappe — dieselben zwei Seiten wie
+im Fenster, nur ohne pywebview dazwischen.
+
+Playwright ist optional, wie OpenCV und Pillow: fehlt es, wird uebersprungen und
+gesagt, was zu installieren waere. Ein Rauchtest, der ohne Browser rot ist,
+meldet die Testumgebung statt eines Fehlers.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "autoclicker" / "editors" / "sequence_studio" / "web"
+
+# Der Proxy: jeder `window.pywebview.api.<name>(daten)`-Aufruf der Seite landet
+# als ein Python-Aufruf auf der Bruecke. Genau ein Argument, wie im Fenster.
+# Der Proxy zaehlt, wie viele Bruecken-Aufrufe gerade unterwegs sind — das
+# ist die eine Groesse, an der ein Test erkennen kann, ob die Seite fertig ist
+# (s. `Window.settle`). `__pending++` passiert synchron im Klick-Handler, also
+# bevor Playwright den Klick als erledigt meldet.
+STUB = """
+window.__pending = 0;
+window.pywebview = {api: new Proxy({}, {get: (t, name) => async (d) => {
+  window.__pending++;
+  try { return await window.__bridge(String(name), d === undefined ? null : d); }
+  finally { window.__pending--; }
+}})};
+"""
+
+# Was `settle()` in der Seite abwartet: kein Aufruf offen, und das in zwei
+# Frames hintereinander — ein einzelner ruhiger Frame kann zwischen zwei
+# Gliedern einer Kette liegen (Neuaufbau -> Vorschau nachladen -> Neuaufbau).
+_SETTLE = """(ms) => new Promise((res, rej) => {
+  const start = performance.now();
+  let quiet = 0;
+  const tick = () => {
+    if ((window.__pending || 0) === 0) { if (++quiet >= 2) return res(true); }
+    else quiet = 0;
+    if (performance.now() - start > ms)
+      return rej(new Error("Seite kommt nicht zur Ruhe: " + window.__pending
+                           + " Bruecken-Aufruf(e) offen"));
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})"""
+
+
+def playwright_available() -> tuple[bool, str]:
+    """(verfuegbar, Grund). Chromium liegt im CI-Image, Playwright nicht immer.
+
+    **Ein fehlender Image-Browser ist kein fehlender Browser.** Hier stand
+    einmal `if not _chromium(): return False`, und damit meldete die Schicht auf
+    jedem Rechner ohne das CI-Image "kein Chromium gefunden" — obwohl ein
+    `python -m playwright install chromium` daneben lag und `__enter__` genau
+    dafuer gebaut ist (leerer Pfad = Playwright nimmt seinen eigenen). Auf
+    Windows war das *immer* so, denn `_chromium()` suchte Linux-Pfade; in CI
+    ebenso, denn dort wird `PLAYWRIGHT_BROWSERS_PATH` gar nicht gesetzt. Der
+    Rauchtest-Job installierte also einen Browser, uebersprang sich, und wurde
+    gruen — die Schicht lief nirgends.
+    """
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError:
+        return False, "playwright fehlt — nachinstallieren: pip install playwright"
+    if _chromium() or _own_playwright():
+        return True, ""
+    return False, ("kein Chromium — nachinstallieren: "
+                   "python -m playwright install chromium")
+
+
+def _own_playwright() -> bool:
+    """Liegt Playwrights EIGENER Chromium in seiner Standardablage?
+
+    Nachgesehen wird im dokumentierten Ordner je Betriebssystem, statt
+    `sync_playwright()` nur zum Fragen zu starten: dieser Start ohne
+    anschliessenden Browser hinterlaesst auf Windows einen offenen Task und
+    schreibt beim Aufraeumen einen `TargetClosedError` nach stderr. Der stand
+    dann HINTER dem Ergebnis — ein Fehlertext nach "alles gruen" ist genau die
+    Meldung, die man sich abgewoehnt zu lesen.
+    """
+    if sys.platform == "win32":
+        base_name = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"
+    elif sys.platform == "darwin":
+        base_name = Path.home() / "Library" / "Caches" / "ms-playwright"
+    else:
+        base_name = Path.home() / ".cache" / "ms-playwright"
+    return base_name.is_dir() and any(base_name.glob("chromium*"))
+
+
+def _chromium() -> str:
+    """Der Pfad zum vorinstallierten Chromium — oder "" fuer Playwrights eigenen.
+
+    Nur fuer ein Image, das den Browser schon mitbringt (CI). Ist nichts
+    gesetzt, bleibt der Rueckgabewert leer und Playwright nimmt seinen eigenen.
+    """
+    raw = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not raw:
+        return ""
+    base_name = Path(raw)
+    if not base_name.is_dir():
+        return ""
+    # chrome-linux/chrome bzw. chrome-win/chrome.exe — je nach Image.
+    for pattern in ("chromium*/chrome-linux/chrome", "chromium*/chrome-win/chrome.exe",
+                   "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
+        for candidate in sorted(base_name.glob(pattern)):
+            return str(candidate)
+    direct = base_name / "chromium"
+    return str(direct) if direct.exists() else ""
+
+
+def sandbox(prefix: str) -> str:
+    """Ein leeres Datenverzeichnis, in das gewechselt wird.
+
+    Die Pfad-Konstanten sind CWD-relativ (s. CLAUDE.md), also reicht ein
+    `chdir` — kein Test schreibt damit je in den echten Datenbestand.
+    """
+    sandbox_dir = tempfile.mkdtemp(prefix=prefix)
+    os.chdir(sandbox_dir)
+    Path("sequences").mkdir()
+    return sandbox_dir
+
+
+class Window:
+    """Die Seite im Browser, mit der echten Bruecke dahinter.
+
+    Als Kontextmanager: `with Window(bruecke) as f: f.tab("tools")`.
+    Sammelt nebenbei jeden Seitenfehler ein — ein `pageerror` ist im Fenster ein
+    Reiter, der leer bleibt, und genau danach wird hier gesucht.
+    """
+
+    def __init__(self, bridge, width: int = 1500, height: int = 900):
+        self.bridge = bridge
+        self.error: list[str] = []
+        self._size = (width, height)
+        self._pw = None
+        self._browser = None
+        self.page = None
+
+    def __enter__(self):
+        from playwright.sync_api import sync_playwright
+        self._pw = sync_playwright().start()
+        path = _chromium()
+        self._browser = self._pw.chromium.launch(
+            **({"executable_path": path} if path else {}))
+        self.page = self._browser.new_page(
+            viewport={"width": self._size[0], "height": self._size[1]})
+        self.page.on("pageerror", lambda e: self.error.append(f"pageerror: {e}"))
+        self.page.on("console", lambda m: self.error.append(
+            f"console.error: {m.text}") if m.type == "error" else None)
+        self.page.expose_function("__bridge", self._call)
+        self.page.add_init_script(STUB)
+        self.page.goto((WEB / "index.html").as_uri())
+        self.settle()
+        return self
+
+    def __exit__(self, *_):
+        if self._browser is not None:
+            self._browser.close()
+        if self._pw is not None:
+            self._pw.stop()
+        return False
+
+    def _call(self, name: str, data):
+        """Ein Aufruf der Seite an die Bruecke. Unbekannte Namen sind ein Fehler.
+
+        Die Seite bekaeme sonst `null` und zeichnete eine leere Ansicht - also
+        genau das Bild, das dieser Test aufdecken soll.
+        """
+        fn = getattr(self.bridge, name, None)
+        if fn is None or not callable(fn):
+            self.error.append(f"Bruecke kennt '{name}' nicht")
+            return None
+        return fn(data)
+
+    # ---------------------------------------------------------------- Bedienen
+
+    def settle(self, at_most: int = 15000):
+        """Wartet, bis die Seite fertig ist — nicht eine feste Zeit lang.
+
+        **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand nach
+        jedem Klick und Reiterwechsel ein `wait_for_timeout(700)`: ein blinder
+        Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen ueber alle
+        acht Rauchtests: 86 s Laufzeit, davon **70 s Schlaf** in 117 Aufrufen,
+        6,5 s echte Arbeit. Fertig ist die Seite, wenn kein Bruecken-Aufruf
+        mehr unterwegs ist (`window.__pending`, gezaehlt im Proxy) und das zwei
+        Frames lang so bleibt — der Neuaufbau nach einer Antwort laeuft in
+        Microtasks, also vor dem naechsten Frame, und eine Kette (Antwort ->
+        Neuaufbau -> Vorschau nachladen) faengt ihr naechstes Glied noch im
+        selben Frame an.
+
+        Was an einem TIMER haengt (Auto-Speichern 900 ms, der Aufnahme-Waechter),
+        sieht das nicht — dort bleibt eine feste Wartezeit, und sie sagt dazu,
+        auf welche Uhr sie wartet.
+        """
+        self.page.evaluate(_SETTLE, at_most)
+        return self
+
+    def tab(self, name: str):
+        self.page.click(f'.tab[data-view="{name}"]')
+        return self.settle()
+
+    def click(self, choice: str):
+        self.page.click(choice)
+        return self.settle()
+
+    def click_text(self, choice: str, text: str):
+        """Den Knopf mit diesem Text anklicken — robuster als eine Position.
+
+        Ueber `nth-of-type` zu gehen bricht, sobald jemand einen Knopf davor
+        einbaut, und der Test meldet dann etwas ueber die falsche Stelle.
+        """
+        # **Suchen und Klicken in einem Anlauf, notfalls nochmal.** Ein
+        # festgehaltener Element-Zeiger loest sich auf, sobald zwischen Suche
+        # und Klick ein Neuaufbau dazwischenkommt („Element is not attached to
+        # the DOM") — und das passiert hier staendig, weil jede Bruecken-Antwort
+        # neu zeichnet. Ueber den Text einen Selektor zu bauen geht nicht: die
+        # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
+        last_one = None
+        for _ in range(3):
+            match = [k for k in self.page.query_selector_all(choice)
+                       if text in (k.inner_text() or "")]
+            if not match:
+                self.page.wait_for_timeout(150)
+                continue
+            try:
+                match[0].click()
+            except Exception as error:      # noqa: BLE001 - erneut versuchen
+                last_one = error
+                self.page.wait_for_timeout(150)
+                continue
+            return self.settle()
+        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({last_one})" if last_one else ""))
+
+    # ---------------------------------------------------------------- Ablesen
+
+    def text(self, choice: str) -> str:
+        return self.page.inner_text(choice)
+
+    def status(self) -> str:
+        return self.page.inner_text("#status")
+
+    def count(self, choice: str) -> int:
+        return len(self.page.query_selector_all(choice))
+
+    def image(self, name: str):
+        target = Path(tempfile.gettempdir()) / f"rauchtest_{name}.png"
+        self.page.screenshot(path=str(target))
+        return target
+
+
+def run_smoke(name: str, run) -> int:
+    """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
+    # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
+    # `tests/all_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
+    # Rauchtest einzeln aufruft, hatte das nicht — und eine Fehlermeldung mit
+    # einem „↺" darin riss den Lauf dann mit einem `UnicodeEncodeError` ab,
+    # statt zu sagen, was schiefging. Ausgerechnet im roten Fall.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+    da, reason = playwright_available()
+    if not da:
+        print(f"UEBERSPRUNGEN  {name}: {reason}")
+        return 0
+    cwd = os.getcwd()
+    try:
+        error = run()
+    finally:
+        os.chdir(cwd)
+    if error:
+        print(f"FAIL  {name}")
+        for f in error:
+            print(f"        {f}")
+        return 1
+    print(f"OK    {name}")
+    return 0
+
+
+def main(name: str, run) -> None:
+    sys.exit(run_smoke(name, run))

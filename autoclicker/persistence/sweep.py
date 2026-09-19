@@ -127,27 +127,27 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     erfasste von dreizehn Datendateien noch die `config.json`, und zwar still. Wer
     hier etwas ergaenzt, geht deshalb vom Sequenzordner aus.
     """
-    dateien: list[tuple[Path, str, RoundTrip]] = []
+    files: list[tuple[Path, str, RoundTrip]] = []
 
     from ..config import CONFIG_FILE
     cfg = Path(CONFIG_FILE)
     if cfg.exists():
-        dateien.append((cfg, KIND_CONFIG, _rt_config))
+        files.append((cfg, KIND_CONFIG, _rt_config))
 
     # Die Punkte haben keine eigene Datei mehr - sie stehen im Feld `points` der
     # `sequence.json` und werden mit ihr round-getrippt.
     seq_dir = _sequences_dir()
     if seq_dir.is_dir():
         for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
-            haupt = folder / "sequence.json"
-            if haupt.exists():
-                dateien.append((haupt, KIND_SEQUENCE, _rt_sequence))
-            for unter, kind, rt in (
+            run_smoke = folder / "sequence.json"
+            if run_smoke.exists():
+                files.append((run_smoke, KIND_SEQUENCE, _rt_sequence))
+            for below, kind, rt in (
                 ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
                 ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
                 ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
             ):
-                d = folder / unter
+                d = folder / below
                 if not d.is_dir():
                     continue
                 for file in sorted(d.glob("*.json")):
@@ -155,10 +155,10 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
                     # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
                     # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
                     # unlesbar und wuerde als "uebersprungen" gemeldet.
-                    if unter == "boss_scans" and file.name == "bibliothek.json":
-                        dateien.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
+                    if below == "boss_scans" and file.name == "bibliothek.json":
+                        files.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
                     else:
-                        dateien.append((file, kind, rt))
+                        files.append((file, kind, rt))
 
     # Presets sind programmweit und gehoeren keiner Sequenz.
     for folder, kind, rt in (
@@ -168,9 +168,9 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
         d = Path(folder)
         if d.is_dir():
             for file in sorted(d.glob("*.json")):
-                dateien.append((file, kind, rt))
+                files.append((file, kind, rt))
 
-    return dateien
+    return files
 
 
 def _normalize_numbers(x):
@@ -241,21 +241,21 @@ def _write(path: Path, data) -> None:
 
 
 class SweepResult:
-    """Was der Durchgang gefunden hat. `geaendert` ist die Liste (Pfad, Meldungen)."""
+    """Was der Durchgang gefunden hat. `changed` ist die Liste (Pfad, Meldungen)."""
 
     def __init__(self) -> None:
-        self.geaendert: list[tuple[Path, list[str]]] = []
-        self.aktuell: int = 0
-        self.uebersprungen: list[Path] = []
-        self.geschrieben: bool = False
+        self.changed: list[tuple[Path, list[str]]] = []
+        self.current: int = 0
+        self.skipped: list[Path] = []
+        self.written: bool = False
 
     @property
     def changed_count(self) -> int:
-        return len(self.geaendert)
+        return len(self.changed)
 
     def __bool__(self) -> bool:
         """True = es gab etwas zu tun."""
-        return bool(self.geaendert or self.uebersprungen)
+        return bool(self.changed or self.skipped)
 
 
 def sweep(write: bool = False) -> SweepResult:
@@ -268,12 +268,12 @@ def sweep(write: bool = False) -> SweepResult:
     eigenen Feld mit, `load_sequence_file()` loest sie daraus auf.
     """
     result = SweepResult()
-    result.geschrieben = write
+    result.written = write
 
     for path, kind, rt in collect_files():
         raw = _load(path)
         if raw is None:
-            result.uebersprungen.append(path)
+            result.skipped.append(path)
             continue
 
         # Auf einer Kopie, damit die Meldungen nicht vom Round-Trip verfaelscht werden.
@@ -282,21 +282,21 @@ def sweep(write: bool = False) -> SweepResult:
         # Die Loader melden ihre Migration selbst - hier stumm, sonst stehen dieselben
         # Zeilen doppelt im Protokoll.
         with contextlib.redirect_stdout(io.StringIO()):
-            sauber = rt(path)
+            clean = rt(path)
 
-        if sauber is None:
-            result.uebersprungen.append(path)
+        if clean is None:
+            result.skipped.append(path)
             continue
 
-        if not messages and _equal(raw, sauber):
-            result.aktuell += 1
+        if not messages and _equal(raw, clean):
+            result.current += 1
             continue
 
         if not messages:
             messages = ["Felder aufgeraeumt (Round-Trip durch Loader + Serializer)"]
-        result.geaendert.append((path, messages))
+        result.changed.append((path, messages))
         if write:
-            _write(path, sauber)
+            _write(path, clean)
 
     return result
 
@@ -313,18 +313,18 @@ def sweep_on_start() -> SweepResult:
     if not result:
         return result  # Normalfall: alles aktuell, kein Wort darueber
 
-    if result.geaendert:
+    if result.changed:
         print(f"\n{col('[MIGRATION]', 'cyan')} "
               f"{result.changed_count} Datei(en) aufs aktuelle Format gehoben:")
-        for path, messages in result.geaendert:
+        for path, messages in result.changed:
             print(f"            {path.name}")
             for m in messages:
                 print(f"              - {m}")
         print(f"            {hint(f'Sicherungen liegen unter {BACKUPS_DIR}/.')}")
 
-    for path in result.uebersprungen:
+    for path in result.skipped:
         print(warn(f"[MIGRATION] {path.name} nicht lesbar - bleibt unveraendert."))
 
-    if result.geaendert:
+    if result.changed:
         print()
     return result

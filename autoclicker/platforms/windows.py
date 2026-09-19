@@ -373,17 +373,17 @@ def install_keyboard_hook(on_key_down) -> bool:
     if _keyboard_hook_handle:
         return True
 
-    gedrueckt = set()  # welche VK-Codes gerade unten sind -> Auto-Repeat erkennen
+    pressed_keys = set()  # welche VK-Codes gerade unten sind -> Auto-Repeat erkennen
 
     def _hook_proc(nCode, wParam, lParam):
         if nCode >= 0:
             info = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
             vk = info.vkCode
             if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
-                if vk not in gedrueckt:
-                    gedrueckt.add(vk)
-                    hoch = user32.GetAsyncKeyState
-                    modifier = (hoch(_VK_CONTROL) & 0x8000) or (hoch(_VK_MENU) & 0x8000)
+                if vk not in pressed_keys:
+                    pressed_keys.add(vk)
+                    high = user32.GetAsyncKeyState
+                    modifier = (high(_VK_CONTROL) & 0x8000) or (high(_VK_MENU) & 0x8000)
                     name = VK_NAMES.get(vk)
                     if name and not modifier:
                         try:
@@ -391,7 +391,7 @@ def install_keyboard_hook(on_key_down) -> bool:
                         except Exception:
                             pass
             else:
-                gedrueckt.discard(vk)
+                pressed_keys.discard(vk)
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
 
     _keyboard_hook_proc = _HOOKPROC(_hook_proc)
@@ -631,8 +631,8 @@ def get_window_title_at(x: int, y: int) -> str:
         hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
-        wurzel = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _window_title(wurzel or hwnd)
+        root_layer = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+        return _window_title(root_layer or hwnd)
     except Exception:
         return ""
 
@@ -688,13 +688,13 @@ def list_windows() -> list:
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        laenge = user32.GetWindowTextLengthW(hwnd)
-        if laenge <= 0:
+        length_value = user32.GetWindowTextLengthW(hwnd)
+        if length_value <= 0:
             return True
-        puffer = ctypes.create_unicode_buffer(laenge + 1)
-        user32.GetWindowTextW(hwnd, puffer, laenge + 1)
-        titel = (puffer.value or "").strip()
-        if not titel:
+        buffer = ctypes.create_unicode_buffer(length_value + 1)
+        user32.GetWindowTextW(hwnd, buffer, length_value + 1)
+        title = (buffer.value or "").strip()
+        if not title:
             return True
         rect = wintypes.RECT()
         pt = wintypes.POINT(0, 0)
@@ -709,7 +709,7 @@ def list_windows() -> list:
         # DIREKT abbilden (`imaging.take_window_screenshot`), also auch dann,
         # wenn etwas davor liegt. Ueber den Titel ginge das nicht — bei
         # mehreren Fassungen desselben Spiels ist er dreimal derselbe.
-        found.append((titel, (pt.x, pt.y, pt.x + width, pt.y + height),
+        found.append((title, (pt.x, pt.y, pt.x + width, pt.y + height),
                          int(hwnd)))
         return True
 
@@ -717,11 +717,11 @@ def list_windows() -> list:
         user32.EnumWindows(_WNDENUMPROC(_cb), 0)
     except (OSError, AttributeError):
         return []
-    schirm = get_virtual_desktop()
-    if schirm:
+    screen = get_virtual_desktop()
+    if screen:
         found = [e for e in found
-                    if e[1][0] < schirm[2] and e[1][2] > schirm[0]
-                    and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
+                    if e[1][0] < screen[2] and e[1][2] > screen[0]
+                    and e[1][1] < screen[3] and e[1][3] > screen[1]]
     return sorted(found, key=lambda e: (e[1][1], e[1][0]))
 
 
@@ -754,11 +754,11 @@ def resolve_window(title: str, instance: int = 0, reference_rect=None):
     """
     if not isinstance(title, str) or not title.strip():
         return None
-    fenster = list_windows()
+    window = list_windows()
     target = title.strip().casefold()
-    candidates = [e for e in fenster if e[0].strip().casefold() == target]
+    candidates = [e for e in window if e[0].strip().casefold() == target]
     if not candidates:
-        candidates = [e for e in fenster if target in e[0].casefold()]
+        candidates = [e for e in window if target in e[0].casefold()]
     if not candidates:
         return None
     try:
@@ -981,8 +981,8 @@ def _capture_screen_bitblt(region=None):
         if image is None:
             logger.warning("GetDIBits fehlgeschlagen; verwende ImageGrab-Fallback")
         return image
-    except (OSError, ValueError, AttributeError) as fehler:
-        logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", fehler)
+    except (OSError, ValueError, AttributeError) as error:
+        logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", error)
         return None
     finally:
         _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
@@ -1008,8 +1008,8 @@ def capture_screen(region=None):
         if crop[2] <= crop[0] or crop[3] <= crop[1]:
             return None
         return full_image.crop(crop)
-    except (ImportError, OSError, TypeError, ValueError) as fehler:
-        logger.error("Windows-Screenshot fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, TypeError, ValueError) as error:
+        logger.error("Windows-Screenshot fehlgeschlagen: %s", error)
         return None
 
 
@@ -1064,8 +1064,8 @@ def capture_window(hwnd: int):
             client_origin.x + client_width, client_origin.y + client_height,
         )
         return image, screen_rect
-    except (OSError, TypeError, ValueError, AttributeError) as fehler:
-        logger.error("Fenster-Screenshot fehlgeschlagen: %s", fehler)
+    except (OSError, TypeError, ValueError, AttributeError) as error:
+        logger.error("Fenster-Screenshot fehlgeschlagen: %s", error)
         return None
     finally:
         _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
@@ -1119,35 +1119,35 @@ def _icon_bits(edge: int = 32) -> bytes:
     Formats: die Höhe im Kopf zählt doppelt, und DIB-Zeilen stehen von unten
     nach oben.
     """
-    kopf = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
-    farben = bytearray()
+    head = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    colors = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
     for line in reversed(list(symbol.pixel_rows(edge))):
         for r, g, b, a in line:
-            farben += bytes((b, g, r, a))       # BGRA, nicht RGBA
+            colors += bytes((b, g, r, a))       # BGRA, nicht RGBA
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.
-    return kopf + bytes(farben) + bytes(((edge + 31) // 32 * 4) * edge)
+    return head + bytes(colors) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
-def set_window_icon(titel_substring: str, warten: float = 0.0) -> bool:
+def set_window_icon(title_substring: str, waiting: float = 0.0) -> bool:
     """Gibt dem Fenster mit passendem Titel das Studio-Symbol. True = gesetzt.
 
     pywebview kann das auf Windows nicht selbst; ohne das trägt das Fenster das
     Symbol von `python.exe`.
 
-    `warten` ist wesentlich: `webview.start(func)` ruft `func` auf, sobald die
+    `waiting` ist wesentlich: `webview.start(func)` ruft `func` auf, sobald die
     Schleife läuft — das Fenster steht da noch nicht, und ohne Frist fiel der
     Aufruf still auf `False`. Fehler werden geschluckt: ein fehlendes Symbol ist
     kein Grund, ein Fenster nicht zu öffnen.
     """
-    frist = time.monotonic() + max(0.0, warten)
-    hwnd = _find_window_by_title(titel_substring)
-    while not hwnd and time.monotonic() < frist:
+    deadline = time.monotonic() + max(0.0, waiting)
+    hwnd = _find_window_by_title(title_substring)
+    while not hwnd and time.monotonic() < deadline:
         time.sleep(0.1)
-        hwnd = _find_window_by_title(titel_substring)
+        hwnd = _find_window_by_title(title_substring)
     if not hwnd:
         return False
     try:

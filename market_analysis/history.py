@@ -97,7 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_ob_item    ON orderbook(item_id);
 CREATE INDEX IF NOT EXISTS idx_daily_item ON daily(item);
 """
 
-ITEM_SPALTEN = ("item", "item_id", "skill", "bid", "ask", "avg", "bid_vol", "ask_vol",
+ITEM_COLUMNS = ("item", "item_id", "skill", "bid", "ask", "avg", "bid_vol", "ask_vol",
                 "npc_preis", "kosten_h", "gold_h", "gold_h_real", "verkaufsweg",
                 "rang", "warnungen")
 
@@ -109,16 +109,16 @@ ITEM_SPALTEN = ("item", "item_id", "skill", "bid", "ask", "avg", "bid_vol", "ask
 def code_version() -> str:
     """Kurzer Git-Hash, sonst ein Hash ueber die Modulzeiten.
 
-    Ohne Git (ZIP-Download, kopierter Ordner) waere `unbekannt` die ehrliche, aber
+    Ohne Git (ZIP-Download, kopierter Ordner) waere `unknown` die ehrliche, aber
     nutzlose Antwort - dann taugt der Fingerabdruck der Dateien genauso: er aendert
     sich, wenn jemand am Code dreht, und genau darum geht es.
     """
     folder = os.path.dirname(os.path.abspath(__file__))
     try:
-        raus = subprocess.run(["git", "-C", folder, "rev-parse", "--short", "HEAD"],
+        out = subprocess.run(["git", "-C", folder, "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, timeout=5)
-        if raus.returncode == 0 and raus.stdout.strip():
-            return raus.stdout.strip()
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
     parts = []
@@ -132,26 +132,26 @@ def code_version() -> str:
     return "dat-" + hashlib.sha256("|".join(parts).encode()).hexdigest()[:8]
 
 
-def config_hash(modul=cfg) -> str:
+def config_hash(module_name=cfg) -> str:
     """Fingerabdruck der rechenrelevanten Config (CONFIG_HASH_KEYS).
 
     Bewusst nicht ueber die ganze Datei: Pfade, Farben und Schwellen fuer Warnungen
     aendern keine einzige Zahl. Was drin steht, entscheidet der Anwender ueber
     CONFIG_HASH_KEYS - so bleibt sichtbar, WAS als vergleichbar gilt.
     """
-    values = {name: _hashbar(getattr(modul, name, None)) for name in cfg.CONFIG_HASH_KEYS}
+    values = {name: _hashable(getattr(module_name, name, None)) for name in cfg.CONFIG_HASH_KEYS}
     raw = json.dumps(values, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
-def _hashbar(value):
+def _hashable(value):
     """Floats runden, damit 0.6749999 und 0.675 nicht zwei Konfigurationen sind."""
     if isinstance(value, bool) or value is None:
         return value
     if isinstance(value, float):
         return round(value, 9)
     if isinstance(value, (list, tuple)):
-        return [_hashbar(w) for w in value]
+        return [_hashable(w) for w in value]
     return value
 
 
@@ -159,7 +159,7 @@ def _hashbar(value):
 # Verbindung
 # ---------------------------------------------------------------
 
-def oeffne(path: str | None = None) -> sqlite3.Connection:
+def open_db(path: str | None = None) -> sqlite3.Connection:
     """Datenbank oeffnen und Schema sicherstellen. `:memory:` ist erlaubt (Tests)."""
     path = path or cfg.HISTORY_PATH
     if path != ":memory:":
@@ -173,18 +173,18 @@ def oeffne(path: str | None = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def lauf(conn: sqlite3.Connection, notiz: str = "", zeitpunkt: datetime | None = None):
+def run_ctx(conn: sqlite3.Connection, note: str = "", timestamp: datetime | None = None):
     """Ein Lauf als Transaktion: committet erst, wenn der Block sauber durchlaeuft.
 
     Genau das ist "nur erfolgreiche Laeufe uebernehmen" - keine Statusspalte, die
     jemand auswerten muesste, sondern gar kein Eintrag. Eine Ausnahme im Block rollt
     auch die schon geschriebenen Item-Zeilen zurueck.
     """
-    jetzt = zeitpunkt or datetime.now()
+    now = timestamp or datetime.now()
     cur = conn.execute(
         "INSERT INTO runs (ts, tag, code_version, config_hash, notiz) VALUES (?,?,?,?,?)",
-        (jetzt.isoformat(timespec="seconds"), jetzt.strftime("%Y-%m-%d"),
-         code_version(), config_hash(), notiz),
+        (now.isoformat(timespec="seconds"), now.strftime("%Y-%m-%d"),
+         code_version(), config_hash(), note),
     )
     run_id = cur.lastrowid
     try:
@@ -201,42 +201,42 @@ def lauf(conn: sqlite3.Connection, notiz: str = "", zeitpunkt: datetime | None =
 # Schreiben
 # ---------------------------------------------------------------
 
-def schreibe_items(conn: sqlite3.Connection, run_id: int, lines: list) -> int:
+def write_items(conn: sqlite3.Connection, run_id: int, lines: list) -> int:
     """Eine Zeile je Item: Preise, Volumen, NPC-Preis, Kosten, Gold/h, Weg, Rang, Warnungen."""
     if not lines:
         return 0
-    tag = _tag_von_lauf(conn, run_id)
+    tag = _day_of_run(conn, run_id)
     data = [
-        (run_id, tag) + tuple(_zahl(z.get(s)) if s not in ("item", "skill", "verkaufsweg", "warnungen")
-                              else _text(z.get(s)) for s in ITEM_SPALTEN)
+        (run_id, tag) + tuple(_number(z.get(s)) if s not in ("item", "skill", "verkaufsweg", "warnungen")
+                              else _text_value(z.get(s)) for s in ITEM_COLUMNS)
         for z in lines
     ]
-    platzhalter = ",".join("?" * (len(ITEM_SPALTEN) + 2))
+    placeholder = ",".join("?" * (len(ITEM_COLUMNS) + 2))
     conn.executemany(
-        f"INSERT INTO items (run_id, tag, {','.join(ITEM_SPALTEN)}) VALUES ({platzhalter})",
+        f"INSERT INTO items (run_id, tag, {','.join(ITEM_COLUMNS)}) VALUES ({placeholder})",
         data,
     )
     return len(data)
 
 
-def schreibe_orderbuch(conn: sqlite3.Connection, run_id: int, buecher: list,
+def write_orderbook(conn: sqlite3.Connection, run_id: int, books: list,
                        top_n: int | None = None) -> int:
     """Gebots-/Angebotsstufen - nur fuer die wichtigsten Kandidaten.
 
-    `buecher` ist `[{item, item_id, kauf: [(preis, menge)], verkauf: [...]}]`, bereits
+    `books` ist `[{item, item_id, kauf: [(preis, menge)], verkauf: [...]}]`, bereits
     in Rangfolge. Gespeichert werden die ersten `top_n`: eine Stufe je Item und Lauf
     ist die groesste Tabelle von allen, und fuer Platz 400 der Rangliste sieht sie nie
     jemand an. Abgerufen wurden diese Buecher ohnehin schon (Sheet "Begruendung") -
     es entsteht also kein einziger zusaetzlicher Request.
     """
-    grenze = cfg.HISTORY_ORDERBOOK_TOP_N if top_n is None else top_n
-    tag = _tag_von_lauf(conn, run_id)
+    limit = cfg.HISTORY_ORDERBOOK_TOP_N if top_n is None else top_n
+    tag = _day_of_run(conn, run_id)
     data = []
-    for buch in buecher[:max(0, grenze)]:
-        for seite in ("kauf", "verkauf"):
-            for level, (preis, menge) in enumerate(buch.get(seite) or [], 1):
-                data.append((run_id, tag, int(buch["item_id"]), _text(buch.get("item")),
-                              seite, level, float(preis), float(menge)))
+    for book in books[:max(0, limit)]:
+        for side in ("kauf", "verkauf"):
+            for level, (price_value, amount_value) in enumerate(book.get(side) or [], 1):
+                data.append((run_id, tag, int(book["item_id"]), _text_value(book.get("item")),
+                              side, level, float(price_value), float(amount_value)))
     if data:
         conn.executemany(
             "INSERT INTO orderbook (run_id, tag, item_id, item, seite, stufe, preis, menge) "
@@ -248,30 +248,30 @@ def schreibe_orderbuch(conn: sqlite3.Connection, run_id: int, buecher: list,
 # Aufraeumen: zusammenfassen, dann loeschen
 # ---------------------------------------------------------------
 
-def aufraeumen(conn: sqlite3.Connection, heute: datetime | None = None) -> dict:
+def tidy_up(conn: sqlite3.Connection, today: datetime | None = None) -> dict:
     """Details verdichten und Alt-Bestand loeschen. Gibt eine Zaehlung zurueck.
 
     Reihenfolge ist keine Geschmacksfrage: erst zusammenfassen, dann loeschen. In der
     anderen Reihenfolge waeren die Tageswerte fuer genau die Tage leer, die man
     aufhebt - und aufgefallen waere es erst nach 90 Tagen.
     """
-    heute = heute or datetime.now()
-    grenze_detail = (heute - timedelta(days=cfg.HISTORY_DETAIL_DAYS)).strftime("%Y-%m-%d")
-    grenze_ob = (heute - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS)).strftime("%Y-%m-%d")
-    grenze_daily = (heute - timedelta(days=cfg.HISTORY_DAILY_DAYS)).strftime("%Y-%m-%d")
+    today = today or datetime.now()
+    limit_detail = (today - timedelta(days=cfg.HISTORY_DETAIL_DAYS)).strftime("%Y-%m-%d")
+    limit_ob = (today - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS)).strftime("%Y-%m-%d")
+    limit_daily = (today - timedelta(days=cfg.HISTORY_DAILY_DAYS)).strftime("%Y-%m-%d")
 
-    verdichtet = verdichte_bis(conn, grenze_detail)
-    weg_items = conn.execute("DELETE FROM items WHERE tag < ?", (grenze_detail,)).rowcount
-    weg_ob = conn.execute("DELETE FROM orderbook WHERE tag < ?", (grenze_ob,)).rowcount
-    weg_daily = conn.execute("DELETE FROM daily WHERE tag < ?", (grenze_daily,)).rowcount
-    weg_runs = _begrenze_laeufe(conn, cfg.HISTORY_RUN_LIMIT)
+    condensed = condense_until(conn, limit_detail)
+    gone_items = conn.execute("DELETE FROM items WHERE tag < ?", (limit_detail,)).rowcount
+    gone_ob = conn.execute("DELETE FROM orderbook WHERE tag < ?", (limit_ob,)).rowcount
+    gone_daily = conn.execute("DELETE FROM daily WHERE tag < ?", (limit_daily,)).rowcount
+    gone_runs = _limit_runs(conn, cfg.HISTORY_RUN_LIMIT)
     conn.commit()
-    return {"verdichtet": verdichtet, "items": weg_items, "orderbook": weg_ob,
-            "daily": weg_daily, "runs": weg_runs}
+    return {"condensed": condensed, "items": gone_items, "orderbook": gone_ob,
+            "daily": gone_daily, "runs": gone_runs}
 
 
-def verdichte_bis(conn: sqlite3.Connection, grenze_tag: str) -> int:
-    """Alles vor `grenze_tag` zu einem Eintrag je Tag und Item zusammenfassen.
+def condense_until(conn: sqlite3.Connection, limit_day: str) -> int:
+    """Alles vor `limit_day` zu einem Eintrag je Tag und Item zusammenfassen.
 
     Gemittelt wird ueber die Laeufe eines Tages; bei einem Lauf pro Tag ist das der
     Wert selbst. `INSERT OR REPLACE` macht den Durchgang wiederholbar - ein zweiter
@@ -284,11 +284,11 @@ def verdichte_bis(conn: sqlite3.Connection, grenze_tag: str) -> int:
                AVG(bid), AVG(ask), AVG(npc_preis), AVG(kosten_h),
                AVG(gold_h), AVG(gold_h_real)
         FROM items WHERE tag < ? GROUP BY tag, item
-    """, (grenze_tag,))
+    """, (limit_day,))
     return cur.rowcount
 
 
-def _begrenze_laeufe(conn: sqlite3.Connection, limit: int) -> int:
+def _limit_runs(conn: sqlite3.Connection, limit: int) -> int:
     """Nur die juengsten `limit` Laufprotokolle behalten; Details haengen per CASCADE dran."""
     cur = conn.execute(
         "DELETE FROM runs WHERE id NOT IN (SELECT id FROM runs ORDER BY id DESC LIMIT ?)",
@@ -300,7 +300,7 @@ def _begrenze_laeufe(conn: sqlite3.Connection, limit: int) -> int:
 # Lesen
 # ---------------------------------------------------------------
 
-def verlauf(conn: sqlite3.Connection, item: str, tage: int = 30) -> list:
+def trend_rows(conn: sqlite3.Connection, item: str, days_count: int = 30) -> list:
     """Gold/h und Preise eines Items ueber die Zeit - Details und Tageswerte zusammen."""
     lines = conn.execute("""
         SELECT tag, bid, ask, npc_preis, kosten_h, gold_h, gold_h_real, 'detail' AS quelle
@@ -309,22 +309,22 @@ def verlauf(conn: sqlite3.Connection, item: str, tage: int = 30) -> list:
         SELECT tag, bid, ask, npc_preis, kosten_h, gold_h, gold_h_real, 'tag' AS quelle
         FROM daily WHERE item = ?
         ORDER BY tag DESC LIMIT ?
-    """, (item, item, max(1, tage))).fetchall()
+    """, (item, item, max(1, days_count))).fetchall()
     return [dict(z) for z in lines]
 
 
-def letzte_laeufe(conn: sqlite3.Connection, count: int = 5) -> list:
+def last_runs(conn: sqlite3.Connection, count: int = 5) -> list:
     lines = conn.execute(
         "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (max(1, count),)).fetchall()
     return [dict(z) for z in lines]
 
 
-def _tag_von_lauf(conn: sqlite3.Connection, run_id: int) -> str:
+def _day_of_run(conn: sqlite3.Connection, run_id: int) -> str:
     line = conn.execute("SELECT tag FROM runs WHERE id = ?", (run_id,)).fetchone()
     return line["tag"] if line else datetime.now().strftime("%Y-%m-%d")
 
 
-def _zahl(value):
+def _number(value):
     """None bleibt None - eine 0 waere hier eine Behauptung."""
     if value is None:
         return None
@@ -335,5 +335,5 @@ def _zahl(value):
     return None if number != number else number      # NaN faellt raus
 
 
-def _text(value) -> str:
+def _text_value(value) -> str:
     return "" if value is None else str(value)

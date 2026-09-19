@@ -149,7 +149,7 @@ def _read_tesseract(img: 'Image.Image', languages: list[str] = None,
                      min_confidence: float = 0.3) -> list[tuple[str, float]]:
     """Liest Text mit Tesseract."""
     lang_str = "+".join(languages) if languages else "eng"
-    data = _pytesseract_mod.image_to_data(img, lang=lang_str, output_type=_pytesseract_mod.Output.DICT)
+    data = _pytesseract_mod.image_to_data(img, long_text=lang_str, output_type=_pytesseract_mod.Output.DICT)
 
     texts = []
     for i, text in enumerate(data["text"]):
@@ -240,15 +240,15 @@ def _match_text_to_boss(text: str, boss_names: list[str]) -> Optional[str]:
             return name
 
     # Boss-Name im Text enthalten -> spezifischsten (laengsten) Treffer waehlen
-    enthalten = [name for name in boss_names if name.lower() in text_lower]
-    if enthalten:
-        return max(enthalten, key=len)
+    contained_names = [name for name in boss_names if name.lower() in text_lower]
+    if contained_names:
+        return max(contained_names, key=len)
 
     # Text im Boss-Namen enthalten (min 3 Zeichen, sonst matcht ein Kuerzel alles)
     if len(text_lower) >= 3:
-        teilweise = [name for name in boss_names if text_lower in name.lower()]
-        if teilweise:
-            return min(teilweise, key=len)
+        partially = [name for name in boss_names if text_lower in name.lower()]
+        if partially:
+            return min(partially, key=len)
 
     return None
 

@@ -403,10 +403,10 @@ def _run_import(state: AutoClickerState) -> None:
     # Was importieren?
     import_flags = {}
     print(f"  {col('Was importieren?', 'bold')}")
-    neues_layout = manifest.get("layout") == "sequence-folders"
+    new_layout = manifest.get("layout") == "sequence-folders"
     parts = ([('sequences', 'Sequenzordner inkl. Punkte, Scans und Vorlagen'),
               ('config', 'Config')]
-             if neues_layout else
+             if new_layout else
              [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
               ("items", "Items"), ("item_scans", "Item-Scans"),
               ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
@@ -415,10 +415,10 @@ def _run_import(state: AutoClickerState) -> None:
         if key in contents:
             choice = safe_input(f"    {label}? (j/n, Enter = ja): ").strip().lower()
             import_flags[f"import_{key}"] = choice != "n"
-    if neues_layout:
-        ganz = import_flags.get("import_sequences", False)
+    if new_layout:
+        whole = import_flags.get("import_sequences", False)
         for key in ("points", "slots", "items", "item_scans", "boss_scans", "icon_scans"):
-            import_flags[f"import_{key}"] = ganz
+            import_flags[f"import_{key}"] = whole
 
     # Merge oder ersetzen?
     print("\n  Bestehende Daten:")
@@ -480,7 +480,7 @@ def _ask_filepath() -> str | None:
 # KALIBRIERUNG (Bildschirm-Layout hat sich geändert)
 # =============================================================================
 
-def run_kalibrierung(state: AutoClickerState) -> None:
+def run_calibration(state: AutoClickerState) -> None:
     """Rechnet alle gespeicherten Koordinaten auf ein geändertes Bildschirm-Layout um.
 
     Der Nutzer setzt einen bekannten Punkt neu; die Differenz gilt für alles andere.
@@ -505,16 +505,16 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         return
 
     # --- Referenzpunkt 1: Verschiebung ------------------------------------------
-    ref1 = _kalib_referenz(state, points, "Referenzpunkt")
+    ref1 = _calibration_reference(state, points, "Referenzpunkt")
     if ref1 is None:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
-    p_alt, p_neu = ref1
-    transform = transform_from_offset(p_alt, p_neu)
+    p_old, p_new = ref1
+    transform = transform_from_offset(p_old, p_new)
 
-    versatz = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
+    offset = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
     print()
-    print(f"  Verschiebung: {col(versatz, 'yellow')}")
+    print(f"  Verschiebung: {col(offset, 'yellow')}")
 
     # --- Referenzpunkt 2 (optional): Skalierung ---------------------------------
     if len(points) > 1:
@@ -522,22 +522,22 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print("  Hat sich auch die AUFLÖSUNG geändert, reicht Verschieben nicht —")
         print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
         if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
-            ref2 = _kalib_referenz(state, points, "Zweiter Referenzpunkt",
-                                   ausser=p_alt)
+            ref2 = _calibration_reference(state, points, "Zweiter Referenzpunkt",
+                                   except_step=p_old)
             if ref2 is None:
                 print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
             else:
-                q_alt, q_neu = ref2
-                transform = compute_transform(p_alt, q_alt, p_neu, q_neu)
-                faktor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
+                q_old, q_new = ref2
+                transform = compute_transform(p_old, q_old, p_new, q_new)
+                factor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
                 print()
-                print(f"  Skalierung: {col(faktor, 'yellow')}")
+                print(f"  Skalierung: {col(factor, 'yellow')}")
 
     # --- Versatz von Hand nachziehen --------------------------------------------
     # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
     # stimmt, ist eine erzwungene 0 genauer als jede Messung.
     if transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0:
-        transform = _versatz_anpassen(transform)
+        transform = _adjust_offset(transform)
         if transform is None:
             print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
             return
@@ -547,47 +547,47 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         return
 
     # --- Vorschau ----------------------------------------------------------------
-    vorschau = calibration_preview(state, transform)
+    preview = calibration_preview(state, transform)
     print()
     print(col("  VORSCHAU (Auszug):", 'bold'))
-    for label, old, new in vorschau[:12]:
+    for label, old, new in preview[:12]:
         print(f"    {label:<34} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
-    if len(vorschau) > 12:
-        print(f"    {info(f'... und {len(vorschau) - 12} weitere')}")
+    if len(preview) > 12:
+        print(f"    {info(f'... und {len(preview) - 12} weitere')}")
 
-    draussen = _ausserhalb_der_monitore([new for _, _, new in vorschau])
-    if draussen:
+    outside = _outside_all_monitors([new for _, _, new in preview])
+    if outside:
         print()
-        print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
+        print(f"  {warn(f'{outside} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
         print(f"  {info('Meist heisst das: der Referenzpunkt lag auf einem anderen Bildschirm')}")
         print(f"  {info('als diese Ziele — dann stimmt die Verschiebung fuer sie nicht.')}")
 
     # --- Umfang -------------------------------------------------------------------
     with state.lock:
-        anzahl_slots = len(state.global_slots)
+        slot_count = len(state.global_slots)
 
-    if anzahl_slots:
+    if slot_count:
         print()
         print(f"  {warn('Fuer Slots ist das nur eine Naeherung.')}")
         print("  Ein Klick-Ziel vertraegt ein paar Pixel Abweichung — eine Scan-Region")
         print("  nicht: die schneidet dann das Item-Icon an oder zieht Nachbarpixel")
         print("  rein, und das Template-Matching wird unzuverlaessig.")
         print(f"  {info('Genauer: Item-Scan -> Slots -> ' + col('repair', 'yellow'))}")
-        print(f"  {info('Das misst die ' + str(anzahl_slots) + ' Slots neu, statt sie zu verschieben.')}")
+        print(f"  {info('Das misst die ' + str(slot_count) + ' Slots neu, statt sie zu verschieben.')}")
 
     print()
     print(col("  Was soll mitgezogen werden?", 'bold'))
-    umfang = interactive_select([
+    extent = interactive_select([
         "Alles ausser Slots (Punkte, Scan-Regionen, Sequenzen) — Slots per 'repair'",
         "Alles inkl. Slots (Naeherung, s.o.)",
         "Nur die Punkte",
     ], default=0)
-    if umfang < 0:
+    if extent < 0:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
-    mit_slots = umfang == 1
-    mit_scans = umfang in (0, 1)
-    mit_sequenzen = umfang in (0, 1)
+    with_slots = extent == 1
+    with_scans = extent in (0, 1)
+    with_sequences = extent in (0, 1)
 
     print()
     print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
@@ -596,31 +596,31 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         return
 
     from ..import_export import backup_before_calibration
-    sicherung = backup_before_calibration(state)
-    if sicherung:
-        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    backup = backup_before_calibration(state)
+    if backup:
+        print(f"  {ok('Sicherung angelegt:')} {backup}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
-    number = calibrate_inventory(state, transform, mit_scans=mit_scans,
-                              mit_sequenzen=mit_sequenzen, mit_slots=mit_slots)
+    number = calibrate_inventory(state, transform, with_scans=with_scans,
+                              with_sequences=with_sequences, with_slots=with_slots)
 
     print()
     print(f"  {ok('Kalibriert:')}")
-    beschriftung = {"punkte": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+    caption = {"points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
                     "item_scans": "Item-Scan-Fensteranker",
                     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-                    "bosse": "globale Bosse", "sequenzen": "Sequenzdateien"}
+                    "bosses": "globale Bosse", "sequences": "Sequenzdateien"}
     for key_name, count in number.items():
         if count:
-            print(f"    {count:>4}  {beschriftung[key_name]}")
-    if mit_sequenzen:
+            print(f"    {count:>4}  {caption[key_name]}")
+    if with_sequences:
         print()
         print(f"  {info('Sequenzdateien wurden umgeschrieben — mit CTRL+ALT+L neu laden.')}")
 
-    if anzahl_slots:
+    if slot_count:
         print()
-        if mit_slots:
+        if with_slots:
             print(f"  {warn('Die Slots wurden nur VERSCHOBEN, nicht neu vermessen —')}")
             print("  fuer Scan-Regionen ist das eine Naeherung.")
         else:
@@ -628,7 +628,7 @@ def run_kalibrierung(state: AutoClickerState) -> None:
         print(f"  Pixelgenau macht es {col('Item-Scan -> Slots -> repair', 'yellow')}.")
 
 
-def _versatz_anpassen(transform: dict) -> dict | None:
+def _adjust_offset(transform: dict) -> dict | None:
     """Lässt den gemessenen Versatz je Achse von Hand korrigieren.
 
     Der Grund: mit der Maus trifft man den Zielpixel nicht exakt. Steht da
@@ -645,16 +645,16 @@ def _versatz_anpassen(transform: dict) -> dict | None:
     print(f"  {info('das ist genauer als die Maus-Messung.')}")
 
     new = []
-    for achse, value in (("X", vx), ("Y", vy)):
+    for axis, value in (("X", vx), ("Y", vy)):
         while True:
-            eingabe = safe_input(f"    {achse}-Versatz (Enter = {value:+d}): ").strip()
-            if is_cancel(eingabe):
+            user_input = safe_input(f"    {axis}-Versatz (Enter = {value:+d}): ").strip()
+            if is_cancel(user_input):
                 return None
-            if not eingabe:
+            if not user_input:
                 new.append(value)
                 break
             try:
-                new.append(int(round(float(eingabe.replace(",", ".")))))
+                new.append(int(round(float(user_input.replace(",", ".")))))
                 break
             except ValueError:
                 # Wiederholen statt abbrechen — wie in den anderen Editoren
@@ -666,25 +666,25 @@ def _versatz_anpassen(transform: dict) -> dict | None:
             "offset_x": new[0], "offset_y": new[1]}
 
 
-def _kalib_referenz(state: AutoClickerState, points: list, titel: str,
-                    ausser: tuple | None = None):
+def _calibration_reference(state: AutoClickerState, points: list, title: str,
+                    except_step: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
-    Gibt ((alt_x, alt_y), (neu_x, neu_y)) zurück oder None bei Abbruch.
+    Gibt ((alt_x, alt_y), (new_x, new_y)) zurück oder None bei Abbruch.
     """
     from ..winapi import set_cursor_pos
 
-    auswahl = [p for p in points if ausser is None or (p.x, p.y) != ausser]
-    if not auswahl:
+    selection = [p for p in points if except_step is None or (p.x, p.y) != except_step]
+    if not selection:
         return None
 
     print()
-    print(col(f"  {titel}:", 'bold'))
-    beschriftung = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in auswahl]
-    idx = interactive_select(beschriftung, default=0)
+    print(col(f"  {title}:", 'bold'))
+    caption = [f"#{p.id} {p.name or '(ohne Namen)'}  ({p.x}, {p.y})" for p in selection]
+    idx = interactive_select(caption, default=0)
     if idx < 0:
         return None
-    point = auswahl[idx]
+    point = selection[idx]
 
     # Maus dorthin, wo der Punkt AKTUELL zeigt — dann sieht man die Abweichung
     set_cursor_pos(point.x, point.y)
@@ -698,12 +698,12 @@ def _kalib_referenz(state: AutoClickerState, points: list, titel: str,
     return (point.x, point.y), new
 
 
-def _ausserhalb_der_monitore(ziele: list[tuple[int, int]]) -> int:
+def _outside_all_monitors(targets: list[tuple[int, int]]) -> int:
     """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
-    from ..diagnose import _virtueller_desktop
+    from ..diagnostics import _virtueller_desktop
     rect = _virtueller_desktop()
     if rect is None:
         return 0
     left, top, right, bottom = rect
-    return sum(1 for x, y in ziele
+    return sum(1 for x, y in targets
                if not (left <= x < right and top <= y < bottom))

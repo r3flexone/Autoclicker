@@ -244,9 +244,9 @@ class SequenceStep:
         if self.key_press:
             return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
         if self.scroll:
-            richtung = "hoch" if self.scroll > 0 else "runter"
+            direction = "hoch" if self.scroll > 0 else "runter"
             target = f"{self.name} " if self.name else ""
-            return (f"{self._trigger_str()} → scrolle {richtung} x{abs(self.scroll)} "
+            return (f"{self._trigger_str()} → scrolle {direction} x{abs(self.scroll)} "
                     f"bei {target}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
@@ -272,9 +272,9 @@ class SequenceStep:
                    else f"{ref.strip()} ({self.x}, {self.y})".strip())
         if wc:
             if wc.check_only:
-                zustand = "WEG" if wc.until_gone else "DA"
-                vorlauf = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
-                return (f"{vorlauf}prüfe einmal ob Farbe {zustand} bei "
+                state_value = "WEG" if wc.until_gone else "DA"
+                lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+                return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
                         f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
                         f"{else_str or ' | sonst: überspringen'}")
             gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
@@ -297,12 +297,12 @@ class SequenceStep:
         wc = self.wait_condition
         if not wc:
             return self._delay_str()
-        zustand = "WEG" if wc.until_gone else "DA"
+        state_value = "WEG" if wc.until_gone else "DA"
         pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
         if wc.check_only:
-            kind = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+            kind = f"prüfe einmal ob Farbe {state_value} bei {pixel}"
         else:
-            kind = f"warte bis Farbe {zustand} bei {pixel}"
+            kind = f"warte bis Farbe {state_value} bei {pixel}"
         if self.delay_before > 0:
             # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
             return f"warte {self._delay_str()}, dann {kind.removeprefix('warte ')}"
@@ -317,8 +317,8 @@ class SequenceStep:
         vc = self.verify_condition
         if not vc:
             return ""
-        zustand = "WEG" if vc.until_gone else "DA"
-        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {zustand}"
+        state_value = "WEG" if vc.until_gone else "DA"
+        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {state_value}"
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""
@@ -482,10 +482,10 @@ class ItemProfile:
         return result
 
     def __str__(self) -> str:
-        vorlagen = self.template_names()
-        if vorlagen:
-            count = f" +{len(vorlagen) - 1} Variante(n)" if len(vorlagen) > 1 else ""
-            template_str = f"Template: {vorlagen[0]}{count} (≥{self.min_confidence:.0%})"
+        templates_list = self.template_names()
+        if templates_list:
+            count = f" +{len(templates_list) - 1} Variante(n)" if len(templates_list) > 1 else ""
+            template_str = f"Template: {templates_list[0]}{count} (≥{self.min_confidence:.0%})"
         else:
             colors_str = ", ".join([f"RGB{c}" for c in self.marker_colors[:3]])
             if len(self.marker_colors) > 3:
@@ -716,7 +716,7 @@ REC_WAIT_COLOR = "wait"
 REC_SCREENSHOT = "screenshot"
 # Bereichs-Ecke: zwei davon ergeben EIN Rechteck. Ein Rechteck aufzuziehen braucht
 # zwei Stellen, und mehr als einen Tastendruck gibt es waehrend der Aufnahme nicht —
-# also zweimal derselbe Druck an zwei Mauspositionen. `bereiche_zusammenfassen()`
+# also zweimal derselbe Druck an zwei Mauspositionen. `merge_regions()`
 # faltet die Paare zu REC_SCREENSHOT-Ereignissen; danach existiert diese Art nicht mehr.
 REC_REGION = "region"
 # Beobachten ohne Klick: "warte, bis die Farbe UNTER der Maus da ist" — und dann NICHT
@@ -752,8 +752,8 @@ class RecordEvent:
         if self.kind == REC_KEY:
             return f"Taste '{self.key}'"
         if self.kind == REC_SCROLL:
-            richtung = "hoch" if self.scroll > 0 else "runter"
-            return f"Scroll {richtung} x{abs(self.scroll)} bei ({self.x}, {self.y})"
+            direction = "hoch" if self.scroll > 0 else "runter"
+            return f"Scroll {direction} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
             return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
         if self.kind == REC_SCREENSHOT:
@@ -921,7 +921,7 @@ class AutoClickerState:
     # Was die Runde GETAN hat: (Punkt-ID, Art) je erledigtem Punkt, in der
     # Reihenfolge des Durchgangs. Art ist "passt", "gesetzt", "uebersprungen"
     # oder "fehlt". Ableiten liesse sich das NICHT: ein bestaetigter Punkt
-    # (innerhalb PASST_TOLERANZ) landet bewusst nicht in `reclick_set`,
+    # (innerhalb MATCH_TOLERANCE) landet bewusst nicht in `reclick_set`,
     # und ohne diese Liste saehe er im Fenster genauso aus wie ein
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
     # `reclick_set`.

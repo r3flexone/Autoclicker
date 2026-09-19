@@ -235,14 +235,14 @@ def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
     # nur "der naechste, bitte" gemeint hat. `next_free_name()` fuellt Luecken
     # und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect` weiter unten).
     with state.lock:
-        vorschlag = next_free_name("Slot", state.global_slots)
+        proposal = next_free_name("Slot", state.global_slots)
 
-    slot_name = safe_input(f"  Slot-Name (Enter = '{vorschlag}', 'cancel'): ").strip()
+    slot_name = safe_input(f"  Slot-Name (Enter = '{proposal}', 'cancel'): ").strip()
     if is_cancel(slot_name):
         print("  -> Slot-Erstellung abgebrochen")
         return None
     if not slot_name:
-        slot_name = vorschlag
+        slot_name = proposal
 
     # Duplikat-Check (Slots sind per Name indexiert — sonst still überschrieben)
     with state.lock:
@@ -392,15 +392,6 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     )
 
 
-def erkenne_slots_im_bild(img, slot_color_rgb: tuple, hsv_toleranz: int,
-                          verbose: bool = False, sv_toleranz: int = 50):
-    """Kompatibilitätsname für den gemeinsamen Scan-Service."""
-    return detect_slots_in_image(
-        img, slot_color_rgb, hsv_toleranz, verbose=verbose,
-        sv_tolerance=sv_toleranz,
-    )
-
-
 def slot_auto_detect(state: AutoClickerState) -> bool:
     """Automatische Slot-Erkennung mit OpenCV. Gibt True zurück wenn erfolgreich."""
     if not OPENCV_AVAILABLE:
@@ -447,7 +438,7 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
     r, g, b = slot_color_rgb
     print(f"  Farbe: RGB({r}, {g}, {b})")
 
-    detected_slots, img_bgr = erkenne_slots_im_bild(
+    detected_slots, img_bgr = detect_slots_in_image(
         img, slot_color_rgb, state.config.scan_slot_hsv_tolerance, verbose=True)
 
     if not detected_slots:
@@ -547,11 +538,11 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
 # REPARATUR (Slots neu vermessen, Identität behalten)
 # =============================================================================
 
-def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
+def _check_assignment(old_slots: list, new_rects: list[tuple],
                        inset: int, offset: tuple[int, int]) -> tuple:
     """Prüft, ob die neu erkannten Rechtecke zu den bestehenden Slots passen.
 
-    Gibt `(paare, versatz, meldungen)` zurück; `paare` ist leer, wenn die Zuordnung
+    Gibt `(paare, avg_offset, meldungen)` zurück; `pairs` ist leer, wenn die Zuordnung
     nicht eindeutig ist.
 
     Die Prüfung ist der ganze Punkt: übernommen wird nur, wenn die Verschiebung für
@@ -560,55 +551,55 @@ def _zuordnung_pruefen(alte_slots: list, neue_rects: list[tuple],
     tun als 20 Regionen falsch überschreiben.
     """
     messages = []
-    if len(neue_rects) != len(alte_slots):
+    if len(new_rects) != len(old_slots):
         messages.append(
-            f"{len(neue_rects)} Slot(s) erkannt, aber {len(alte_slots)} gespeichert — "
+            f"{len(new_rects)} Slot(s) erkannt, aber {len(old_slots)} gespeichert — "
             f"die Zuordnung waere geraten.")
         return [], None, messages
 
     ox, oy = offset
-    paare = []
-    for slot, (x, y, w, h) in zip(alte_slots, neue_rects):
-        neue_region = (x + ox + inset, y + oy + inset,
+    pairs = []
+    for slot, (x, y, w, h) in zip(old_slots, new_rects):
+        new_region = (x + ox + inset, y + oy + inset,
                        x + ox + w - inset, y + oy + h - inset)
-        paare.append((slot, neue_region))
+        pairs.append((slot, new_region))
 
     # Einzelversaetze: bei einer reinen Verschiebung sind alle gleich
-    versaetze = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
-                 for slot, new in paare]
-    xs = [v[0] for v in versaetze]
-    ys = [v[1] for v in versaetze]
-    streuung = max(max(xs) - min(xs), max(ys) - min(ys))
+    offsets = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
+                 for slot, new in pairs]
+    xs = [v[0] for v in offsets]
+    ys = [v[1] for v in offsets]
+    spread = max(max(xs) - min(xs), max(ys) - min(ys))
 
     # Groessen muessen ebenfalls passen — sonst hat sich die Aufloesung geaendert
     # und eine reine Verschiebung waere die falsche Antwort.
-    groessen_diff = 0
-    for slot, new in paare:
-        alt_b = slot.scan_region[2] - slot.scan_region[0]
-        alt_h = slot.scan_region[3] - slot.scan_region[1]
-        groessen_diff = max(groessen_diff,
-                            abs((new[2] - new[0]) - alt_b),
-                            abs((new[3] - new[1]) - alt_h))
+    size_diff = 0
+    for slot, new in pairs:
+        old_w = slot.scan_region[2] - slot.scan_region[0]
+        old_h = slot.scan_region[3] - slot.scan_region[1]
+        size_diff = max(size_diff,
+                            abs((new[2] - new[0]) - old_w),
+                            abs((new[3] - new[1]) - old_h))
 
-    if groessen_diff > _REPAIR_MAX_GROESSEN_DIFF:
+    if size_diff > _REPAIR_MAX_SIZE_DIFF:
         messages.append(
-            f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
+            f"Die Slot-Groesse weicht um bis zu {size_diff} px ab — sieht nach einer "
             f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
-    if streuung > _REPAIR_MAX_STREUUNG:
+    if spread > _REPAIR_MAX_SPREAD:
         messages.append(
-            f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
+            f"Die Einzelversaetze streuen um {spread} px — die Zuordnung ist nicht "
             f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
 
     if messages:
         return [], None, messages
 
     # Mittlerer Versatz nur zur Anzeige/Weitergabe
-    versatz = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
-    return paare, versatz, messages
+    avg_offset = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+    return pairs, avg_offset, messages
 
 
-_REPAIR_MAX_STREUUNG = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
-_REPAIR_MAX_GROESSEN_DIFF = 4     # px, die die Slot-Groesse abweichen darf
+_REPAIR_MAX_SPREAD = 4          # px, die die Einzelversaetze auseinanderliegen duerfen
+_REPAIR_MAX_SIZE_DIFF = 4     # px, die die Slot-Groesse abweichen darf
 
 
 def slot_repair(state: AutoClickerState) -> bool:
@@ -623,13 +614,13 @@ def slot_repair(state: AutoClickerState) -> bool:
         return False
 
     with state.lock:
-        alte_slots = list(state.global_slots.values())
-    if not alte_slots:
+        old_slots = list(state.global_slots.values())
+    if not old_slots:
         print(f"  {err('Keine Slots gespeichert — es gibt nichts zu reparieren.')}")
         return False
 
     print(header("SLOTS REPARIEREN", width=50))
-    print(f"\n  {len(alte_slots)} gespeicherte Slots werden neu vermessen.")
+    print(f"\n  {len(old_slots)} gespeicherte Slots werden neu vermessen.")
     print(f"  {hint('Namen und Verweise bleiben — nur die Koordinaten werden ersetzt.')}")
     print("\nMarkiere den Bereich mit den Slots (grosszuegig ist ok):")
     print("  1. Maus auf OBEN-LINKS, ENTER")
@@ -642,9 +633,9 @@ def slot_repair(state: AutoClickerState) -> bool:
 
     # Die gespeicherte Slot-Farbe wiederverwenden — die haengt nicht am Bildschirm-
     # Layout, und nochmal picken zu lassen waere eine Fehlerquelle ohne Gewinn.
-    farben = [s.slot_color for s in alte_slots if s.slot_color]
-    if farben:
-        slot_color = max(set(farben), key=farben.count)
+    colors = [s.slot_color for s in old_slots if s.slot_color]
+    if colors:
+        slot_color = max(set(colors), key=colors.count)
         print(f"\n  Slot-Farbe aus dem Bestand: RGB{slot_color}")
     else:
         print("\n  Keine Farbe gespeichert — bitte einmalig picken.")
@@ -663,15 +654,15 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {err('Screenshot fehlgeschlagen!')}")
         return False
 
-    neue_rects, _ = erkenne_slots_im_bild(img, slot_color,
+    new_rects, _ = detect_slots_in_image(img, slot_color,
                                           state.config.scan_slot_hsv_tolerance)
-    print(f"  {len(neue_rects)} Slot(s) erkannt.")
+    print(f"  {len(new_rects)} Slot(s) erkannt.")
 
     inset = state.config.scan_slot_inset
-    paare, versatz, messages = _zuordnung_pruefen(
-        alte_slots, neue_rects, inset, (region[0], region[1]))
+    pairs, offset, messages = _check_assignment(
+        old_slots, new_rects, inset, (region[0], region[1]))
 
-    if not paare:
+    if not pairs:
         print()
         for m in messages:
             print(f"  {err(m)}")
@@ -682,14 +673,14 @@ def slot_repair(state: AutoClickerState) -> bool:
 
     print()
     print(col("  VORSCHAU:", 'bold'))
-    for slot, new in paare[:12]:
+    for slot, new in pairs[:12]:
         print(f"    {slot.name:<18} {slot.scan_region}  ->  {new}")
-    if len(paare) > 12:
-        print(f"    {info(f'... und {len(paare) - 12} weitere')}")
+    if len(pairs) > 12:
+        print(f"    {info(f'... und {len(pairs) - 12} weitere')}")
     print()
-    print(f"  Versatz durchgaengig: {col(f'{versatz[0]:+} X, {versatz[1]:+} Y', 'yellow')}")
+    print(f"  Versatz durchgaengig: {col(f'{offset[0]:+} X, {offset[1]:+} Y', 'yellow')}")
 
-    if versatz == (0, 0):
+    if offset == (0, 0):
         print(f"  {info('Die Slots sitzen schon richtig — nichts zu tun.')}")
         return False
 
@@ -698,20 +689,20 @@ def slot_repair(state: AutoClickerState) -> bool:
         return False
 
     from ..import_export import backup_before_calibration
-    sicherung = backup_before_calibration(state)
-    if sicherung:
-        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    backup = backup_before_calibration(state)
+    if backup:
+        print(f"  {ok('Sicherung angelegt:')} {backup}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
     with state.lock:
-        for slot, new in paare:
+        for slot, new in pairs:
             slot.scan_region = new
             slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
     save_global_slots(state)
-    print(f"  {ok(f'{len(paare)} Slot(s) neu vermessen.')}")
+    print(f"  {ok(f'{len(pairs)} Slot(s) neu vermessen.')}")
 
     # Der hier gemessene Versatz ist pixelgenau — deutlich besser als eine
     # Maus-Position. Deshalb anbieten, ihn gleich auf den Rest anzuwenden.
@@ -721,33 +712,33 @@ def slot_repair(state: AutoClickerState) -> bool:
     if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
         from ..import_export import (transform_from_offset, calibrate_inventory,
                                      calibration_preview)
-        from .import_export_editor import _ausserhalb_der_monitore
-        t = transform_from_offset((0, 0), versatz)
+        from .import_export_editor import _outside_all_monitors
+        t = transform_from_offset((0, 0), offset)
 
         # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
         # genauer gemessen, aber er stammt von EINEM Bildschirm: liegen Punkte auf
         # einem anderen, stimmt er fuer die nicht. Gleiche Schreiboperation,
         # gleiche Absicherung.
-        vorschau = calibration_preview(state, t)
+        preview = calibration_preview(state, t)
         print()
         print(col("  VORSCHAU (Auszug):", 'bold'))
-        for label, old, new in vorschau[:8]:
+        for label, old, new in preview[:8]:
             print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
-        if len(vorschau) > 8:
-            print(f"    {info(f'... und {len(vorschau) - 8} weitere')}")
-        draussen = _ausserhalb_der_monitore([n for _, _, n in vorschau])
-        if draussen:
-            print(f"  {warn(f'{draussen} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
+        if len(preview) > 8:
+            print(f"    {info(f'... und {len(preview) - 8} weitere')}")
+        outside = _outside_all_monitors([n for _, _, n in preview])
+        if outside:
+            print(f"  {warn(f'{outside} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
             print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")
         if not confirm("  Wirklich uebernehmen?", default=False):
             print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")
             return True
 
-        # mit_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
+        # with_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
         # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
         # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
-        number = calibrate_inventory(state, t, mit_scans=True, mit_sequenzen=True,
-                                  mit_slots=False)
+        number = calibrate_inventory(state, t, with_scans=True, with_sequences=True,
+                                  with_slots=False)
         print(f"  {ok('Uebernommen:')} "
               + ", ".join(f"{v} {k}" for k, v in number.items() if v))
         print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")

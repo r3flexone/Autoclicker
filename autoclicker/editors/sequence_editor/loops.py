@@ -13,7 +13,7 @@ from ...utils import (
     cancel_hint, confirm, hint, is_cancel, next_free_name, safe_input,
     suggest_command,
 )
-from .helpers import parse_uhrzeit
+from .helpers import parse_clock_time
 from .steps import edit_phase
 
 
@@ -74,12 +74,12 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 # einen Namen vor, den es schon gibt. Doppelte Phasennamen sind zwar
                 # erlaubt (der Zeitplan haengt an der Position, nicht am Namen) -
                 # aber zwei Zeilen "Loop 3" in der Liste sind trotzdem eine Zumutung.
-                vorschlag = next_free_name(
+                proposal = next_free_name(
                     "Loop", {p.name: p for p in loop_phases})
                 loop_name = safe_input(
-                    f"  Name der Loop-Phase (Enter = '{vorschlag}'): ").strip()
+                    f"  Name der Loop-Phase (Enter = '{proposal}'): ").strip()
                 if not loop_name:
-                    loop_name = vorschlag
+                    loop_name = proposal
 
                 print(f"\n  Schritte für {loop_name} hinzufügen:")
                 steps = edit_phase(state, [], loop_name)
@@ -102,7 +102,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                 print(hint("  (Phase wird nur zur angegebenen Uhrzeit ausgeführt, sonst übersprungen)"))
                 time_input = safe_input("  Startzeit? (z.B. '12:30', Enter = sofort): ").strip()
                 if time_input:
-                    scheduled_start = parse_uhrzeit(time_input)  # None bei Tippfehler = sofort
+                    scheduled_start = parse_clock_time(time_input)  # None bei Tippfehler = sofort
 
                 loop_phases.append(LoopPhase(loop_name, steps, repeat, scheduled_start=scheduled_start))
                 time_info = f", Start: {scheduled_start}" if scheduled_start else ""
@@ -138,7 +138,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                         if time_input == "0":
                             lp.scheduled_start = None
                         elif time_input:
-                            parsed = parse_uhrzeit(time_input)
+                            parsed = parse_clock_time(time_input)
                             if parsed:
                                 lp.scheduled_start = parsed
                         print(f"  + {lp.name} aktualisiert")
@@ -201,7 +201,7 @@ def edit_loop_phases(state: AutoClickerState, loop_phases: list[LoopPhase]) -> O
                             lp.scheduled_start = None
                             print(f"  + Startzeit für '{lp.name}' entfernt")
                         elif time_input:
-                            parsed = parse_uhrzeit(time_input)
+                            parsed = parse_clock_time(time_input)
                             if parsed:
                                 lp.scheduled_start = parsed
                                 print(f"  + '{lp.name}' startet ab jetzt um {parsed}")

@@ -644,10 +644,10 @@ Goldstandard, und jede Variante bekommt dieselben Proben.
 
 ```bash
 python tools/llm_bench.py                        # Standard: gelernte Vorlagen
-python tools/llm_bench.py --bild slot            # Ausschnitt aus dem gemerkten Bild
-python tools/llm_bench.py --alle-modelle         # jedes Modell des Servers
-python tools/llm_bench.py --zweistufig           # erst die Art, dann der Name
-python tools/llm_bench.py --stimmen 3            # dreimal fragen, Mehrheit
+python tools/llm_bench.py --image slot            # Ausschnitt aus dem gemerkten Bild
+python tools/llm_bench.py --all-models         # jedes Modell des Servers
+python tools/llm_bench.py --two-stage           # erst die Art, dann der Name
+python tools/llm_bench.py --votes 3            # dreimal fragen, Mehrheit
 ```
 
 Vor der Messung wird aufgewärmt — der erste Aufruf an einen kalten Server lädt
@@ -844,7 +844,7 @@ Für einen anderen Bildschirm gibt es die zwei Wege, die wirklich rechnen:
 
 Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
 hilft kein Versatz: dann die **Klick-Runde** nehmen (Studio → Werkzeuge oder
-Punkte-Menü → `klick`) und die Sequenz einmal von Hand nachklicken.
+Punkte-Menü → `reclick`) und die Sequenz einmal von Hand nachklicken.
 
 ## Laufzeit-Steuerung
 
@@ -1261,7 +1261,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
-| `scan_catalog_file` | Pfad zu `katalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/katalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
+| `scan_catalog_file` | Pfad zu `catalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/catalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
 
 ### Debug-Einstellungen
 
@@ -1291,7 +1291,7 @@ Autoclicker-Idleclans/
 │   ├── handlers.py         # Hotkey-Handler
 │   ├── mailbox.py          # Briefkasten Studio -> Hauptprozess
 │   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
-│   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
+│   ├── diagnostics.py      # Selbstdiagnose (fehlende Templates, tote Verweise)
 │   ├── symbol.py           # Programm-Symbol als Geometrie
 │   ├── sequence_studio.py  # Einstiegspunkt des Studio-Subprozesses
 │   ├── utils/              # Hilfsfunktionen
@@ -1325,21 +1325,24 @@ Autoclicker-Idleclans/
 │       │   ├── bridge.py     # stabile StudioBridge-Fassade
 │       │   ├── bridge_contract.py, bridge_view.py
 │       │   ├── bridge_services.py, bridge_editing.py
-│       │   ├── scans.py      # stabile ScanTeil-Fassade
+│       │   ├── scans.py      # stabile ScanPart-Fassade
 │       │   ├── scan_contract.py, scan_state.py
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
 │       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
-│       │   ├── bridge_teilen.py, bridge_werkzeuge.py, model.py
+│       │   ├── bridge_share.py, bridge_tools.py, bridge_report.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
 │       ├── slot_editor.py
 │       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
+│       ├── icon_scan_editor.py
+│       ├── sequence_recorder.py       # die Aufnahme (läuft aus dem Maus-Hook)
+│       ├── reclick.py                 # die Klick-Runde (läuft aus dem Maus-Hook)
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
-├── AGENTS.md               # dasselbe für Codex (inhaltsgleich zu CLAUDE.md)
+├── AGENTS.md               # Verweis auf CLAUDE.md (für Codex)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
 ├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
@@ -1358,18 +1361,19 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 ├── tests/                  # ALLE Tests — drei Schichten und ihre Läufer
-│   ├── alle_tests.py       # EIN Aufruf für alles — das vor einem Commit
+│   ├── all_tests.py       # EIN Aufruf für alles — das vor einem Commit
 │   ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
-│   ├── vertrag/            # weitere Sektionen der Vertragssuite
-│   ├── wurzel/             # Wurzelmodule (unittest): Import/Export, Plattform, Studio
-│   ├── rauch/              # die echte Seite im Browser vor der echten Brücke
-│   ├── wurzeltests.py      # Discovery der Wurzelmodule ohne doppelten Vertragslauf
-│   └── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
+│   ├── contract/           # weitere Sektionen der Vertragssuite
+│   ├── root/               # Wurzelmodule (unittest): Import/Export, Plattform, Studio
+│   ├── smoke/              # die echte Seite im Browser vor der echten Brücke
+│   ├── root_tests.py       # Discovery der Wurzelmodule ohne doppelten Vertragslauf
+│   └── mutation_check.py   # Gegenproben: entfernte Sicherung muss auffallen
 └── tools/                  # Hilfswerkzeuge — hier steht kein Test mehr
-    ├── katalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
+    ├── catalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
+    ├── llm_bench.py        # LLM-Benennung gegen den eigenen Bestand messen
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse (Werkzeug, kein Test)
     └── test_ocr.py         # OCR-Backend-Test + Texterkennung (Werkzeug, kein Test)
@@ -1479,23 +1483,23 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
-### Tests (`tests/alle_tests.py`)
+### Tests (`tests/all_tests.py`)
 
 **Ein Kommando, drei Schichten** — das vor einem Commit:
 
 ```bash
-python tests/alle_tests.py                      # alles
-python tests/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
-python tests/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
-python tests/alle_tests.py --mutationen         # zusätzlich gezielte Gegenproben
+python tests/all_tests.py                      # alles
+python tests/all_tests.py --only contract       # nur die Vertragssuite (schnell)
+python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
+python tests/all_tests.py --mutations         # zusätzlich gezielte Gegenproben
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 ```
 
 | Schicht | was sie prüft | braucht |
 |---|---|---|
 | Vertragssuite (`tests/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
-| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Wurzelmodule (`tests/root/`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
+| Rauchtests (`tests/smoke/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
 Was fehlt, wird **übersprungen und gesagt**, nicht als Fehler gemeldet. Für die
 volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
@@ -1506,16 +1510,16 @@ pip install opencv-python-headless pillow numpy
 pip install playwright && python -m playwright install chromium
 ```
 
-Im Browser-CI gilt `--rauch-pflicht`: Ein fehlender Browser macht diesen Job rot.
-Im Gesamtlauf läuft die Vertragssuite genau einmal; `--nur wurzel` und normale
+Im Browser-CI gilt `--smoke-required`: Ein fehlender Browser macht diesen Job rot.
+Im Gesamtlauf läuft die Vertragssuite genau einmal; `--only root` und normale
 Unittest-Discovery behalten den Vertragswrapper. Die PASS-Zahl der Vertragssuite
 zählt einzelne Zusicherungen, nicht unabhängige Testszenarien.
 
-Die CI führt auch `--mutationen` aus: Zehn gezielt entfernte Sicherungen müssen
+Die CI führt auch `--mutations` aus: Zehn gezielt entfernte Sicherungen müssen
 durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
 Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
 Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
-`python tests/mutationspruefung.py --fall pause-nach-fokus` wiederholen. Das ist
+`python tests/mutation_check.py --case pause-after-focus` wiederholen. Das ist
 eine begrenzte Auswahl kritischer Regressionen, keine vollständige Mutationsabdeckung.
 
 Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie
@@ -1556,8 +1560,8 @@ Schreibt das Programm-Symbol als PNG und als `.ico`.
 
 ```bash
 python tools/symbol.py                      # legt symbol/ an: PNGs + autoclicker.ico
-python tools/symbol.py --ziel C:\Bilder     # woanders hin
-python tools/symbol.py --groessen 256,512   # nur diese Kantenlängen
+python tools/symbol.py --target C:\Bilder     # woanders hin
+python tools/symbol.py --sizes 256,512   # nur diese Kantenlängen
 ```
 
 **Für das Fenster brauchst du das nicht** — Titelleiste, ALT+TAB und Taskleiste

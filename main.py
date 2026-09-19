@@ -31,7 +31,7 @@ from autoclicker.persistence import (
     ensure_sequences_dir, init_directories,
     list_available_sequences, sweep_on_start,
 )
-from autoclicker.diagnose import check_on_start
+from autoclicker.diagnostics import check_on_start
 from autoclicker.runtime import print_status
 from autoclicker.utils import col, err, info, warn, hint, init_logging
 from autoclicker.handlers import (
@@ -119,14 +119,14 @@ def print_help(mit_anleitung: bool = True) -> None:
     print()
 
     if mit_anleitung:
-        print_anleitung()
+        print_guide()
     else:
         print(hint(f"  Daten: '{SEQUENCES_DIR}/' | Einstellungen: '{CONFIG_FILE}'"))
         print(line)
         print()
 
 
-def print_anleitung() -> None:
+def print_guide() -> None:
     """Schritt-fuer-Schritt-Anleitung — beim ersten Start und ueber CTRL+ALT+O."""
     line = col("=" * 65, 'cyan')
     print(col("Anleitung:", 'bold'))
@@ -158,7 +158,7 @@ def print_anleitung() -> None:
     print()
 
 
-def _erster_start(state) -> bool:
+def _first_start(state) -> bool:
     """Nichts aufgenommen, nichts gespeichert — dann ist die Anleitung das Wichtigste."""
     return not list_available_sequences()
 
@@ -166,11 +166,11 @@ def _erster_start(state) -> bool:
 # Wie oft im Leerlauf nach einem Befehl aus dem Studio gesehen wird. Die Schleife
 # dreht alle 10 ms; jedes Mal eine Datei zu öffnen wäre hundertmal pro Sekunde für
 # etwas, das man von Hand auslöst.
-_BEFEHL_TAKT = 0.25
-_befehl_zuletzt = 0.0
+_COMMAND_INTERVAL = 0.25
+_command_last = 0.0
 
 
-def _pruefe_befehle(state) -> None:
+def _check_commands(state) -> None:
     """Holt einen Befehl aus dem Briefkasten und führt ihn aus.
 
     Läuft im **Main-Thread**, im Leerlauf derselben Schleife, die auch die
@@ -179,11 +179,11 @@ def _pruefe_befehle(state) -> None:
     nebenläufiger Pfad im Programm. Ein Watcher-Thread hätte genau das gebracht,
     und zwar nur, weil er eine Datei liest, die niemand eilig braucht.
     """
-    global _befehl_zuletzt
-    jetzt = time.monotonic()
-    if jetzt - _befehl_zuletzt < _BEFEHL_TAKT:
+    global _command_last
+    now = time.monotonic()
+    if now - _command_last < _COMMAND_INTERVAL:
         return
-    _befehl_zuletzt = jetzt
+    _command_last = now
 
     auftrag = fetch_command()
     if auftrag is None:
@@ -199,18 +199,18 @@ def _pruefe_befehle(state) -> None:
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     try:
         fn(state, auftrag["arguments"])
-    except PlatformError as fehler:
-        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+    except PlatformError as error:
+        print(err(f"Systemaktion fehlgeschlagen: {error}"))
 
 
-def _studio_beim_start_oeffnen(state) -> bool:
+def _studio_opens_on_start(state) -> bool:
     """Öffnet auf Wunsch das Studio, nachdem der Hauptprozess empfangsbereit ist."""
     if not state.config.studio_open_on_start:
         return False
-    return handle_sequence_studio(state, beenden_mit_fenster=True)
+    return handle_sequence_studio(state, quit_with_window=True)
 
 
-def _tui_ist_startoberflaeche(state) -> bool:
+def _tui_is_start_surface(state) -> bool:
     """Die Option wählt eine Startoberfläche, nicht einen zweiten Fachkern.
 
     Im Studio-Modus bleibt derselbe Hauptprozess für Hotkeys und Laufzeit aktiv;
@@ -220,7 +220,7 @@ def _tui_ist_startoberflaeche(state) -> bool:
     return not state.config.studio_open_on_start
 
 
-def _tui_bereit_anzeigen(state) -> None:
+def _tui_show_ready(state) -> None:
     """Der Abschluss des sichtbaren TUI-Starts, auch als Studio-Rückfall."""
     print(col("Bereit!", 'green') +
           f" Starte mit {col('CTRL+ALT+A', 'yellow')} um Punkte aufzunehmen.")
@@ -229,7 +229,7 @@ def _tui_bereit_anzeigen(state) -> None:
     print()
 
 
-def _plattform_bereit() -> bool:
+def _platform_ready() -> bool:
     """Meldet fehlende Systemvoraussetzungen, bevor Daten verändert werden."""
     messages = environment_warnings()
     for message in messages:
@@ -254,10 +254,10 @@ def main() -> int:
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
     # Slot-Groesse" unsichtbar, obwohl genau danach gesucht wird.
     init_logging(state.config.debug_log or state.config.debug_detail)
-    tui_start = _tui_ist_startoberflaeche(state)
+    tui_start = _tui_is_start_surface(state)
     if tui_start:
         print_banner()
-    if not _plattform_bereit():
+    if not _platform_ready():
         return 2
     main_thread_id = get_current_thread_id()
 
@@ -276,7 +276,7 @@ def main() -> int:
 
     # Beim allerersten Start die volle Anleitung zeigen - da ist sie das Wichtigste
     # im Fenster. Danach reicht der Banner oben, alles Weitere liegt auf CTRL+ALT+O.
-    erster_start = _erster_start(state)
+    erster_start = _first_start(state)
     if tui_start and erster_start:
         print()
         print_help()
@@ -320,7 +320,7 @@ def main() -> int:
         print()
 
     if tui_start:
-        _tui_bereit_anzeigen(state)
+        _tui_show_ready(state)
 
     # Briefkasten leeren, bevor die Schleife anfängt zu lesen. Wer im Studio auf
     # „Starten" drückt, während gar kein Hauptprozess läuft, bekommt keine
@@ -332,7 +332,7 @@ def main() -> int:
     # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
     # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
     # wuerde `discard_command()` genau diesen ersten Auftrag wegwerfen.
-    studio_offen = _studio_beim_start_oeffnen(state)
+    studio_offen = _studio_opens_on_start(state)
     if not tui_start and not studio_offen:
         # Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten
         # Hauptprozess hinterlassen. In diesem Sonderfall wird die TUI sichtbar
@@ -342,7 +342,7 @@ def main() -> int:
         if erster_start:
             print()
             print_help()
-        _tui_bereit_anzeigen(state)
+        _tui_show_ready(state)
 
     # Hotkey-Handler Zuordnung
     hotkey_handlers = {
@@ -385,13 +385,13 @@ def main() -> int:
                 if hk_id in hotkey_handlers:
                     try:
                         hotkey_handlers[hk_id](state)
-                    except PlatformError as fehler:
-                        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+                    except PlatformError as error:
+                        print(err(f"Systemaktion fehlgeschlagen: {error}"))
                     # Während ein blockierender Handler lief, aufgestaute
                     # Hotkeys verwerfen (sonst feuern sie als Burst).
                     flush_hotkey_messages()
             else:
-                _pruefe_befehle(state)
+                _check_commands(state)
                 time.sleep(0.01)
 
     except KeyboardInterrupt:

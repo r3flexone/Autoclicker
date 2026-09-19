@@ -1,0 +1,275 @@
+"""Konsolen-Editoren: die geteilten Capture-Helfer und das Umbenennen.
+
+Die Editoren unter `autoclicker/editors/` standen lange in keinem Test — rund
+3.400 Zeilen, und darunter die Handgriffe, die man am haeufigsten macht. Sie
+brauchen nur `safe_input`, lassen sich also mit einer Tastenfolge fuettern;
+dasselbe Muster wie bei `multi_select` im Item-Scan-Assistenten.
+
+Angefangen wird bei dem, was GETEILT ist: `_detection_capture.py` gehoert dem
+Boss- UND dem Icon-Editor, ein Test deckt hier also zwei Editoren ab.
+"""
+import io as _io2, contextlib as _cl2, os as _os, tempfile
+from pathlib import Path
+
+from ._harness import check, section
+
+section("Geteilte Capture-Helfer der Erkennungs-Editoren")
+
+# **Boss- und Icon-Editor teilen sich diese drei Funktionen** — ein Test hier deckt
+# also beide ab, und das ist der billigste Einstieg in die ~3.400 Zeilen
+# Konsolen-Editoren, die in keinem Test standen. Sie brauchen nur `safe_input`,
+# lassen sich also mit einer Tastenfolge fuettern (dasselbe Muster wie bei
+# `multi_select` weiter oben).
+#
+# Die Eigenschaft, um die es geht, steht so in CLAUDE.md: **Fehleingabe wiederholen
+# statt abbrechen.** Wer sich bei einer von vier Koordinaten vertippt, soll nicht
+# den ganzen Editor verlieren.
+
+import autoclicker.editors._detection_capture as _DC
+
+
+def _dc_sequence(fn, inputs, **kw):
+    """Ruft eine Capture-Funktion mit einer festen Tastenfolge auf."""
+    consequence = list(inputs)
+    _old = _DC.safe_input
+    _DC.safe_input = lambda _p="": consequence.pop(0) if consequence else "cancel"
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            return fn(**kw)
+    finally:
+        _DC.safe_input = _old
+
+
+# --- prompt_key: nur Tasten, die send_key auch abspielen kann ---
+check("eine gueltige Taste kommt zurueck",
+      _dc_sequence(_DC.prompt_key, ["enter"]) == "enter")
+check("Grossschreibung stoert nicht", _dc_sequence(_DC.prompt_key, ["ENTER"]) == "enter")
+check("'cancel' bricht ab", _dc_sequence(_DC.prompt_key, ["cancel"]) is None)
+# Der Punkt der Uebung: ein Tippfehler kostet EINE Wiederholung, nicht den Editor.
+check("eine unbekannte Taste fragt erneut",
+      _dc_sequence(_DC.prompt_key, ["gibtsnicht", "space"]) == "space")
+check("eine leere Eingabe ebenso",
+      _dc_sequence(_DC.prompt_key, ["", "1"]) == "1")
+
+# --- _prompt_region_coords: vier Zahlen, und x2>x1, y2>y1 ---
+_pr = _DC._prompt_region_coords
+check("vier Zahlen ergeben eine Region",
+      _dc_sequence(_pr, ["100,200,400,500"]) == (100, 200, 400, 500))
+check("Leerzeichen dazwischen stoeren nicht",
+      _dc_sequence(_pr, [" 10 , 20 , 30 , 40 "]) == (10, 20, 30, 40))
+check("zu wenige Werte fragen erneut",
+      _dc_sequence(_pr, ["1,2,3", "1,2,3,4"]) == (1, 2, 3, 4))
+check("Buchstaben fragen erneut",
+      _dc_sequence(_pr, ["a,b,c,d", "1,2,3,4"]) == (1, 2, 3, 4))
+# Ein verdrehtes Rechteck ist kein Rechteck - und faellt sonst erst beim Scannen auf.
+check("x2 <= x1 wird abgelehnt",
+      _dc_sequence(_pr, ["400,200,100,500", "1,2,3,4"]) == (1, 2, 3, 4))
+check("y2 <= y1 ebenso",
+      _dc_sequence(_pr, ["100,500,400,200", "1,2,3,4"]) == (1, 2, 3, 4))
+check("'cancel' gibt None", _dc_sequence(_pr, ["cancel"]) is None)
+
+# --- select_scan_region: beim Bearbeiten ist "beibehalten" vorausgewaehlt ---
+# `interactive_select` braucht eine Tastatur; gestellt wird deshalb die Auswahl,
+# nicht die Eingabe. Geprueft wird, dass die BESTEHENDE Region unveraendert
+# zurueckkommt - sonst verliert jedes Bearbeiten den Scan-Bereich.
+_old_sel = _DC.interactive_select
+try:
+    _DC.interactive_select = lambda opts, default=0: default
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _kept = _DC.select_scan_region((5, 6, 7, 8))
+    check("beim Bearbeiten ist 'beibehalten' vorausgewaehlt", _kept == (5, 6, 7, 8))
+    _DC.interactive_select = lambda opts, default=0: -1
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _cancel = _DC.select_scan_region((5, 6, 7, 8))
+    check("ESC im Menue bricht ab", _cancel is None)
+    # Ohne bestehende Region gibt es den dritten Eintrag gar nicht - dann darf
+    # "beibehalten" auch nicht versehentlich erreichbar sein.
+    _DC.interactive_select = lambda opts, default=0: len(opts) - 1
+    _DC.safe_input = lambda _p="": "1,2,3,4"
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _input = _DC.select_scan_region(None)
+    check("ohne bestehende Region fuehrt der letzte Eintrag zur Eingabe",
+          _input == (1, 2, 3, 4))
+finally:
+    _DC.interactive_select = _old_sel
+
+# --- capture_markers: mindestens einer, sonst ist der Scan blind ---
+_old_cursor, _old_pixel = _DC.get_cursor_pos, _DC.get_pixel_color
+try:
+    _positions = [(10, 10), (20, 20), (30, 30)]
+    _DC.get_cursor_pos = lambda: _positions.pop(0) if _positions else (0, 0)
+    _DC.get_pixel_color = lambda x, y: (x, y, 99)
+    check("Enter nimmt die Farbe unter dem Zeiger auf",
+          _dc_sequence(_DC.capture_markers, ["", "", "done"])
+          == [(10, 10, 99), (20, 20, 99)])
+    _positions = [(1, 2)]
+    # **'done' ohne einen einzigen Marker wird abgelehnt.** Ein Profil ohne Marker
+    # und ohne Template wird nie erkannt - das faellt sonst erst im Lauf auf.
+    check("'done' ohne Marker fragt erneut",
+          _dc_sequence(_DC.capture_markers, ["done", "", "done"]) == [(1, 2, 99)])
+    _positions = [(1, 2)]
+    check("'cancel' gibt None", _dc_sequence(_DC.capture_markers, ["cancel"]) is None)
+    # Eine Stelle, an der sich nichts lesen laesst, legt KEINEN Marker an - sonst
+    # stuende ein Profil mit einem Marker da, den es nie gab. Die Folge ist deshalb
+    # dieselbe wie oben, nur liefert die Farbmessung nichts: zweimal Enter, dann
+    # 'done' - und 'done' muss abgelehnt werden, weil die Liste leer geblieben ist.
+    _DC.get_pixel_color = lambda x, y: None
+    _positions = [(1, 2), (3, 4)]
+    check("eine unlesbare Stelle legt keinen Marker an",
+          _dc_sequence(_DC.capture_markers, ["", "", "done", "cancel"]) is None)
+finally:
+    _DC.get_cursor_pos, _DC.get_pixel_color = _old_cursor, _old_pixel
+
+
+section("Item umbenennen: Template, Bestand und Scan ziehen mit")
+
+# `_apply_item_rename` ist der stille Weg (fuer 'autoname'), und still heisst hier:
+# keine Rueckfrage, aber auch keine halbe Aenderung. Drei Dinge haengen am Namen -
+# der Eintrag im Bestand, die Template-DATEI und das Item im Scan. Bleibt eines
+# zurueck, zeigt der Scan ins Leere oder das Template gehoert zum falschen Item.
+# Der Scan traegt dabei DASSELBE Objekt wie der Bestand; ein globaler Durchlauf
+# ueber alle Scan-Dateien (`update_item_in_scans`, zuletzt ein No-op) ist weg.
+
+from autoclicker.editors.item_editor.commands import _apply_item_rename as _air
+from autoclicker.models import (
+    AutoClickerState as _ACS_R, ItemProfile as _IPR, ItemScanConfig as _ISCR,
+    Sequence as _SEQR,
+)
+
+_ren_tmp = Path(tempfile.mkdtemp())
+_ren_cwd = _os.getcwd()
+_os.chdir(_ren_tmp)
+try:
+    _st_r2 = _ACS_R()
+    _seq_r2 = _SEQR(name="S")
+    _st_r2.active_sequence = _seq_r2
+    _st_r2.sequences["S"] = _seq_r2
+    Path("sequences/s/templates").mkdir(parents=True)
+    Path("sequences/s/templates/alt.png").write_bytes(b"PNG")
+    _st_r2.global_items = {"Alt": _IPR(name="Alt", template="alt.png",
+                                        marker_colors=[(1, 2, 3)])}
+    _st_r2.item_scans["Inventar"] = _ISCR(
+        name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _success = _air(_st_r2, "Alt", "Neu")
+
+    check("das Umbenennen meldet Erfolg", _success is True)
+    check("der Eintrag heisst neu",
+          "Neu" in _st_r2.global_items and "Alt" not in _st_r2.global_items)
+    check("das Item traegt seinen neuen Namen auch im Objekt",
+          _st_r2.global_items["Neu"].name == "Neu")
+    # Die DATEI wandert mit - sonst zeigt das Profil auf einen Namen, den es nicht gibt.
+    check("die Template-Datei wandert mit",
+          Path("sequences/s/templates/neu.png").exists()
+          and not Path("sequences/s/templates/alt.png").exists())
+    check("und das Profil zeigt auf den neuen Dateinamen",
+          _st_r2.global_items["Neu"].template == "neu.png")
+    check("das Item im Scan heisst mit — es ist dasselbe Objekt",
+          [i.name for i in _st_r2.item_scans["Inventar"].items] == ["Neu"])
+    check("ein Item, das es nicht gibt, meldet False",
+          _air(_st_r2, "Gibt es nicht", "Egal") is False)
+finally:
+    _os.chdir(_ren_cwd)
+
+
+# ---------------------------------------------------------------------------
+section("Geteilte Feld-Abfragen der Item-Editoren")
+
+# **Zwei Abfragen standen vier- bzw. sechsmal nebeneinander** (Prioritaet und
+# Bestaetigungs-Klick), und die Kopien waren schon auseinandergelaufen: die
+# Sperre um `get_point_by_id()` hielt nur EINE von vier. Genau das misst der
+# erste Test hier — er ist der Grund, warum die Zusammenlegung mehr ist als
+# Kosmetik.
+
+import autoclicker.editors._item_fields as _IF
+from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
+
+
+def _field_sequence(fn, inputs, **kw):
+    """Ruft eine Feld-Abfrage mit einer festen Tastenfolge auf."""
+    consequence = list(inputs)
+    _old = _IF.safe_input
+    _IF.safe_input = lambda _p="": consequence.pop(0) if consequence else ""
+    try:
+        with _cl2.redirect_stdout(_io2.StringIO()):
+            return fn(**kw)
+    finally:
+        _IF.safe_input = _old
+
+
+class _MeasureLock:
+    """Ein Lock, das mitzaehlt, ob es genommen wurde."""
+
+    def __init__(self):
+        self.taken = 0
+
+    def __enter__(self):
+        self.taken += 1
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+_st_f = _ST_F()
+_st_f.points = [_CP_F(id=7, x=10, y=20, name="Bestaetigen")]
+_st_f.lock = _MeasureLock()
+
+# --- Bestaetigungs-Klick ---
+check("ein bekannter Punkt kommt mit Wartezeit zurueck",
+      _field_sequence(_IF.ask_confirm_click, ["7", "1.5"],
+                  state=_st_f, default_delay=0.5) == (7, 1.5))
+# DIE Eigenschaft, um die es geht: `get_point_by_id()` liest `state.points` und
+# sperrt nicht selbst. Drei der vier Kopien taten es auch nicht.
+check("die Punktsuche laeuft unter state.lock", _st_f.lock.taken >= 1)
+check("leere Eingabe heisst: kein Bestaetigungs-Klick",
+      _field_sequence(_IF.ask_confirm_click, [""],
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
+check("ein unbekannter Punkt setzt nichts und behaelt die Vorgabe",
+      _field_sequence(_IF.ask_confirm_click, ["99"],
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
+check("Zahlensalat setzt nichts",
+      _field_sequence(_IF.ask_confirm_click, ["abc"],
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
+# Eine unbrauchbare Wartezeit behaelt die Vorgabe, statt den Punkt zu verlieren.
+check("eine unbrauchbare Wartezeit behaelt die Vorgabe",
+      _field_sequence(_IF.ask_confirm_click, ["7", "keine Zahl"],
+                  state=_st_f, default_delay=0.5) == (7, 0.5))
+# Abbruch ist etwas anderes als „nichts eingegeben" — `None` als Punkt-ID ist
+# ein gueltiges Ergebnis und taugt deshalb nicht als Abbruch-Zeichen.
+check("abbrechbar: 'cancel' meldet ABBRUCH, nicht (None, delay)",
+      _field_sequence(_IF.ask_confirm_click, ["cancel"], state=_st_f,
+                  default_delay=0.5, cancellable=True) is _IF.CANCELLED)
+check("ohne `cancellable` ist 'cancel' nur eine unbrauchbare Eingabe",
+      _field_sequence(_IF.ask_confirm_click, ["cancel"],
+                  state=_st_f, default_delay=0.5) == (None, 0.5))
+
+# --- Prioritaet ---
+_moved = []
+_old_shift = _IF.shift_category_priorities
+_IF.shift_category_priorities = lambda st, kat: _moved.append(kat)
+try:
+    check("eine Zahl kommt als Prioritaet zurueck",
+          _field_sequence(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
+    check("leere Eingabe behaelt die Vorgabe",
+          _field_sequence(_IF.ask_priority, [""], state=_st_f,
+                      category="Helme", default_value=4) == 4)
+    check("Zahlensalat behaelt die Vorgabe",
+          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f,
+                      category="Helme", default_value=4) == 4)
+    check("negative Zahlen werden auf 1 gehoben",
+          _field_sequence(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
+    # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.
+    check("0 mit Kategorie verschiebt und ergibt 1",
+          _field_sequence(_IF.ask_priority, ["0"], state=_st_f,
+                      category="Helme") == 1 and _moved == ["Helme"])
+    # Ohne Kategorie gibt es nichts zu verschieben — das wird gesagt, nicht getan.
+    _moved.clear()
+    check("0 ohne Kategorie verschiebt nichts",
+          _field_sequence(_IF.ask_priority, ["0"], state=_st_f,
+                      category=None) == 1 and _moved == [])
+    check("abbrechbar: 'cancel' meldet ABBRUCH",
+          _field_sequence(_IF.ask_priority, ["cancel"], state=_st_f,
+                      category="Helme", cancellable=True) is _IF.CANCELLED)
+finally:
+    _IF.shift_category_priorities = _old_shift

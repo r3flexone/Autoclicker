@@ -9,24 +9,24 @@ from typing import Optional
 from ...utils import sanitize_filename
 from .scan_model import crop_region, normalize_region
 
-FOTO_MAX_BREITE = 2400
+PHOTO_MAX_WIDTH = 2400
 
 
-def _als_datenurl(image, format_: str = "PNG") -> str:
+def _as_data_url(image, format_: str = "PNG") -> str:
     """PIL-Bild -> data:-URL. Leerer String, wenn es nicht geht."""
     try:
-        puffer = io.BytesIO()
-        image.save(puffer, format=format_)
+        buffer = io.BytesIO()
+        image.save(buffer, format=format_)
     except (OSError, ValueError):
         return ""
     kind = "png" if format_.upper() == "PNG" else "jpeg"
-    return f"data:image/{kind};base64," + base64.b64encode(puffer.getvalue()).decode("ascii")
+    return f"data:image/{kind};base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 class ScanCaptureMixin:
     # --------------------------------------------------------------- Das Bild
 
-    def scan_foto(self, data: Optional[dict] = None) -> dict:
+    def scan_screenshot(self, data: Optional[dict] = None) -> dict:
         """Nimmt einen Screenshot auf und legt ihn unter das Raster.
 
         Der eingefrorene Bildschirm ist die Arbeitsfläche: Slots zieht man dort auf,
@@ -34,79 +34,79 @@ class ScanCaptureMixin:
         Desktop); `area` schränkt ein, und ohne Angabe gilt der zuletzt gesetzte
         Bereich des Scans — der steht im gemerkten Bild und überlebt das Schliessen.
         """
-        gesperrt = self._scan_voraussetzung(data)
-        if gesperrt is not None:
-            return gesperrt
+        locked = self._scan_requirement(data)
+        if locked is not None:
+            return locked
         try:
             from ...imaging import PILLOW_AVAILABLE, take_screenshot
             from ...winapi import get_virtual_origin, resolve_window
         except ImportError:
-            return self._scan_melde("Bildmodule fehlen — kein Screenshot möglich.", "err")
+            return self._scan_report("Bildmodule fehlen — kein Screenshot möglich.", "err")
         if not PILLOW_AVAILABLE:
-            return self._scan_melde("Ohne Pillow gibt es kein Bild: pip install pillow", "err")
+            return self._scan_report("Ohne Pillow gibt es kein Bild: pip install pillow", "err")
 
-        area = self._bereich_aus(data) if data else None
+        area = self._area_from(data) if data else None
         if area is None:
-            area = self.scan_bereich
+            area = self.scan_area
 
         # Eine gespeicherte Quelle wird bei JEDER Aufnahme neu aufgelöst: HWNDs
         # überleben keinen Neustart. Editor und Runtime rufen danach exakt
         # denselben Aufnahmehelfer auf.
-        cfg = self.scans.get(self.scan_offen)
-        image, hinweis, fenster_genutzt, ausrichtung_warnung = None, "", False, False
+        cfg = self.scans.get(self.open_scan)
+        image, hint, window_used, alignment_warning = None, "", False, False
         if cfg is not None and cfg.capture_window_title:
-            fenster = resolve_window(
+            window = resolve_window(
                 cfg.capture_window_title, cfg.capture_window_index,
                 cfg.capture_window_rect)
-            if fenster is None:
-                self.scan_fenster_id = 0
-                return self._scan_melde(
+            if window is None:
+                self.scan_window_id = 0
+                return self._scan_report(
                     f"Fenster '{cfg.capture_window_title}' nicht gefunden. Spiel "
                     "öffnen oder rechts eine andere Aufnahmequelle wählen.", "err")
-            self.scan_fenster_id = int(fenster[2])
-            image, area, hinweis = self._fensterbild()
+            self.scan_window_id = int(window[2])
+            image, area, hint = self._window_image()
             if image is None:
-                return self._scan_melde(
+                return self._scan_report(
                     f"Fenster '{cfg.capture_window_title}' konnte nicht aufgenommen "
                     "werden.", "err")
-            fenster_genutzt = True
-            ausrichtung, ausrichtung_warnung = self._slots_an_fenster(cfg, area)
-            hinweis += ausrichtung
-        elif self.scan_fenster_id:
-            image, area, hinweis = self._fensterbild()
+            window_used = True
+            alignment, alignment_warning = self._slots_to_window(cfg, area)
+            hint += alignment
+        elif self.scan_window_id:
+            image, area, hint = self._window_image()
             if image is None:
-                return self._scan_melde("Gewähltes Fenster konnte nicht aufgenommen werden.",
+                return self._scan_report("Gewähltes Fenster konnte nicht aufgenommen werden.",
                                         "err")
-            fenster_genutzt = True
+            window_used = True
 
         if image is None:
             image = take_screenshot(area) if area else take_screenshot()
         if image is None:
-            return self._scan_melde("Screenshot fehlgeschlagen.", "err")
+            return self._scan_report("Screenshot fehlgeschlagen.", "err")
 
         left, top = (area[0], area[1]) if area else get_virtual_origin()
-        self.scan_bereich = area
-        self._foto = image
-        self._foto_merken(image, left, top)
-        self._anzeigebild(left, top, time.time())
+        self.scan_area = area
+        self._photo = image
+        self._photo_remember(image, left, top)
+        self._display_image(left, top, time.time())
         # Ein alter Treffer gehört zu einem alten Bild, ein alter Suchbereich
         # auch: er stand in Bildschirm-Koordinaten um ein Inventar, das jetzt
         # woanders liegen kann.
-        self._treffer = {}
-        self._suchbereich = None
-        wo = "Fenster" if fenster_genutzt else ("Bereich" if area else "Vollbild")
+        self._matches = {}
+        self._search_area = None
+        wo = "Fenster" if window_used else ("Bereich" if area else "Vollbild")
         # **Die Uhrzeit steht dabei, damit man SIEHT, dass aufgenommen wurde.**
         # Zwei Aufnahmen desselben Spielstands sehen gleich aus, und wenn auch
         # die Meldung Wort für Wort dieselbe ist, wirkt der Knopf kaputt — genau
         # der Eindruck, wegen dem hier vorher „passiert nichts" gemeldet wurde.
-        return self._scan_melde(f"{wo} aufgenommen um {time.strftime('%H:%M:%S')}: "
+        return self._scan_report(f"{wo} aufgenommen um {time.strftime('%H:%M:%S')}: "
                                 f"{image.width}×{image.height} px "
-                                f"ab ({left}, {top}).{hinweis}"
-                                f"{self._draussen_hinweis()}",
-                                "warn" if hinweis.startswith(" Direkte")
-                                or ausrichtung_warnung else "ok")
+                                f"ab ({left}, {top}).{hint}"
+                                f"{self._outside_hint()}",
+                                "warn" if hint.startswith(" Direkte")
+                                or alignment_warning else "ok")
 
-    def _fensterbild(self):
+    def _window_image(self):
         """Bildet das gewählte Fenster ab. `(bild, bereich, hinweis)`.
 
         Der Grund, ein Fenster zu wählen statt nur einen Ausschnitt: ein
@@ -118,12 +118,12 @@ class ScanCaptureMixin:
             from ...imaging import take_consistent_window_screenshot
         except ImportError:
             return None, None, ""
-        result = take_consistent_window_screenshot(self.scan_fenster_id)
+        result = take_consistent_window_screenshot(self.scan_window_id)
         if result is None:
             return None, None, ""
         return result
 
-    def _slots_an_fenster(self, cfg, rechteck: tuple) -> tuple[str, bool]:
+    def _slots_to_window(self, cfg, rect_value: tuple) -> tuple[str, bool]:
         """Zieht Slots auf die aktuelle Fensterlage und merkt die neue Referenz.
 
         Die Slots bleiben aus Kompatibilitätsgründen global in Bildschirm-
@@ -132,71 +132,71 @@ class ScanCaptureMixin:
         """
         from ..scan_services import map_point_between_rects, map_region_between_rects
 
-        new = tuple(int(v) for v in rechteck)
+        new = tuple(int(v) for v in rect_value)
         old = tuple(cfg.capture_window_rect) if cfg.capture_window_rect else None
         if old == new:
             return "", False
 
         slots = [self.slots[name] for name in cfg.slot_names if name in self.slots]
         if old is None:
-            self._merke("Fensterquelle verankert")
+            self._remember("Fensterquelle verankert")
             cfg.capture_window_rect = new
             self._scan_dirty = True
             return " Slots sind jetzt relativ zu diesem Fenster verankert.", False
 
         try:
-            verschoben = [(
+            moved = [(
                 slot,
                 map_region_between_rects(slot.scan_region, old, new),
                 map_point_between_rects(slot.click_pos, old, new),
             ) for slot in slots]
         except (TypeError, ValueError):
-            self._merke("Fensterquelle neu verankert")
+            self._remember("Fensterquelle neu verankert")
             cfg.capture_window_rect = new
             self._scan_dirty = True
             return (" Alte Fenstergeometrie war ungültig; Quelle neu verankert, "
                     "Slots unverändert.", True)
 
-        self._merke("Slots ans Fenster angepasst")
-        for slot, region, klick in verschoben:
+        self._remember("Slots ans Fenster angepasst")
+        for slot, region, click in moved:
             slot.scan_region = region
-            slot.click_pos = klick
+            slot.click_pos = click
         cfg.capture_window_rect = new
-        self._objekte_angleichen()
+        self._sync_objects()
         self._scan_dirty = True
         if not slots:
             return " Fensterreferenz aktualisiert.", False
-        gleiche_groesse = (old[2] - old[0], old[3] - old[1]) == (
+        same_size = (old[2] - old[0], old[3] - old[1]) == (
             new[2] - new[0], new[3] - new[1])
-        if gleiche_groesse:
+        if same_size:
             return (f" {len(slots)} Slot(s) folgen dem verschobenen Fenster "
                     "automatisch.", False)
         return (f" Fenstergrösse geändert: {len(slots)} Slot(s) angepasst. "
                 "Items für neue Slotgrössen einmal ergänzend lernen.", True)
 
-    def _fensterquelle_wiederherstellen(self, cfg) -> bool:
+    def _window_source_restore(self, cfg) -> bool:
         """Stellt die sitzungsabhängige HWND aus der gespeicherten Quelle her."""
-        self.scan_fenster_id = 0
+        self.scan_window_id = 0
         if cfg is None or not cfg.capture_window_title:
             return False
-        if self.scan_bereich is None and cfg.capture_window_rect:
-            self.scan_bereich = tuple(cfg.capture_window_rect)
+        if self.scan_area is None and cfg.capture_window_rect:
+            self.scan_area = tuple(cfg.capture_window_rect)
         try:
             from ...winapi import resolve_window
-            fenster = resolve_window(
+            window = resolve_window(
                 cfg.capture_window_title, cfg.capture_window_index,
                 cfg.capture_window_rect)
         except ImportError:
-            fenster = None
-        if fenster is None:
+            window = None
+        if window is None:
             return False
-        self.scan_fenster_id = int(fenster[2])
+        self.scan_window_id = int(window[2])
         return True
 
     @staticmethod
-    def _bereich_aus(data: dict) -> Optional[tuple]:
+    def _area_from(data: dict) -> Optional[tuple]:
         """Liest `area` aus einer Anfrage — vier Zahlen oder nichts."""
-        raw = (data or {}).get("bereich")
+        raw = (data or {}).get("area")
         if not raw or len(raw) != 4:
             return None
         try:
@@ -206,25 +206,25 @@ class ScanCaptureMixin:
         x1, y1, x2, y2 = normalize_region(x1, y1, x2, y2)
         return (x1, y1, x2, y2) if x2 - x1 >= 8 and y2 - y1 >= 8 else None
 
-    def _draussen_hinweis(self) -> str:
+    def _outside_hint(self) -> str:
         """Sagt, wie viele Slots des offenen Scans neben dem Bild liegen.
 
         Ohne das ist ein zu eng gesetzter Bereich still: die Slots stehen weiter
         in der Liste, sind aber im Bild nicht zu sehen, und man sucht den Fehler
         bei der Erkennung statt beim Ausschnitt.
         """
-        if self._foto_info is None:
+        if self._photo_info is None:
             return ""
-        f = self._foto_info
-        rand = (f["links"], f["oben"],
-                f["links"] + round(f["breite"] / f["skala"]),
-                f["oben"] + round(f["hoehe"] / f["skala"]))
-        draussen = [s for s in self._scan_slots() if s.scan_region
-                    and not (rand[0] <= s.scan_region[0] and s.scan_region[2] <= rand[2]
-                             and rand[1] <= s.scan_region[1] and s.scan_region[3] <= rand[3])]
-        return f" {len(draussen)} Slot(s) liegen ausserhalb." if draussen else ""
+        f = self._photo_info
+        margin = (f["left"], f["top"],
+                f["left"] + round(f["width"] / f["scale"]),
+                f["top"] + round(f["height"] / f["scale"]))
+        outside = [s for s in self._scan_slots() if s.scan_region
+                    and not (margin[0] <= s.scan_region[0] and s.scan_region[2] <= margin[2]
+                             and margin[1] <= s.scan_region[1] and s.scan_region[3] <= margin[3])]
+        return f" {len(outside)} Slot(s) liegen ausserhalb." if outside else ""
 
-    def scan_bereich_setzen(self, data: Optional[dict] = None) -> dict:
+    def scan_area_set(self, data: Optional[dict] = None) -> dict:
         """Setzt, WAS aufgenommen wird — aufgenommen wird erst auf Knopfdruck.
 
         Ohne `area` heisst es Vollbild: der Rückweg, ohne den ein eingeschränkter
@@ -234,133 +234,133 @@ class ScanCaptureMixin:
         Methode gleich mit auf — dann hatte man plötzlich ein Bild, ohne etwas
         ausgelöst zu haben, und der Knopf daneben schien nichts mehr zu tun.
 
-        `_klick_bereich` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
+        `_click_area` (zwei Ecken im Bild) bleibt die Ausnahme und schneidet
         sofort zu: dort ist der Zuschnitt das Ergebnis, nicht die Vorbereitung.
         """
-        gesperrt = self._scan_voraussetzung(data)
-        if gesperrt is not None:
-            return gesperrt
-        neuer_bereich = self._bereich_aus(data or {})
+        locked = self._scan_requirement(data)
+        if locked is not None:
+            return locked
+        new_area = self._area_from(data or {})
         try:
-            fenster_id = int((data or {}).get("fenster") or 0)
+            window_id = int((data or {}).get("window") or 0)
         except (TypeError, ValueError):
-            fenster_id = 0
+            window_id = 0
 
-        cfg = self.scans.get(self.scan_offen)
-        if fenster_id:
+        cfg = self.scans.get(self.open_scan)
+        if window_id:
             try:
                 from ...winapi import list_windows
-                fenster = list_windows()
+                window = list_windows()
             except ImportError:
-                fenster = []
-            gewaehlt = next((e for e in fenster if int(e[2]) == fenster_id), None)
-            if gewaehlt is None:
-                return self._scan_melde(
+                window = []
+            selected = next((e for e in window if int(e[2]) == window_id), None)
+            if selected is None:
+                return self._scan_report(
                     "Das gewählte Fenster ist nicht mehr offen. Liste neu wählen.", "err")
-            titel, rechteck, _kennung = gewaehlt
-            gleich = [e for e in fenster if e[0].casefold() == titel.casefold()]
-            index = next((i for i, e in enumerate(gleich)
-                          if int(e[2]) == fenster_id), 0)
+            title, rect_value, _identity = selected
+            same = [e for e in window if e[0].casefold() == title.casefold()]
+            index = next((i for i, e in enumerate(same)
+                          if int(e[2]) == window_id), 0)
             if cfg is not None:
-                aenderung = (cfg.capture_window_title != titel
+                change = (cfg.capture_window_title != title
                               or cfg.capture_window_index != index
                               or cfg.capture_window_rect is None)
-                if aenderung:
-                    self._merke("Fensterquelle gewählt")
-                    cfg.capture_window_title = titel
+                if change:
+                    self._remember("Fensterquelle gewählt")
+                    cfg.capture_window_title = title
                     cfg.capture_window_index = index
                     # Beim ersten Verankern gelten vorhandene Slots für die
                     # aktuelle Lage. Danach bleibt die alte Referenz bis zur
                     # Aufnahme stehen, damit die Slots mitwandern können.
                     if cfg.capture_window_rect is None:
-                        cfg.capture_window_rect = tuple(rechteck)
+                        cfg.capture_window_rect = tuple(rect_value)
                     self._scan_dirty = True
-            self.scan_fenster_id = fenster_id
-            self.scan_bereich = tuple(rechteck)
+            self.scan_window_id = window_id
+            self.scan_area = tuple(rect_value)
         else:
             if cfg is not None and (cfg.capture_window_title
                                     or cfg.capture_window_rect is not None):
-                self._merke("Fensterquelle entfernt")
+                self._remember("Fensterquelle entfernt")
                 cfg.capture_window_title = None
                 cfg.capture_window_index = 0
                 cfg.capture_window_rect = None
                 self._scan_dirty = True
-            self.scan_fenster_id = 0
-            self.scan_bereich = neuer_bereich
-        if not self.scan_bereich:
-            return self._scan_melde("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
+            self.scan_window_id = 0
+            self.scan_area = new_area
+        if not self.scan_area:
+            return self._scan_report("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
                                     "info")
-        x1, y1, x2, y2 = self.scan_bereich
-        wo = "Fenster" if self.scan_fenster_id else "Bereich"
-        return self._scan_melde(
+        x1, y1, x2, y2 = self.scan_area
+        wo = "Fenster" if self.scan_window_id else "Bereich"
+        return self._scan_report(
             f"{wo} gewählt: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1}) — "
             f"jetzt „{wo} aufnehmen“."
             + (" Slots folgen diesem Fenster danach automatisch."
-               if self.scan_fenster_id else ""), "info")
+               if self.scan_window_id else ""), "info")
 
-    def scan_fenster(self, data: Optional[dict] = None) -> list:
+    def scan_windows(self, data: Optional[dict] = None) -> list:
         """Die offenen Fenster mit ihrer Lage — zur Auswahl des Bereichs.
 
         Der Fall, für den es das gibt: dasselbe Programm mehrmals offen. Der
         Titel ist dann dreimal derselbe, unterscheidbar sind sie nur an der
         Lage — die steht deshalb mit dabei und die Liste ist danach sortiert.
 
-        `frage()` und nicht `ruf()`: es ändert nichts, es beantwortet nur etwas.
+        `ask()` und nicht `call()`: es ändert nichts, es beantwortet nur etwas.
         """
         try:
             from ...winapi import list_windows
         except ImportError:
             return []
-        return [{"titel": titel, "bereich": list(rechteck), "id": kennung}
-                for titel, rechteck, kennung in list_windows()]
+        return [{"title": title, "area": list(rect_value), "id": identity}
+                for title, rect_value, identity in list_windows()]
 
-    def _klick_bereich(self, x: int, y: int) -> dict:
+    def _click_area(self, x: int, y: int) -> dict:
         """Zwei Ecken schränken das Bild ein — zugeschnitten, nicht neu geholt.
 
         Neu aufzunehmen wäre das Naheliegende und wäre falsch: zwischen den
         beiden Klicks vergeht Zeit, und was man zugeschnitten hat, soll man auch
         bekommen. Der Bereich wird gemerkt, die nächste Aufnahme holt genau ihn.
         """
-        if self._foto is None or self._foto_info is None:
-            return self._scan_melde("Erst ein Bild aufnehmen.", "warn")
-        if self._ecke is None:
-            self._ecke = (x, y)
-            return self._scan_melde("Erste Ecke des Bereichs — jetzt die zweite.", "info")
-        x1, y1, x2, y2 = normalize_region(self._ecke[0], self._ecke[1], x, y)
-        self._ecke = None
+        if self._photo is None or self._photo_info is None:
+            return self._scan_report("Erst ein Bild aufnehmen.", "warn")
+        if self._corner is None:
+            self._corner = (x, y)
+            return self._scan_report("Erste Ecke des Bereichs — jetzt die zweite.", "info")
+        x1, y1, x2, y2 = normalize_region(self._corner[0], self._corner[1], x, y)
+        self._corner = None
         if x2 - x1 < 8 or y2 - y1 < 8:
-            return self._scan_melde("Zu klein — nochmal aufziehen.", "warn")
+            return self._scan_report("Zu klein — nochmal aufziehen.", "warn")
 
-        ausschnitt = crop_region(self._foto, (x1, y1, x2, y2),
-                                 int(self._foto_info["links"]), int(self._foto_info["oben"]))
-        if ausschnitt is None:
-            return self._scan_melde("Der Bereich liegt nicht im Bild.", "warn")
+        crop_value = crop_region(self._photo, (x1, y1, x2, y2),
+                                 int(self._photo_info["left"]), int(self._photo_info["top"]))
+        if crop_value is None:
+            return self._scan_report("Der Bereich liegt nicht im Bild.", "warn")
         # Ein von Hand gesetzter Ausschnitt ist kleiner als das Fenster — ab
         # jetzt gilt er, nicht mehr das Fenster. Sonst holte die naechste
         # Aufnahme wieder das ganze Fenster und der Zuschnitt waere weg.
-        cfg = self.scans.get(self.scan_offen)
+        cfg = self.scans.get(self.open_scan)
         if cfg is not None and (cfg.capture_window_title
                                 or cfg.capture_window_rect is not None):
-            self._merke("Eigener Bildausschnitt gewählt")
+            self._remember("Eigener Bildausschnitt gewählt")
             cfg.capture_window_title = None
             cfg.capture_window_index = 0
             cfg.capture_window_rect = None
             self._scan_dirty = True
-        self.scan_fenster_id = 0
-        self.scan_bereich = (x1, y1, x2, y2)
-        self._foto = ausschnitt
-        self._foto_merken(ausschnitt, x1, y1)
-        self._anzeigebild(x1, y1, time.time())
-        self._treffer = {}
-        self._werkzeug_fertig()
-        return self._scan_melde(f"Bereich: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1})."
-                                f"{self._draussen_hinweis()}")
+        self.scan_window_id = 0
+        self.scan_area = (x1, y1, x2, y2)
+        self._photo = crop_value
+        self._photo_remember(crop_value, x1, y1)
+        self._display_image(x1, y1, time.time())
+        self._matches = {}
+        self._tool_done()
+        return self._scan_report(f"Bereich: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1})."
+                                f"{self._outside_hint()}")
 
-    def _foto_pfad(self, scan: str) -> Path:
+    def _photo_path(self, scan: str) -> Path:
         return (self.filepath.parent / "bilder"
                 / f"{sanitize_filename(scan)}.png")
 
-    def _foto_merken(self, image, left: int, top: int) -> None:
+    def _photo_remember(self, image, left: int, top: int) -> None:
         """Legt den Screenshot beim offenen Scan ab — für das nächste Öffnen.
 
         Der Ursprung des virtuellen Desktops steht IM PNG (Text-Chunk), nicht in
@@ -369,105 +369,105 @@ class ScanCaptureMixin:
 
         Ohne offenen Scan wird nichts abgelegt — welches Spiel gemeint ist, sagt der Scan.
         """
-        if not self.scan_offen:
+        if not self.open_scan:
             return
         try:
             from PIL import PngImagePlugin
             info = PngImagePlugin.PngInfo()
-            info.add_text("links", str(int(left)))
-            info.add_text("oben", str(int(top)))
-            path = self._foto_pfad(self.scan_offen)
+            info.add_text("left", str(int(left)))
+            info.add_text("top", str(int(top)))
+            path = self._photo_path(self.open_scan)
             path.parent.mkdir(parents=True, exist_ok=True)
             image.save(path, "PNG", pnginfo=info)
             # Das Bild liegt UNTER `item_scans/` — und der Unterordner entsteht
             # gerade eben, was die Änderungszeit des Elternordners weiterdreht.
             # Ohne dieses Nachziehen meldete der Reiter direkt nach der eigenen
             # Aufnahme „auf Platte hat sich etwas geändert".
-            self._platte_nachziehen(self.filepath.parent)
+            self._disk_track(self.filepath.parent)
         except (ImportError, OSError, ValueError):
             pass      # ein fehlendes Erinnerungsbild ist kein Grund, den Reiter zu stören
 
-    def _foto_laden(self, scan: str) -> bool:
+    def _photo_load(self, scan: str) -> bool:
         """Holt den zuletzt abgelegten Screenshot dieses Scans zurück."""
-        path = self._foto_pfad(scan)
+        path = self._photo_path(scan)
         try:
             from PIL import Image
             image = Image.open(path)
             image.load()
         except (ImportError, OSError, ValueError):
-            self._foto = None
-            self._foto_bild = ""
-            self._foto_info = None
-            self.scan_bereich = None
-            self._fensterquelle_wiederherstellen(self.scans.get(scan))
+            self._photo = None
+            self._photo_image = ""
+            self._photo_info = None
+            self.scan_area = None
+            self._window_source_restore(self.scans.get(scan))
             return False
         text = getattr(image, "text", {}) or {}
         try:
-            left, top = int(text.get("links", 0)), int(text.get("oben", 0))
+            left, top = int(text.get("left", 0)), int(text.get("top", 0))
         except (TypeError, ValueError):
             left, top = 0, 0
-        self._foto = image.convert("RGB")
+        self._photo = image.convert("RGB")
         # Ursprung und Grösse des gemerkten Bildes SIND der Bereich — deshalb
         # steht er nirgends sonst. Deckt er den ganzen Desktop ab, ist es kein
         # Bereich, sondern Vollbild; sonst sagte die Anzeige „Bereich" für etwas,
         # das keine Einschränkung ist.
-        self.scan_bereich = self._bereich_oder_vollbild(
+        self.scan_area = self._area_or_fullscreen(
             (left, top, left + image.width, top + image.height))
-        self._fensterquelle_wiederherstellen(self.scans.get(scan))
-        self._anzeigebild(left, top, path.stat().st_mtime)
-        self._treffer = {}
+        self._window_source_restore(self.scans.get(scan))
+        self._display_image(left, top, path.stat().st_mtime)
+        self._matches = {}
         return True
 
     @staticmethod
-    def _bereich_oder_vollbild(rechteck: tuple) -> Optional[tuple]:
+    def _area_or_fullscreen(rect_value: tuple) -> Optional[tuple]:
         """None, wenn das Rechteck der ganze virtuelle Desktop ist."""
         try:
             from ...winapi import get_virtual_desktop
         except ImportError:
-            return rechteck
-        schirm = get_virtual_desktop()
-        return None if schirm and tuple(schirm) == tuple(rechteck) else rechteck
+            return rect_value
+        screen = get_virtual_desktop()
+        return None if screen and tuple(screen) == tuple(rect_value) else rect_value
 
-    def _anzeigebild(self, left: int, top: int, stand: float) -> None:
+    def _display_image(self, left: int, top: int, stamp: float) -> None:
         """Verkleinert das Original für die Übertragung und merkt die Geometrie."""
-        image = self._foto
-        skala = min(1.0, FOTO_MAX_BREITE / image.width) if image.width else 1.0
-        anzeige = image if skala >= 1.0 else image.resize(
-            (max(1, int(image.width * skala)), max(1, int(image.height * skala))))
-        self._foto_bild = _als_datenurl(anzeige, "PNG")
-        self._foto_info = {
-            "links": left, "oben": top,
-            "breite": anzeige.width, "hoehe": anzeige.height,
-            "skala": round(anzeige.width / image.width, 6) if image.width else 1.0,
-            "stand": stand,
+        image = self._photo
+        scale = min(1.0, PHOTO_MAX_WIDTH / image.width) if image.width else 1.0
+        display = image if scale >= 1.0 else image.resize(
+            (max(1, int(image.width * scale)), max(1, int(image.height * scale))))
+        self._photo_image = _as_data_url(display, "PNG")
+        self._photo_info = {
+            "left": left, "top": top,
+            "width": display.width, "height": display.height,
+            "scale": round(display.width / image.width, 6) if image.width else 1.0,
+            "stamp": stamp,
         }
 
-    def scan_bild(self, data: Optional[dict] = None) -> str:
+    def scan_image(self, data: Optional[dict] = None) -> str:
         """Das Bild als data:-URL — getrennt geholt, weil es gross ist.
 
-        Stünde es in `scan_daten()`, ginge es bei jedem Klick erneut durch die
-        Brücke. Die Seite holt es einmal je Aufnahme (`foto.stand` ändert sich).
+        Stünde es in `scan_data()`, ginge es bei jedem Klick erneut durch die
+        Brücke. Die Seite holt es einmal je Aufnahme (`photo.stand` ändert sich).
         """
-        return self._foto_bild
+        return self._photo_image
 
-    def _foto_farbe(self, x: int, y: int) -> Optional[tuple]:
+    def _photo_color(self, x: int, y: int) -> Optional[tuple]:
         """Die Farbe an einer Bildschirmstelle — aus dem Originalbild."""
-        if self._foto is None or self._foto_info is None:
+        if self._photo is None or self._photo_info is None:
             return None
-        px = int(x) - int(self._foto_info["links"])
-        py = int(y) - int(self._foto_info["oben"])
-        if not (0 <= px < self._foto.width and 0 <= py < self._foto.height):
+        px = int(x) - int(self._photo_info["left"])
+        py = int(y) - int(self._photo_info["top"])
+        if not (0 <= px < self._photo.width and 0 <= py < self._photo.height):
             return None
         try:
-            value = self._foto.convert("RGB").getpixel((px, py))
+            value = self._photo.convert("RGB").getpixel((px, py))
         except (OSError, ValueError):
             return None
         return tuple(int(v) for v in value[:3])
 
-    def _foto_crop(self, region):
+    def _photo_crop(self, region):
         """Der Ausschnitt einer Slot-Region aus dem Screenshot, oder None."""
-        if self._foto is None or self._foto_info is None or not region:
+        if self._photo is None or self._photo_info is None or not region:
             return None
-        return crop_region(self._foto, tuple(region),
-                           int(self._foto_info["links"]), int(self._foto_info["oben"]))
+        return crop_region(self._photo, tuple(region),
+                           int(self._photo_info["left"]), int(self._photo_info["top"]))
 

@@ -72,8 +72,8 @@ HOTKEY_BINDINGS = {
     HOTKEY_SCAN_STUDIO: "<ctrl>+<alt>+v",
     HOTKEY_HELP: "<ctrl>+<alt>+o",
     # Alle Aufnahme-Marker liegen auf CTRL+ALT+SHIFT, weil diese Ebene genau
-    # das bedeutet: wirkt nur waehrend einer laufenden Aufnahme. merke_farbe()
-    # und merke_screenshot() pruefen als Erstes _aufnahme_laeuft() und lagen
+    # das bedeutet: wirkt nur waehrend einer laufenden Aufnahme. mark_color()
+    # und mark_screenshot() pruefen als Erstes _recording_running() und lagen
     # trotzdem auf der Basis-Ebene - eine halbe Ebene fuer eine ganze Sache.
     # Damit werden dort M und D frei; die Basis hatte nur noch R und Y.
     HOTKEY_RECORD_COLOR: "<ctrl>+<alt>+<shift>+m",

@@ -9,10 +9,10 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 (`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
-`.lauf.json` und steuert über `befehl.py` zurück), *Einstellungs-Menü* (vierter
+`.run.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
-*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
-über `auswerten()` aus `tools/log_report.py`, Stückzahlen mal
+*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_report.py`
+über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
 `scan_market_value_file`).
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
@@ -41,7 +41,7 @@ Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
 - **Nutzen:** Ein Schritt-Typ „Sequenz X ausführen". Ändert sich der Weg, ändert man ihn
   einmal. Dasselbe Argument wie „Referenzen statt Kopien", nur eine Ebene höher.
 - **Tradeoff:** Punkte sind sequenzlokal, der Baustein bringt seine eigenen mit — das passt.
-  Was nicht passt: Live-Run, Phasenleiste und `.lauf.json` beschreiben **eine** Sequenz mit
+  Was nicht passt: Live-Run, Phasenleiste und `.run.json` beschreiben **eine** Sequenz mit
   Phasen; ein Aufruf macht daraus einen Stapel, und „Phase 2 von 4" stimmt dann nicht mehr.
   Dazu die Rekursion (A ruft B ruft A) und die Frage, was `restart` in einem Baustein
   bedeutet. Deutlich billiger und fast so gut: eine reine Editor-Funktion „Schritte aus
@@ -101,7 +101,7 @@ mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde),
   und Slots mitwandern, sonst klickt es richtig und erkennt falsch. Und ein Anker, dessen
   Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der gespeicherte
   Stand, einmal gemeldet.
-- **Ansatz:** Feld `fenster_anker` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
+- **Ansatz:** Feld `window_anchor` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
   Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
   gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
   bleiben, wie sie sind.

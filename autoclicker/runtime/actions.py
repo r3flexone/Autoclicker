@@ -165,9 +165,9 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
         if not _input_allowed(state, label):
             return False
         jx, jy = _humanize_jitter(x, y, state)
-        erfolgreich = send_click(
+        successful = send_click(
             jx, jy, state.config.click_move_delay, state.config.click_post_delay)
-    if not erfolgreich:
+    if not successful:
         return False
     log_event(state, "click", detail=label, x=jx, y=jy)
     return True
@@ -192,10 +192,10 @@ def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = No
             return False
         if x is not None and y is not None:
             x, y = _humanize_jitter(x, y, state)
-        erfolgreich = send_scroll(
+        successful = send_scroll(
             clicks, x, y, state.config.click_move_delay,
             state.config.click_post_delay)
-    if not erfolgreich:
+    if not successful:
         return False
     log_event(state, "scroll", detail=str(clicks), x=x, y=y, extra=label)
     return True
@@ -286,10 +286,10 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
 
         # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
         # Hier zugleich das Lebenszeichen: `waiting_for()` schreibt mit.
-        status.waiting_for(state, {"art": "zeit", "text": message,
-                              "seit": time.time() - (seconds - remaining),
-                              "bis": time.time() + remaining,
-                              "gesamt": round(seconds, 2)})
+        status.waiting_for(state, {"kind": "time", "text": message,
+                              "since": time.time() - (seconds - remaining),
+                              "until": time.time() + remaining,
+                              "total": round(seconds, 2)})
 
         if state.skip_event.is_set():
             state.skip_event.clear()

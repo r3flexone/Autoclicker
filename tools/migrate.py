@@ -36,20 +36,20 @@ from autoclicker.persistence.sweep import collect_files, sweep  # noqa: E402
 
 
 def main() -> int:
-    schreiben = "--write" in sys.argv
+    write_out = "--write" in sys.argv
     print(f"Ziel-Schema: {SCHEMA_VERSION}")
-    print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if schreiben
+    print("Modus:", f"SCHREIBEN (Backups unter {BACKUPS_DIR}/)" if write_out
           else "nur anzeigen (--write zum Schreiben)")
 
-    dateien = collect_files()
-    if not dateien:
+    files = collect_files()
+    if not files:
         print("\nKeine Dateien gefunden - nichts zu tun.")
         return 0
-    print(f"Gefundene Dateien: {len(dateien)}\n")
+    print(f"Gefundene Dateien: {len(files)}\n")
 
-    result = sweep(write=schreiben)
+    result = sweep(write=write_out)
 
-    for path, messages in result.geaendert:
+    for path, messages in result.changed:
         try:
             name = path.relative_to(ROOT)
         except ValueError:
@@ -57,16 +57,16 @@ def main() -> int:
         print(f"  {name}")
         for m in messages:
             print(f"      - {m}")
-    for path in result.uebersprungen:
+    for path in result.skipped:
         print(f"  [UEBERSPRUNGEN] {path.name}: nicht ladbar, bleibt unveraendert")
 
-    print(f"\n{result.changed_count} angepasst, {result.aktuell} bereits aktuell, "
-          f"{len(result.uebersprungen)} uebersprungen.")
-    if result.geaendert and not schreiben:
+    print(f"\n{result.changed_count} angepasst, {result.current} bereits aktuell, "
+          f"{len(result.skipped)} uebersprungen.")
+    if result.changed and not write_out:
         print("Nichts geschrieben. Mit --write erneut ausfuehren.")
-    elif result.geaendert:
+    elif result.changed:
         print("Geschrieben. Ein zweiter Lauf sollte nichts mehr finden.")
-    return 1 if result.uebersprungen else 0
+    return 1 if result.skipped else 0
 
 
 if __name__ == "__main__":

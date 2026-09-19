@@ -15,7 +15,7 @@ on:
 
 jobs:
   test:
-    name: Suite (${{ matrix.os }}, ${{ matrix.bilder }} Bildpakete)
+    name: Suite (${{ matrix.os }}, ${{ matrix.images }} Bildpakete)
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +24,7 @@ jobs:
         # `os`: beide Plattform-Backends gegen denselben Testvertrag. Nur eine
         # Haelfte zu bauen ist der Fehler, den diese Achse faengt.
         #
-        # `bilder`: OpenCV und Pillow sind optional, und der Code degradiert
+        # `images`: OpenCV und Pillow sind optional, und der Code degradiert
         # sauber ohne sie (`OPENCV_AVAILABLE`-Muster). Genau deshalb UEBERSPRINGT
         # die Suite ohne sie ueber hundert Pruefungen - Template-Vergleich,
         # Masken, Slot-Erkennung, die Groessen-Meldung. Ein Lauf nur MIT den
@@ -34,7 +34,7 @@ jobs:
         # Meldung durchgerutscht. Dieselbe Regel wie bei den Plattform-Stubs:
         # was der Ersatz anders macht als das Echte, wird auf BEIDEN Seiten geprueft.
         os: [ubuntu-latest, windows-latest]
-        bilder: [ohne, pillow, mit]
+        images: [ohne, pillow, mit]
     runs-on: ${{ matrix.os }}
     # Ein Lauf braucht rund eine Minute. Ohne eigene Grenze gilt die von
     # GitHub — sechs Stunden —, und genau so lange stand ein Job da, dessen
@@ -55,12 +55,12 @@ jobs:
       # headless: der Runner hat keine Anzeige, und das volle opencv-python zieht
       # GUI-Bibliotheken nach, die es dort nicht gibt.
       - name: Bildpakete
-        if: matrix.bilder == 'mit'
+        if: matrix.images == 'mit'
         run: python -m pip install pillow numpy opencv-python-headless
 
       # Teilinstallationen sind ebenfalls unterstützt: Pillow ohne OpenCV.
       - name: Nur Pillow
-        if: matrix.bilder == 'pillow'
+        if: matrix.images == 'pillow'
         run: python -m pip install pillow
 
       # Kein Bildpaket, sondern die Plattformgrenze - gehoert deshalb in BEIDE
@@ -77,7 +77,7 @@ jobs:
       # Die Rauchtests brauchen einen Browser und ueberspringen sich hier selbst;
       # sie laufen im eigenen Job unten, wo einer installiert ist.
       - name: Alle Tests
-        run: python tests/alle_tests.py --nur vertrag --nur wurzel --mutationen
+        run: python tests/all_tests.py --only contract --only root --mutations
         env:
           PYTHONIOENCODING: utf-8
 
@@ -88,7 +88,7 @@ jobs:
   # sofort: der Reiter bleibt leer.
   #
   # Nur auf Linux und nur einmal: es geht um die Seite, nicht um die Plattform.
-  rauchtests:
+  smoke:
     name: Rauchtests (Browser)
     runs-on: ubuntu-latest
     # Rund 90 s im Normalfall — s. die Begruendung oben bei `test`.
@@ -100,7 +100,7 @@ jobs:
           python-version: "3.10"
       - run: python -m pip install pillow numpy opencv-python-headless playwright
       - run: python -m playwright install --with-deps chromium
-      - run: python tests/alle_tests.py --nur rauch --rauch-pflicht
+      - run: python tests/all_tests.py --only smoke --smoke-required
         env:
           PYTHONIOENCODING: utf-8
 

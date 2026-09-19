@@ -22,7 +22,7 @@ Nebenläufigkeit im Programm.
 Warum dieses Modul nicht unter `runtime/` liegt, wo sein Zwilling steht: das
 Studio müsste dafür `autoclicker.runtime` importieren, und dessen `__init__`
 zieht den Worker samt `imaging` und `winapi` nach. Das Fenster braucht nichts
-davon. Aus demselben Grund liest `StudioBridge.lauf_status()` die Statusdatei
+davon. Aus demselben Grund liest `StudioBridge.run_status()` die Statusdatei
 selbst, statt `runtime.status` zu importieren.
 """
 
@@ -61,7 +61,7 @@ def send_command(command: str, **arguments) -> bool:
         return False
 
 
-def fetch_command(max_alter: float = MAX_AGE) -> Optional[dict]:
+def fetch_command(max_age: float = MAX_AGE) -> Optional[dict]:
     """Nimmt den nächsten Befehl aus dem Briefkasten — oder None.
 
     Leert ihn dabei **immer**, auch bei einem zu alten oder unlesbaren Eintrag:
@@ -70,18 +70,18 @@ def fetch_command(max_alter: float = MAX_AGE) -> Optional[dict]:
     """
     # Erst atomar entnehmen, dann lesen: ein während des Lesens geschriebener
     # Befehl bleibt im Briefkasten. Der private Name wird nie erneut abgeholt.
-    genommen = COMMAND_PATH.with_name(f".{COMMAND_PATH.name}.{uuid.uuid4().hex}.tmp")
+    taken = COMMAND_PATH.with_name(f".{COMMAND_PATH.name}.{uuid.uuid4().hex}.tmp")
     try:
-        COMMAND_PATH.replace(genommen)
+        COMMAND_PATH.replace(taken)
     except OSError:
         return None
     try:
-        raw = genommen.read_text(encoding="utf-8")
+        raw = taken.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return None
     finally:
         try:
-            genommen.unlink(missing_ok=True)
+            taken.unlink(missing_ok=True)
         except OSError:
             pass
     try:
@@ -91,10 +91,10 @@ def fetch_command(max_alter: float = MAX_AGE) -> Optional[dict]:
     if not isinstance(data, dict) or not data.get("command"):
         return None
     try:
-        alter = time.time() - float(data.get("sent_at") or 0)
+        age = time.time() - float(data.get("sent_at") or 0)
     except (TypeError, ValueError):
         return None
-    if alter > max_alter:
+    if age > max_age:
         return None
     arguments = data.get("arguments")
     data["arguments"] = arguments if isinstance(arguments, dict) else {}

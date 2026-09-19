@@ -90,8 +90,8 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
 
         if not isinstance(data, dict):
             raise ValueError("Sequenz muss ein JSON-Objekt sein")
-        phasen = data.get("loop_phases", [])
-        if not isinstance(phasen, list) or any(not isinstance(p, dict) for p in phasen):
+        phases = data.get("loop_phases", [])
+        if not isinstance(phases, list) or any(not isinstance(p, dict) for p in phases):
             raise ValueError("Loop-Phasen müssen eine Liste von Objekten sein")
         data, messages = migrate(data, KIND_SEQUENCE)
         if messages:
@@ -123,7 +123,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in resolve({p.id: p for p in seq.points}, seq, still=True):
+        for m in resolve({p.id: p for p in seq.points}, seq, quiet=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -272,16 +272,16 @@ def _as_points(points) -> list[ClickPoint]:
     Noetig, weil die Aufrufer beides liefern — der Sweep rohe Dicts (er will den
     State nicht anfassen), die Editoren `list(state.points)`.
     """
-    raus = []
+    out = []
     for p in points or []:
         if isinstance(p, dict):
             try:
-                raus.append(_point_from_dict(p))
+                out.append(_point_from_dict(p))
             except (KeyError, TypeError, ValueError):
                 continue
         else:
-            raus.append(p)
-    return raus
+            out.append(p)
+    return out
 
 
 # `_als_dicts()` ist mit der Migrationskette entfallen. Es reichte die Punkte als rohe
@@ -299,7 +299,7 @@ def get_next_point_id(state: AutoClickerState) -> int:
 
 def point_at_position(points, x: int, y: int, color=None,
                     radius: Optional[int] = None,
-                    farbtoleranz: Optional[int] = None):
+                    color_tol: Optional[int] = None):
     """Der vorhandene Punkt an dieser Stelle — oder None. Die eine Regel.
 
     Editor und Aufnahme stellen dieselbe Frage; mit exaktem Vergleich entstand
@@ -315,24 +315,24 @@ def point_at_position(points, x: int, y: int, color=None,
     """
     from ..config import CONFIG
     radius = CONFIG.punkt_radius if radius is None else radius
-    ftol = CONFIG.punkt_farbtoleranz if farbtoleranz is None else farbtoleranz
-    genau = None
+    ctol = CONFIG.punkt_farbtoleranz if color_tol is None else color_tol
+    exact = None
     for p in points:
         if (p.x, p.y) == (x, y):
-            genau = p
+            exact = p
             break
-    if genau is not None or radius <= 0 or not color:
-        return genau
-    beste, bester_abstand = None, None
+    if exact is not None or radius <= 0 or not color:
+        return exact
+    best, best_distance = None, None
     for p in points:
         if not p.color:
             continue
-        if max(abs(a - b) for a, b in zip(p.color, color)) > ftol:
+        if max(abs(a - b) for a, b in zip(p.color, color)) > ctol:
             continue
         distance = ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5
-        if distance <= radius and (bester_abstand is None or distance < bester_abstand):
-            beste, bester_abstand = p, distance
-    return beste
+        if distance <= radius and (best_distance is None or distance < best_distance):
+            best, best_distance = p, distance
+    return best
 
 
 def point_for_position(state: AutoClickerState, x: int, y: int,
@@ -376,14 +376,14 @@ def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoi
 
 def _phases(sequence):
     """(Phasenname, Schrittliste) fuer INIT, jede Loop-Phase und END."""
-    raus = [("INIT", sequence.init_steps)]
+    out = [("INIT", sequence.init_steps)]
     for lp in sequence.loop_phases:
-        raus.append((lp.name, lp.steps))
-    raus.append(("END", sequence.end_steps))
-    return raus
+        out.append((lp.name, lp.steps))
+    out.append(("END", sequence.end_steps))
+    return out
 
 
-def resolve(points: dict, sequence, still: bool = False) -> list[str]:
+def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `points` ist id -> ClickPoint.
 
     Vier Referenzen pro Schritt:
@@ -405,7 +405,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
 
     for phase_name, steps in _phases(sequence):
         for i, step in enumerate(steps, 1):
-            ort = f"{phase_name}[{i}]"
+            location = f"{phase_name}[{i}]"
 
             if step.point_id is not None:
                 point = points.get(step.point_id)
@@ -414,16 +414,16 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # Der Schritt wird zur Laufzeit uebersprungen (siehe step_gate).
                     step.unresolved = True
                     messages.append(
-                        f"{ort} '{step.name or 'Klick'}' zeigt auf Punkt "
+                        f"{location} '{step.name or 'Klick'}' zeigt auf Punkt "
                         f"#{step.point_id}, den es nicht mehr gibt - wird uebersprungen")
                 else:
                     step.unresolved = False
                     old = (step.x, step.y)
                     step.x, step.y, step.name = point.x, point.y, point.name
                     step.recorded_color = point.color
-                    if old != (0, 0) and old != (point.x, point.y) and not still:
+                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
                         messages.append(
-                            f"{ort} '{step.name}' folgt Punkt #{point.id}: "
+                            f"{location} '{step.name}' folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")
 
             wc = step.wait_condition
@@ -432,7 +432,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                 if point is None:
                     step.unresolved = True
                     messages.append(
-                        f"{ort} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
+                        f"{location} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
                         f"den es nicht mehr gibt - wird uebersprungen")
                 else:
                     old = tuple(wc.pixel)
@@ -440,9 +440,9 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # Ohne Farbe am Punkt gaebe es nichts zu vergleichen; der Editor
                     # laesst das nicht zu, eine von Hand gebaute Datei schon.
                     wc.color = point.color if point.color else wc.color
-                    if old != (0, 0) and old != wc.pixel and not still:
+                    if old != (0, 0) and old != wc.pixel and not quiet:
                         messages.append(
-                            f"{ort} Pruef-Pixel folgt Punkt #{point.id}: "
+                            f"{location} Pruef-Pixel folgt Punkt #{point.id}: "
                             f"{old} -> {wc.pixel}")
 
             vc = step.verify_condition
@@ -453,16 +453,16 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
                     # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
                     messages.append(
-                        f"{ort} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
+                        f"{location} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
                         f"den es nicht mehr gibt - wird nicht mehr geprueft")
                     step.verify_condition = None
                 else:
                     old = tuple(vc.pixel)
                     vc.pixel = (point.x, point.y)
                     vc.color = point.color if point.color else vc.color
-                    if old != (0, 0) and old != vc.pixel and not still:
+                    if old != (0, 0) and old != vc.pixel and not quiet:
                         messages.append(
-                            f"{ort} Nachpruefung folgt Punkt #{point.id}: "
+                            f"{location} Nachpruefung folgt Punkt #{point.id}: "
                             f"{old} -> {vc.pixel}")
 
             ec = step.else_config
@@ -471,16 +471,16 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                 if point is None:
                     # Die else-Aktion faellt auf "skip" zurueck statt auf (0,0) zu klicken.
                     messages.append(
-                        f"{ort} Else-Klick zeigt auf Punkt #{ec.point_id}, "
+                        f"{location} Else-Klick zeigt auf Punkt #{ec.point_id}, "
                         f"den es nicht mehr gibt - else wird zu 'skip'")
                     ec.action = ELSE_SKIP
                     ec.point_id = None
                 else:
                     old = (ec.x, ec.y)
                     ec.x, ec.y, ec.name = point.x, point.y, point.name
-                    if old != (0, 0) and old != (point.x, point.y) and not still:
+                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
                         messages.append(
-                            f"{ort} Else-Klick folgt Punkt #{point.id}: "
+                            f"{location} Else-Klick folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")
     return messages
 

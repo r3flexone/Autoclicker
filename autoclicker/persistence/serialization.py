@@ -29,10 +29,10 @@ _NO_DEFAULT = object()
 
 
 # Schon gemeldete Altfelder - sonst steht dieselbe Zeile bei 40 Items vierzigmal da.
-_ALT_GEMELDET: set = set()
+_LEGACY_REPORTED: set = set()
 
 
-def _click_reference(data: dict, wo: str, was_tun: str):
+def _click_reference(data: dict, wo: str, what_to_do: str):
     """`action_point_id` lesen - und ein altes `action_x/y` melden statt es zu schlucken.
 
     Boss- und Icon-Aktionen klicken heute einen Punkt. Die alte Koordinate im Scan war
@@ -40,11 +40,11 @@ def _click_reference(data: dict, wo: str, was_tun: str):
     Reparatur im Punkte-Menue noch einer Kalibrierung ueber die Punkte.
     """
     if data.get("action_point_id") is None and (data.get("action_x") or data.get("action_y")):
-        _legacy_reported(wo, "action_x/action_y", was_tun)
+        _legacy_reported(wo, "action_x/action_y", what_to_do)
     return data.get("action_point_id")
 
 
-def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
+def _legacy_reported(wo: str, field: str, what_to_do: str) -> None:
     """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
 
     Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
@@ -53,13 +53,13 @@ def _legacy_reported(wo: str, feld: str, was_tun: str) -> None:
     verschwinden darf es trotzdem nicht.
     """
     from ..utils import hint, warn
-    key_name = f"{wo}:{feld}"
-    if key_name in _ALT_GEMELDET:
+    key_name = f"{wo}:{field}"
+    if key_name in _LEGACY_REPORTED:
         return
-    _ALT_GEMELDET.add(key_name)
-    print(warn(f"{wo}: '{feld}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
+    _LEGACY_REPORTED.add(key_name)
+    print(warn(f"{wo}: '{field}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
                f"in sequence.json."))
-    print(hint(f"       {was_tun}."))
+    print(hint(f"       {what_to_do}."))
 
 
 def _is_default(value, default) -> bool:
@@ -173,12 +173,12 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
     if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
         _legacy_reported(f"Item '{name}'", "confirm_point",
                       "Bestätigungs-Punkt im Item-Editor neu setzen")
-    varianten = data.get("template_variants", [])
-    if not isinstance(varianten, list):
-        varianten = []
-    primaer = data.get("template")
-    varianten = [v for v in varianten
-                 if isinstance(v, str) and v and v != primaer]
+    variants = data.get("template_variants", [])
+    if not isinstance(variants, list):
+        variants = []
+    primary = data.get("template")
+    variants = [v for v in variants
+                 if isinstance(v, str) and v and v != primary]
     return ItemProfile(
         name=name,
         marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
@@ -188,7 +188,7 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
         confirm_delay=data.get("confirm_delay", 0.5),
         template=data.get("template"),
         min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
-        template_variants=list(dict.fromkeys(varianten)),
+        template_variants=list(dict.fromkeys(variants)),
         enabled=data.get("enabled", True),
     )
 
@@ -308,15 +308,15 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
                 window_rect = None
         except (TypeError, ValueError):
             window_rect = None
-    fenster_titel = data.get("capture_window_title")
-    if not isinstance(fenster_titel, str) or not fenster_titel.strip():
-        fenster_titel = None
+    window_title = data.get("capture_window_title")
+    if not isinstance(window_title, str) or not window_title.strip():
+        window_title = None
     else:
-        fenster_titel = fenster_titel.strip()
+        window_title = window_title.strip()
     try:
-        fenster_index = max(0, int(data.get("capture_window_index", 0)))
+        window_index = max(0, int(data.get("capture_window_index", 0)))
     except (TypeError, ValueError):
-        fenster_index = 0
+        window_index = 0
     return ItemScanConfig(
         name=data["name"],
         slots=[_slot_from_dict(str(name), value)
@@ -327,8 +327,8 @@ def _item_scan_from_dict(data: dict) -> ItemScanConfig:
         learn_unknown=data.get("learn_unknown", False),
         reverse=data.get("reverse", False),
         use_catalog=data.get("use_catalog", False),
-        capture_window_title=fenster_titel,
-        capture_window_index=fenster_index,
+        capture_window_title=window_title,
+        capture_window_index=window_index,
         capture_window_rect=window_rect,
     )
 
@@ -407,18 +407,18 @@ def _step_to_dict(s: SequenceStep) -> dict:
     ec = s.else_config
     vc = s.verify_condition
     # Der Punkt traegt die Stelle: alles, was sich daraus ableiten laesst, entfaellt.
-    klick_am_punkt = s.point_id is not None
-    wait_am_punkt = wc is not None and wc.point_id is not None
-    else_am_punkt = ec is not None and ec.point_id is not None
-    verify_am_punkt = vc is not None and vc.point_id is not None
-    voll = {"x": 0 if klick_am_punkt else s.x,
-            "y": 0 if klick_am_punkt else s.y,
-            "name": "" if klick_am_punkt else s.name,
+    click_at_point = s.point_id is not None
+    wait_at_point = wc is not None and wc.point_id is not None
+    else_at_point = ec is not None and ec.point_id is not None
+    verify_at_point = vc is not None and vc.point_id is not None
+    full_value = {"x": 0 if click_at_point else s.x,
+            "y": 0 if click_at_point else s.y,
+            "name": "" if click_at_point else s.name,
             "point_id": s.point_id,
             "delay_before": s.delay_before,
             "wait_point_id": wc.point_id if wc else None,
-            "wait_pixel": None if (wc is None or wait_am_punkt) else wc.pixel,
-            "wait_color": None if (wc is None or wait_am_punkt) else wc.color,
+            "wait_pixel": None if (wc is None or wait_at_point) else wc.pixel,
+            "wait_color": None if (wc is None or wait_at_point) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
@@ -430,21 +430,21 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "scroll": s.scroll,
             "else_action": ec.action if ec else None,
             "else_point_id": ec.point_id if ec else None,
-            "else_x": 0 if (ec is None or else_am_punkt) else ec.x,
-            "else_y": 0 if (ec is None or else_am_punkt) else ec.y,
+            "else_x": 0 if (ec is None or else_at_point) else ec.x,
+            "else_y": 0 if (ec is None or else_at_point) else ec.y,
             "else_delay": ec.delay if ec else 0,
             "else_key": ec.key if ec else None,
-            "else_name": "" if (ec is None or else_am_punkt) else ec.name,
+            "else_name": "" if (ec is None or else_at_point) else ec.name,
             "verify_point_id": vc.point_id if vc else None,
-            "verify_pixel": None if (vc is None or verify_am_punkt) else vc.pixel,
-            "verify_color": None if (vc is None or verify_am_punkt) else vc.color,
+            "verify_pixel": None if (vc is None or verify_at_point) else vc.pixel,
+            "verify_color": None if (vc is None or verify_at_point) else vc.color,
             "verify_until_gone": vc.until_gone if vc else False,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "breakpoint": bool(s.breakpoint),
-            "recorded_color": None if klick_am_punkt or not s.recorded_color
+            "recorded_color": None if click_at_point or not s.recorded_color
                               else list(s.recorded_color)}
-    return _without_defaults(voll, _STEP_DEFAULTS)
+    return _without_defaults(full_value, _STEP_DEFAULTS)
 
 
 # Was ein Feld bedeutet, wenn es "nicht gesetzt" ist; steht der Wert drin, wird das

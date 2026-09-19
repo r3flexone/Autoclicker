@@ -222,8 +222,8 @@ def clean_item_name(name: str) -> str:
     Ebene tiefer noch einmal darueber.
     """
     raw = " ".join(str(name or "").split())
-    sauber = "".join(c for c in raw if c.isalnum() or c in _NAME_EXTRA)
-    return " ".join(sauber.split()).strip(" .,")
+    clean = "".join(c for c in raw if c.isalnum() or c in _NAME_EXTRA)
+    return " ".join(clean.split()).strip(" .,")
 
 
 def sanitize_filename(name: str) -> str:
@@ -253,34 +253,34 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
-def next_free_name(praefix: str, vergeben) -> str:
+def next_free_name(prefix: str, assigned) -> str:
     """Erste freie Nummer einer Serie: 'Slot 1', 'Slot 2', ...
 
     Fuer durchnummerierte Serien die bessere Wahl als `unique_name`: sie
     fuellt Luecken auf, waehrend ein angehaengter Zaehler 'Slot 3 2' ergaebe.
     """
     n = 1
-    while f"{praefix} {n}" in vergeben:
+    while f"{prefix} {n}" in assigned:
         n += 1
-    return f"{praefix} {n}"
+    return f"{prefix} {n}"
 
 
-def unique_name(basis: str, vergeben) -> str:
-    """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
+def unique_name(base_name: str, assigned) -> str:
+    """Hängt eine Zahl an, bis der Name in `assigned` frei ist.
 
     Items, Slots und Presets liegen in Name→Eintrag-Dicts: ein doppelter Name
     überschreibt den alten still, und weil Scans per Name referenzieren, läuft
     der Scan danach weiter und tut etwas anderes. 'Slot <len+1>' trägt das nicht,
     sobald einmal gelöscht oder umbenannt wurde.
 
-    `vergeben` ist alles, was `in` beantwortet (Dict, Set, Liste).
+    `assigned` ist alles, was `in` beantwortet (Dict, Set, Liste).
     """
-    if basis not in vergeben:
-        return basis
+    if base_name not in assigned:
+        return base_name
     n = 2
-    while f"{basis} {n}" in vergeben:
+    while f"{base_name} {n}" in assigned:
         n += 1
-    return f"{basis} {n}"
+    return f"{base_name} {n}"
 
 
 # Kurze Zahlen-Arrays wieder auf eine Zeile ziehen: 2er (x,y), 3er (RGB), 4er (Region).
@@ -301,8 +301,8 @@ def compact_json(data, indent: int = 2) -> str:
     `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
     """
     json_str = json.dumps(data, indent=indent, ensure_ascii=False)
-    for pattern, ersatz in _COMPACT:
-        json_str = pattern.sub(ersatz, json_str)
+    for pattern, replacement in _COMPACT:
+        json_str = pattern.sub(replacement, json_str)
     return json_str
 
 
@@ -318,9 +318,9 @@ def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
     try:
-        binaer = isinstance(text, bytes)
-        with os.fdopen(fd, "wb" if binaer else "w",
-                       **({} if binaer else {"encoding": encoding})) as f:
+        binary = isinstance(text, bytes)
+        with os.fdopen(fd, "wb" if binary else "w",
+                       **({} if binary else {"encoding": encoding})) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

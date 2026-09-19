@@ -1,0 +1,251 @@
+"""Gegenproben für Sequenzbesitz, Editor-Abbruch und Speicherfehler."""
+
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
+
+from test_support import install_platform_stubs
+
+install_platform_stubs()
+
+from autoclicker.models import (
+    AutoClickerState, BossProfile, BossScanConfig, IconScanConfig,
+    ItemProfile, ItemScanConfig, Sequence,
+)
+from autoclicker.persistence import boss_scans, icon_scans, item_scans, presets
+from autoclicker.persistence import globals as inventory
+from autoclicker.persistence.sequences import active_templates_dir
+from autoclicker.editors.item_editor import editor, commands
+from autoclicker.editors.sequence_studio.bridge import StudioBridge
+from autoclicker.handlers import _load_sequence_data
+
+
+class EditorPersistenzTest(unittest.TestCase):
+    def setUp(self):
+        self.cwd = os.getcwd()
+        self.temp = tempfile.TemporaryDirectory()
+        os.chdir(self.temp.name)
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(os.chdir, self.cwd)
+        self.output = io.StringIO()
+        self.redirect = redirect_stdout(self.output)
+        self.redirect.__enter__()
+        self.addCleanup(self.redirect.__exit__, None, None, None)
+        self.state = AutoClickerState()
+        self.state.active_sequence = Sequence(name="Alt")
+        self.scan = ItemScanConfig("Inventar", items=[
+            ItemProfile("A", priority=9), ItemProfile("B", priority=1),
+        ], owner_sequence="Alt")
+        self.state.item_scans = {self.scan.name: self.scan}
+        item_scans.bind_item_scan_context(self.state, self.scan.name)
+
+    def test_sequenzwechsel_entfernt_fremden_bestand(self):
+        self.state.icon_scans = {"Icon": IconScanConfig("Icon", owner_sequence="Alt")}
+        self.state.global_bosses = [BossProfile("Drache")]
+        self.state.active_sequence = Sequence(name="Neu")
+        _load_sequence_data(self.state)
+        self.assertEqual(self.state.item_scans, {})
+        self.assertEqual(self.state.icon_scans, {})
+        self.assertEqual(self.state.global_bosses, [])
+        self.assertEqual(self.state.global_items, {})
+        self.assertEqual(self.state.active_item_scan, "")
+
+    def test_neuladen_entfernt_geloeschte_scans(self):
+        item_scans.save_item_scan(self.scan)
+        self.state.item_scans["Veraltet"] = ItemScanConfig("Veraltet", owner_sequence="Alt")
+        item_scans.load_all_item_scans(self.state)
+        self.assertEqual(list(self.state.item_scans), ["Inventar"])
+
+    def test_sequenzwechsel_laedt_neuen_bestand_ohne_alte_eintraege(self):
+        new = ItemScanConfig("Neu", items=[ItemProfile("NeuItem")], owner_sequence="Neu")
+        item_scans.save_item_scan(new)
+        self.state.active_sequence = Sequence(name="Neu")
+        _load_sequence_data(self.state)
+        self.assertEqual(list(self.state.item_scans), ["Neu"])
+        self.assertEqual(list(self.state.global_items), ["NeuItem"])
+        self.assertIs(self.state.global_items["NeuItem"], self.state.item_scans["Neu"].items[0])
+
+    def test_anzeige_und_loeschen_verwenden_dieselbe_nummer(self):
+        editor._dispatch_command(self.state, "show", "show")
+        first = next(z for z in self.output.getvalue().splitlines() if z.strip().startswith("1."))
+        displayed = "A" if " A:" in first else "B"
+        editor._handle_delete_single(self.state, "del 1")
+        self.assertNotIn(displayed, self.state.global_items)
+
+    def test_edit_fragt_vor_namenskollision(self):
+        with patch.object(editor, "edit_item", return_value=ItemProfile("B")), \
+                patch.object(editor, "confirm", return_value=False) as ask:
+            editor._handle_edit(self.state, "edit 1")
+        ask.assert_called_once()
+        self.assertEqual(list(self.state.global_items), ["A", "B"])
+        self.assertEqual(self.state.global_items["B"].priority, 1)
+
+    def test_cancel_stellt_scan_und_vorlagen_wieder_her(self):
+        self.scan.items = [ItemProfile("Alt", template="alt.png")]
+        item_scans.bind_item_scan_context(self.state, self.scan.name)
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "alt.png").write_bytes(b"Original")
+        item_scans.save_item_scan(self.scan)
+        file = Path("sequences/alt/item_scans/inventar.json")
+        before = file.read_bytes()
+        with patch.object(editor, "PILLOW_AVAILABLE", True), \
+                patch.object(editor, "safe_input", side_effect=["rename 1", "cancel"]), \
+                patch.object(commands, "safe_input", return_value="Neu"):
+            editor.run_global_item_editor(self.state)
+        self.assertEqual(list(self.state.global_items), ["Alt"])
+        self.assertEqual([i.name for i in self.state.item_scans["Inventar"].items], ["Alt"])
+        self.assertEqual((folder / "alt.png").read_bytes(), b"Original")
+        self.assertFalse((folder / "neu.png").exists())
+        self.assertEqual(file.read_bytes(), before)
+
+    def test_cancel_nach_preset_laden_stellt_datei_wieder_her(self):
+        item_scans.save_item_scan(self.scan)
+        file = Path("sequences/alt/item_scans/inventar.json")
+        before = file.read_bytes()
+        preset = Path("presets/items/fremd.json")
+        preset.parent.mkdir(parents=True)
+        preset.write_text(json.dumps({"Fremd": {}}), encoding="utf-8")
+        with patch.object(editor, "PILLOW_AVAILABLE", True), \
+                patch.object(editor, "safe_input", side_effect=["load fremd", "cancel"]):
+            editor.run_global_item_editor(self.state)
+        self.assertEqual(file.read_bytes(), before)
+        self.assertEqual(self.state.item_scans["Inventar"].item_names, ["A", "B"])
+
+    def test_rename_dateifehler_laesst_referenz_unveraendert(self):
+        self.state.global_items["A"].template = "a.png"
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "a.png").write_bytes(b"Original")
+        with patch.object(Path, "rename", side_effect=PermissionError("locked")):
+            self.assertFalse(commands._apply_item_rename(self.state, "A", "Neu"))
+        self.assertEqual(self.state.global_items["A"].template, "a.png")
+        self.assertEqual((folder / "a.png").read_bytes(), b"Original")
+
+    def test_rename_erhaelt_vorlage_eines_anderen_scans(self):
+        self.state.global_items["A"].template = "a.png"
+        foreign = ItemScanConfig("Zweiter", items=[ItemProfile("A", template="a.png")],
+                              owner_sequence="Alt")
+        self.state.item_scans[foreign.name] = foreign
+        item_scans.save_item_scan(foreign)
+        folder = active_templates_dir(self.state)
+        folder.mkdir(parents=True)
+        (folder / "a.png").write_bytes(b"Original")
+        self.assertTrue(commands._apply_item_rename(self.state, "A", "Neu"))
+        self.assertTrue(inventory.save_global_items(self.state))
+        for name in ("inventar", "zweiter"):
+            loaded = item_scans.load_item_scan_file(Path(f"sequences/alt/item_scans/{name}.json"))
+            item = next(i for i in loaded.items if i.name == ("Neu" if name == "inventar" else "A"))
+            self.assertEqual((folder / item.template).read_bytes(), b"Original")
+        self.assertEqual(foreign.items[0].name, "A")
+
+    def test_speicherfehler_wird_bis_zum_aufrufer_gemeldet(self):
+        for save in (inventory.save_global_items, inventory.save_global_slots):
+            with self.subTest(save=save.__name__), \
+                    patch.object(item_scans, "save_item_scan", return_value=False):
+                self.output.seek(0)
+                self.output.truncate()
+                self.assertIs(save(self.state), False)
+                self.assertNotIn("[SAVE]", self.output.getvalue())
+
+    def test_done_bleibt_bei_speicherfehler_offen(self):
+        with patch.object(editor, "PILLOW_AVAILABLE", True), \
+                patch.object(editor, "save_global_items", side_effect=[False, True]) as save, \
+                patch.object(editor, "safe_input", side_effect=["done", "done"]):
+            editor.run_global_item_editor(self.state)
+        self.assertEqual(save.call_count, 2)
+
+    def test_done_speichert_und_abbruch_durch_tastatur_verwirft(self):
+        for end in ("done", KeyboardInterrupt(), EOFError()):
+            with self.subTest(end=type(end).__name__):
+                self.scan.items = [ItemProfile("A"), ItemProfile("B")]
+                item_scans.bind_item_scan_context(self.state, self.scan.name)
+                item_scans.save_item_scan(self.scan)
+                with patch.object(editor, "PILLOW_AVAILABLE", True), \
+                        patch.object(editor, "safe_input", side_effect=["del 1", end]):
+                    editor.run_global_item_editor(self.state)
+                expected = ["B"] if end == "done" else ["A", "B"]
+                loaded = item_scans.load_item_scan_file(Path("sequences/alt/item_scans/inventar.json"))
+                self.assertEqual(loaded.item_names, expected)
+                self.assertEqual(list(self.state.global_items), expected)
+
+    def test_studio_lehnt_reservierten_bossnamen_auch_beim_umbenennen_ab(self):
+        bridge = StudioBridge(Sequence(name="Alt"), Path("sequences/alt/sequence.json"), "sequences")
+        bridge._scan_loaded = True
+        bridge.boss_scan_new({"name": "Bibliothek"})
+        self.assertEqual(bridge.boss_scans, {})
+        bridge.boss_scan_new({"name": "Erlaubt"})
+        bridge.boss_scan_set({"field": "name", "value": "bibliothek!"})
+        self.assertEqual(list(bridge.boss_scans), ["Erlaubt"])
+
+    def test_reservierter_bossname_ueberschreibt_keine_bibliothek(self):
+        self.state.global_bosses = [BossProfile("Drache")]
+        boss_scans.save_global_bosses(self.state)
+        file = Path("sequences/alt/boss_scans/bibliothek.json")
+        before = file.read_bytes()
+        for name in ("bibliothek", "Bibliothek", "bibliothek!"):
+            with self.subTest(name=name):
+                self.assertFalse(boss_scans.save_boss_scan(BossScanConfig(name, owner_sequence="Alt")))
+                self.assertEqual(file.read_bytes(), before)
+
+    def test_scan_loader_fangen_falsche_json_strukturen_ab(self):
+        cases = [(item_scans.load_item_scan_file, x) for x in (
+            [], None, 3, {"name": "Scan", "items": {"A": []}},
+            {"name": "Scan", "slots": {"S": None}},
+            {"name": "Scan", "slots": []}, {"name": "Scan", "items": None},
+        )]
+        cases += [(boss_scans.load_boss_scan_file, []), (icon_scans.load_icon_scan_file, [])]
+        file = Path("scan.json")
+        for loader, data in cases:
+            with self.subTest(loader=loader.__name__, data=data):
+                file.write_text(json.dumps(data), encoding="utf-8")
+                self.assertIsNone(loader(file))
+
+    def test_defektes_preset_laesst_bestand_und_datei_unveraendert(self):
+        item_scans.save_item_scan(self.scan)
+        scan_file = Path("sequences/alt/item_scans/inventar.json")
+        before = scan_file.read_bytes()
+        for kind, load, attribut in (
+                ("items", presets.load_item_preset, "global_items"),
+                ("slots", presets.load_slot_preset, "global_slots")):
+            file = Path("presets") / kind / "defekt.json"
+            file.parent.mkdir(parents=True, exist_ok=True)
+            inventory_before = dict(getattr(self.state, attribut))
+            is_valid = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
+            for data in ([], {"Gueltig": is_valid, "Defekt": None}):
+                with self.subTest(kind=kind, data=data):
+                    file.write_text(json.dumps(data), encoding="utf-8")
+                    self.assertFalse(load(self.state, "broken"))
+                    self.assertEqual(getattr(self.state, attribut), inventory_before)
+                    self.assertEqual(scan_file.read_bytes(), before)
+
+    def test_preset_meldet_speicherfehler(self):
+        for kind, load, save in (
+                ("items", presets.load_item_preset, "save_global_items"),
+                ("slots", presets.load_slot_preset, "save_global_slots")):
+            with self.subTest(kind=kind):
+                file = Path("presets") / kind / "neu.json"
+                file.parent.mkdir(parents=True, exist_ok=True)
+                entry = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
+                file.write_text(json.dumps({"Neu": entry}), encoding="utf-8")
+                with patch.object(presets, save, return_value=False) as save_mock:
+                    self.assertFalse(load(self.state, "neu"))
+                save_mock.assert_called_once()
+
+    def test_scan_speichern_faengt_fehler_beim_ordner_anlegen_ab(self):
+        for save, cfg in (
+                (item_scans.save_item_scan, self.scan),
+                (boss_scans.save_boss_scan, BossScanConfig("Boss", owner_sequence="Alt")),
+                (icon_scans.save_icon_scan, IconScanConfig("Icon", owner_sequence="Alt"))):
+            with self.subTest(save=save.__name__), \
+                    patch.object(Path, "mkdir", side_effect=PermissionError("locked")):
+                self.assertFalse(save(cfg))
+
+
+if __name__ == "__main__":
+    unittest.main()

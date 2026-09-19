@@ -47,7 +47,7 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _meldungen = migrate(data, KIND_ICON_SCAN)
+        data, _messages = migrate(data, KIND_ICON_SCAN)
         if not isinstance(data, dict):
             raise TypeError("Icon-Scan muss ein JSON-Objekt sein")
 

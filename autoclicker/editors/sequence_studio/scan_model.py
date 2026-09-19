@@ -48,7 +48,7 @@ def crop_region(full_img, region: tuple[int, int, int, int],
     return crop_screen_region(full_img, region, (virtual_left, virtual_top))
 
 
-def save_template(img, name: str, hintergrund=None, *, template_dir) -> str | None:
+def save_template(img, name: str, background=None, *, template_dir) -> str | None:
     """Speichert ein Bild im Template-Ordner der Sequenz. Gibt den Dateinamen zurück.
 
     Items und Bosse der Sequenz teilen sich diesen Ordner. Existiert die
@@ -61,22 +61,22 @@ def save_template(img, name: str, hintergrund=None, *, template_dir) -> str | No
         return None
     # Mit bekanntem Hintergrund traegt das Template seine Maske selbst: der
     # Vergleich stimmt sonst zu neun Zehnteln ueber die Slot-Flaeche ab.
-    if hintergrund:
+    if background:
         try:
             from ...imaging import with_background_mask
-            img = with_background_mask(img, hintergrund)
+            img = with_background_mask(img, background)
         except ImportError:
             pass
-    zielordner = Path(template_dir)
-    zielordner.mkdir(parents=True, exist_ok=True)
+    target_folder = Path(template_dir)
+    target_folder.mkdir(parents=True, exist_ok=True)
     base = sanitize_filename(name)
     filename = f"{base}.png"
     n = 2
-    while (zielordner / filename).exists():
+    while (target_folder / filename).exists():
         filename = f"{base}_{n}.png"
         n += 1
     try:
-        img.save(zielordner / filename)
+        img.save(target_folder / filename)
         return filename
     except (IOError, OSError, ValueError):
         return None

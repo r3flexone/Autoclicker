@@ -617,50 +617,50 @@ class _PhaseEditor:
             return
 
         # Koordinate -> Punkte (mehrere = mehrdeutig)
-        nach_pos = {}
+        to_pos = {}
         for p in points:
-            nach_pos.setdefault((p.x, p.y), []).append(p)
+            to_pos.setdefault((p.x, p.y), []).append(p)
 
-        verknuepft, mehrdeutig, ohne_punkt, schon_ok = [], [], [], 0
+        linked, ambiguous, without_point, already_ok = [], [], [], 0
         for i, step in enumerate(self.steps, 1):
             if step.point_id is not None:
-                schon_ok += 1
+                already_ok += 1
                 continue
             # Schritte ohne echte Position (Taste/Scan/Wait) haben keinen Punkt
             if step.key_press or step.item_scan or step.boss_scan or step.boss_watcher \
                     or step.icon_scan or step.screenshot_only or step.wait_only:
                 continue
-            match = nach_pos.get((step.x, step.y), [])
+            match = to_pos.get((step.x, step.y), [])
             if len(match) == 1:
                 step.point_id = match[0].id
-                verknuepft.append(f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
+                linked.append(f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
                                   f"'{match[0].name or '(ohne Name)'}'")
             elif len(match) > 1:
                 ids = ", ".join(f"#{p.id}" for p in match)
-                mehrdeutig.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                ambiguous.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
                                   f"mehrere Punkte passen ({ids}) - nicht verknüpft")
             else:
-                ohne_punkt.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
+                without_point.append(f"[{i}] '{step.name}' ({step.x}, {step.y}): "
                                   "kein Punkt an dieser Stelle")
 
-        if verknuepft:
-            print(f"  {ok(f'{len(verknuepft)} Schritt(e) verknüpft:')}")
-            for z in verknuepft:
+        if linked:
+            print(f"  {ok(f'{len(linked)} Schritt(e) verknüpft:')}")
+            for z in linked:
                 print(f"    {z}")
-        if mehrdeutig:
-            print(f"  {warn(f'{len(mehrdeutig)} mehrdeutig:')}")
-            for z in mehrdeutig:
+        if ambiguous:
+            print(f"  {warn(f'{len(ambiguous)} mehrdeutig:')}")
+            for z in ambiguous:
                 print(f"    {z}")
-        if ohne_punkt:
-            print(f"  {warn(f'{len(ohne_punkt)} ohne passenden Punkt:')}")
-            for z in ohne_punkt:
+        if without_point:
+            print(f"  {warn(f'{len(without_point)} ohne passenden Punkt:')}")
+            for z in without_point:
                 print(f"    {z}")
             print(f"    {hint('Diese Schritte behalten ihre eigenen Koordinaten - das ist ok.')}")
-        if schon_ok:
-            print(f"  {hint(f'{schon_ok} Schritt(e) waren schon verknüpft.')}")
-        if not (verknuepft or mehrdeutig or ohne_punkt):
+        if already_ok:
+            print(f"  {hint(f'{already_ok} Schritt(e) waren schon verknüpft.')}")
+        if not (linked or ambiguous or without_point):
             print("  -> Nichts zu tun.")
-        elif verknuepft:
+        elif linked:
             print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
 
     def _handle_scroll(self, user_input: str) -> None:
@@ -691,38 +691,38 @@ class _PhaseEditor:
         if len(parts) >= 3:
             # Wartezeit dazwischen. Achtung: "-5" ist ein negativer Stufenwert, kein
             # Bereich - deshalb erst pruefen, ob es ueberhaupt wie ein Bereich aussieht.
-            zeit_arg = parts[1]
-            if "-" in zeit_arg.lstrip("-") :
-                range_val, range_err = parse_non_negative_range(zeit_arg, "Wartezeit")
+            time_arg = parts[1]
+            if "-" in time_arg.lstrip("-") :
+                range_val, range_err = parse_non_negative_range(time_arg, "Wartezeit")
                 if range_err:
                     print(f"  -> {range_err}")
                     return
                 delay, delay_max = range_val
             else:
-                delay_val, delay_err = parse_non_negative_float(zeit_arg, "Wartezeit")
+                delay_val, delay_err = parse_non_negative_float(time_arg, "Wartezeit")
                 if delay_err:
                     print(f"  -> {delay_err}")
                     return
                 delay = delay_val
-            stufen_raw = parts[2]
+            levels_raw = parts[2]
         else:
-            stufen_raw = parts[1]
+            levels_raw = parts[1]
 
         try:
-            stufen = int(stufen_raw)
+            levels = int(levels_raw)
         except ValueError:
-            print(f"  -> '{stufen_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
+            print(f"  -> '{levels_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
             return
-        if stufen == 0:
+        if levels == 0:
             print("  -> 0 Stufen waere ein Schritt ohne Wirkung.")
             return
 
-        richtung = "hoch" if stufen > 0 else "runter"
+        direction = "hoch" if levels > 0 else "runter"
         step = SequenceStep(
             x=point.x, y=point.y, delay_before=delay, delay_max=delay_max,
-            name=f"Scroll {richtung} x{abs(stufen)} @ {point.name or f'#{point_id}'}",
+            name=f"Scroll {direction} x{abs(levels)} @ {point.name or f'#{point_id}'}",
             point_id=point_id,
-            scroll=stufen,
+            scroll=levels,
         )
         apply_else_to_step(step, else_parts, self.state)
         self.add_step(step)
@@ -774,7 +774,7 @@ class _PhaseEditor:
             if color is None:
                 return
             step.wait_condition = WaitCondition(
-                point_id=self._punkt_fuer(px, py, color, "Prüf-Pixel"),
+                point_id=self._point_for(px, py, color, "Prüf-Pixel"),
                 pixel=(px, py), color=color,
                 until_gone=until_gone,
             )
@@ -887,15 +887,15 @@ class _PhaseEditor:
             # Koordinatenvergleich erraten musste; jetzt steht er in der Datei.
             pixel = (step.x, step.y)
             color = step.recorded_color
-            punkt_id = step.point_id
+            point_id = step.point_id
             print(f"  Nutze aufgenommene Farbe RGB{color} bei ({step.x}, {step.y})")
         else:
             px, py, color = capture_pixel_color()
             if color is None:
                 return False
             pixel = (px, py)
-            punkt_id = self._punkt_fuer(px, py, color, "Prüf-Pixel")
-        step.wait_condition = WaitCondition(point_id=punkt_id, pixel=pixel, color=color,
+            point_id = self._point_for(px, py, color, "Prüf-Pixel")
+        step.wait_condition = WaitCondition(point_id=point_id, pixel=pixel, color=color,
                                             until_gone=until_gone)
         return True
 
@@ -983,7 +983,7 @@ class _PhaseEditor:
             step = self.steps[idx]
             wc = step.wait_condition
             trig = ("bis Farbe WEG" if wc.until_gone else "auf Farbe") if wc else "keiner"
-            klick = "nur warten (kein Klick)" if step.wait_only else "klicken"
+            click = "nur warten (kein Klick)" if step.wait_only else "klicken"
 
             def _opt(n: str, label: str) -> str:
                 return f"    {col(f'[{n}]', 'yellow')} {label}"
@@ -991,7 +991,7 @@ class _PhaseEditor:
             print(f"\n  {col(f'Schritt {num} bearbeiten:', 'bold')} {step}")
             print(_opt("1", f"Wartezeit    (aktuell: {self._delay_str(step)})"))
             print(_opt("2", f"Trigger      (aktuell: {trig})"))
-            print(_opt("3", f"Klick an/aus (aktuell: {klick})"))
+            print(_opt("3", f"Klick an/aus (aktuell: {click})"))
             print(_opt("4", "Trigger-Farbe neu abgreifen"))
             print(_opt("5", "Details anzeigen"))
             print(_opt("6", "Duplizieren"))
@@ -1329,40 +1329,40 @@ class _PhaseEditor:
             px, py, color = capture_pixel_color()
             if color is None:
                 return
-            punkt_id = self._punkt_fuer(px, py, color, "Nachprüfung")
+            point_id = self._point_for(px, py, color, "Nachprüfung")
         else:
             try:
-                punkt_id = int(target)
+                point_id = int(target)
             except ValueError:
                 print("  -> Format: verify <Schritt-Nr> <Punkt-Nr>|maus|off [gone]")
                 return
             with self.state.lock:
-                point = get_point_by_id(self.state, punkt_id)
+                point = get_point_by_id(self.state, point_id)
             if not point:
-                print(f"  -> Punkt #{punkt_id} nicht gefunden! {hint('(siehe points)')}")
+                print(f"  -> Punkt #{point_id} nicht gefunden! {hint('(siehe points)')}")
                 return
             if not point.color:
-                print(warn(f"  -> Punkt #{punkt_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
+                print(warn(f"  -> Punkt #{point_id} hat keine Farbe — es gäbe nichts zu vergleichen."))
                 print(hint("     Im Punkte-Menü mit 'walk' die Farbe nachtragen."))
                 return
             px, py = point.x, point.y
 
-        step.verify_condition = WaitCondition(point_id=punkt_id, pixel=(px, py),
+        step.verify_condition = WaitCondition(point_id=point_id, pixel=(px, py),
                                               until_gone=until_gone)
         # Farbe direkt aus dem Punkt mitnehmen, damit die Anzeige sofort stimmt;
         # gespeichert wird nur die Referenz.
         with self.state.lock:
-            p = get_point_by_id(self.state, punkt_id)
+            p = get_point_by_id(self.state, point_id)
         if p and p.color:
             step.verify_condition.color = p.color
-        zustand = "WEG ist" if until_gone else "DA ist"
+        state_value = "WEG ist" if until_gone else "DA ist"
         print(ok(f"Nachprüfung gesetzt: nach der Aktion muss die Farbe bei "
-                 f"({px},{py}) {zustand}"))
+                 f"({px},{py}) {state_value}"))
         n = max(0, self.state.config.verify_retries)
         print(hint(f"       Bleibt sie aus, wird die Aktion {n}× wiederholt "
                    f"(config: verify_retries), dann greift else."))
 
-    def _punkt_fuer(self, x, y, color, name):
+    def _point_for(self, x, y, color, name):
         """Punkt-ID für eine frisch abgegriffene Stelle - legt sie notfalls an.
 
         Jede Stelle, die ein Editor erzeugt, muss als Punkt existieren; sonst hätte
@@ -1374,7 +1374,7 @@ class _PhaseEditor:
                                      source="Sequenz-Editor")
 
     def _resolve_trigger_color(self, until_gone: bool, point):
-        """Liefert (pixel, color, punkt_id, until_gone) für einen color|colorgone-Trigger.
+        """Liefert (pixel, color, point_id, until_gone) für einen color|colorgone-Trigger.
 
         Standard ist die bei der Punkt-Aufnahme gespeicherte Farbe; nur wenn der Punkt
         keine hat, wird live an der Mausposition abgegriffen (und dabei ein eigener
@@ -1386,7 +1386,7 @@ class _PhaseEditor:
             return (point.x, point.y), point.color, point.id, until_gone
         px, py, color = capture_pixel_color()
         if color:
-            return (px, py), color, self._punkt_fuer(px, py, color, "Prüf-Pixel"), until_gone
+            return (px, py), color, self._point_for(px, py, color, "Prüf-Pixel"), until_gone
         return None, None, None, until_gone
 
     def _parse_point_options(self, main_parts: list[str], point):
@@ -1399,7 +1399,7 @@ class _PhaseEditor:
         delay_max = None
         wait_pixel = None
         wait_color = None
-        wait_punkt_id = None
+        wait_pt_id = None
         wait_until_gone = False
         check_only = False
 
@@ -1410,7 +1410,7 @@ class _PhaseEditor:
                 # <Nr> checkcolor / <Nr> checkgone - einmal pruefen, sonst ueberspringen
                 check_only = True
                 wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[arg]
-                wait_pixel, wait_color, wait_punkt_id, _ = \
+                wait_pixel, wait_color, wait_pt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
@@ -1418,7 +1418,7 @@ class _PhaseEditor:
             elif arg in _WAIT_POINT_TRIGGER_ALIASES:
                 # <Nr> color / <Nr> colorgone
                 wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
-                wait_pixel, wait_color, wait_punkt_id, _ = \
+                wait_pixel, wait_color, wait_pt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
@@ -1449,14 +1449,14 @@ class _PhaseEditor:
                     if opt in _CHECK_POINT_TRIGGER_ALIASES:
                         check_only = True
                         wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[opt]
-                        wait_pixel, wait_color, wait_punkt_id, _ = \
+                        wait_pixel, wait_color, wait_pt_id, _ = \
                             self._resolve_trigger_color(wait_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
                             return False, 0, None
                     elif opt in _WAIT_POINT_TRIGGER_ALIASES:
                         opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
-                        wait_pixel, wait_color, wait_punkt_id, wait_until_gone = \
+                        wait_pixel, wait_color, wait_pt_id, wait_until_gone = \
                             self._resolve_trigger_color(opt_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
@@ -1464,7 +1464,7 @@ class _PhaseEditor:
 
         wait_cond = None
         if wait_pixel and wait_color:
-            wait_cond = WaitCondition(point_id=wait_punkt_id,
+            wait_cond = WaitCondition(point_id=wait_pt_id,
                                       pixel=wait_pixel, color=wait_color,
                                       until_gone=wait_until_gone,
                                       check_only=check_only)

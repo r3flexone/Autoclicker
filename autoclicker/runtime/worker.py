@@ -120,7 +120,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     schedule_shutdown = threading.Event()
     sequence = None
     cycle_count = 0
-    fehler = ""
+    error = ""
     try:
         print(col("\n[START] Sequenz gestartet.", "green"))
         sequence = _prepare_worker_state(state, state.config.debug_detail)
@@ -134,22 +134,22 @@ def sequence_worker(state: AutoClickerState) -> None:
         if state.session_log is not None:
             print(col(f"[LOG] Session-Log: {state.session_log.path}", "cyan"))
             log_event(state, "session_start", detail=sequence.name)
-        status.write_status(state, {"aktiv": True, "sequenz": sequence.name,
-                                "zyklen": sequence.total_cycles,
-                                "phasen": _phase_overview(sequence),
-                                "start": state.start_time}, sofort=True)
+        status.write_status(state, {"active": True, "sequence": sequence.name,
+                                "cycles": sequence.total_cycles,
+                                "phases": _phase_overview(sequence),
+                                "start": state.start_time}, immediately=True)
         _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
         _run_end_phase(state, sequence)
     except Exception as exc:
-        fehler = f"Fehler: {type(exc).__name__}: {exc}"
+        error = f"Fehler: {type(exc).__name__}: {exc}"
         logging.getLogger("autoclicker").exception("Sequenzlauf fehlgeschlagen")
-        print(err(fehler))
+        print(err(error))
     finally:
         # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
         # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
-        reason = fehler or _end_reason(state)
+        reason = error or _end_reason(state)
         schedule_shutdown.set()
         state.stop_event.set()
         try:
@@ -165,8 +165,8 @@ def sequence_worker(state: AutoClickerState) -> None:
             try:
                 if state.session_log is not None:
                     try:
-                        log_event(state, "session_error" if fehler else "session_end",
-                                  detail=fehler,
+                        log_event(state, "session_error" if error else "session_end",
+                                  detail=error,
                                   extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
                     finally:
                         state.session_log.close()
@@ -189,8 +189,8 @@ def _end_reason(state: AutoClickerState) -> str:
     oder hat ihn etwas abgebrochen? Die Reihenfolge ist die der Dringlichkeit —
     Notbremse, dann was der Nutzer ausgeloest hat, dann der Normalfall.
     """
-    grenze = state.config.pixel_max_consecutive_timeouts
-    if grenze > 0 and state.consecutive_timeouts >= grenze:
+    limit = state.config.pixel_max_consecutive_timeouts
+    if limit > 0 and state.consecutive_timeouts >= limit:
         return f"Notbremse nach {state.consecutive_timeouts} Timeouts in Folge"
     if state.quit_event.is_set():
         return "Programm wird beendet"
@@ -269,22 +269,22 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         # Hier statt beim Laden, damit ein zwischenzeitlich korrigierter Punkt garantiert
         # greift - egal ob die Sequenz per Laden, Quick-Switch oder Zeitplan aktiv wurde.
         from ..persistence import resolve_point_references
-        punkt_meldungen = resolve_point_references(state, sequence)
+        point_messages = resolve_point_references(state, sequence)
 
     # Klick-Ziele der Scans frisch auflösen (Bestätigungsklick, Boss-/Icon-Aktion):
     # ein Editor kann zwischendurch einen Punkt verschoben haben, und der Scan soll
     # dem folgen. Ausserhalb des Locks, weil resolve_click_references selbst lockt.
     from ..persistence import resolve_click_references
-    scan_meldungen = resolve_click_references(state, sequence)
+    scan_messages = resolve_click_references(state, sequence)
 
     # Nachgezogene Punkte melden: sonst wundert man sich, warum ein Schritt anderswo
     # klickt als in der Sequenzdatei steht.
-    if punkt_meldungen:
-        print(col(f"\n[PUNKTE] {len(punkt_meldungen)} Schritt(e) folgen ihrem Punkt:", "cyan"))
-        for m in punkt_meldungen:
+    if point_messages:
+        print(col(f"\n[PUNKTE] {len(point_messages)} Schritt(e) folgen ihrem Punkt:", "cyan"))
+        for m in point_messages:
             print(f"         {m}")
 
-    for m in scan_meldungen:
+    for m in scan_messages:
         print(warn(m))
 
     # Schritt-Uebersicht ausgeben (nur Detail-Stufe). Bewusst OHNE Enter-Prompt: die
@@ -350,8 +350,8 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
             total_init = len(sequence.init_steps)
             status.write_status(state, {"phase": "INIT", "phase_index": -1,
                                     "phase_pos": _phase_pos(sequence, "init"),
-                                    "durchlauf": 1, "wiederholungen": 1,
-                                    "bloecke": total_init}, sofort=True)
+                                    "pass_index": 1, "repeat": 1,
+                                    "blocks": total_init}, immediately=True)
             for i, step in enumerate(sequence.init_steps):
                 if state.stop_event.is_set() or state.quit_event.is_set():
                     break
@@ -393,8 +393,8 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 state.clicked_categories.clear()
 
             cycle_str = f"Zyklus {cycle_count}" if total_cycles == 0 else f"Zyklus {cycle_count}/{total_cycles}"
-            status.write_status(state, {"zyklus": cycle_count, "zyklen": total_cycles},
-                            sofort=True)
+            status.write_status(state, {"cycle": cycle_count, "cycles": total_cycles},
+                            immediately=True)
 
             # LOOP-Phasen
             if has_loops and not state.stop_event.is_set():
@@ -430,19 +430,19 @@ def _phase_overview(sequence) -> list[dict]:
     das nicht holen, denn laufen kann eine ganz andere. Leere Loop-Phasen bleiben
     drin, damit die Positionen zu `_phase_pos()` passen.
     """
-    raus = []
+    out = []
     if sequence.init_steps:
-        raus.append({"name": "INIT", "art": "init",
-                     "schritte": len(sequence.init_steps)})
+        out.append({"name": "INIT", "kind": "init",
+                     "steps": len(sequence.init_steps)})
     for phase in sequence.loop_phases:
-        raus.append({"name": phase.name, "art": "loop",
-                     "schritte": len(phase.steps),
-                     "wiederholungen": phase.repeat,
+        out.append({"name": phase.name, "kind": "loop",
+                     "steps": len(phase.steps),
+                     "repeat": phase.repeat,
                      "start": phase.scheduled_start or ""})
     if sequence.end_steps:
-        raus.append({"name": "END", "art": "end",
-                     "schritte": len(sequence.end_steps)})
-    return raus
+        out.append({"name": "END", "kind": "end",
+                     "steps": len(sequence.end_steps)})
+    return out
 
 
 def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
@@ -453,12 +453,12 @@ def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
     Schreibstellen — ein Versatz, der an einer davon fehlt, markierte die
     falsche Kachel als laufend.
     """
-    versatz = 1 if sequence.init_steps else 0
+    offset = 1 if sequence.init_steps else 0
     if kind == "init":
         return 0
     if kind == "end":
-        return versatz + len(sequence.loop_phases)
-    return versatz + idx
+        return offset + len(sequence.loop_phases)
+    return offset + idx
 
 
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
@@ -485,13 +485,13 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
         status.write_status(state, {"phase": loop_phase.name, "phase_index": idx,
                                 "phase_pos": _phase_pos(sequence, "loop", idx),
-                                "wiederholungen": loop_phase.repeat,
-                                "bloecke": total_steps}, sofort=True)
+                                "repeat": loop_phase.repeat,
+                                "blocks": total_steps}, immediately=True)
 
         for repeat_num in range(1, loop_phase.repeat + 1):
             if state.stop_event.is_set() or state.quit_event.is_set():
                 break
-            status.write_status(state, {"durchlauf": repeat_num}, sofort=True)
+            status.write_status(state, {"pass_index": repeat_num}, immediately=True)
 
             if debug:
                 print(dbg(f"Loop {repeat_num}/{loop_phase.repeat} von '{loop_phase.name}'"))
@@ -523,8 +523,8 @@ def _run_end_phase(state: AutoClickerState, sequence) -> None:
     total_end = len(sequence.end_steps)
     status.write_status(state, {"phase": "END", "phase_index": -1,
                             "phase_pos": _phase_pos(sequence, "end"),
-                            "durchlauf": 1, "wiederholungen": 1,
-                            "bloecke": total_end}, sofort=True)
+                            "pass_index": 1, "repeat": 1,
+                            "blocks": total_end}, immediately=True)
 
     for i, step in enumerate(sequence.end_steps):
         if state.quit_event.is_set():
