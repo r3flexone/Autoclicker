@@ -107,26 +107,26 @@ def main() -> int:
     args = parser.parse_args()
     if args.kind:
         return pruefen(args.fall[0], args.kind == "mutiert")
-    fehler = 0
+    error = 0
     umgebung = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.fall or FAELLE:
-        for modus in ("basis", "mutiert"):
+        for mode in ("basis", "mutiert"):
             try:
-                lauf = subprocess.run(
-                    [sys.executable, str(Path(__file__).resolve()), "--fall", name, "--kind", modus],
+                run = subprocess.run(
+                    [sys.executable, str(Path(__file__).resolve()), "--fall", name, "--kind", mode],
                     cwd=WURZEL, env=umgebung, capture_output=True, text=True,
                     encoding="utf-8", errors="replace", timeout=60)
             except subprocess.TimeoutExpired:
-                print(f"FEHLER {name}: Zeitlimit ({modus})", flush=True)
-                fehler += 1
+                print(f"FEHLER {name}: Zeitlimit ({mode})", flush=True)
+                error += 1
                 break
-            if lauf.returncode:
-                print(f"FEHLER {name} ({modus})\n{lauf.stdout}\n{lauf.stderr}", flush=True)
-                fehler += 1
+            if run.returncode:
+                print(f"FEHLER {name} ({mode})\n{run.stdout}\n{run.stderr}", flush=True)
+                error += 1
                 break
         else:
             print(f"ERKANNT {name}: Basis grün, Mutant durch Assertion rot", flush=True)
-    return 1 if fehler else 0
+    return 1 if error else 0
 
 
 if __name__ == "__main__":

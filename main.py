@@ -199,8 +199,8 @@ def _pruefe_befehle(state) -> None:
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     try:
         fn(state, auftrag["arguments"])
-    except PlatformError as fehler:
-        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+    except PlatformError as error:
+        print(err(f"Systemaktion fehlgeschlagen: {error}"))
 
 
 def _studio_beim_start_oeffnen(state) -> bool:
@@ -385,8 +385,8 @@ def main() -> int:
                 if hk_id in hotkey_handlers:
                     try:
                         hotkey_handlers[hk_id](state)
-                    except PlatformError as fehler:
-                        print(err(f"Systemaktion fehlgeschlagen: {fehler}"))
+                    except PlatformError as error:
+                        print(err(f"Systemaktion fehlgeschlagen: {error}"))
                     # Während ein blockierender Handler lief, aufgestaute
                     # Hotkeys verwerfen (sonst feuern sie als Burst).
                     flush_hotkey_messages()

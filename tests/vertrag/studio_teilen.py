@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.bridge_teilen import TEILE as _TEILE
+from autoclicker.editors.sequence_studio.bridge_teilen import PARTS as _TEILE
 from autoclicker.models import (
     AutoClickerState as _ST, ClickPoint as _CP, ItemProfile as _ITEM,
     ItemScanConfig as _ISC, ItemSlot as _SLOT, LoopPhase as _PHASE,

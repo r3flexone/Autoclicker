@@ -28,9 +28,9 @@ section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
 # eine gemessene Farbe, aus einem Umbenennen eine nachgezogene Referenz.
 import re as _re13
 from autoclicker.editors.sequence_studio.scans import (
-    MODUS_KLICK as _MK18, MODUS_MESSEN as _MM18, MODUS_SLOT as _MS18,
-    MODUS_WAHL as _MW18, MODUS_BEREICH as _MB18, MODUS_FINDEN as _MF18,
-    MODI as _MODI18, MIN_SLOT as _MINSLOT18,
+    MODE_CLICK as _MK18, MODE_MEASURE as _MM18, MODE_SLOT as _MS18,
+    MODE_CHOICE as _MW18, MODE_AREA as _MB18, MODE_FIND as _MF18,
+    MODES as _MODI18, MIN_SLOT as _MINSLOT18,
 )
 from autoclicker.models import (ItemProfile as _ITEM8, ItemSlot as _SLOT8,
                                 ItemScanConfig as _ISC8)
@@ -76,16 +76,16 @@ try:
 
     # Gegenprobe fuer eine noch offene alte Sitzung: ein verwaistes Bild darf
     # beim spaeteren Anlegen nicht still dem neuen Scan zugeschlagen werden.
-    _b18._foto = object()
-    _b18._foto_bild = "orphaned"
-    _b18._foto_info = {"width": 1, "height": 1}
-    _b18.scan_bereich = (1, 2, 3, 4)
+    _b18._photo = object()
+    _b18._photo_image = "orphaned"
+    _b18._photo_info = {"width": 1, "height": 1}
+    _b18.scan_area = (1, 2, 3, 4)
     _z18 = _b18.scan_new({"name": "Weg"})
     check("erst der angelegte Scan schaltet seine Aufnahme frei",
           _z18["recording_ready"] == {"item": True, "boss": False, "icon": False})
     check("ein verwaistes Sitzungsbild wird dabei nicht uebernommen",
           _z18["photo"] is None and _z18["area"] is None
-          and _b18._foto is None and not _b18._foto_bild)
+          and _b18._photo is None and not _b18._photo_image)
 
     # --- Ein gestelltes Bild unterschieben ---
     # Denselben Weg geht der Browser-Pruefstand: `take_screenshot` gibt es auf
@@ -367,7 +367,7 @@ try:
             _slots_vorher18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18._sync_objects()
-            _b18._foto = _gitter18
+            _b18._photo = _gitter18
             _b18._display_image(0, 0, 1.0)
 
             # Der erste Klick ist keine Farbe mehr, sondern eine Ecke.
@@ -540,10 +540,10 @@ try:
             _b18.scans["Basis"] = _ISC8(
                 name="Basis", slots=list(_b18.slots.values()),
                 items=list(_b18.items.values()), owner_sequence="S")
-            _b18.scan_offen = "Basis"
+            _b18.open_scan = "Basis"
             _b18._scan_working_set("Basis")
             _b18.scan_select({"kind": "slot", "name": "Slot 1"})
-            _b18._foto = _bild18
+            _b18._photo = _bild18
             _b18._display_image(0, 0, 1.0)
 
             # --- Der Bereich: nicht immer Vollbild ---
@@ -627,7 +627,7 @@ try:
     # weiterer Scan beginnt leer; es gibt weder Mitgliedschaft noch globale
     # slots.json/items.json, die beide wieder zusammenmischen könnten.
     _b18.scans.clear()
-    _b18.scan_offen = ""
+    _b18.open_scan = ""
     _b18.scan_new({"name": "Lokal"})
     _b18.slots["Slot 1"] = _SLOT8(
         name="Slot 1", id=1, scan_region=(0, 0, 20, 20), click_pos=(10, 10))
@@ -937,7 +937,7 @@ try:
     # Genau der Fehler aus der Ansicht: Der zweite Scan ist offen, aber der
     # allgemeine Auswahlzustand zeigt nicht mehr auf einen Scan. Der Knopf der
     # ersten Maske muss trotzdem genau den ersten löschen.
-    _bL18.scan_art, _bL18.scan_name = "item", ""
+    _bL18.scan_kind, _bL18.scan_name = "item", ""
     _zL18 = _bL18.scan_delete({"name": "Erster"})
     check("der mitgeschickte Maskenname entscheidet, was gelöscht wird",
           "Erster" not in _bL18.scans and "Zweiter" in _bL18.scans
@@ -1610,7 +1610,7 @@ try:
             # nichts und hielt ihn fuer wirkungslos.
             check("das Item weiss, dass es erkannt wurde", _item19["detected"] is True)
             check("und in WELCHEM Slot", _item19["detected_in"] == ["Slot 1"])
-            _b19._treffer = {}
+            _b19._matches = {}
             _item19 = [i for i in _b19.scan_data()["items"]
                        if i["name"] == "Sicheres"][0]
             check("ohne Erkennungslauf steht dort nichts",
@@ -1632,7 +1632,7 @@ try:
     _item_v = _ITEM8(name="Auto 1", category="Auto", template="a.png",
                      template_variants=["b.png"])
     _bv.items = {_item_v.name: _item_v}
-    _bv.scan_art, _bv.scan_name = "item", _item_v.name
+    _bv.scan_kind, _bv.scan_name = "item", _item_v.name
     _zv = _bv.scan_item_remove_template({"name": "Auto 1", "file": "a.png"})
     check("die gewählte Vorlage wird gelöst", _zv["status"]["kind"] == "warn")
     check("eine vorhandene Variante rückt als Hauptvorlage nach",
@@ -1693,18 +1693,18 @@ try:
             }
             return _b
 
-        def _durchlauf_an(b, data, schritte=None):
+        def _durchlauf_an(b, data, steps_list=None):
             """Der Durchgang, wie die Seite ihn treibt: Start, Schritte, Ende.
 
             `steps` bricht nach so vielen ab — genau das, was der
             Abbrechen-Knopf im Arbeits-Kasten tut.
             """
-            erg = b.scan_autoname_start(data)
+            res = b.scan_autoname_start(data)
             if not getattr(b, "_autoname", None):
-                return erg                      # abgelehnt, die Meldung sagt warum
+                return res                      # abgelehnt, die Meldung sagt warum
             n = 0
             while (getattr(b, "_autoname", None) or {}).get("open"):
-                if schritte is not None and n >= schritte:
+                if steps_list is not None and n >= steps_list:
                     return b.scan_autoname_end({"cancelled": True})
                 b.scan_autoname_step()
                 n += 1
@@ -1749,7 +1749,7 @@ try:
         check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
               "2 ohne Vorschlag" in _erg_leer["status"]["text"])
 
-        # Ohne `alle` und ohne Auswahl bleibt es beim vorsichtigen Standard —
+        # Ohne `all_of` und ohne Auswahl bleibt es beim vorsichtigen Standard —
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bs = _bau_an()
@@ -1779,7 +1779,7 @@ try:
             # Objekten (`__post_init__`).
             _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
-            _bk.scan_offen = "S"
+            _bk.open_scan = "S"
             _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
             _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_kat_namen, None), "")
             _erg_kat = _durchlauf_an(_bk, {"all_items": True})
@@ -1857,8 +1857,8 @@ try:
         # Der Name IST die Referenz: ohne `_sync_objects()` kaeme das
         # geloeschte Item ueber `sync_names()` beim Speichern zurueck.
         check("das Doppel ist auch aus dem Scan raus",
-              "Item 2" not in (_bd.scans[_bd.scan_offen].item_names
-                               if _bd.scan_offen in _bd.scans else []))
+              "Item 2" not in (_bd.scans[_bd.open_scan].item_names
+                               if _bd.open_scan in _bd.scans else []))
         check("STRG+Z holt beide Items zurueck",
               _bd.scan_undo() is not None
               and "Item 1" in _bd.items and "Item 2" in _bd.items)
@@ -1867,7 +1867,7 @@ try:
         _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_abb_namen, None), "")
         _bab = _bau_an()
-        _erg_abb = _durchlauf_an(_bab, {"all_items": True}, schritte=1)
+        _erg_abb = _durchlauf_an(_bab, {"all_items": True}, steps_list=1)
         # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
         # eine Modell-Antwort zu verbrennen, weil man die zweite nicht mehr
         # abwarten wollte — und STRG+Z holt den ganzen Durchgang zurueck.

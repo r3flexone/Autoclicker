@@ -512,9 +512,9 @@ def run_calibration(state: AutoClickerState) -> None:
     p_alt, p_neu = ref1
     transform = transform_from_offset(p_alt, p_neu)
 
-    versatz = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
+    offset = f"{transform['offset_x']:+.0f} X, {transform['offset_y']:+.0f} Y"
     print()
-    print(f"  Verschiebung: {col(versatz, 'yellow')}")
+    print(f"  Verschiebung: {col(offset, 'yellow')}")
 
     # --- Referenzpunkt 2 (optional): Skalierung ---------------------------------
     if len(points) > 1:
@@ -523,15 +523,15 @@ def run_calibration(state: AutoClickerState) -> None:
         print("  dann braucht es einen zweiten Punkt, möglichst weit vom ersten weg.")
         if confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
             ref2 = _calibration_reference(state, points, "Zweiter Referenzpunkt",
-                                   ausser=p_alt)
+                                   except_step=p_alt)
             if ref2 is None:
                 print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
             else:
                 q_alt, q_neu = ref2
                 transform = compute_transform(p_alt, q_alt, p_neu, q_neu)
-                faktor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
+                factor = f"{transform['scale_x']:.4f} X, {transform['scale_y']:.4f} Y"
                 print()
-                print(f"  Skalierung: {col(faktor, 'yellow')}")
+                print(f"  Skalierung: {col(factor, 'yellow')}")
 
     # --- Versatz von Hand nachziehen --------------------------------------------
     # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
@@ -555,10 +555,10 @@ def run_calibration(state: AutoClickerState) -> None:
     if len(preview) > 12:
         print(f"    {info(f'... und {len(preview) - 12} weitere')}")
 
-    draussen = _outside_all_monitors([new for _, _, new in preview])
-    if draussen:
+    outside = _outside_all_monitors([new for _, _, new in preview])
+    if outside:
         print()
-        print(f"  {warn(f'{draussen} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
+        print(f"  {warn(f'{outside} Klick-Ziel(e) lägen danach ausserhalb aller Monitore.')}")
         print(f"  {info('Meist heisst das: der Referenzpunkt lag auf einem anderen Bildschirm')}")
         print(f"  {info('als diese Ziele — dann stimmt die Verschiebung fuer sie nicht.')}")
 
@@ -577,17 +577,17 @@ def run_calibration(state: AutoClickerState) -> None:
 
     print()
     print(col("  Was soll mitgezogen werden?", 'bold'))
-    umfang = interactive_select([
+    extent = interactive_select([
         "Alles ausser Slots (Punkte, Scan-Regionen, Sequenzen) — Slots per 'repair'",
         "Alles inkl. Slots (Naeherung, s.o.)",
         "Nur die Punkte",
     ], default=0)
-    if umfang < 0:
+    if extent < 0:
         print(f"  {info('[ABBRUCH] Kalibrierung abgebrochen — nichts geändert.')}")
         return
-    mit_slots = umfang == 1
-    mit_scans = umfang in (0, 1)
-    mit_sequenzen = umfang in (0, 1)
+    mit_slots = extent == 1
+    mit_scans = extent in (0, 1)
+    mit_sequenzen = extent in (0, 1)
 
     print()
     print(f"  {warn('Das schreibt die gespeicherten Dateien um.')}")
@@ -596,9 +596,9 @@ def run_calibration(state: AutoClickerState) -> None:
         return
 
     from ..import_export import backup_before_calibration
-    sicherung = backup_before_calibration(state)
-    if sicherung:
-        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    backup = backup_before_calibration(state)
+    if backup:
+        print(f"  {ok('Sicherung angelegt:')} {backup}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
@@ -645,9 +645,9 @@ def _adjust_offset(transform: dict) -> dict | None:
     print(f"  {info('das ist genauer als die Maus-Messung.')}")
 
     new = []
-    for achse, value in (("X", vx), ("Y", vy)):
+    for axis, value in (("X", vx), ("Y", vy)):
         while True:
-            user_input = safe_input(f"    {achse}-Versatz (Enter = {value:+d}): ").strip()
+            user_input = safe_input(f"    {axis}-Versatz (Enter = {value:+d}): ").strip()
             if is_cancel(user_input):
                 return None
             if not user_input:
@@ -667,14 +667,14 @@ def _adjust_offset(transform: dict) -> dict | None:
 
 
 def _calibration_reference(state: AutoClickerState, points: list, title: str,
-                    ausser: tuple | None = None):
+                    except_step: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
     Gibt ((alt_x, alt_y), (neu_x, neu_y)) zurück oder None bei Abbruch.
     """
     from ..winapi import set_cursor_pos
 
-    selection = [p for p in points if ausser is None or (p.x, p.y) != ausser]
+    selection = [p for p in points if except_step is None or (p.x, p.y) != except_step]
     if not selection:
         return None
 

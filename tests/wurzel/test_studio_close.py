@@ -57,8 +57,8 @@ class StudioCloseTest(unittest.TestCase):
         os.utime(bridge.filepath, (2000000000, 2000000000))
         bridge.board.name = "neu"
         bridge._dirty = True
-        antwort = bridge.save()
-        self.assertTrue(antwort["question"])
+        answer = bridge.save()
+        self.assertTrue(answer["question"])
         self.assertTrue(bridge.filepath.exists())
         self.assertFalse(Path("sequences/neu").exists())
         self.assertEqual(load_sequence_file(bridge.filepath).points[0].x, 999)
@@ -70,12 +70,12 @@ class StudioCloseTest(unittest.TestCase):
         bridge._scan_dirty = True
         with patch("autoclicker.persistence._scan_store.atomic_write",
                    side_effect=OSError("Datenträger voll")):
-            antwort = bridge.scan_save()
-        self.assertEqual(antwort["status"]["kind"], "err")
+            answer = bridge.scan_save()
+        self.assertEqual(answer["status"]["kind"], "err")
         self.assertTrue(bridge._scan_dirty)
         self.assertFalse(Path("sequences/test/item_scans/inventar.json").exists())
-        antwort = bridge.scan_save()
-        self.assertEqual(antwort["status"]["kind"], "ok")
+        answer = bridge.scan_save()
+        self.assertEqual(answer["status"]["kind"], "ok")
         self.assertFalse(bridge._scan_dirty)
         self.assertTrue(Path("sequences/test/item_scans/inventar.json").exists())
 

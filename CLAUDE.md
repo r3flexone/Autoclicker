@@ -780,7 +780,7 @@ Eine fehlende Boss-Bibliothek bedeutet eine leere Liste. Der Dateiname
 gehören (`boss_scan_name_allowed()`); die Prüfung erfolgt auch beim Speichern.
 
 **Und ein Scan wird ebenfalls per Namen gerufen — an FÜNF Stellen.** Sie stehen
-in `referenzen_umbenennen()` (`scan_contract.py`), damit sie nicht wieder
+in `rename_references()` (`scan_contract.py`), damit sie nicht wieder
 auseinanderlaufen:
 
 | wer verweist | Feld | wo |
@@ -805,7 +805,7 @@ Schaden grösser:
   Öffnen **zweimal** da (aus `wache` wurden `['drache', 'wache']`). Ein
   Umbenennen, das klont, ist kein Umbenennen.
 
-Zwei Regeln beim Erweitern: **eine sechste Stelle trägt man in `_REF_FELDER`
+Zwei Regeln beim Erweitern: **eine sechste Stelle trägt man in `_REF_FIELDS`
 ein** (dieselbe Bauart wie `_REF_KEYS` bei den Punkten), und **die Beschriftung
 zieht nur mit, wenn sie abgeleitet ist** — `step.name == f"Boss:{alt}"` wird
 nachgezogen, ein selbst getippter Blockname nicht. Er gehört dem Nutzer, und ihn
@@ -1207,7 +1207,7 @@ es die Marker-Farben.
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe. **Ausgewertet wird er mit
   `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig) — auf der
   Kommandozeile und im Reiter „Bericht" des Studios, über **dieselbe** Funktion
-  (`auswerten()` rechnet und gibt Daten zurück, `bericht()` druckt sie). Geloggt wird
+  (`evaluate()` rechnet und gibt Daten zurück, `bericht()` druckt sie). Geloggt wird
   nicht nur, *was geklickt* wurde, sondern auch, *was gesehen* wurde: `timeout` (welcher
   Schritt hängt — das diagnostisch wertvollste Ereignis), `item_found`, `detected`,
   `verify_ok`/`verify_miss`. Ohne diese Ereignisse konnte der Bericht die eine Frage
@@ -1502,7 +1502,7 @@ Löschen sähe aus, als hätte es nicht gewirkt) und **nicht während eines Lauf
 dagegen sehr wohl löschen — sie ist der häufigste Grund, es zu wollen, und
 deshalb bekommt auch sie ihren Umfang in der Übersicht.
 
-**Die Mehrzahl steht in den Daten, nicht in der Ansicht** (`_UMFANG` trägt beide
+**Die Mehrzahl steht in den Daten, nicht in der Ansicht** (`_EXTENT` trägt beide
 Formen). Ein angehängtes „n" ergab „2× Item-Scann" und „3× gemerkter
 Bildschirmn" — bei drei von fünf Wörtern falsch. Aufgefallen ist es erst am
 gerenderten Dialog; deutsche Mehrzahl ist keine Regel für eine Zeile JavaScript.
@@ -1523,8 +1523,8 @@ und ein eigener Speichern-Knopf rechts steht. Die **Auswahl** bleibt (s. u.).
 
 **Der Item-Scan ist das Übergeordnete, nicht die Auswahl.** Wer mehrere Spiele
 betreibt, hat alle Slots und Items aller Spiele in einer Liste — und keiner davon
-gehört sichtbar irgendwohin. Deshalb gibt es `scan_offen` **neben**
-`scan_art`/`scan_name`: der offene Scan ist der Zusammenhang, die Auswahl ist das
+gehört sichtbar irgendwohin. Deshalb gibt es `open_scan` **neben**
+`scan_kind`/`scan_name`: der offene Scan ist der Zusammenhang, die Auswahl ist das
 Ding, das man gerade bearbeitet. Beides an einer Variable hiesse, dass ein Klick
 auf einen Slot den Zusammenhang verliert (so war es zuerst gebaut). Am offenen
 Scan hängen: was im Bild gezeichnet wird, welche Items `scan_recognize()`
@@ -1583,7 +1583,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Löschungen. Gewählt ist, was **ganz** im Rechteck liegt: „alle, die darin
   sind" heisst genau das, und ein angeschnittener Slot wäre eine Ermessensfrage
   — bei einer Sammel-Löschung das Falsche. STRG-Klick nimmt einzelne dazu oder
-  heraus. `_auswahl` (die Menge) steht neben `scan_name` (der eine, den der
+  heraus. `_selection` (die Menge) steht neben `scan_name` (der eine, den der
   Inspektor bearbeitet): zwei Dinge, zwei Felder, sonst hätte „Farbe messen"
   bei dreissig Gewählten keine Bedeutung.
 
@@ -1606,7 +1606,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Rückwärts-Schritte müssten jede dieser Nebenwirkungen einzeln kennen — und
   ein vergessener wäre ein Rückgängig, das die Daten *halb* zurückdreht. Das ist
   schlimmer als keins. Ein Abzug kostet bei einem echten Bestand rund 30 KB,
-  `UNDO_TIEFE` (30) deckelt den Speicher.
+  `UNDO_DEPTH` (30) deckelt den Speicher.
 
   Drei Regeln beim Erweitern:
   - **`_remember()` ruft die Methode, die ändert** — nicht die Oberfläche. Sonst
@@ -1624,17 +1624,17 @@ Sechs Regeln, an denen der Reiter hängt:
 - **Was man nicht treffen kann, kann man nicht löschen.** Ein Slot von 2×2 px
   entsteht aus zwei Klicks fast auf dieselbe Stelle — und war danach kaum wieder
   loszuwerden, weil Löschen Auswählen voraussetzt. Drei Stellen zusammen lösen
-  das: `MIN_SLOT` (8) lässt ihn gar nicht erst entstehen, `TREFFER_MIN` (14)
+  das: `MIN_SLOT` (8) lässt ihn gar nicht erst entstehen, `HIT_MIN` (14)
   weitet die *Trefferfläche* vorhandener Winzlinge auf (den Slot selbst nie —
   gemessen wird, was dasteht), und `_slot_under()` nimmt den **kleinsten**
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`tiny`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
-- **Was ein Klick bedeutet, sagt ein Modus** (`MODI` in `scan_contract.py`,
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODES` in `scan_contract.py`,
   über `scans.py` weiterhin öffentlich importierbar: wählen, neuer
   Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
-  seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODI` gegeneinander —
+  seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODES` gegeneinander —
   **Zug um Zug, nicht als Menge**, denn die Reihenfolge ist die Rangfolge:
   „Slots finden" steht direkt hinter „Auswählen", weil es das ist, was man
   *zuerst* macht. Das Automatische ist der Normalfall, das Aufziehen von Hand
@@ -1646,7 +1646,7 @@ Sechs Regeln, an denen der Reiter hängt:
   der ELSE-Kachel im Sequenz-Editor, und aus demselben Grund: ein Modus, in den
   man nur hinein kommt, ist eine Falltür. ESC allein reicht nicht, denn ESC
   sieht man einem Bild nicht an; das Umschalten steht deshalb im Tooltip der
-  markierten Kachel **und** im Hinweis unter dem Raster. `MODUS_WAHL` ist
+  markierten Kachel **und** im Hinweis unter dem Raster. `MODE_CHOICE` ist
   ausgenommen — er *ist* der Rückweg.
 
   **Der Modus bleibt dagegen stehen, solange man in ihm arbeitet**: wer zwanzig
@@ -1715,7 +1715,7 @@ Sechs Regeln, an denen der Reiter hängt:
   Bestand wächst, liegt an `_candidates()`: bei offenem Scan werden nur dessen
   Items geprüft.
 
-  Die **Rechnung gibt es nur einmal** — `_detect_run()` füllt `_treffer`,
+  Die **Rechnung gibt es nur einmal** — `_detect_run()` füllt `_matches`,
   die Meldung baut jeder Anlass selbst (der Knopf sagt das Ergebnis, das Finden
   hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
 - **Die Slot-Zustände liegen auf einem SPIELBILD, nicht auf dem Panel.** Deshalb
@@ -1984,7 +1984,7 @@ Sechs Regeln, an denen der Reiter hängt:
   ist: Default `0` in der Dataclass, `data.get("id", 0)` im Loader, fertig.
 
   **Stabil heisst dabei natürlich sortiert, nicht Zeichen für Zeichen**
-  (`_natuerlich()` in `scan_state.py`). Ein reiner String-Vergleich stellt
+  (`_natural_key()` in `scan_state.py`). Ein reiner String-Vergleich stellt
   „Slot 10" zwischen „Slot 1" und „Slot 2" — bei sechzig durchnummerierten
   Slots bekam „Slot 2" damit die ID 12 und „Slot 3" die 23. Die IDs waren
   stabil und trotzdem unbrauchbar: eine Kennung, die in Sprüngen dasteht,
@@ -2291,7 +2291,7 @@ leeren Slot-Hintergrund, und alle liegen da; ein volles Inventar von Hand wären
 liegt neben dem Inventar ein Menü in genau demselben Grau, wird es mitgefunden,
 und heraus kommen zwanzig Slots, von denen acht keine sind — was erst beim
 Erkennen auffällt, wenn man sie schon alle einzeln wegzuräumen hat. Der
-`_suchbereich` schränkt deshalb die **Suche** ein, nicht das Bild: anders als
+`_search_area` schränkt deshalb die **Suche** ein, nicht das Bild: anders als
 Modus `area` schneidet er nichts zu, gilt nur für diesen einen Durchgang und
 ist danach weg (jeder Moduswechsel, ESC und jede neue Aufnahme räumen ihn ab).
 Er wird gezeichnet, solange er steht — ein zu eng gezogener Bereich sähe sonst
@@ -2410,7 +2410,7 @@ getrennt: angelegt, aufgenommen, war schon dabei.
 **Ein zweiter Suchlauf rät die Grösse nicht neu.** `detect_slots_in_image()`
 normalisiert auf den Median **eines** Durchgangs — ein zweiter Lauf über
 demselben Raster bekommt seinen eigenen und weicht ein paar Pixel ab, obwohl die
-Slots im Spiel gleich gross sind. Ein Fund innerhalb von `_GROESSE_TOLERANZ`
+Slots im Spiel gleich gross sind. Ein Fund innerhalb von `_SIZE_TOLERANCE`
 (6 px) übernimmt deshalb die Grösse, die schon feststeht
 (`_existing_slot_size()`, zentriert über `_to_size()`). Was
 **deutlich** anders gross ist, bleibt, wie es gefunden wurde: das ist dann kein
@@ -2468,7 +2468,7 @@ Acht Regeln, an denen der Teil hängt:
   Die Bühne (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
   dasselbe Bild, nur eine andere Frage daran. Wo ein Befehl trotzdem wissen muss,
   worauf er wirkt, **sagt der Aufruf es** (`{kind: "boss"}`); nur solange ein
-  Werkzeug scharf ist, merkt sich die Brücke das Ziel (`_region_ziel`) — und
+  Werkzeug scharf ist, merkt sich die Brücke das Ziel (`_region_target`) — und
   `_tool_done()` räumt es mit weg.
 - **Die Aufnahme ist EIN Schritt und gehört allen drei Arten.** Die Karte
   existiert genau einmal im Dokument und **wandert** in den Assistenten der
@@ -2480,7 +2480,7 @@ Acht Regeln, an denen der Teil hängt:
   Testleiste dabei. Ein Testknopf, der im Editor eines Autoclickers wirklich
   klickt, ist die schlechteste denkbare Überraschung. Ein Test misst es.
 - **Gerechnet wird mit `_check_profile_match()`** aus `runtime/item_scan.py` —
-  derselben Funktion, die im Lauf entscheidet, mit `_NurConfig` als
+  derselben Funktion, die im Lauf entscheidet, mit `_ConfigOnly` als
   `state`-Stellvertreter. Eine zweite Rechnung „nur für die Vorschau" wäre eine
   Vorschau, die etwas anderes zeigt als das, was passiert.
 - **Der Vorschlag ist der Kern des Fehlerfalls.** Findet ein Icon-Scan zu wenige
@@ -2592,7 +2592,7 @@ Hauptprozess hinterlässt sonst eine Runde, der niemand mehr zusieht.
 
 
 **Ein Griff mit der Maus sagt, dass er wartet** (`WAIT_ACTIONS` in `app.js`,
-`WARTE_TIMEOUT` in `bridge_contract.py`). Acht Aufrufe der Seite warten über
+`WAIT_TIMEOUT` in `bridge_contract.py`). Acht Aufrufe der Seite warten über
 `_await_position()` bzw. `area_capture()` **global auf ENTER** — und der
 Brücken-Aufruf blockiert dabei bis zu einer Minute. Die Seite bekommt in dieser
 Zeit keine Antwort, kann also nichts anzeigen, was von drüben käme; ohne einen
@@ -2664,7 +2664,7 @@ Vier Regeln, an denen der Reiter hängt:
   in Ruhe), standen aber neben ihrem Punkt in der Liste — jede Änderung erschien
   zweimal, und die zweite Zeile versprach eine Umrechnung, die nicht stattfindet.
 - **Geschrieben wird erst beim Anwenden.** Referenzpunkte, Versatz und Vorschau
-  leben in `self._kalib` und sind nach `calib_cancel()` spurlos weg. Davor
+  leben in `self._calib` und sind nach `calib_cancel()` spurlos weg. Davor
   entsteht ein vollständiges Export-ZIP (`backup_before_calibration`), und ein
   laufender Lauf blockiert — er klickt sonst mitten im Umbau auf halb verschobene
   Stellen.
@@ -2687,10 +2687,10 @@ Fünf Regeln, an denen er hängt:
 
 - **Gerechnet wird in `tools/log_report.py`**, mit derselben Funktion, die die
   Kommandozeile benutzt. Dafür ist die Auswertung dort in zwei Hälften zerlegt:
-  `auswerten()` gibt **Daten** zurück und druckt keine Zeile, `bericht()` druckt sie.
+  `evaluate()` gibt **Daten** zurück und druckt keine Zeile, `bericht()` druckt sie.
   Eine zweite Auswertung „fürs Fenster" wäre eine, die andere Zahlen nennt als der
   Weg, den die README beschreibt. Ein Test misst beides — die Zahlen *und* dass
-  `auswerten()` schweigt: eine übrig gebliebene `print`-Zeile landete in der Konsole
+  `evaluate()` schweigt: eine übrig gebliebene `print`-Zeile landete in der Konsole
   des Studios, wo sie niemand sieht.
 - **Die Richtung des Imports ist Absicht.** `tools/log_report.py` importiert nichts
   aus `autoclicker/` — **die Brücke ruft das Werkzeug**, nie umgekehrt. Der Import
@@ -2751,7 +2751,7 @@ hebt ungültige Werte auf den Standard (Konfidenz über 1, max unter min, unbeka
 Aktion) und schreibt dazu eine Konsolenzeile — die sieht im Studio niemand. Deshalb
 vergleicht `config_write()` den geschriebenen Stand mit dem Gesendeten und gibt
 die Abweichungen zurück; sie stehen rechts, bis der nächste Wert angefasst wird. Der
-Vergleich zieht Zahlen normalisiert (`_gleicher_wert`: `600` und `600.0` sind dieselbe
+Vergleich zieht Zahlen normalisiert (`_same_value`: `600` und `600.0` sind dieselbe
 Einstellung), lässt `bool` aber ausgenommen — dieselbe Rechnung wie `_equal()` im
 Start-Durchgang.
 

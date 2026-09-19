@@ -35,18 +35,18 @@ def aufbau():
     return b
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     with Fenster(b) as f:
         f.reiter("scans")
         for kind in ("item", "boss", "icon"):
-            f.klick(f'#scan-art button[data-scan-kind="{kind}"]')
+            f.click_value(f'#scan-art button[data-scan-kind="{kind}"]')
             pruefe(bool(f.text("#view-scans").strip()), f"{kind}: Ansicht leer")
             if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
@@ -55,12 +55,12 @@ def lauf():
                 pruefe(bool(f.status().strip()), f"{kind}: Test meldete nichts")
             f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.
-        f.klick('#scan-art button[data-scan-kind="item"]')
+        f.click_value('#scan-art button[data-scan-kind="item"]')
         pruefe("Aufnahme" in f.text("#view-scans"),
                "die Aufnahme-Karte kam nicht zum Item-Assistenten zurueck")
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Erkennung", lauf)
+    main("Erkennung", run)

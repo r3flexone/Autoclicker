@@ -22,7 +22,7 @@ except ImportError:                                              # pragma: no co
 braucht_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
-from autoclicker.editors.sequence_studio.scans import MODUS_SLOT, MODUS_WAHL
+from autoclicker.editors.sequence_studio.scans import MODE_SLOT, MODE_CHOICE
 from autoclicker.models import (
     AutoClickerState, ItemProfile, ItemScanConfig, ItemSlot, Sequence,
 )
@@ -37,12 +37,12 @@ class ItemscanEditorUxTest(unittest.TestCase):
         Path("sequences").mkdir()
         self.bridge = StudioBridge(
             Sequence(name="Test"), Path("sequences/test/sequence.json"), "sequences")
-        self.bridge._scan_geladen = True
-        self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
+        self.bridge._scan_loaded = True
+        self.bridge._photo = Image.new("RGB", (120, 80), (40, 44, 52))
         for x in range(20, 50):
             for y in range(20, 50):
-                self.bridge._foto.putpixel((x, y), (190, 50, 60))
-        self.bridge._foto_info = {
+                self.bridge._photo.putpixel((x, y), (190, 50, 60))
+        self.bridge._photo_info = {
             "left": 0, "top": 0, "width": 120, "height": 80,
             "scale": 1.0, "stamp": 1.0,
         }
@@ -53,7 +53,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         scan = ItemScanConfig(
             name="Inventar", slots=[slot], owner_sequence="Test")
         self.bridge.scans = {scan.name: scan}
-        self.bridge.scan_offen = scan.name
+        self.bridge.open_scan = scan.name
 
     def tearDown(self):
         os.chdir(self.old_cwd)
@@ -66,26 +66,26 @@ class ItemscanEditorUxTest(unittest.TestCase):
 
     def test_invalid_tolerance_is_reported_without_mutation(self):
         cfg = self.bridge.scans["Inventar"]
-        vorher = cfg.color_tolerance
+        before = cfg.color_tolerance
 
         state = self.bridge.scan_set({
             "name": "Inventar", "field": "tolerance", "value": "keine Zahl",
         })
 
-        self.assertEqual(cfg.color_tolerance, vorher)
+        self.assertEqual(cfg.color_tolerance, before)
         self.assertEqual(state["status"]["kind"], "err")
         self.assertIn("ganze Zahl", state["status"]["text"])
 
     def test_one_shot_tool_and_pin(self):
-        self.bridge.scan_mode_set({"mode": MODUS_SLOT})
+        self.bridge.scan_mode_set({"mode": MODE_SLOT})
         self.bridge.scan_click({"x": 65, "y": 10})
         state = self.bridge.scan_click({"x": 115, "y": 60})
-        self.assertEqual(state["mode"], MODUS_WAHL)
+        self.assertEqual(state["mode"], MODE_CHOICE)
 
-        self.bridge.scan_mode_set({"mode": MODUS_SLOT, "pinned": True})
+        self.bridge.scan_mode_set({"mode": MODE_SLOT, "pinned": True})
         self.bridge.scan_click({"x": 65, "y": 15})
         state = self.bridge.scan_click({"x": 115, "y": 65})
-        self.assertEqual(state["mode"], MODUS_SLOT)
+        self.assertEqual(state["mode"], MODE_SLOT)
         self.assertTrue(state["tool_pinned"])
 
     def test_learning_review_does_not_mutate_until_confirmed(self):
@@ -153,7 +153,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
 
             state = self.bridge.scan_learn_preview_apply({"rows": [{
                 "slot": row["slot"], "ticked": False,
-                "existing": "Bogen", "als_anders": False,
+                "existing": "Bogen", "as_other": False,
                 "name": "Bogen", "category": "Fernkampf", "priority": 2,
             }]})
 
@@ -169,7 +169,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("bereits in diesem Scan eingerichtet", js)
         self.assertIn("wird nicht gelernt oder geändert", js)
         self.assertNotIn("wird aus diesem Scan entfernt", js)
-        self.assertIn("als_anders: n.dataset.alsAnderes", js)
+        self.assertIn("as_other: n.dataset.alsAnderes", js)
         self.assertIn("cat.lock(existingOne && !normalMatch)", js)
         self.assertIn('name.value = z.new_name || "Item"', js)
 
@@ -182,7 +182,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         cfg.slots.append(slot)
         for x in range(70, 100):
             for y in range(20, 50):
-                self.bridge._foto.putpixel((x, y), (50, 120, 210))
+                self.bridge._photo.putpixel((x, y), (50, 120, 210))
         self.bridge.items["Bogen"] = ItemProfile(
             name="Bogen", category="Waffen", priority=1)
         cfg.items.append(self.bridge.items["Bogen"])
@@ -219,7 +219,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def test_result_summary_has_no_foreign_membership(self):
         self.bridge.items["Bekannt"] = ItemProfile(name="Bekannt")
         self.bridge._sync_objects()
-        self.bridge._treffer = {
+        self.bridge._matches = {
             "Slot 1": {"name": "Bekannt", "foreign": False},
         }
         result = self.bridge.scan_data()["result"]
@@ -332,7 +332,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.bridge.scans["Inventar"].slots.append(slot)
         for x in range(70, 100):
             for y in range(20, 50):
-                self.bridge._foto.putpixel((x, y), (50, 120, 210))
+                self.bridge._photo.putpixel((x, y), (50, 120, 210))
 
         state = self.bridge.scan_learn_preview({"scope": "all"})
 
@@ -341,7 +341,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             [row["priority"] for row in state["review"]["rows"]], [1, 1])
 
     def test_completely_empty_slot_is_not_offered_or_learned(self):
-        self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
+        self.bridge._photo = Image.new("RGB", (120, 80), (40, 44, 52))
 
         state = self.bridge.scan_learn_preview({"scope": "all"})
 

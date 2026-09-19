@@ -46,13 +46,13 @@ class Catalog:
     """
 
     def __init__(self, items: Optional[dict] = None,
-                 gegner: Optional[list] = None) -> None:
+                 enemy: Optional[list] = None) -> None:
         self.items: dict = items or {}
-        self.gegner: list = list(gegner or [])
+        self.enemy: list = list(enemy or [])
         self._index = {name.casefold(): name for name in self.items}
 
     def __bool__(self) -> bool:
-        return bool(self.items or self.gegner)
+        return bool(self.items or self.enemy)
 
     def __len__(self) -> int:
         return len(self.items)
@@ -124,9 +124,9 @@ def load_catalog(path: str) -> Catalog:
             value = 0.0
         items[str(name)] = {"kategorie": str(category) if category else None,
                             "wert": value}
-    gegner = [str(g) for g in (raw.get("gegner") or []) if g]
+    enemy = [str(g) for g in (raw.get("gegner") or []) if g]
 
-    katalog = Catalog(items, gegner)
+    katalog = Catalog(items, enemy)
     _cache[path] = {"stand": stand, "katalog": katalog}
     return katalog
 
@@ -152,9 +152,9 @@ def ranks(namen_und_werte: list) -> dict:
 
     result: dict = {}
     for entries in je_kategorie.values():
-        vergeben: dict = {}
-        for name, _wert in sorted(entries, key=lambda nw: (-(nw[1] or 0), nw[0])):
-            if name not in vergeben:
-                vergeben[name] = len(vergeben) + 1
-            result[name] = vergeben[name]
+        assigned: dict = {}
+        for name, _value in sorted(entries, key=lambda nw: (-(nw[1] or 0), nw[0])):
+            if name not in assigned:
+                assigned[name] = len(assigned) + 1
+            result[name] = assigned[name]
     return result

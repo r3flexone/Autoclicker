@@ -173,11 +173,11 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
     if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
         _legacy_reported(f"Item '{name}'", "confirm_point",
                       "Bestätigungs-Punkt im Item-Editor neu setzen")
-    varianten = data.get("template_variants", [])
-    if not isinstance(varianten, list):
-        varianten = []
+    variants = data.get("template_variants", [])
+    if not isinstance(variants, list):
+        variants = []
     primaer = data.get("template")
-    varianten = [v for v in varianten
+    variants = [v for v in variants
                  if isinstance(v, str) and v and v != primaer]
     return ItemProfile(
         name=name,
@@ -188,7 +188,7 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
         confirm_delay=data.get("confirm_delay", 0.5),
         template=data.get("template"),
         min_confidence=data.get("min_confidence", DEFAULT_MIN_CONFIDENCE),
-        template_variants=list(dict.fromkeys(varianten)),
+        template_variants=list(dict.fromkeys(variants)),
         enabled=data.get("enabled", True),
     )
 

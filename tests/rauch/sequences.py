@@ -8,13 +8,13 @@ an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 from ._bruecke import Fenster, main, sandkasten
 
 
-def _sequenz(name: str, notiz: str, phases: int, schritte: int):
+def _sequenz(name: str, notiz: str, phases: int, steps_list: int):
     from autoclicker.models import LoopPhase, Sequence, SequenceStep
 
     s = Sequence(name=name, description=notiz, total_cycles=1)
     s.loop_phases = [
         LoopPhase(name=f"P{i}", steps=[SequenceStep(name="x", x=1, y=1, point_id=1)
-                                       for _ in range(schritte)])
+                                       for _ in range(steps_list)])
         for i in range(phases)
     ]
     return s
@@ -26,30 +26,30 @@ def aufbau():
     from autoclicker.persistence.sequences import save_data
 
     sandkasten("rauch_sequenzen_")
-    zustand = AutoClickerState()
+    state_value = AutoClickerState()
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
-    for name, notiz, phases, schritte in (("Alpha", "Mit einer Notiz", 1, 50),
+    for name, notiz, phases, steps_list in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        zustand.sequences[name] = _sequenz(name, notiz, phases, schritte)
+        state_value.sequences[name] = _sequenz(name, notiz, phases, steps_list)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
-    zustand.sequences["Alpha"].points = [
+    state_value.sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
     ]
-    save_data(zustand)
+    save_data(state_value)
     from autoclicker.persistence import list_available_sequences
-    return StudioBridge(zustand.sequences["Alpha"],
+    return StudioBridge(state_value.sequences["Alpha"],
                         dict(list_available_sequences())["Alpha"], "sequences")
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     with Fenster(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
@@ -85,9 +85,9 @@ def lauf():
         f.reiter("editor")
         pruefe(f.count("#btn-recording") == 1,
                "Verweis auf das Aufnahme-Werkzeug fehlt")
-        kopf = ".page.left .section.sticky"
-        pruefe(f.count(kopf) == 1, "kein klebender Abschnitt in der linken Spalte")
-        pruefe(f.count(kopf + " #btn-recording") == 1,
+        head = ".page.left .section.sticky"
+        pruefe(f.count(head) == 1, "kein klebender Abschnitt in der linken Spalte")
+        pruefe(f.count(head + " #btn-recording") == 1,
                "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
         pruefe(f.count("#aufnahme-info, .recording-row .info") == 0,
                "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
@@ -99,20 +99,20 @@ def lauf():
         pruefe(f.seite.eval_on_selector(
             "#seq-blocks", "e => getComputedStyle(e).borderTopStyle") == "solid",
             "der berechneten Blockanzahl fehlt die sichtbare Kachel")
-        klebt = f.seite.eval_on_selector(kopf, "e => getComputedStyle(e).position")
+        klebt = f.seite.eval_on_selector(head, "e => getComputedStyle(e).position")
         pruefe(klebt == "sticky", f"der oberste Block klebt nicht: {klebt}")
         # Und er klebt an der SPALTE: hinge er an einem nicht scrollenden
         # Vorfahren, wäre `position:sticky` gesetzt und trotzdem wirkungslos.
-        vorher = f.seite.eval_on_selector(
-            kopf, "e => Math.round(e.getBoundingClientRect().top)")
+        before = f.seite.eval_on_selector(
+            head, "e => Math.round(e.getBoundingClientRect().top)")
         f.seite.eval_on_selector(".page.left", "e => { e.scrollTop = 400; }")
         f.ruhe()
-        nachher = f.seite.eval_on_selector(
-            kopf, "e => Math.round(e.getBoundingClientRect().top)")
+        after = f.seite.eval_on_selector(
+            head, "e => Math.round(e.getBoundingClientRect().top)")
         gescrollt = f.seite.eval_on_selector(".page.left", "e => e.scrollTop")
         pruefe(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
-        pruefe(vorher == nachher,
-               f"der Block scrollt mit: {vorher} -> {nachher}")
+        pruefe(before == after,
+               f"der Block scrollt mit: {before} -> {after}")
         f.image("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
@@ -168,8 +168,8 @@ def lauf():
         # Und die Felder sagen selbst, was sie sind — vorher stand das nur im
         # Tooltip, und ein Tooltip ist keine Beschriftung.
         kopftext = f.text(".phase-header.loop")
-        for wort in ("Läufe je Zyklus", "Start ab Uhrzeit"):
-            pruefe(wort in kopftext, f"'{wort}' fehlt im Phasenkopf: {kopftext!r}")
+        for word in ("Läufe je Zyklus", "Start ab Uhrzeit"):
+            pruefe(word in kopftext, f"'{word}' fehlt im Phasenkopf: {kopftext!r}")
         f.image("sequenzen_phasenkopf")
 
         # ------------------------------------------- Die Auswahl gilt ueberall
@@ -202,16 +202,16 @@ def lauf():
         pruefe("Alpha" in f.text("#wz-middle"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
         f.seite.select_option("#seq-select", "Beta")
-        f.klick("#btn-load")
+        f.click_value("#btn-load")
         pruefe(f.seite.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
         pruefe("Beta" in f.text("#wz-middle"),
                f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
                f"{f.text('#wz-middle')[:120]!r}")
 
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Sequenzen", lauf)
+    main("Sequenzen", run)

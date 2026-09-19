@@ -308,7 +308,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
             attempt_info = f"Versuch {attempt}/{max_attempts}, " if max_attempts > 1 else ""
             print(dbg(f"  → LLM-Erkennung ({attempt_info}{state.config.llm_provider}, {state.config.llm_model or 'Standard'})..."))
 
-        def _ask(grenze):
+        def _ask(limit):
             return analyze_image(
                 img=current_img,
                 provider=state.config.llm_provider,
@@ -316,7 +316,7 @@ def _execute_llm_boss_detection(state: AutoClickerState, config: BossScanConfig,
                 model=state.config.llm_model,
                 prompt=state.config.llm_boss_prompt,
                 boss_names=boss_names,
-                timeout=grenze,
+                timeout=limit,
                 reasoning=state.config.llm_reasoning,
                 max_tokens=state.config.llm_max_tokens,
             )

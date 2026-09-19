@@ -155,15 +155,15 @@ def show_point(state: AutoClickerState, x: int, y: int, label: str = "",
     """Springt mit der Maus auf eine Position OHNE zu klicken. `restore=True` setzt den
     Cursor danach zurück - beim Beobachten sinnvoll, im manuellen Modus soll der Zeiger
     stehen bleiben."""
-    vorher = get_cursor_pos() if restore else None
+    before = get_cursor_pos() if restore else None
     set_cursor_pos(x, y)
     if label:
         print(dbg(f"Zeiger auf {label} ({x}, {y})"))
     delay = state.config.pixel_show_delay
     if delay > 0:
         time.sleep(delay)
-    if vorher is not None:
-        set_cursor_pos(vorher[0], vorher[1])
+    if before is not None:
+        set_cursor_pos(before[0], before[1])
 
 
 def print_step_detail(state: AutoClickerState, step: SequenceStep, phase: str,

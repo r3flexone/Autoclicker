@@ -122,9 +122,9 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
         seq = sequence or state.active_sequence
         points = {p.id: p for p in (seq.points if seq else [])}
         items = [item for cfg in state.item_scans.values() for item in cfg.items]
-        bosse = list(state.global_bosses)
+        bosses = list(state.global_bosses)
         for cfg in state.boss_scans.values():
-            bosse += list(cfg.bosses)
+            bosses += list(cfg.bosses)
         icons = list(state.icon_scans.values())
 
     def hol(pid, wo):
@@ -143,7 +143,7 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             item.confirm_point = ClickPoint(point.x, point.y, point.name,
                                             point.id) if point else None
 
-        for traeger, wo in ([(b, f"Boss '{b.name}'") for b in bosse]
+        for traeger, wo in ([(b, f"Boss '{b.name}'") for b in bosses]
                             + [(i, f"Icon-Scan '{i.name}'") for i in icons]):
             if traeger.action_point_id is None:
                 continue

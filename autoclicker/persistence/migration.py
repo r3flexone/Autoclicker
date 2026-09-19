@@ -106,13 +106,13 @@ def _norm_points(data, context: dict) -> list[str]:
     messages = []
     ohne_id = [p for p in data if isinstance(p, dict) and p.get("id") is None]
     if ohne_id:
-        vergeben = {p["id"] for p in data if isinstance(p, dict) and p.get("id") is not None}
-        naechste = 1
+        assigned = {p["id"] for p in data if isinstance(p, dict) and p.get("id") is not None}
+        next_one = 1
         for p in ohne_id:
-            while naechste in vergeben:
-                naechste += 1
-            p["id"] = naechste
-            vergeben.add(naechste)
+            while next_one in assigned:
+                next_one += 1
+            p["id"] = next_one
+            assigned.add(next_one)
         messages.append(f"{len(ohne_id)} Punkt(e) ohne ID nachtraeglich nummeriert")
 
     entfernt = set()

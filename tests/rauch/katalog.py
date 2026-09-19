@@ -80,13 +80,13 @@ def aufbau():
     return b
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     def knoepfe(f):
         """Wie oft der Katalog-Knopf gerade gezeichnet ist."""
@@ -107,7 +107,7 @@ def lauf():
         # ueber die Bruecke: dass ein Klick dort ankommt, ist genau das, was ein
         # Logik-Test nicht sehen kann.
         f.klick_text("#scan-insp .tabs button", "Scans")
-        f.klick("#scan-insp .scan-card")
+        f.click_value("#scan-insp .scan-card")
         toggle = f.seite.locator("#scan-insp label", has_text="Item-Katalog benutzen")
         pruefe(toggle.count() == 1,
                "der Katalog-Schalter fehlt in den Scan-Einstellungen")
@@ -215,7 +215,7 @@ def lauf():
         f.seite.set_viewport_size({"width": 950, "height": 700})
         f.seite.fill("#cfg-search", "scan_")
         f.ruhe()
-        raus = f.seite.evaluate("""() => {
+        out = f.seite.evaluate("""() => {
             const mitte = document.getElementById('cfg-fields');
             const limit = mitte.getBoundingClientRect().right;
             const out = [];
@@ -226,7 +226,7 @@ def lauf():
             });
             return out;
         }""")
-        pruefe(not raus, f"ragt aus der Spalte: {raus}")
+        pruefe(not out, f"ragt aus der Spalte: {out}")
 
         # **Ein Knopf sagt, was er TUT.** Der Standard-Knopf trug den
         # Standard-WERT im Namen, und bei diesem Feld ist das ein ganzer Satz
@@ -323,8 +323,8 @@ def lauf():
                "der Abbruch hat das schon Benannte weggeworfen")
         f.image("autoname_abgebrochen")
 
-    return fehler
+    return error
 
 
 if __name__ == "__main__":
-    main("Katalog", lauf)
+    main("Katalog", run)

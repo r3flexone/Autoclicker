@@ -120,7 +120,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     schedule_shutdown = threading.Event()
     sequence = None
     cycle_count = 0
-    fehler = ""
+    error = ""
     try:
         print(col("\n[START] Sequenz gestartet.", "green"))
         sequence = _prepare_worker_state(state, state.config.debug_detail)
@@ -143,13 +143,13 @@ def sequence_worker(state: AutoClickerState) -> None:
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug)
         _run_end_phase(state, sequence)
     except Exception as exc:
-        fehler = f"Fehler: {type(exc).__name__}: {exc}"
+        error = f"Fehler: {type(exc).__name__}: {exc}"
         logging.getLogger("autoclicker").exception("Sequenzlauf fehlgeschlagen")
-        print(err(fehler))
+        print(err(error))
     finally:
         # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
         # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
-        reason = fehler or _end_reason(state)
+        reason = error or _end_reason(state)
         schedule_shutdown.set()
         state.stop_event.set()
         try:
@@ -165,8 +165,8 @@ def sequence_worker(state: AutoClickerState) -> None:
             try:
                 if state.session_log is not None:
                     try:
-                        log_event(state, "session_error" if fehler else "session_end",
-                                  detail=fehler,
+                        log_event(state, "session_error" if error else "session_end",
+                                  detail=error,
                                   extra=f"clicks={state.total_clicks},items={state.items_found},keys={state.key_presses}")
                     finally:
                         state.session_log.close()
@@ -189,8 +189,8 @@ def _end_reason(state: AutoClickerState) -> str:
     oder hat ihn etwas abgebrochen? Die Reihenfolge ist die der Dringlichkeit —
     Notbremse, dann was der Nutzer ausgeloest hat, dann der Normalfall.
     """
-    grenze = state.config.pixel_max_consecutive_timeouts
-    if grenze > 0 and state.consecutive_timeouts >= grenze:
+    limit = state.config.pixel_max_consecutive_timeouts
+    if limit > 0 and state.consecutive_timeouts >= limit:
         return f"Notbremse nach {state.consecutive_timeouts} Timeouts in Folge"
     if state.quit_event.is_set():
         return "Programm wird beendet"
@@ -430,19 +430,19 @@ def _phase_overview(sequence) -> list[dict]:
     das nicht holen, denn laufen kann eine ganz andere. Leere Loop-Phasen bleiben
     drin, damit die Positionen zu `_phase_pos()` passen.
     """
-    raus = []
+    out = []
     if sequence.init_steps:
-        raus.append({"name": "INIT", "kind": "init",
+        out.append({"name": "INIT", "kind": "init",
                      "steps": len(sequence.init_steps)})
     for phase in sequence.loop_phases:
-        raus.append({"name": phase.name, "kind": "loop",
+        out.append({"name": phase.name, "kind": "loop",
                      "steps": len(phase.steps),
                      "repeat": phase.repeat,
                      "start": phase.scheduled_start or ""})
     if sequence.end_steps:
-        raus.append({"name": "END", "kind": "end",
+        out.append({"name": "END", "kind": "end",
                      "steps": len(sequence.end_steps)})
-    return raus
+    return out
 
 
 def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
@@ -453,12 +453,12 @@ def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
     Schreibstellen — ein Versatz, der an einer davon fehlt, markierte die
     falsche Kachel als laufend.
     """
-    versatz = 1 if sequence.init_steps else 0
+    offset = 1 if sequence.init_steps else 0
     if kind == "init":
         return 0
     if kind == "end":
-        return versatz + len(sequence.loop_phases)
-    return versatz + idx
+        return offset + len(sequence.loop_phases)
+    return offset + idx
 
 
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,

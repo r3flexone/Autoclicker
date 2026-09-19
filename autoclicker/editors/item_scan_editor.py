@@ -45,12 +45,12 @@ def parse_range(user_input: str, count: int) -> Optional[tuple[int, int]]:
     if len(parts) != 2:
         return None
     try:
-        von, until = int(parts[0]), int(parts[1])
+        from_index, until = int(parts[0]), int(parts[1])
     except ValueError:
         return None
-    if not (1 <= von <= count and 1 <= until <= count):
+    if not (1 <= from_index <= count and 1 <= until <= count):
         return None
-    return (min(von, until), max(von, until))
+    return (min(from_index, until), max(from_index, until))
 
 
 def multi_select(prompt: str, entries: list, selected: list,
@@ -115,12 +115,12 @@ def multi_select(prompt: str, entries: list, selected: list,
             # Bereich vor Einzelzahl: '1-5' wuerde sonst als Zahl scheitern
             area = parse_range(inp, len(entries))
             if area:
-                von, until = area
-                for nr in range(von, until + 1):
+                from_index, until = area
+                for nr in range(from_index, until + 1):
                     name = entries[nr - 1]
                     if name not in selected:
                         selected.append(name)
-                print(f"  + {von}-{until} hinzugefügt")
+                print(f"  + {from_index}-{until} hinzugefügt")
                 continue
             if "-" in inp and not (extra_praefix and inp.startswith(extra_praefix)):
                 print(f"  -> Format: <Von>-<Bis> (z.B. 1-5), gültig 1-{len(entries)}")
@@ -280,13 +280,13 @@ def _step_presets(state: AutoClickerState) -> bool:
 
         while True:
             try:
-                wahl = safe_input(f"\n{kind}-Preset wählen (Enter=0, 'cancel'): ").strip()
-                if is_cancel(wahl):
+                choice = safe_input(f"\n{kind}-Preset wählen (Enter=0, 'cancel'): ").strip()
+                if is_cancel(choice):
                     print("  -> Abgebrochen")
                     return False
-                if not wahl or wahl == "0":
+                if not choice or choice == "0":
                     break
-                nr = int(wahl)
+                nr = int(choice)
                 if 1 <= nr <= len(presets):
                     load(state, presets[nr - 1][0])
                     break

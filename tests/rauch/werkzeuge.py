@@ -53,13 +53,13 @@ def aufbau():
     return b
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     with Fenster(b) as f:
         f.reiter("werkzeuge")
@@ -84,7 +84,7 @@ def lauf():
         # das nur misst, schlicht falsch gewesen waere; gezeichnet wurde die
         # Zeile gar nicht, also fiel die Unwahrheit nicht auf.
         for w in re.findall(r'\{key: "([a-z]+)"', quelle_wz()):
-            f.klick(f".wz-nav.{w}")
+            f.click_value(f".wz-nav.{w}")
             pruefe(f.count("#wz-middle .wz-scope") == 1,
                    f"Werkzeug '{w}' hat keine Bezugszeile")
             pruefe(f.count("#wz-right .heading") >= 1,
@@ -96,7 +96,7 @@ def lauf():
         # `flex:none`, zentriert): er erbte dessen Gestalt und sein Inhalt stand
         # mittig darueber hinaus, nach links aus dem Fenster heraus. Dieselbe
         # Falle wie einmal beim Status („Zustandsklassen bekommen ein Praefix").
-        f.klick(".wz-nav.check")
+        f.click_value(".wz-nav.check")
         kompakt = f.seite.eval_on_selector_all(".wz-info-compact", """ns => ns.map(n => ({
           cls: n.className,
           text: (n.textContent || "").trim(),
@@ -149,15 +149,15 @@ def lauf():
         # Werkzeug, das „Aufnehmen, nachmessen, umbenennen und sicher loeschen"
         # verspricht.
         f.klick_text("#wz-left button", "Punkte verwalten")
-        gesperrt = f.seite.eval_on_selector(
+        locked = f.seite.eval_on_selector(
             "#wz-middle button.danger", "e => e.disabled")
-        pruefe(gesperrt is True,
+        pruefe(locked is True,
                "Punkt #1 wird verwendet — der Loeschen-Knopf muesste gesperrt sein")
         # #3 „Menue" haengt an keinem Block.
         f.seite.select_option("#wz-middle select", index=2)
         f.ruhe()
-        frei = f.seite.eval_on_selector("#wz-middle button.danger", "e => e.disabled")
-        pruefe(frei is False,
+        free = f.seite.eval_on_selector("#wz-middle button.danger", "e => e.disabled")
+        pruefe(free is False,
                "Punkt #3 wird nirgends verwendet — der Loeschen-Knopf ist trotzdem gesperrt")
         pruefe("nirgends verwendet" in f.text("#wz-right"),
                f"rechts fehlt die Freigabe: {f.text('#wz-right')[:80]!r}")
@@ -166,7 +166,7 @@ def lauf():
         f.klick_text("#wz-left button", "Kalibrieren")
         pruefe("gesamte gespeicherte Bestand" in f.text("#wz-middle"),
                "der Bezug fehlt beim Kalibrieren")
-        f.klick("#wz-middle .wz-ref button")
+        f.click_value("#wz-middle .wz-ref button")
         pruefe(f.count(".wz-color-question") == 1, "keine Farb-Rueckfrage")
         pruefe(f.count(".wz-color") == 2, "beide Farben sollten dastehen")
         pruefe("Verschiebung" not in f.text("#wz-middle"),
@@ -250,9 +250,9 @@ def lauf():
         f.seite.evaluate("wzRecordingStarted = false; ++wzRecordingPoll; "
                          "++wzRecordingLivePoll;")
 
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Werkzeuge", lauf)
+    main("Werkzeuge", run)

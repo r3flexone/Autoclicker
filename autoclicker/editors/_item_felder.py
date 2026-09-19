@@ -33,7 +33,7 @@ CANCELLED = object()
 
 
 def ask_priority(state: AutoClickerState, category: Optional[str],
-                     vorgabe: int = 1, *, abbrechbar: bool = False):
+                     default_value: int = 1, *, abbrechbar: bool = False):
     """Fragt die Priorität ab. Gibt die Zahl zurück — oder `CANCELLED`.
 
     `0` heisst „beste": das Item bekommt Priorität 1 und alle anderen derselben
@@ -43,7 +43,7 @@ def ask_priority(state: AutoClickerState, category: Optional[str],
     Eine Fehleingabe behält die Vorgabe — dieselbe Haltung wie überall in den
     Editoren: wiederholen statt abbrechen.
     """
-    priority = max(1, int(vorgabe or 1))
+    priority = max(1, int(default_value or 1))
     user_input = safe_input(
         f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
     if abbrechbar and is_cancel(user_input):
@@ -78,27 +78,27 @@ def ask_confirm_click(state: AutoClickerState, default_delay: float, *,
     **Der Punkt wird unter `state.lock` gesucht.** `get_point_by_id()` läuft über
     `state.points`, und die Liste kann sich unter einem laufenden Worker ändern.
     """
-    wartezeit = default_delay
+    wait_time = default_delay
     user_input = safe_input(prompt).strip()
     if abbrechbar and is_cancel(user_input):
         return CANCELLED
     if not user_input:
-        return None, wartezeit
+        return None, wait_time
     try:
         point_id = int(user_input)
     except ValueError:
         print("  -> Keine Zahl — kein Bestätigungs-Klick gesetzt")
-        return None, wartezeit
+        return None, wait_time
     with state.lock:
         found = get_point_by_id(state, point_id) is not None
     if not found:
         print(f"  -> Punkt #{point_id} existiert nicht")
-        return None, wartezeit
-    duration = safe_input(f"  Wartezeit vor Bestätigung (Enter = {wartezeit}s): ").strip()
+        return None, wait_time
+    duration = safe_input(f"  Wartezeit vor Bestätigung (Enter = {wait_time}s): ").strip()
     if duration:
-        value, fehler = parse_non_negative_float(duration, "Wartezeit")
-        if fehler:
-            print(f"  -> {fehler}, behalte {wartezeit}s")
+        value, error = parse_non_negative_float(duration, "Wartezeit")
+        if error:
+            print(f"  -> {error}, behalte {wait_time}s")
         else:
-            wartezeit = value
-    return point_id, wartezeit
+            wait_time = value
+    return point_id, wait_time

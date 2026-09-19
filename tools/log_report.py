@@ -39,7 +39,7 @@ AUSGEWERTET = {
 def _lies(path: Path) -> tuple[list[dict], str]:
     """Zeilen der Datei und, falls sie nicht lesbar war, der Grund.
 
-    Der Grund wird zurueckgegeben statt gedruckt: `auswerten()` darf nichts
+    Der Grund wird zurueckgegeben statt gedruckt: `evaluate()` darf nichts
     ausgeben, sonst landet er in der Konsole des Studios statt in seinem
     Bericht-Reiter.
     """
@@ -71,7 +71,7 @@ def _rang(counters: Counter) -> list[list]:
     return [[name, n] for name, n in counters.most_common()]
 
 
-def auswerten(pfade: list[Path]) -> dict:
+def evaluate(paths: list[Path]) -> dict:
     """Wertet Session-Logs aus und gibt reine Daten zurueck — ohne eine Zeile Ausgabe.
 
     Getrennt von `report()`, weil der Bericht-Reiter des Studios dieselbe
@@ -94,10 +94,10 @@ def auswerten(pfade: list[Path]) -> dict:
     nicht_lesbar = []
     gesamt_dauer = 0.0
 
-    for path in pfade:
-        lines, fehler = _lies(path)
-        if fehler:
-            nicht_lesbar.append([path.name, fehler])
+    for path in paths:
+        lines, error = _lies(path)
+        if error:
+            nicht_lesbar.append([path.name, error])
             continue
         if not lines:
             continue
@@ -147,10 +147,10 @@ def auswerten(pfade: list[Path]) -> dict:
     }
 
 
-def report(pfade: list[Path]) -> None:
-    data = auswerten(pfade)
-    for file, fehler in data["unreadable"]:
-        print(f"  ! {file}: nicht lesbar ({fehler})")
+def report(paths: list[Path]) -> None:
+    data = evaluate(paths)
+    for file, error in data["unreadable"]:
+        print(f"  ! {file}: nicht lesbar ({error})")
 
     sessions = len(data["sessions"])
     if not sessions:
@@ -220,8 +220,8 @@ def report(pfade: list[Path]) -> None:
 def main() -> int:
     args = [a for a in sys.argv[1:] if a]
     if args and args[0] not in ("--letzte", "--last"):
-        pfade = [Path(a) for a in args]
-        missing = [p for p in pfade if not p.exists()]
+        paths = [Path(a) for a in args]
+        missing = [p for p in paths if not p.exists()]
         if missing:
             print(f"Nicht gefunden: {', '.join(str(p) for p in missing)}")
             return 1
@@ -229,15 +229,15 @@ def main() -> int:
         if not LOGS_DIR.is_dir():
             print(f"Kein Ordner '{LOGS_DIR}' — ist session_log_enabled in der config.json an?")
             return 1
-        pfade = sorted(LOGS_DIR.glob("*.csv"))
-        if not pfade:
+        paths = sorted(LOGS_DIR.glob("*.csv"))
+        if not paths:
             print(f"Keine CSV-Dateien in '{LOGS_DIR}'.")
             return 1
         if args:                       # --letzte
-            pfade = pfade[-1:]
-            print(f"Neueste Session: {pfade[0].name}\n")
+            paths = paths[-1:]
+            print(f"Neueste Session: {paths[0].name}\n")
 
-    report(pfade)
+    report(paths)
     return 0
 
 

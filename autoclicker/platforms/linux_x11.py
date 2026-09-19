@@ -75,8 +75,8 @@ def _mss_desktop():
     from mss.exception import ScreenShotError
     try:
         return mss()
-    except ScreenShotError as fehler:
-        raise RuntimeError(f"X11-Bildschirmaufnahme nicht verfügbar: {fehler}") from fehler
+    except ScreenShotError as error:
+        raise RuntimeError(f"X11-Bildschirmaufnahme nicht verfügbar: {error}") from error
 
 
 def get_virtual_desktop() -> tuple[int, int, int, int] | None:
@@ -102,15 +102,15 @@ def get_screen_size() -> tuple[int, int] | None:
 
 
 def get_virtual_origin() -> tuple[int, int]:
-    rechteck = get_virtual_desktop()
-    return (rechteck[0], rechteck[1]) if rechteck else (0, 0)
+    rect_value = get_virtual_desktop()
+    return (rect_value[0], rect_value[1]) if rect_value else (0, 0)
 
 
 def get_screen_center() -> tuple[int, int]:
-    rechteck = get_virtual_desktop()
-    if rechteck:
-        return ((rechteck[0] + rechteck[2]) // 2,
-                (rechteck[1] + rechteck[3]) // 2)
+    rect_value = get_virtual_desktop()
+    if rect_value:
+        return ((rect_value[0] + rect_value[2]) // 2,
+                (rect_value[1] + rect_value[3]) // 2)
     size = get_screen_size()
     return (size[0] // 2, size[1] // 2) if size else (960, 540)
 
@@ -132,8 +132,8 @@ def capture_screen(region=None):
                 monitor = bildschirm.monitors[0]
             raw = bildschirm.grab(monitor)
             return Image.frombytes("RGB", raw.size, raw.rgb)
-    except (ImportError, OSError, RuntimeError, ValueError) as fehler:
-        logger.error("Linux-Screenshot fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        logger.error("Linux-Screenshot fehlgeschlagen: %s", error)
         return None
 
 
@@ -152,8 +152,8 @@ def get_cursor_pos() -> tuple[int, int]:
         _, mouse = _pynput()
         x, y = mouse.Controller().position
         return int(x), int(y)
-    except (ImportError, OSError, RuntimeError) as fehler:
-        raise PlatformError(f"Linux konnte die Mausposition nicht lesen: {fehler}") from fehler
+    except (ImportError, OSError, RuntimeError) as error:
+        raise PlatformError(f"Linux konnte die Mausposition nicht lesen: {error}") from error
 
 
 def set_cursor_pos(x: int, y: int) -> bool:
@@ -175,8 +175,8 @@ def send_click(x: int, y: int, move_delay: float = 0.01,
         controller.click(mouse.Button.left)
         time.sleep(max(0.0, post_delay))
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Klick fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Klick fehlgeschlagen: %s", error)
         return False
 
 
@@ -193,8 +193,8 @@ def send_scroll(clicks: int, x: int = None, y: int = None,
         controller.scroll(0, int(clicks))
         time.sleep(max(0.0, post_delay))
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Scrollen fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Scrollen fehlgeschlagen: %s", error)
         return False
 
 
@@ -225,8 +225,8 @@ def send_key(key_name: str) -> bool:
         controller.press(key)
         controller.release(key)
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Tastendruck fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Tastendruck fehlgeschlagen: %s", error)
         return False
 
 
@@ -248,8 +248,8 @@ def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
         _mouse_listener = mouse.Listener(on_click=on_click, on_scroll=on_scroll)
         _mouse_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Maushook fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Maushook fehlgeschlagen: %s", error)
         _mouse_listener = None
         return False
 
@@ -303,8 +303,8 @@ def install_keyboard_hook(on_key_down) -> bool:
             on_press=on_press, on_release=on_release)
         _keyboard_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        logger.error("Linux-Tastaturhook fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, RuntimeError) as error:
+        logger.error("Linux-Tastaturhook fehlgeschlagen: %s", error)
         _keyboard_listener = None
         return False
 
@@ -527,8 +527,8 @@ def register_hotkeys() -> bool:
         _hotkey_listener = keyboard.GlobalHotKeys(callbacks)
         _hotkey_listener.start()
         return True
-    except (ImportError, OSError, RuntimeError) as fehler:
-        print(warn(f"Linux-Hotkeys konnten nicht registriert werden: {fehler}"))
+    except (ImportError, OSError, RuntimeError) as error:
+        print(warn(f"Linux-Hotkeys konnten nicht registriert werden: {error}"))
         _hotkey_listener = None
         return False
 

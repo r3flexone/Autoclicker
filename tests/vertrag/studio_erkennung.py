@@ -19,9 +19,9 @@ from pathlib import Path
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 from autoclicker.editors.sequence_studio.scans import (
-    SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODI as _MODI,
-    MODI_ALLE as _MODI_ALLE, MODUS_AKTION as _M_AKTION,
-    MODUS_REGION as _M_REGION, MODUS_WAHL as _M_WAHL,
+    SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODES as _MODI,
+    MODES_ALL as _MODI_ALLE, MODE_ACTION as _M_AKTION,
+    MODE_REGION as _M_REGION, MODE_CHOICE as _M_WAHL,
 )
 from autoclicker.models import (
     Sequence as _SEQ, VALID_BOSS_ACTIONS as _V_BOSS,
@@ -119,7 +119,7 @@ try:
     _b.boss_new({"name": "Ancient Dragon"})
     _boss = _b.boss_scans["Bossfarm"].bosses[0]
     check("ein neuer Boss haengt im offenen Scan", _boss.name == "Ancient Dragon")
-    check("er ist gleich gewaehlt", _b.boss_wahl == "Ancient Dragon")
+    check("er ist gleich gewaehlt", _b.boss_choice == "Ancient Dragon")
     check("und faengt mit 'ueberspringen' an — erkannt, aber noch nichts entschieden",
           _boss.action == "skip")
 
@@ -157,7 +157,7 @@ try:
           [x.name for x in _b.global_bosses] == ["Ancient Dragon"])
     check("und nicht mehr im Scan", _b.boss_scans["Bossfarm"].bosses == [])
     check("die Wahl wandert mit — sonst zeigt die rechte Spalte ins Leere",
-          _b.boss_wahl_global is True)
+          _b.boss_choice_global is True)
     check("er gilt trotzdem in diesem Scan",
           [x.name for x in _b._merged_bosses(_b.boss_scans["Bossfarm"])]
           == ["Ancient Dragon"])
@@ -171,7 +171,7 @@ try:
 
     # --- Icon-Scan ---
     _b.icon_scan_new({"name": "Mission nicht machbar"})
-    check("ein Icon-Scan ist sofort offen", _b.icon_offen == "Mission nicht machbar")
+    check("ein Icon-Scan ist sofort offen", _b.icon_open == "Mission nicht machbar")
     _icon = _b.icon_scans["Mission nicht machbar"]
     _b.icon_set({"field": "region", "value": [100, 100, 158, 158]})
     _b.icon_set({"field": "action", "value": "click"})
@@ -189,12 +189,12 @@ try:
     check("angenommen werden sie trotzdem",
           _M_REGION in _MODI_ALLE and _M_AKTION in _MODI_ALLE)
     _z = _b.scan_mode_set({"mode": _M_REGION})
-    check("ohne Ziel schaltet der Buchstabe nicht scharf", _b.scan_modus != _M_REGION)
+    check("ohne Ziel schaltet der Buchstabe nicht scharf", _b.scan_mode != _M_REGION)
     check("und sagt, was fehlt", _z["status"]["kind"] == "warn")
 
     # Ohne Bild gibt es nichts anzuklicken — dann bleibt das Werkzeug aus.
     _z = _b.region_mode({"kind": "icon", "mode": _M_REGION})
-    check("ohne Screenshot kein Aufziehen", _b.scan_modus == _M_WAHL)
+    check("ohne Screenshot kein Aufziehen", _b.scan_mode == _M_WAHL)
     check("und es steht dabei, warum", "Screenshot" in _z["status"]["text"])
 
     # -----------------------------------------------------------------------
@@ -354,10 +354,10 @@ try:
                   Path("sequences/s/sequence.json").exists()
                   and "points" in json.loads(
                       Path("sequences/s/sequence.json").read_text("utf-8")))
-            _gespeichert = json.loads(
+            _saved = json.loads(
                 Path("sequences/s/boss_scans/bossfarm.json").read_text("utf-8"))
             check("die Region steht in der Datei",
-                  list(_gespeichert["scan_region"]) == [300, 200, 340, 240])
+                  list(_saved["scan_region"]) == [300, 200, 340, 240])
 
             _b2 = _SB(_SEQ(name="S"), Path("sequences/s/sequence.json"), "sequences")
             _z2 = _b2.scan_data()
@@ -399,13 +399,13 @@ section("Slot-Farben, ELSE und die Werkzeugleiste")
 # konnte. Die drei Familien stehen hier fest, damit sie nicht zurueckwandern.
 _soll_farben = {"--slot-ok": "#00E58A", "--slot-fremd": "#22D3EE",
                 "--slot-offen": "#F43F5E"}
-for _var, _wert in _soll_farben.items():
-    _treffer = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
-    check(f"{_var} ist {_wert}",
-          _treffer is not None and _treffer.group(1).upper() == _wert)
+for _var, _value in _soll_farben.items():
+    _matches = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
+    check(f"{_var} ist {_value}",
+          _matches is not None and _matches.group(1).upper() == _value)
     _f = re.search(re.escape(_var) + r"-f:\s*(#[0-9A-Fa-f]{8})", _web)
     check(f"und {_var}-f traegt dieselbe Farbe",
-          _f is not None and _f.group(1)[:7].upper() == _wert)
+          _f is not None and _f.group(1)[:7].upper() == _value)
 check("der Akzent gehoert weiterhin der Auswahl — keine Slot-Farbe liegt darauf",
       "#F59E0B" not in _soll_farben.values())
 
@@ -413,7 +413,7 @@ check("der Akzent gehoert weiterhin der Auswahl — keine Slot-Farbe liegt darau
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen
 # sie auf denselben Schluesseln.
 from autoclicker.editors.sequence_studio.scan_detect import (
-    _AKTION_KURZ as _KURZ, _BOSS_AKTIONEN as _ORDNUNG,
+    _ACTION_SHORT as _KURZ, _BOSS_ACTIONS as _ORDNUNG,
 )
 from autoclicker.models import ACTION_TEXT as _TEXT
 check("jede angebotene Aktion hat eine Kurzbeschriftung",

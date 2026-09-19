@@ -194,11 +194,11 @@ def _read_key_msvcrt() -> str:
         return 'unknown'
 
 
-def _read_key_polling(zusatz: dict | None = None,
+def _read_key_polling(extra: dict | None = None,
                       timeout: float | None = None) -> str:
     """Liest Tastendruck via GetAsyncKeyState (funktioniert in PyCharm/IDE).
 
-    `zusatz` erweitert die Tastentabelle fuer diesen einen Aufruf — genutzt von
+    `extra` erweitert die Tastentabelle fuer diesen einen Aufruf — genutzt von
     `read_command()` fuer die Buchstaben. Die stehen absichtlich nicht dauerhaft
     in `_VK_MAP`: in `interactive_select` navigiert man mit Pfeilen und Ziffern.
 
@@ -209,8 +209,8 @@ def _read_key_polling(zusatz: dict | None = None,
     Die Flanken-Erkennung sorgt dafuer, dass eine gehaltene Taste nur EINMAL zaehlt.
     """
     tasten = dict(_VK_MAP)
-    if zusatz:
-        tasten.update(zusatz)
+    if extra:
+        tasten.update(extra)
 
     if sys.platform != "win32":
         from ..winapi import wait_for_key
@@ -251,7 +251,7 @@ def read_key() -> str:
     return _read_key_polling()
 
 
-def key_newly_pressed(zustand: int, war_unten: bool) -> bool:
+def key_newly_pressed(state_value: int, war_unten: bool) -> bool:
     """Bedeutet dieser GetAsyncKeyState-Wert einen NEUEN Tastendruck?
 
     Zwei Wege, und beide werden gebraucht: `0x8000` ("haelt gerade") plus Flanke
@@ -260,7 +260,7 @@ def key_newly_pressed(zustand: int, war_unten: bool) -> bool:
     Druck von Mikrosekunden. Das Bit wird beim Lesen geleert — der Wert darf
     also nur EINMAL pro Runde geholt werden.
     """
-    return (bool(zustand & 0x8000) and not war_unten) or bool(zustand & 0x0001)
+    return (bool(state_value & 0x8000) and not war_unten) or bool(state_value & 0x0001)
 
 
 def wait_for_global_key(tasten: tuple = ("enter", "escape"),
@@ -300,7 +300,7 @@ def read_command(timeout: float | None = None) -> str:
                     return ""
                 time.sleep(0.02)
         return (read_key() or "").lower()
-    return _read_key_polling(zusatz=_VK_LETTERS, timeout=timeout)
+    return _read_key_polling(extra=_VK_LETTERS, timeout=timeout)
 
 
 # =============================================================================

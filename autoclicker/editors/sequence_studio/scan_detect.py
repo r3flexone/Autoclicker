@@ -39,14 +39,14 @@ from ...models import (
 )
 from ...utils import unique_name, sanitize_filename
 from ...persistence.boss_scans import boss_scan_name_allowed
-from .model import hex_color, rgbwert
+from .model import hex_color, rgb_value
 from .scan_contract import (
-    ART_ITEM,
-    referenzen_umbenennen,
+    KIND_ITEM,
+    rename_references,
     MIN_REGION,
-    MODUS_AKTION,
-    MODUS_REGION,
-    MODUS_WAHL,
+    MODE_ACTION,
+    MODE_REGION,
+    MODE_CHOICE,
 )
 from .scan_model import normalize_region
 
@@ -55,15 +55,15 @@ from .scan_model import normalize_region
 # `__post_init__` beim Speichern still auf den Standard hebt, und der Klick sähe
 # aus, als hätte er gewirkt. Hier steht nur die REIHENFOLGE (die Menge prüft ein
 # Test gegen `VALID_*_ACTIONS`); die Beschriftung kommt aus `ACTION_TEXT`.
-_BOSS_AKTIONEN = (BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
+_BOSS_ACTIONS = (BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
                   BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART)
-_ICON_AKTIONEN = tuple(a for a in _BOSS_AKTIONEN if a != BOSS_ACTION_SCAN)
+_ICON_ACTIONS = tuple(a for a in _BOSS_ACTIONS if a != BOSS_ACTION_SCAN)
 # **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** `ACTION_TEXT` ist
 # fuer Prosa gemacht („Punkt klicken", „Zyklus abbrechen") und steht so in
 # Meldungen und im Laufstatus; auf einer 9,5-px-Kachel in einem Sechser-Raster
 # ist derselbe Satz zweizeilig und unlesbar. Zwei Verwendungen, zwei Laengen —
 # ein Test haelt beide Tabellen auf denselben Schluesseln.
-_AKTION_KURZ = {
+_ACTION_SHORT = {
     BOSS_ACTION_SCAN: "ITEM-SCAN",
     BOSS_ACTION_CLICK: "KLICK",
     BOSS_ACTION_KEY: "TASTE",
@@ -71,25 +71,25 @@ _AKTION_KURZ = {
     BOSS_ACTION_SKIP_CYCLE: "SKIP CYCLE",
     BOSS_ACTION_RESTART: "RESTART",
 }
-_SCAN_MODI_TEXT = (
+_SCAN_MODES_TEXT = (
     (SCAN_MODE_ALL, "bestes pro Kategorie"),
     (SCAN_MODE_BEST, "nur bestes"),
     (SCAN_MODE_EVERY, "alle Treffer"),
 )
 
 
-class _BibliothekState:
+class _LibraryState:
     """Ein `AutoClickerState`-Stellvertreter für die Boss-Bibliothek.
 
     `save_global_bosses()`/`load_global_bosses()` nehmen einen State, benutzen
     davon aber nur `lock` und `global_bosses`. Diesen Prozess einen echten State
     bauen zu lassen hiesse, den halben Hauptprozess mitzuziehen — für eine
-    Liste. Dieselbe Entscheidung wie bei `_NurConfig` in `scan_learning.py`.
+    Liste. Dieselbe Entscheidung wie bei `_ConfigOnly` in `scan_learning.py`.
     """
 
-    def __init__(self, bosse=None):
+    def __init__(self, bosses=None):
         self.lock = threading.Lock()
-        self.global_bosses = list(bosse or [])
+        self.global_bosses = list(bosses or [])
 
 
 class ScanDetectMixin:
@@ -103,23 +103,23 @@ class ScanDetectMixin:
         self.icon_scans: dict = {}
         self.global_bosses: list = []
         # Der offene Scan ist der Zusammenhang, die Wahl das bearbeitete Ding —
-        # dieselbe Trennung wie `scan_offen` neben `scan_name` bei den Items.
-        self.boss_offen: str = ""
-        self.boss_wahl: str = ""
-        self.boss_wahl_global: bool = False
-        self.icon_offen: str = ""
+        # dieselbe Trennung wie `open_scan` neben `scan_name` bei den Items.
+        self.boss_open: str = ""
+        self.boss_choice: str = ""
+        self.boss_choice_global: bool = False
+        self.icon_open: str = ""
         # Worauf das Region- bzw. Aktions-Werkzeug wirkt: ("boss"|"icon", Name).
         # Der Modus allein reicht nicht — dieselbe Geste setzt je nach Art eine
         # andere Region, und die Scan-Art selbst ist Oberflächenzustand.
-        self._region_ziel: Optional[tuple] = None
-        self._boss_test: Optional[dict] = None
-        self._boss_tests: dict = {}
-        self._icon_test: Optional[dict] = None
+        self._region_target: Optional[tuple] = None
+        self._boss_test_result: Optional[dict] = None
+        self._boss_test_results: dict = {}
+        self._icon_test_result: Optional[dict] = None
         # Ergebnis des letzten Erreichbarkeitstests: None = nie gefragt. Für
         # beide gilt dasselbe — die Antwort kostet (Netz bzw. ein schwerer
         # Import) und gehört deshalb nicht in jede Momentaufnahme.
-        self._llm_stand: Optional[dict] = None
-        self._ocr_stand: Optional[dict] = None
+        self._llm_state: Optional[dict] = None
+        self._ocr_state: Optional[dict] = None
 
     def _detection_load(self) -> None:
         """Boss-Scans, Icon-Scans und die Bibliothek von Platte.
@@ -144,14 +144,14 @@ class ScanDetectMixin:
             cfg = load_icon_scan_file(path, self.board.name)
             if cfg is not None:
                 self.icon_scans[cfg.name or name] = cfg
-        stellvertreter = _BibliothekState()
-        load_global_bosses(stellvertreter, self.board.name)
-        self.global_bosses = stellvertreter.global_bosses
-        if self.boss_offen not in self.boss_scans:
-            self.boss_offen = next(iter(self.boss_scans), "")
-        if self.icon_offen not in self.icon_scans:
-            self.icon_offen = next(iter(self.icon_scans), "")
-        self.boss_wahl, self.boss_wahl_global = "", False
+        stand_in = _LibraryState()
+        load_global_bosses(stand_in, self.board.name)
+        self.global_bosses = stand_in.global_bosses
+        if self.boss_open not in self.boss_scans:
+            self.boss_open = next(iter(self.boss_scans), "")
+        if self.icon_open not in self.icon_scans:
+            self.icon_open = next(iter(self.icon_scans), "")
+        self.boss_choice, self.boss_choice_global = "", False
 
     def _detection_paths(self) -> list:
         """Was der Reiter an Boss-/Icon-Dateien liest — für den Fremd-Vergleich.
@@ -163,12 +163,12 @@ class ScanDetectMixin:
         für das, was hier gerade bearbeitet wird.
         """
         wurzel = self.filepath.parent
-        ordner_liste = (wurzel / "boss_scans", wurzel / "icon_scans")
-        pfade = [*ordner_liste, wurzel / "boss_scans" / "bibliothek.json"]
-        for folder in ordner_liste:
+        folder_list = (wurzel / "boss_scans", wurzel / "icon_scans")
+        paths = [*folder_list, wurzel / "boss_scans" / "bibliothek.json"]
+        for folder in folder_list:
             if folder.is_dir():
-                pfade += sorted(folder.glob("*.json"))
-        return pfade
+                paths += sorted(folder.glob("*.json"))
+        return paths
 
     def _detection_state(self) -> dict:
         """Der Teil des Rückgängig-Abzugs, der diesem Modul gehört."""
@@ -177,23 +177,23 @@ class ScanDetectMixin:
             "boss_scans": copy.deepcopy(self.boss_scans),
             "icon_scans": copy.deepcopy(self.icon_scans),
             "global_bosses": copy.deepcopy(self.global_bosses),
-            "boss_open": self.boss_offen,
-            "boss_choice": self.boss_wahl,
-            "boss_choice_global": self.boss_wahl_global,
-            "icon_open": self.icon_offen,
+            "boss_open": self.boss_open,
+            "boss_choice": self.boss_choice,
+            "boss_choice_global": self.boss_choice_global,
+            "icon_open": self.icon_open,
         }
 
     def _detection_undo(self, stamp: dict) -> None:
         self.boss_scans = stamp.get("boss_scans", {})
         self.icon_scans = stamp.get("icon_scans", {})
         self.global_bosses = stamp.get("global_bosses", [])
-        self.boss_offen = stamp.get("boss_open", "")
-        self.boss_wahl = stamp.get("boss_choice", "")
-        self.boss_wahl_global = stamp.get("boss_choice_global", False)
-        self.icon_offen = stamp.get("icon_open", "")
+        self.boss_open = stamp.get("boss_open", "")
+        self.boss_choice = stamp.get("boss_choice", "")
+        self.boss_choice_global = stamp.get("boss_choice_global", False)
+        self.icon_open = stamp.get("icon_open", "")
         # Ein Testergebnis gehört zu dem Stand, in dem es gemessen wurde.
-        self._boss_test = self._icon_test = None
-        self._boss_tests = {}
+        self._boss_test_result = self._icon_test_result = None
+        self._boss_test_results = {}
 
     # ------------------------------------------------------- Momentaufnahme
 
@@ -204,14 +204,14 @@ class ScanDetectMixin:
             "icon_scans": [self._icon_scan_json(c) for c in self.icon_scans.values()],
             "global_bosses": [self._boss_json(b, True) for b in self.global_bosses],
             "boss": {
-                "open": self.boss_offen,
-                "choice": self.boss_wahl,
-                "choice_global": self.boss_wahl_global,
-                "test": self._boss_test,
-                "tests": self._boss_tests,
+                "open": self.boss_open,
+                "choice": self.boss_choice,
+                "choice_global": self.boss_choice_global,
+                "test": self._boss_test_result,
+                "tests": self._boss_test_results,
             },
-            "icon": {"open": self.icon_offen, "test": self._icon_test},
-            "region_target": (list(self._region_ziel) if self._region_ziel else None),
+            "icon": {"open": self.icon_open, "test": self._icon_test_result},
+            "region_target": (list(self._region_target) if self._region_target else None),
             # Was die Aktionen brauchen: die Punkte kennt die Sequenz-Seite der
             # Brücke, die Item-Scan-Namen der Item-Teil. Beides steht hier
             # nochmal, weil der Reiter sonst zwei Kanäle bräuchte.
@@ -219,11 +219,11 @@ class ScanDetectMixin:
                         "x": p.x, "y": p.y} for p in self.points],
             "item_scan_names": sorted(self.scans, key=str.casefold),
             "actions": {
-                "boss": [{"value": a, "text": ACTION_TEXT[a], "short": _AKTION_KURZ[a]}
-                         for a in _BOSS_AKTIONEN],
-                "icon": [{"value": a, "text": ACTION_TEXT[a], "short": _AKTION_KURZ[a]}
-                         for a in _ICON_AKTIONEN],
-                "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODI_TEXT],
+                "boss": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                         for a in _BOSS_ACTIONS],
+                "icon": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                         for a in _ICON_ACTIONS],
+                "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODES_TEXT],
             },
             "ready": self._ready(),
         }
@@ -242,10 +242,10 @@ class ScanDetectMixin:
             "bosses": [self._boss_json(b, False) for b in cfg.bosses],
         }
 
-    def _boss_json(self, b: BossProfile, aus_bibliothek: bool) -> dict:
+    def _boss_json(self, b: BossProfile, from_library: bool) -> dict:
         return {
             "name": b.name,
-            "global": aus_bibliothek,
+            "global": from_library,
             "template": b.template,
             "preview": self._template_url(b.template) if b.template else "",
             "confidence": b.min_confidence,
@@ -264,7 +264,7 @@ class ScanDetectMixin:
         }
 
     def _icon_scan_json(self, cfg: IconScanConfig) -> dict:
-        remaining = cfg.name == self.icon_offen
+        remaining = cfg.name == self.icon_open
         return {
             "name": cfg.name,
             "region": list(cfg.scan_region),
@@ -290,8 +290,8 @@ class ScanDetectMixin:
         crop = self._photo_crop(tuple(region))
         if crop is None:
             return ""
-        from .scan_capture import _als_datenurl
-        return _als_datenurl(crop)
+        from .scan_capture import _as_data_url
+        return _as_data_url(crop)
 
     def _ready(self) -> dict:
         """Welche Erkennungswege überhaupt zur Verfügung stehen.
@@ -307,7 +307,7 @@ class ScanDetectMixin:
         return {
             "opencv": self._has_opencv(),
             "pillow": self._has_pillow(),
-            "ocr_state": self._ocr_stand,
+            "ocr_state": self._ocr_state,
             "ocr_on": bool(CONFIG.ocr_enabled),
             "ocr_backend": CONFIG.ocr_backend or "automatisch",
             "ocr_languages": list(CONFIG.ocr_languages or []),
@@ -315,7 +315,7 @@ class ScanDetectMixin:
             "llm_on": bool(CONFIG.llm_enabled),
             "llm_endpoint": CONFIG.llm_endpoint,
             "llm_model": CONFIG.llm_model or "",
-            "llm_state": self._llm_stand,
+            "llm_state": self._llm_state,
             "boss_learn_global": bool(CONFIG.boss_learn_global),
             "marker_all": bool(CONFIG.scan_require_all_markers),
             "marker_required": int(CONFIG.scan_min_markers_required),
@@ -333,7 +333,7 @@ class ScanDetectMixin:
             return self._scan_report("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         self._remember("Boss-Scan angelegt")
         self.boss_scans[name] = BossScanConfig(name=name, owner_sequence=self.board.name)
-        self.boss_offen, self.boss_wahl = name, ""
+        self.boss_open, self.boss_choice = name, ""
         return self._scan_changed(
             f"Boss-Scan '{name}' angelegt. Region aufziehen, dann Bosse anlegen.")
 
@@ -343,9 +343,9 @@ class ScanDetectMixin:
         name = str((data or {}).get("name") or "")
         if name and name not in self.boss_scans:
             return self._scan_report(f"Boss-Scan '{name}' gibt es nicht.", "err")
-        self.boss_offen, self.boss_wahl, self.boss_wahl_global = name, "", False
-        self._boss_test, self._boss_tests = None, {}
-        self._region_ziel = None
+        self.boss_open, self.boss_choice, self.boss_choice_global = name, "", False
+        self._boss_test_result, self._boss_test_results = None, {}
+        self._region_target = None
         if not name:
             return self._scan_report("Kein Boss-Scan offen.", "info")
         return self._scan_report(f"Boss-Scan '{name}' geöffnet.")
@@ -354,7 +354,7 @@ class ScanDetectMixin:
         """Ein Feld eines Boss-Scans — jedes einzeln, ohne Durchlauf."""
         self._scan_load()
         data = data or {}
-        cfg = self.boss_scans.get(str(data.get("name") or self.boss_offen))
+        cfg = self.boss_scans.get(str(data.get("name") or self.boss_open))
         if cfg is None:
             return self._scan_report("Kein Boss-Scan gewählt.", "warn")
         field, value = str(data.get("field") or ""), data.get("value")
@@ -395,25 +395,25 @@ class ScanDetectMixin:
         schnell, das LLM kostet bis `llm_timeout`. Das steht in
         `runtime/boss_detection.py` genauso — hier wird es nur vorgelesen.
         """
-        vorn = [name for name, an, fallback in
+        front = [name for name, an, fallback in
                 (("OCR", cfg.use_ocr, cfg.ocr_fallback), ("LLM", cfg.use_llm, cfg.llm_fallback))
                 if an and not fallback]
-        hinten = [name for name, an, fallback in
+        back = [name for name, an, fallback in
                   (("OCR", cfg.use_ocr, cfg.ocr_fallback), ("LLM", cfg.use_llm, cfg.llm_fallback))
                   if an and fallback]
-        parts = vorn + ["Template/Marker"] + hinten
+        parts = front + ["Template/Marker"] + back
         return "Reihenfolge: " + " → ".join(parts)
 
     def boss_scan_delete(self, data: Optional[dict] = None) -> dict:
         """Löscht den offenen Boss-Scan samt Datei."""
         self._scan_load()
-        name = str((data or {}).get("name") or self.boss_offen)
+        name = str((data or {}).get("name") or self.boss_open)
         if name not in self.boss_scans:
             return self._scan_report("Kein Boss-Scan gewählt.", "warn")
         self._remember(f"Boss-Scan '{name}' gelöscht")
         del self.boss_scans[name]
-        self.boss_offen = next(iter(self.boss_scans), "")
-        self.boss_wahl = ""
+        self.boss_open = next(iter(self.boss_scans), "")
+        self.boss_choice = ""
         return self._file_gone(self.filepath.parent / "boss_scans"
                                / f"{sanitize_filename(name)}.json",
                                f"Boss-Scan '{name}'")
@@ -425,24 +425,24 @@ class ScanDetectMixin:
         self._scan_load()
         data = data or {}
         name = str(data.get("name") or "")
-        aus_bibliothek = bool(data.get("global"))
-        if name and self._boss_find(name, aus_bibliothek) is None:
+        from_library = bool(data.get("global"))
+        if name and self._boss_find(name, from_library) is None:
             return self._scan_report(f"Boss '{name}' gibt es nicht.", "err")
-        self.boss_wahl, self.boss_wahl_global = name, aus_bibliothek
-        self._region_ziel = None
+        self.boss_choice, self.boss_choice_global = name, from_library
+        self._region_target = None
         return self.scan_data()
 
-    def _boss_find(self, name: str, aus_bibliothek: bool) -> Optional[BossProfile]:
-        if aus_bibliothek:
+    def _boss_find(self, name: str, from_library: bool) -> Optional[BossProfile]:
+        if from_library:
             return next((b for b in self.global_bosses if b.name == name), None)
-        cfg = self.boss_scans.get(self.boss_offen)
+        cfg = self.boss_scans.get(self.boss_open)
         if cfg is None:
             return None
         return next((b for b in cfg.bosses if b.name == name), None)
 
     def _boss_selected(self) -> Optional[BossProfile]:
-        return (self._boss_find(self.boss_wahl, self.boss_wahl_global)
-                if self.boss_wahl else None)
+        return (self._boss_find(self.boss_choice, self.boss_choice_global)
+                if self.boss_choice else None)
 
     def _boss_names(self) -> list:
         """Alle Namen, die kollidieren könnten — lokal plus Bibliothek.
@@ -452,7 +452,7 @@ class ScanDetectMixin:
         Fehler, aber eine Falle: der eine verdeckt den anderen, ohne dass man es
         sieht. Der Namensvorschlag geht ihr aus dem Weg.
         """
-        cfg = self.boss_scans.get(self.boss_offen)
+        cfg = self.boss_scans.get(self.boss_open)
         names = [b.name for b in (cfg.bosses if cfg else [])]
         return names + [b.name for b in self.global_bosses]
 
@@ -460,18 +460,18 @@ class ScanDetectMixin:
         """Legt einen Boss an — im offenen Scan oder in der Bibliothek."""
         self._scan_load()
         data = data or {}
-        in_bibliothek = bool(data.get("global"))
-        cfg = self.boss_scans.get(self.boss_offen)
-        if cfg is None and not in_bibliothek:
+        in_library = bool(data.get("global"))
+        cfg = self.boss_scans.get(self.boss_open)
+        if cfg is None and not in_library:
             return self._scan_report("Erst einen Boss-Scan anlegen oder öffnen.", "warn")
         name = unique_name(str(data.get("name") or "Neuer Boss"), self._boss_names())
         self._remember(f"Boss '{name}' angelegt")
         boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
-        if in_bibliothek:
+        if in_library:
             self.global_bosses.append(boss)
         else:
             cfg.bosses.append(boss)
-        self.boss_wahl, self.boss_wahl_global = name, in_bibliothek
+        self.boss_choice, self.boss_choice_global = name, in_library
         return self._scan_changed(
             f"Boss '{name}' angelegt — jetzt Vorlage aufnehmen oder Marker messen.")
 
@@ -479,9 +479,9 @@ class ScanDetectMixin:
         """Ein Feld eines Bosses. Jedes einzeln — das ist der Punkt der Ansicht."""
         self._scan_load()
         data = data or {}
-        name = str(data.get("name") or self.boss_wahl)
-        aus_bibliothek = bool(data.get("global", self.boss_wahl_global))
-        boss = self._boss_find(name, aus_bibliothek)
+        name = str(data.get("name") or self.boss_choice)
+        from_library = bool(data.get("global", self.boss_choice_global))
+        boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
         field, value = str(data.get("field") or ""), data.get("value")
@@ -494,7 +494,7 @@ class ScanDetectMixin:
                 return self._scan_report(f"'{new}' gibt es schon.", "warn")
             self._remember(f"Boss '{boss.name}' umbenannt")
             boss.name = new
-            self.boss_wahl = new
+            self.boss_choice = new
             return self._scan_changed(f"Boss heisst jetzt '{new}'.")
         if field == "action":
             if value not in VALID_BOSS_ACTIONS:
@@ -519,20 +519,20 @@ class ScanDetectMixin:
         """Entfernt einen Boss aus seinem Scan bzw. aus der Bibliothek."""
         self._scan_load()
         data = data or {}
-        name = str(data.get("name") or self.boss_wahl)
-        aus_bibliothek = bool(data.get("global", self.boss_wahl_global))
-        boss = self._boss_find(name, aus_bibliothek)
+        name = str(data.get("name") or self.boss_choice)
+        from_library = bool(data.get("global", self.boss_choice_global))
+        boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
         self._remember(f"Boss '{name}' gelöscht")
-        if aus_bibliothek:
+        if from_library:
             self.global_bosses = [b for b in self.global_bosses if b is not boss]
         else:
-            cfg = self.boss_scans[self.boss_offen]
+            cfg = self.boss_scans[self.boss_open]
             cfg.bosses = [b for b in cfg.bosses if b is not boss]
-        if self.boss_wahl == name:
-            self.boss_wahl = ""
-        self._boss_tests.pop(name, None)
+        if self.boss_choice == name:
+            self.boss_choice = ""
+        self._boss_test_results.pop(name, None)
         # Das Template bleibt liegen: den lokalen Template-Ordner teilen sich Items,
         # Bosse und Icons, und eine Datei zu löschen, die einem anderen gehört,
         # ist der stille Datenverlust, den es hier nicht gibt.
@@ -547,24 +547,24 @@ class ScanDetectMixin:
         """
         self._scan_load()
         data = data or {}
-        name = str(data.get("name") or self.boss_wahl)
-        aus_bibliothek = bool(data.get("global", self.boss_wahl_global))
-        boss = self._boss_find(name, aus_bibliothek)
+        name = str(data.get("name") or self.boss_choice)
+        from_library = bool(data.get("global", self.boss_choice_global))
+        boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
-        cfg = self.boss_scans.get(self.boss_offen)
-        if cfg is None and aus_bibliothek:
+        cfg = self.boss_scans.get(self.boss_open)
+        if cfg is None and from_library:
             return self._scan_report("Erst einen Boss-Scan öffnen.", "warn")
         self._remember(f"Boss '{name}' verschoben")
-        if aus_bibliothek:
+        if from_library:
             self.global_bosses = [b for b in self.global_bosses if b is not boss]
             cfg.bosses.append(boss)
-            self.boss_wahl_global = False
+            self.boss_choice_global = False
             text = f"'{name}' gilt jetzt nur noch in '{cfg.name}'."
         else:
             cfg.bosses = [b for b in cfg.bosses if b is not boss]
             self.global_bosses.append(boss)
-            self.boss_wahl_global = True
+            self.boss_choice_global = True
             text = f"'{name}' liegt jetzt in der Bibliothek und gilt in jedem Boss-Scan."
         return self._scan_changed(text)
 
@@ -577,7 +577,7 @@ class ScanDetectMixin:
                                 self.icon_scans)
         self._remember("Icon-Scan angelegt")
         self.icon_scans[name] = IconScanConfig(name=name, owner_sequence=self.board.name)
-        self.icon_offen = name
+        self.icon_open = name
         return self._scan_changed(
             f"Icon-Scan '{name}' angelegt. Region eng um das Symbol aufziehen.")
 
@@ -586,9 +586,9 @@ class ScanDetectMixin:
         name = str((data or {}).get("name") or "")
         if name and name not in self.icon_scans:
             return self._scan_report(f"Icon-Scan '{name}' gibt es nicht.", "err")
-        self.icon_offen = name
-        self._icon_test = None
-        self._region_ziel = None
+        self.icon_open = name
+        self._icon_test_result = None
+        self._region_target = None
         return self._scan_report(f"Icon-Scan '{name}' geöffnet." if name
                                 else "Kein Icon-Scan offen.", "ok" if name else "info")
 
@@ -596,7 +596,7 @@ class ScanDetectMixin:
         """Ein Feld eines Icon-Scans."""
         self._scan_load()
         data = data or {}
-        cfg = self.icon_scans.get(str(data.get("name") or self.icon_offen))
+        cfg = self.icon_scans.get(str(data.get("name") or self.icon_open))
         if cfg is None:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
         field, value = str(data.get("field") or ""), data.get("value")
@@ -615,19 +615,19 @@ class ScanDetectMixin:
 
     def icon_scan_delete(self, data: Optional[dict] = None) -> dict:
         self._scan_load()
-        name = str((data or {}).get("name") or self.icon_offen)
+        name = str((data or {}).get("name") or self.icon_open)
         if name not in self.icon_scans:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
         self._remember(f"Icon-Scan '{name}' gelöscht")
         del self.icon_scans[name]
-        self.icon_offen = next(iter(self.icon_scans), "")
+        self.icon_open = next(iter(self.icon_scans), "")
         return self._file_gone(self.filepath.parent / "icon_scans"
                                / f"{sanitize_filename(name)}.json",
                                f"Icon-Scan '{name}'")
 
     # ------------------------------------------------- Geteilte Feld-Setzer
 
-    def _profile_field(self, objekt, field: str, value, wer: str) -> dict:
+    def _profile_field(self, obj, field: str, value, who: str) -> dict:
         """Die Felder, die Boss und Icon gemeinsam haben.
 
         Beide erkennen über Template **oder** Farb-Marker und handeln danach —
@@ -638,45 +638,45 @@ class ScanDetectMixin:
             number = self._decimal(value)
             if number is None or not 0 < number <= 1:
                 return self._scan_report("Konfidenz muss zwischen 0 und 1 liegen.", "err")
-            self._remember(f"{wer}: Konfidenz")
-            objekt.min_confidence = number
+            self._remember(f"{who}: Konfidenz")
+            obj.min_confidence = number
             return self._scan_changed()
         if field == "tolerance":
             number = self._integer(value)
             if number is None:
                 return self._scan_report("Die Toleranz muss eine ganze Zahl sein.", "err")
-            self._remember(f"{wer}: Toleranz")
-            objekt.color_tolerance = max(0, number)
+            self._remember(f"{who}: Toleranz")
+            obj.color_tolerance = max(0, number)
             return self._scan_changed()
         if field == "template":
-            self._remember(f"{wer}: Vorlage")
-            objekt.template = str(value) or None
+            self._remember(f"{who}: Vorlage")
+            obj.template = str(value) or None
             return self._scan_changed()
         if field == "marker":
-            colors = [rgbwert(h) for h in (value or [])]
-            self._remember(f"{wer}: Marker")
-            objekt.marker_colors = [f for f in colors if f]
-            return self._scan_changed(f"{len(objekt.marker_colors)} Marker-Farbe(n).")
+            colors = [rgb_value(h) for h in (value or [])]
+            self._remember(f"{who}: Marker")
+            obj.marker_colors = [f for f in colors if f]
+            return self._scan_changed(f"{len(obj.marker_colors)} Marker-Farbe(n).")
         if field == "point":
             point_id = self._integer(value)
-            self._remember(f"{wer}: Klickpunkt")
-            objekt.action_point_id = point_id
-            self._action_point_apply(objekt)
+            self._remember(f"{who}: Klickpunkt")
+            obj.action_point_id = point_id
+            self._action_point_apply(obj)
             return self._scan_changed()
         if field == "action_key":
-            self._remember(f"{wer}: Taste")
-            objekt.action_key = str(value) or None
+            self._remember(f"{who}: Taste")
+            obj.action_key = str(value) or None
             return self._scan_changed()
         if field == "delay":
             number = self._decimal(value)
             if number is None or number < 0:
                 return self._scan_report("Die Verzögerung muss eine Zahl ≥ 0 sein.", "err")
-            self._remember(f"{wer}: Verzögerung")
-            objekt.action_delay = number
+            self._remember(f"{who}: Verzögerung")
+            obj.action_delay = number
             return self._scan_changed()
         return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
 
-    def _action_point_apply(self, objekt) -> None:
+    def _action_point_apply(self, obj) -> None:
         """Zieht `action_x/y` an der Referenz nach.
 
         Die Koordinate steht in der Punktliste der `sequence.json`, sonst nirgends — `action_x/y`
@@ -684,11 +684,11 @@ class ScanDetectMixin:
         schreibt sie nicht; gefüllt werden sie, damit die Anzeige etwas zu
         zeigen hat.
         """
-        point = next((p for p in self.points if p.id == objekt.action_point_id), None)
-        objekt.action_x = point.x if point else 0
-        objekt.action_y = point.y if point else 0
+        point = next((p for p in self.points if p.id == obj.action_point_id), None)
+        obj.action_x = point.x if point else 0
+        obj.action_y = point.y if point else 0
 
-    def _detection_rename(self, bestand: dict, cfg, value, wort: str) -> dict:
+    def _detection_rename(self, inventory: dict, cfg, value, word: str) -> dict:
         """Umbenennen eines Boss-/Icon-Scans — Schlüssel, Referenzen und Datei.
 
         **Hier stand einmal das Gegenteil**, und die Begründung war „die alte
@@ -706,38 +706,38 @@ class ScanDetectMixin:
         alte Datei entfernen.
         """
         new = sanitize_filename(str(value or "").strip())
-        if bestand is self.boss_scans and not boss_scan_name_allowed(new):
+        if inventory is self.boss_scans and not boss_scan_name_allowed(new):
             return self._scan_report("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         if not new or new == cfg.name:
             return self.scan_data()
-        if new in bestand:
+        if new in inventory:
             return self._scan_report(f"'{new}' gibt es schon.", "warn")
-        self._remember(f"{wort} '{cfg.name}' umbenannt")
+        self._remember(f"{word} '{cfg.name}' umbenannt")
         old = cfg.name
-        neuer_bestand = {(new if k == old else k): v for k, v in bestand.items()}
-        bestand.clear()
-        bestand.update(neuer_bestand)
+        new_inventory = {(new if k == old else k): v for k, v in inventory.items()}
+        inventory.clear()
+        inventory.update(new_inventory)
         cfg.name = new
-        ist_boss = bestand is self.boss_scans
-        if self.boss_offen == old and ist_boss:
-            self.boss_offen = new
-        if self.icon_offen == old and not ist_boss:
-            self.icon_offen = new
+        is_boss = inventory is self.boss_scans
+        if self.boss_open == old and is_boss:
+            self.boss_open = new
+        if self.icon_open == old and not is_boss:
+            self.icon_open = new
         # Der Name IST die Referenz — Blöcke und Beschriftungen ziehen mit.
-        getroffen = referenzen_umbenennen(self.board, "boss" if ist_boss else "icon",
+        hit = rename_references(self.board, "boss" if is_boss else "icon",
                                           old, new)
-        unterordner = "boss_scans" if ist_boss else "icon_scans"
-        alt_pfad = (self.filepath.parent / unterordner
+        subfolder = "boss_scans" if is_boss else "icon_scans"
+        old_path = (self.filepath.parent / subfolder
                     / f"{sanitize_filename(old)}.json")
         try:
-            alt_pfad.unlink(missing_ok=True)
+            old_path.unlink(missing_ok=True)
         except OSError:
             return self._scan_report(
                 f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
-        zusatz = f" ({getroffen}× in der Sequenz nachgezogen)" if getroffen else ""
-        return self._scan_changed(f"'{old}' heisst jetzt '{new}'.{zusatz}")
+        extra = f" ({hit}× in der Sequenz nachgezogen)" if hit else ""
+        return self._scan_changed(f"'{old}' heisst jetzt '{new}'.{extra}")
 
-    def _region_set(self, cfg, value, wer: str) -> dict:
+    def _region_set(self, cfg, value, who: str) -> dict:
         """Eine Region aus vier getippten Zahlen.
 
         Die Zahlenfelder bleiben neben dem Aufziehen bestehen: eine Region um
@@ -752,7 +752,7 @@ class ScanDetectMixin:
         if region[2] - region[0] < MIN_REGION or region[3] - region[1] < MIN_REGION:
             return self._scan_report(
                 f"Zu klein — mindestens {MIN_REGION}×{MIN_REGION} Pixel.", "warn")
-        self._remember(f"{wer}: Region")
+        self._remember(f"{who}: Region")
         cfg.scan_region = region
         return self._scan_changed(
             f"Region {region[2] - region[0]}×{region[3] - region[1]} "
@@ -772,15 +772,15 @@ class ScanDetectMixin:
         except (TypeError, ValueError):
             return None
 
-    def _file_gone(self, path: Path, wer: str) -> dict:
+    def _file_gone(self, path: Path, who: str) -> dict:
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            return self._scan_report(f"{wer} entfernt, die Datei blieb liegen.", "warn")
+            return self._scan_report(f"{who} entfernt, die Datei blieb liegen.", "warn")
         # Der eigene Schreibvorgang zählt nicht als Fremdänderung — Löschen
         # dreht die Änderungszeit des Ordners genauso weiter wie Schreiben.
         self._disk_track(path.parent)
-        return self._scan_report(f"{wer} gelöscht.", "warn")
+        return self._scan_report(f"{who} gelöscht.", "warn")
 
     # ------------------------------------------------------------ Werkzeuge
 
@@ -794,16 +794,16 @@ class ScanDetectMixin:
         """
         self._scan_load()
         data = data or {}
-        modus = str(data.get("mode") or MODUS_REGION)
-        if modus not in (MODUS_REGION, MODUS_AKTION, MODUS_WAHL):
-            return self._scan_report(f"Unbekannter Modus '{modus}'.", "err")
+        mode = str(data.get("mode") or MODE_REGION)
+        if mode not in (MODE_REGION, MODE_ACTION, MODE_CHOICE):
+            return self._scan_report(f"Unbekannter Modus '{mode}'.", "err")
         kind = str(data.get("kind") or "")
-        if modus == MODUS_WAHL or (modus == self.scan_modus and self._region_ziel):
-            self.scan_modus, self._region_ziel, self._ecke = MODUS_WAHL, None, None
+        if mode == MODE_CHOICE or (mode == self.scan_mode and self._region_target):
+            self.scan_mode, self._region_target, self._corner = MODE_CHOICE, None, None
             return self._scan_report("Zurück zum Auswählen.", "info")
-        gesperrt = self._scan_requirement({"kind": kind})
-        if gesperrt is not None:
-            return gesperrt
+        locked = self._scan_requirement({"kind": kind})
+        if locked is not None:
+            return locked
         target = self._target_check(kind)
         if target is None:
             return self._scan_report(
@@ -811,8 +811,8 @@ class ScanDetectMixin:
                 "warn")
         if not self._canvas_area():
             return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
-        self.scan_modus, self._region_ziel, self._ecke = modus, target, None
-        if modus == MODUS_REGION:
+        self.scan_mode, self._region_target, self._corner = mode, target, None
+        if mode == MODE_REGION:
             return self._scan_report(
                 "Region: zwei Ecken anklicken — eng um das, was erkannt werden "
                 "soll.  ·  ESC oder nochmal die Kachel = zurück", "info")
@@ -825,23 +825,23 @@ class ScanDetectMixin:
             "wird.  ·  ESC oder nochmal die Kachel = zurück", "info")
 
     def _target_check(self, kind: str) -> Optional[tuple]:
-        if kind == "boss" and self.boss_offen in self.boss_scans:
-            return ("boss", self.boss_offen)
-        if kind == "icon" and self.icon_offen in self.icon_scans:
-            return ("icon", self.icon_offen)
+        if kind == "boss" and self.boss_open in self.boss_scans:
+            return ("boss", self.boss_open)
+        if kind == "icon" and self.icon_open in self.icon_scans:
+            return ("icon", self.icon_open)
         # **Der Bestätigungsklick eines Items ist dieselbe Geste.** Eine Stelle
         # zieht man im Bild, statt zwei Zahlen zu tippen — dafür gibt es das
         # Werkzeug schon, es kannte nur Boss und Icon. Ein zweites daneben wäre
         # dieselbe Frage mit einer zweiten Antwort.
-        if kind == "item" and self.scan_art == ART_ITEM and self.scan_name in self.items:
+        if kind == "item" and self.scan_kind == KIND_ITEM and self.scan_name in self.items:
             return ("item", self.scan_name)
         return None
 
     def _region_object(self):
         """Die Konfiguration, auf die das aktive Werkzeug wirkt."""
-        if not self._region_ziel:
+        if not self._region_target:
             return None
-        kind, name = self._region_ziel
+        kind, name = self._region_target
         if kind == "item":
             return self.items.get(name)
         return (self.boss_scans if kind == "boss" else self.icon_scans).get(name)
@@ -850,23 +850,23 @@ class ScanDetectMixin:
         """Zwei Ecken ergeben die Scan-Region — dieselbe Geste wie beim Slot."""
         cfg = self._region_object()
         if cfg is None:
-            self.scan_modus = MODUS_WAHL
+            self.scan_mode = MODE_CHOICE
             return self._scan_report("Kein Ziel für die Region.", "warn")
-        if self._ecke is None:
-            self._ecke = (x, y)
+        if self._corner is None:
+            self._corner = (x, y)
             return self._scan_report("Erste Ecke gesetzt — zweite Ecke anklicken.", "info")
-        erste, self._ecke = self._ecke, None
-        antwort = self._region_set(cfg, [erste[0], erste[1], x, y],
+        first, self._corner = self._corner, None
+        answer = self._region_set(cfg, [first[0], first[1], x, y],
                                       f"'{cfg.name}'")
         # **Ein zu kleines Rechteck laesst das Werkzeug an.** Sonst muesste man
         # nach jedem Verklicken erst wieder die Kachel suchen — und genau dieses
         # Verklicken ist der Grund, warum es zwei Klicks und kein Ziehen sind.
-        if antwort["status"]["kind"] in ("warn", "err"):
-            return antwort
+        if answer["status"]["kind"] in ("warn", "err"):
+            return answer
         self._tool_done()
         # Nochmal melden: die Antwort von oben traegt den Modus von VOR dem
         # Aufraeumen, und die Werkzeugleiste liest ihn aus der Momentaufnahme.
-        return self._scan_report(antwort["status"]["text"])
+        return self._scan_report(answer["status"]["text"])
 
     def _click_action(self, x: int, y: int) -> dict:
         """Setzt den Klickpunkt der Aktion — über einen Punkt, nie über Zahlen.
@@ -878,35 +878,35 @@ class ScanDetectMixin:
         """
         cfg = self._region_object()
         if cfg is None:
-            self.scan_modus = MODUS_WAHL
+            self.scan_mode = MODE_CHOICE
             return self._scan_report("Kein Ziel für den Klickpunkt.", "warn")
-        objekt = cfg
-        if self._region_ziel[0] == "boss":
-            objekt = self._boss_selected()
-            if objekt is None:
+        obj = cfg
+        if self._region_target[0] == "boss":
+            obj = self._boss_selected()
+            if obj is None:
                 return self._scan_report(
                     "Erst einen Boss wählen — der Klickpunkt gehört ihm, nicht dem Scan.",
                     "warn")
         color = self._photo_color(x, y)
-        point = self._point_for_action(x, y, color, objekt.name)
+        point = self._point_for_action(x, y, color, obj.name)
         # Beim Item heisst dasselbe Werkzeug etwas anderes: nicht „wohin geklickt
         # wird, wenn erkannt", sondern „was danach bestätigt wird". Zwei Felder,
         # zwei Wörter — sonst liest man im Item die Boss-Bedeutung mit.
-        if self._region_ziel[0] == "item":
-            self._remember(f"'{objekt.name}': Bestätigungsklick")
-            objekt.confirm_point_id = point.id
-            self._confirmation_apply(objekt)
+        if self._region_target[0] == "item":
+            self._remember(f"'{obj.name}': Bestätigungsklick")
+            obj.confirm_point_id = point.id
+            self._confirmation_apply(obj)
             self._scan_dirty = True
             self._tool_done()
             return self._scan_report(
-                f"Punkt #{point.id} bestätigt den Klick auf '{objekt.name}'.")
-        self._remember(f"'{objekt.name}': Klickpunkt")
-        objekt.action_point_id = point.id
-        self._action_point_apply(objekt)
+                f"Punkt #{point.id} bestätigt den Klick auf '{obj.name}'.")
+        self._remember(f"'{obj.name}': Klickpunkt")
+        obj.action_point_id = point.id
+        self._action_point_apply(obj)
         self._scan_dirty = True
         self._tool_done()
         return self._scan_report(
-            f"Punkt #{point.id} als Klickpunkt von '{objekt.name}' gesetzt.")
+            f"Punkt #{point.id} als Klickpunkt von '{obj.name}' gesetzt.")
 
     def _point_for_action(self, x: int, y: int, color, name: str):
         """Der Punkt an dieser Stelle — vorhandener oder neuer."""
@@ -931,24 +931,24 @@ class ScanDetectMixin:
         """
         self._scan_load()
         data = data or {}
-        objekt, cfg = self._detection_target(data)
-        if objekt is None:
+        obj, cfg = self._detection_target(data)
+        if obj is None:
             return self._scan_report("Kein Boss bzw. Icon-Scan gewählt.", "warn")
         crop = self._photo_crop(tuple(cfg.scan_region))
         if crop is None:
             return self._scan_report(
                 "Die Region liegt ausserhalb des Bildes — erst neu aufnehmen.", "warn")
         from .scan_model import save_template
-        dateiname = save_template(crop, objekt.name,
+        file_name = save_template(crop, obj.name,
                                   template_dir=self.filepath.parent / "templates")
-        if not dateiname:
+        if not file_name:
             return self._scan_report("Vorlage konnte nicht geschrieben werden.", "err")
-        self._remember(f"'{objekt.name}': Vorlage aufgenommen")
-        objekt.template = dateiname
+        self._remember(f"'{obj.name}': Vorlage aufgenommen")
+        obj.template = file_name
         # Die Vorschau hängt am Dateinamen und der wurde gerade überschrieben.
-        self._vorschau.pop(dateiname, None)
+        self._preview.pop(file_name, None)
         return self._scan_changed(
-            f"Vorlage '{dateiname}' aufgenommen "
+            f"Vorlage '{file_name}' aufgenommen "
             f"({crop.size[0]}×{crop.size[1]}).")
 
     def marker_measure(self, data: Optional[dict] = None) -> dict:
@@ -960,8 +960,8 @@ class ScanDetectMixin:
         """
         self._scan_load()
         data = data or {}
-        objekt, cfg = self._detection_target(data)
-        if objekt is None:
+        obj, cfg = self._detection_target(data)
+        if obj is None:
             return self._scan_report("Kein Boss bzw. Icon-Scan gewählt.", "warn")
         crop = self._photo_crop(tuple(cfg.scan_region))
         if crop is None:
@@ -971,8 +971,8 @@ class ScanDetectMixin:
         colors = _collect_markers_silent(crop)
         if not colors:
             return self._scan_report("Keine Farben gefunden.", "warn")
-        self._remember(f"'{objekt.name}': Marker gemessen")
-        objekt.marker_colors = colors
+        self._remember(f"'{obj.name}': Marker gemessen")
+        obj.marker_colors = colors
         return self._scan_changed(
             f"{len(colors)} Marker-Farbe(n) aus der Region gemessen.")
 
@@ -984,13 +984,13 @@ class ScanDetectMixin:
         """
         kind = str(data.get("kind") or "")
         if kind == "icon":
-            cfg = self.icon_scans.get(str(data.get("name") or self.icon_offen))
+            cfg = self.icon_scans.get(str(data.get("name") or self.icon_open))
             return cfg, cfg
-        cfg = self.boss_scans.get(self.boss_offen)
+        cfg = self.boss_scans.get(self.boss_open)
         if cfg is None:
             return None, None
-        boss = self._boss_find(str(data.get("name") or self.boss_wahl),
-                                 bool(data.get("global", self.boss_wahl_global)))
+        boss = self._boss_find(str(data.get("name") or self.boss_choice),
+                                 bool(data.get("global", self.boss_choice_global)))
         return boss, cfg
 
     # ---------------------------------------------------------------- Tests
@@ -1007,8 +1007,8 @@ class ScanDetectMixin:
             return self._scan_report("Kein Boss gewählt.", "warn")
         result = self._profile_check(boss, cfg.scan_region, cfg.color_tolerance)
         result["action"] = self._action_text(boss)
-        self._boss_test = result
-        self._boss_tests[boss.name] = result
+        self._boss_test_result = result
+        self._boss_test_results[boss.name] = result
         return self._scan_report(
             (f"'{boss.name}' erkannt ({result['reason']})." if result["ok"]
              else f"'{boss.name}' nicht erkannt: {result['reason']}."),
@@ -1023,23 +1023,23 @@ class ScanDetectMixin:
         Erkennung zu verschweigen.
         """
         self._scan_load()
-        cfg = self.boss_scans.get(self.boss_offen)
+        cfg = self.boss_scans.get(self.boss_open)
         if cfg is None:
             return self._scan_report("Kein Boss-Scan offen.", "warn")
-        bosse = self._merged_bosses(cfg)
-        if not bosse:
+        bosses = self._merged_bosses(cfg)
+        if not bosses:
             return self._scan_report("Dieser Scan kennt noch keinen Boss.", "info")
-        self._boss_tests = {}
-        for boss in bosse:
+        self._boss_test_results = {}
+        for boss in bosses:
             result = self._profile_check(boss, cfg.scan_region, cfg.color_tolerance)
             result["action"] = self._action_text(boss)
-            self._boss_tests[boss.name] = result
-        match = [n for n, e in self._boss_tests.items() if e["ok"]]
+            self._boss_test_results[boss.name] = result
+        match = [n for n, e in self._boss_test_results.items() if e["ok"]]
         # Die Reihenfolge IST die Priorität: der erste Treffer gewinnt im Lauf.
-        self._boss_test = self._boss_tests[match[0]] if match else None
+        self._boss_test_result = self._boss_test_results[match[0]] if match else None
         return self._scan_report(
-            (f"{match[0]} würde erkannt ({len(match)} von {len(bosse)} passen)."
-             if match else f"Keiner von {len(bosse)} Bossen passt auf dieses Bild."),
+            (f"{match[0]} würde erkannt ({len(match)} von {len(bosses)} passen)."
+             if match else f"Keiner von {len(bosses)} Bossen passt auf dieses Bild."),
             "ok" if match else "warn")
 
     def _merged_bosses(self, cfg: BossScanConfig) -> list:
@@ -1056,72 +1056,72 @@ class ScanDetectMixin:
         entfernt.
         """
         self._scan_load()
-        cfg = self.icon_scans.get(str((data or {}).get("name") or self.icon_offen))
+        cfg = self.icon_scans.get(str((data or {}).get("name") or self.icon_open))
         if cfg is None:
             return self._scan_report("Kein Icon-Scan gewählt.", "warn")
         result = self._profile_check(cfg, cfg.scan_region, cfg.color_tolerance)
         result["action"] = self._action_text(cfg)
         if not result["ok"] and cfg.marker_colors:
             result["proposal"] = self._tolerance_proposal(cfg)
-        self._icon_test = result
+        self._icon_test_result = result
         return self._scan_report(
             (f"Icon erkannt ({result['reason']})." if result["ok"]
              else f"Icon nicht erkannt: {result['reason']}."),
             "ok" if result["ok"] else "warn")
 
-    def _profile_check(self, profil, region, tolerance: int) -> dict:
+    def _profile_check(self, profile, region, tolerance: int) -> dict:
         """Ein Profil gegen die Region halten — mit der Rechnung der Laufzeit."""
         crop = self._photo_crop(tuple(region))
         if crop is None:
-            return self._test_result(profil, False, "Region liegt ausserhalb des Bildes")
-        if profil.template and not self._has_opencv():
-            return self._test_result(profil, False, "braucht Template — OpenCV fehlt")
-        if not profil.template and not profil.marker_colors:
-            return self._test_result(profil, False, "weder Vorlage noch Marker gesetzt")
+            return self._test_result(profile, False, "Region liegt ausserhalb des Bildes")
+        if profile.template and not self._has_opencv():
+            return self._test_result(profile, False, "braucht Template — OpenCV fehlt")
+        if not profile.template and not profile.marker_colors:
+            return self._test_result(profile, False, "weder Vorlage noch Marker gesetzt")
 
         from ...config import CONFIG
         from ...runtime.item_scan import _check_profile_match
-        from .scan_learning import _NurConfig
-        beginn = time.perf_counter()
-        ok, value = _check_profile_match(profil, crop, tolerance, _NurConfig(CONFIG),
+        from .scan_learning import _ConfigOnly
+        begin = time.perf_counter()
+        ok, value = _check_profile_match(profile, crop, tolerance, _ConfigOnly(CONFIG),
                                         False, return_score=True,
                                         template_root=self.filepath.parent / "templates")
-        duration = (time.perf_counter() - beginn) * 1000
-        found, total, noetig = self._marker_count(profil, crop, tolerance)
-        if profil.template:
+        duration = (time.perf_counter() - begin) * 1000
+        found, total, needed = self._marker_count(profile, crop, tolerance)
+        if profile.template:
             reason = (f"Template {value:.0%}" if ok
-                     else f"Template {value:.0%} (nötig {profil.min_confidence:.0%})")
+                     else f"Template {value:.0%} (nötig {profile.min_confidence:.0%})")
         else:
             reason = (f"{found} von {total} Markern" if ok
-                     else f"{found} von {total} Markern · nötig {noetig}")
-        result = self._test_result(profil, ok, reason)
+                     else f"{found} von {total} Markern · nötig {needed}")
+        result = self._test_result(profile, ok, reason)
         result.update({"confidence": round(value, 4), "duration": round(duration),
                          "marker_found": found, "marker_total": total,
-                         "marker_required": noetig, "tolerance": tolerance,
-                         "method": "Template" if profil.template else "Marker"})
+                         "marker_required": needed, "tolerance": tolerance,
+                         "method": "Template" if profile.template else "Marker"})
         return result
 
     @staticmethod
-    def _test_result(profil, ok: bool, reason: str) -> dict:
-        return {"name": profil.name, "ok": ok, "reason": reason, "method": None,
+    def _test_result(profile, ok: bool, reason: str) -> dict:
+        return {"name": profile.name, "ok": ok, "reason": reason, "method": None,
                 "confidence": None, "duration": 0, "marker_found": 0,
-                "marker_total": len(profil.marker_colors), "marker_required": 0,
+                "marker_total": len(profile.marker_colors), "marker_required": 0,
                 "tolerance": 0, "action": "", "proposal": None}
 
     @staticmethod
-    def _marker_count(profil, crop, tolerance: int) -> tuple:
+    def _marker_count(profile, crop, tolerance: int) -> tuple:
         """(gefunden, gesamt, nötig) — dieselben Regeln wie `_check_profile_match`."""
-        if not profil.marker_colors:
+        if not profile.marker_colors:
             return 0, 0, 0
         from ...config import CONFIG
         from ...imaging import find_color_in_image
-        total = len(profil.marker_colors)
-        found = sum(1 for color in profil.marker_colors
+        total = len(profile.marker_colors)
+        found = sum(1 for color in profile.marker_colors
                        if find_color_in_image(crop, color, tolerance,
                                               min_pixels=CONFIG.scan_marker_min_pixels))
-        noetig = total if CONFIG.scan_require_all_markers else min(
+        needed = total if CONFIG.scan_require_all_markers else min(
             total, CONFIG.scan_min_markers_required)
-        return found, total, noetig
+        return found, total, needed
 
     def _tolerance_proposal(self, cfg) -> Optional[dict]:
         """Die kleinste Toleranz, bei der genug Marker gefunden würden.
@@ -1134,28 +1134,28 @@ class ScanDetectMixin:
         if crop is None:
             return None
         for tolerance in range(cfg.color_tolerance + 4, 121, 4):
-            found, total, noetig = self._marker_count(cfg, crop, tolerance)
-            if total and found >= noetig:
+            found, total, needed = self._marker_count(cfg, crop, tolerance)
+            if total and found >= needed:
                 return {"field": "tolerance", "value": tolerance,
                         "text": f"Toleranz auf {tolerance} setzen"}
         return None
 
-    def _action_text(self, objekt) -> str:
+    def _action_text(self, obj) -> str:
         """Was bei einem Treffer passieren WÜRDE — als Satz, nicht als Tat."""
-        action = objekt.action
-        delay = getattr(objekt, "action_delay", 0) or 0
-        nachsatz = f" nach {delay:g} s" if delay else ""
+        action = obj.action
+        delay = getattr(obj, "action_delay", 0) or 0
+        suffix_text = f" nach {delay:g} s" if delay else ""
         if action == BOSS_ACTION_SCAN:
-            return f"Item-Scan „{getattr(objekt, 'action_scan', None) or '—'}“{nachsatz}"
+            return f"Item-Scan „{getattr(obj, 'action_scan', None) or '—'}“{suffix_text}"
         if action == BOSS_ACTION_CLICK:
             point = next((p for p in self.points
-                          if p.id == objekt.action_point_id), None)
-            wohin = (f"Punkt #{point.id} ({point.name})" if point
+                          if p.id == obj.action_point_id), None)
+            where_to = (f"Punkt #{point.id} ({point.name})" if point
                      else "Punkt fehlt — nichts würde geklickt")
-            return f"{wohin} klicken{nachsatz}"
+            return f"{where_to} klicken{suffix_text}"
         if action == BOSS_ACTION_KEY:
-            return f"Taste „{objekt.action_key or '—'}“{nachsatz}"
-        return ACTION_TEXT.get(action, action) + nachsatz
+            return f"Taste „{obj.action_key or '—'}“{suffix_text}"
+        return ACTION_TEXT.get(action, action) + suffix_text
 
     def ocr_check(self, data: Optional[dict] = None) -> dict:
         """Ist überhaupt ein OCR-Backend installiert?
@@ -1167,16 +1167,16 @@ class ScanDetectMixin:
         vom Zufall abhängt.
         """
         from ...config import CONFIG
-        beginn = time.perf_counter()
+        begin = time.perf_counter()
         try:
             from ... import ocr
             backends = ocr.available_backends()
-        except ImportError as fehler:
-            self._ocr_stand = {"present": False, "backends": [], "reason": str(fehler)}
-            return self._scan_report(f"OCR nicht verfügbar: {fehler}", "warn")
-        self._ocr_stand = {
+        except ImportError as error:
+            self._ocr_state = {"present": False, "backends": [], "reason": str(error)}
+            return self._scan_report(f"OCR nicht verfügbar: {error}", "warn")
+        self._ocr_state = {
             "present": bool(backends), "backends": backends, "reason": "",
-            "duration": round((time.perf_counter() - beginn) * 1000),
+            "duration": round((time.perf_counter() - begin) * 1000),
         }
         if not backends:
             return self._scan_report(
@@ -1196,7 +1196,7 @@ class ScanDetectMixin:
         from ...config import CONFIG
         from ...llm_vision import chat_endpoint, test_connection
 
-        beginn = time.perf_counter()
+        begin = time.perf_counter()
         # **Gefragt wird ueber `test_connection()`, nicht mit einem rohen
         # `urlopen`.** Zwei Fehler hingen daran: der Endpunkt ist im Normalfall
         # `None` (dann gilt der Standard-Port des Anbieters) — `urlopen(None)`
@@ -1205,40 +1205,40 @@ class ScanDetectMixin:
         # laufenden Server. Und selbst wenn jemand antwortete, sagte das nichts
         # darueber, ob das EINGESTELLTE Modell geladen ist; genau daran
         # scheitert danach jeder Aufruf.
-        erreichbar, message = test_connection(
+        reachable, message = test_connection(
             CONFIG.llm_provider, CONFIG.llm_endpoint, CONFIG.llm_model)
-        self._llm_stand = {
-            "reachable": erreichbar, "reason": "" if erreichbar else message,
+        self._llm_state = {
+            "reachable": reachable, "reason": "" if reachable else message,
             "endpoint": CONFIG.llm_endpoint or chat_endpoint(CONFIG.llm_provider),
-            "duration": round((time.perf_counter() - beginn) * 1000),
+            "duration": round((time.perf_counter() - begin) * 1000),
         }
         return self._scan_report(
-            f"{message} ({self._llm_stand['duration']} ms)",
-            "ok" if erreichbar else "warn")
+            f"{message} ({self._llm_state['duration']} ms)",
+            "ok" if reachable else "warn")
 
     # ------------------------------------------------------------- Speichern
 
     def _detection_save(self) -> list:
         """Schreibt Boss-Scans, Icon-Scans und die Bibliothek. Fehler als Liste."""
         from ...persistence import save_boss_scan, save_global_bosses, save_icon_scan
-        fehler = []
+        error = []
         for cfg in self.boss_scans.values():
             try:
                 cfg.owner_sequence = self.board.name
                 if not save_boss_scan(cfg):
-                    fehler.append(f"boss_scans/{cfg.name}.json")
+                    error.append(f"boss_scans/{cfg.name}.json")
             except (OSError, ValueError):
-                fehler.append(f"boss_scans/{cfg.name}.json")
+                error.append(f"boss_scans/{cfg.name}.json")
         for cfg in self.icon_scans.values():
             try:
                 cfg.owner_sequence = self.board.name
                 if not save_icon_scan(cfg):
-                    fehler.append(f"icon_scans/{cfg.name}.json")
+                    error.append(f"icon_scans/{cfg.name}.json")
             except (OSError, ValueError):
-                fehler.append(f"icon_scans/{cfg.name}.json")
+                error.append(f"icon_scans/{cfg.name}.json")
         try:
-            if not save_global_bosses(_BibliothekState(self.global_bosses), self.board.name):
-                fehler.append("boss_scans/bibliothek.json")
+            if not save_global_bosses(_LibraryState(self.global_bosses), self.board.name):
+                error.append("boss_scans/bibliothek.json")
         except OSError:
-            fehler.append("boss_scans/bibliothek.json")
-        return fehler
+            error.append("boss_scans/bibliothek.json")
+        return error

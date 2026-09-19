@@ -228,8 +228,8 @@ def backup_before_calibration(state: 'AutoClickerState') -> str | None:
     # Referenzpunkte sind hier bedeutungslos (es wird nichts remappt beim
     # Zurückspielen), aber identisch dürfen sie nicht sein — sonst rechnet ein
     # späterer Import mit einer Nulldistanz.
-    erfolg, message = export_bundle(state, str(target), (0, 0), (1000, 1000))
-    if not erfolg:
+    success, message = export_bundle(state, str(target), (0, 0), (1000, 1000))
+    if not success:
         logger.warning("Sicherung vor Kalibrierung fehlgeschlagen: %s", message)
         return None
     return str(target)

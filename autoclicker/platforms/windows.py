@@ -691,9 +691,9 @@ def list_windows() -> list:
         laenge = user32.GetWindowTextLengthW(hwnd)
         if laenge <= 0:
             return True
-        puffer = ctypes.create_unicode_buffer(laenge + 1)
-        user32.GetWindowTextW(hwnd, puffer, laenge + 1)
-        title = (puffer.value or "").strip()
+        buffer = ctypes.create_unicode_buffer(laenge + 1)
+        user32.GetWindowTextW(hwnd, buffer, laenge + 1)
+        title = (buffer.value or "").strip()
         if not title:
             return True
         rect = wintypes.RECT()
@@ -717,11 +717,11 @@ def list_windows() -> list:
         user32.EnumWindows(_WNDENUMPROC(_cb), 0)
     except (OSError, AttributeError):
         return []
-    schirm = get_virtual_desktop()
-    if schirm:
+    screen = get_virtual_desktop()
+    if screen:
         found = [e for e in found
-                    if e[1][0] < schirm[2] and e[1][2] > schirm[0]
-                    and e[1][1] < schirm[3] and e[1][3] > schirm[1]]
+                    if e[1][0] < screen[2] and e[1][2] > screen[0]
+                    and e[1][1] < screen[3] and e[1][3] > screen[1]]
     return sorted(found, key=lambda e: (e[1][1], e[1][0]))
 
 
@@ -981,8 +981,8 @@ def _capture_screen_bitblt(region=None):
         if image is None:
             logger.warning("GetDIBits fehlgeschlagen; verwende ImageGrab-Fallback")
         return image
-    except (OSError, ValueError, AttributeError) as fehler:
-        logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", fehler)
+    except (OSError, ValueError, AttributeError) as error:
+        logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", error)
         return None
     finally:
         _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
@@ -1008,8 +1008,8 @@ def capture_screen(region=None):
         if crop[2] <= crop[0] or crop[3] <= crop[1]:
             return None
         return full_image.crop(crop)
-    except (ImportError, OSError, TypeError, ValueError) as fehler:
-        logger.error("Windows-Screenshot fehlgeschlagen: %s", fehler)
+    except (ImportError, OSError, TypeError, ValueError) as error:
+        logger.error("Windows-Screenshot fehlgeschlagen: %s", error)
         return None
 
 
@@ -1064,8 +1064,8 @@ def capture_window(hwnd: int):
             client_origin.x + client_width, client_origin.y + client_height,
         )
         return image, screen_rect
-    except (OSError, TypeError, ValueError, AttributeError) as fehler:
-        logger.error("Fenster-Screenshot fehlgeschlagen: %s", fehler)
+    except (OSError, TypeError, ValueError, AttributeError) as error:
+        logger.error("Fenster-Screenshot fehlgeschlagen: %s", error)
         return None
     finally:
         _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
@@ -1119,7 +1119,7 @@ def _icon_bits(edge: int = 32) -> bytes:
     Formats: die Höhe im Kopf zählt doppelt, und DIB-Zeilen stehen von unten
     nach oben.
     """
-    kopf = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    head = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     colors = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
     # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
@@ -1129,7 +1129,7 @@ def _icon_bits(edge: int = 32) -> bytes:
     # Die AND-Maske wertet Windows bei 32 Bit nicht mehr aus (das tut der
     # Alpha-Kanal), sie muss aber dastehen: 1 Bit je Pixel, Zeilen auf 4 Byte
     # aufgefüllt.
-    return kopf + bytes(colors) + bytes(((edge + 31) // 32 * 4) * edge)
+    return head + bytes(colors) + bytes(((edge + 31) // 32 * 4) * edge)
 
 
 def set_window_icon(titel_substring: str, waiting: float = 0.0) -> bool:

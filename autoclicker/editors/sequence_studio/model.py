@@ -83,9 +83,9 @@ def hex_color(rgb) -> Optional[str]:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
-def rgbwert(hexwert) -> Optional[tuple]:
+def rgb_value(hex_value) -> Optional[tuple]:
     """'#RRGGBB' -> (r, g, b). Alles Unbrauchbare ergibt None (= keine Farbe)."""
-    raw = str(hexwert or "").strip().lstrip("#")
+    raw = str(hex_value or "").strip().lstrip("#")
     if len(raw) != 6:
         return None
     try:

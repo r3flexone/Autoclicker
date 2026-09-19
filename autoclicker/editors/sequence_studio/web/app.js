@@ -1536,18 +1536,18 @@ function renderInspector() {
     el("button", {
       class: "type-chip",
       style: "border-color:" + t.color +
-             (t.key === b.type_key
+             (t.key === b.type
                ? ";background:" + t.color + ";color:#0C0F14;font-weight:600"
                : ""),
-      onclick: () => call("block_set_type", {type_key: t.key}),
+      onclick: () => call("block_set_type", {type: t.key}),
     }, t.label))));
 
   // Die drei Klick-/Warte-Typen unterscheiden sich in genau zwei Eigenschaften.
   // Als Schalter steht diese Tabelle auf dem Schirm, statt im Kopf zu sein.
-  if (b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait") buildAction(target, b);
+  if (b.type === "click" || b.type === "wait_click" || b.type === "wait") buildAction(target, b);
 
   // --- Gemeinsames ---
-  if (b.type_key !== "screenshot") {
+  if (b.type !== "screenshot") {
     // Der Name steht nur hier, wenn er dem SCHRITT gehört. Hat der Block einen
     // Punkt, gehört der Name dem Punkt — und dann steht er unten bei der Stelle,
     // zusammen mit Auswahl, Farbe und Koordinaten. Vorher stand oben „Name
@@ -1576,22 +1576,22 @@ function renderInspector() {
 
   // Ein Warte-Block ohne Trigger beobachtet nichts — dann gibt es auch keine
   // Stelle zu zeigen.
-  if (b.type_key === "click" || b.type_key === "wait_click" ||
-      (b.type_key === "wait" && b.trigger !== "kein")) buildPosition(target, b);
-  if (b.type_key === "key") {
+  if (b.type === "click" || b.type === "wait_click" ||
+      (b.type === "wait" && b.trigger !== "kein")) buildPosition(target, b);
+  if (b.type === "key") {
     target.appendChild(field("Taste", b.key_press,
       (v) => call("block_set", {field: "key_press", value: v}), {placeholder: "enter, space, f1"}));
   }
   buildScan(target, b);
-  if (b.type_key === "screenshot") buildScreenshot(target, b);
+  if (b.type === "screenshot") buildScreenshot(target, b);
 
   // Der Farb-Trigger fragt VOR dem Schritt und steht nur da, wo die Laufzeit ihn
   // auswertet: Klick, Warten und Taste. Scans und Screenshot kehren vorher um.
   //
   // Haengt trotzdem schon eine Bedingung dran, bleibt der Abschnitt sichtbar —
   // sonst waere sie unerreichbar.
-  const withTrigger = b.type_key === "click" || b.type_key === "wait_click" ||
-                     b.type_key === "wait" || b.type_key === "key";
+  const withTrigger = b.type === "click" || b.type === "wait_click" ||
+                     b.type === "wait" || b.type === "key";
   if (withTrigger || b.trigger !== "kein") buildTrigger(target, b, withTrigger);
   buildVerification(target, b);
   buildElse(target, b);
@@ -1668,7 +1668,7 @@ function renderBulkEditor(count) {
 }
 
 function buildAction(target, b) {
-  const clicks = b.type_key === "click" || b.type_key === "wait_click";
+  const clicks = b.type === "click" || b.type === "wait_click";
   const color = b.trigger !== "kein";
 
   // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
@@ -1678,25 +1678,25 @@ function buildAction(target, b) {
     "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
     "warten. Die Kacheln oben zeigen das Ergebnis automatisch an.", "action"));
   target.appendChild(toggle("klickt an der Stelle", clicks, (on) =>
-    call("block_set_type", {type_key: on ? (color ? "wait_click" : "click") : "wait"})));
+    call("block_set_type", {type: on ? (color ? "wait_click" : "click") : "wait"})));
   target.appendChild(toggle("wartet auf eine Farbe", color, (on) => {
     // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
     // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
     // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
     if (!clicks) call("block_trigger", {choice: on ? "present" : "kein"});
-    else call("block_set_type", {type_key: on ? "wait_click" : "click"});
+    else call("block_set_type", {type: on ? "wait_click" : "click"});
   }));
 }
 
 function buildPosition(target, b) {
   // Beides an der Ueberschrift: der Zusatz fuer WARTEN-Bloecke erklaert, warum
   // hier ueberhaupt eine Stelle steht, obwohl nicht geklickt wird.
-  target.appendChild(heading(b.type_key === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
+  target.appendChild(heading(b.type === "wait" ? "BEOBACHTETE STELLE" : "KLICK-POSITION",
     "X und Y verschieben den Punkt selbst. Jeder Block, der ihn benutzt, zeigt " +
     "danach auf die neue Stelle — die Sequenz speichert keine eigenen Koordinaten. " +
     "Mit ‚Stelle mit der Maus setzen‘ wechselst du danach ins Spiel, bewegst die " +
     "Maus an die Stelle und drückst ENTER. Die Farbe wird mitgemessen; ESC bricht ab." +
-    (b.type_key === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
+    (b.type === "wait" ? " Dieser Block klickt übrigens nicht: die Stelle wird nur " +
      "beobachtet. Zum Klicken oben den Typ KLICK oder FARBE+KLICK wählen." : ""),
     "position"));
   if (!S.points.length && b.point_id === null) {
@@ -1770,10 +1770,10 @@ function setPosition(b, x, y) {
 function buildScan(target, b) {
   const scans = {item_scan: ["ITEM-SCAN", "item_scan"], icon_scan: ["ICON-SCAN", "icon_scan"],
                  boss_scan: ["BOSS-SCAN", "boss_scan"], boss_watcher: ["BOSS-WATCHER", "boss_watcher"]};
-  const entry = scans[b.type_key];
+  const entry = scans[b.type];
   if (!entry) return;
   const [title, fieldName] = entry;
-  const existing = (S.scan_names && S.scan_names[b.type_key]) || [];
+  const existing = (S.scan_names && S.scan_names[b.type]) || [];
   const value = b[fieldName];
   target.appendChild(heading(title));
 
@@ -1800,7 +1800,7 @@ function buildScan(target, b) {
     (v) => call("block_set", {field: fieldName, value: v}),
     "Im Item-/Boss-/Icon-Editor angelegt (Hauptprozess, CTRL+ALT+N). " +
     "Ohne Konfiguration wird nicht gespeichert.", "scan"));
-  if (b.type_key === "item_scan") {
+  if (b.type === "item_scan") {
     target.appendChild(selection("Modus", S.scan_modes.map((m) => ({value: m, text: m})),
       b.item_scan_mode, (v) => call("block_set", {field: "item_scan_mode", value: v})));
   }
@@ -1846,7 +1846,7 @@ const DIRECTIONS = [{value: "present", text: "bis Farbe DA"}, {value: "weg", tex
 
 function buildTrigger(target, b, withTrigger) {
   // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
-  const withoutOff = b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait";
+  const withoutOff = b.type === "click" || b.type === "wait_click" || b.type === "wait";
   // Ist der Trigger bei diesen Typen aus, hat der Abschnitt keinen Inhalt: das Ein
   // und Aus macht der Schalter in AKTION, Stelle und „nur prüfen" hängen an einer
   // Bedingung, die es nicht gibt. Eine Überschrift ohne alles darunter sieht aus
@@ -3629,7 +3629,7 @@ function scanReviewApply() {
     slot: n.dataset.slot,
     ticked: n.querySelector(".scan-review-check").checked,
     existing: n.dataset.existing || "",
-    als_anders: n.dataset.alsAnderes === "true",
+    as_other: n.dataset.alsAnderes === "true",
     name: n.querySelector(".scan-review-name").value.trim(),
     category: n.querySelector(".scan-review-category").value(),
     priority: Number(n.querySelector(".scan-review-prio").value),

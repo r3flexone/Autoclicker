@@ -134,15 +134,15 @@ def _logo_geometry():
     color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
     maske = next((e for e in wurzel.iter() if _tag(e) == "mask"), None)
-    gruppe = (next((e for e in maske.iter() if _tag(e) == "g"), None)
+    group = (next((e for e in maske.iter() if _tag(e) == "g"), None)
                if maske is not None else None)
-    if gruppe is None:
+    if group is None:
         raise ValueError("Pfadgruppe in der Maske des Studio-Logos fehlt")
-    rotate = _rotator(gruppe.attrib.get("transform", ""))
+    rotate = _rotator(group.attrib.get("transform", ""))
 
     reason = []
     aussparungen = []
-    for path in (e for e in gruppe.iter() if _tag(e) == "path"):
+    for path in (e for e in group.iter() if _tag(e) == "path"):
         target = reason if path.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
             else aussparungen
         for polygon in _path_polygons(path.attrib.get("d", "")):
@@ -156,13 +156,13 @@ def _intervals(polygone, y: float):
     """Gibt die nach Even/Odd-Regel gefüllten X-Intervalle einer Zeile zurück."""
     for polygon in polygone:
         schnitte = []
-        vorher = polygon[-1]
+        before = polygon[-1]
         for point in polygon:
-            x1, y1 = vorher
+            x1, y1 = before
             x2, y2 = point
             if (y1 > y) != (y2 > y):
                 schnitte.append(x1 + (y - y1) * (x2 - x1) / (y2 - y1))
-            vorher = point
+            before = point
         schnitte.sort()
         for i in range(0, len(schnitte) - 1, 2):
             yield schnitte[i], schnitte[i + 1]
@@ -174,10 +174,10 @@ def _paint(line: bytearray, intervalle, value: int,
     width = len(line)
     fuellung = bytes((value,))
     for anfang, end in intervalle:
-        von = max(0, math.ceil((anfang - left) / step - 0.5))
+        from_index = max(0, math.ceil((anfang - left) / step - 0.5))
         until = min(width, math.ceil((end - left) / step - 0.5))
-        if until > von:
-            line[von:until] = fuellung * (until - von)
+        if until > from_index:
+            line[from_index:until] = fuellung * (until - from_index)
 
 
 def pixel_rows(edge: int, proben: int = SAMPLES):
@@ -208,6 +208,6 @@ def pixel_rows(edge: int, proben: int = SAMPLES):
             _paint(subpixel, _intervals(reason, y), 1, left, x_schritt)
             _paint(subpixel, _intervals(aussparungen, y), 0, left, x_schritt)
             for zx in range(edge):
-                von = zx * proben
-                deckung[zx] += sum(subpixel[von:von + proben])
+                from_index = zx * proben
+                deckung[zx] += sum(subpixel[from_index:from_index + proben])
         yield [color + (round(255 * anteil / total),) for anteil in deckung]

@@ -136,7 +136,7 @@ class ImportExportSecurityTest(unittest.TestCase):
     def test_failed_import_rolls_back_state_and_files(self):
         from autoclicker import import_export as modul
         original = _write_sequence("inventory")
-        vorher = (original / "sequence.json").read_bytes()
+        before = (original / "sequence.json").read_bytes()
         manifest = _manifest()
         manifest["layout"] = "sequence-folders"
         with zipfile.ZipFile("bundle.zip", "w") as zf:
@@ -162,7 +162,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual(mutiert, [b"neues Bild"])
         self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual(state.sequences, {})
-        self.assertEqual((original / "sequence.json").read_bytes(), vorher)
+        self.assertEqual((original / "sequence.json").read_bytes(), before)
         self.assertFalse((original / "templates/neu.png").exists())
         self.assertFalse(Path("sequences/defekt").exists())
 
@@ -215,8 +215,8 @@ class ImportExportSecurityTest(unittest.TestCase):
             # nachdem "Bestand" bereits ersetzt wurde.
             zf.writestr("sequences/ZDefekt/templates/item.png", b"beliebig")
         state = AutoClickerState()
-        bestand = Sequence(name="Bestand")
-        state.sequences[bestand.name] = bestand
+        inventory = Sequence(name="Bestand")
+        state.sequences[inventory.name] = inventory
 
         ok, _ = import_bundle(state, "bundle.zip", import_config=False)
 

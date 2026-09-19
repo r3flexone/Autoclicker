@@ -10,53 +10,53 @@ from typing import Optional
 
 from ...models import Sequence
 from .bridge_contract import (
-    ELSE_AKTIONEN,
-    SCAN_FELD,
+    ELSE_ACTIONS,
+    SCAN_FIELD,
     SCAN_MODES,
-    TRIGGER_DA,
-    TRIGGER_KEIN,
-    TRIGGER_WEG,
-    TYP_REIHENFOLGE,
+    TRIGGER_PRESENT,
+    TRIGGER_NONE,
+    TRIGGER_GONE,
+    TYPE_ORDER,
     _ELSE_SCANS,
-    _FELDER,
-    _bloecke,
-    _gleicher_wert,
+    _FIELDS,
+    _blocks,
+    _same_value,
     _hex,
     _mtime,
     _rgb,
-    _stelle,
-    _wartetext,
+    _position,
+    _wait_text,
     else_applies,
     scan_warnungen,
     trigger_name,
 )
-from .bridge_bericht import BridgeBerichtMixin
+from .bridge_bericht import BridgeReportMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
-from .bridge_teilen import BridgeTeilenMixin
+from .bridge_teilen import BridgeShareMixin
 from .bridge_view import BridgeViewMixin
-from .bridge_werkzeuge import BridgeWerkzeugeMixin
+from .bridge_werkzeuge import BridgeToolsMixin
 from .model import Lane, PalettePoint, SequenceBoard, palette_from_sequence, sequence_to_board
 from .scans import ScanTeil
 
 __all__ = [
-    "ELSE_AKTIONEN",
-    "SCAN_FELD",
+    "ELSE_ACTIONS",
+    "SCAN_FIELD",
     "SCAN_MODES",
     "StudioBridge",
-    "TRIGGER_DA",
-    "TRIGGER_KEIN",
-    "TRIGGER_WEG",
-    "TYP_REIHENFOLGE",
+    "TRIGGER_PRESENT",
+    "TRIGGER_NONE",
+    "TRIGGER_GONE",
+    "TYPE_ORDER",
     "_ELSE_SCANS",
-    "_FELDER",
-    "_bloecke",
-    "_gleicher_wert",
+    "_FIELDS",
+    "_blocks",
+    "_same_value",
     "_hex",
     "_mtime",
     "_rgb",
-    "_stelle",
-    "_wartetext",
+    "_position",
+    "_wait_text",
     "else_applies",
     "scan_warnungen",
     "trigger_name",
@@ -64,12 +64,12 @@ __all__ = [
 
 
 class StudioBridge(
-    BridgeBerichtMixin,
+    BridgeReportMixin,
     BridgeEditingMixin,
     BridgeServicesMixin,
-    BridgeTeilenMixin,
+    BridgeShareMixin,
     BridgeViewMixin,
-    BridgeWerkzeugeMixin,
+    BridgeToolsMixin,
     ScanTeil,
 ):
     """Gemeinsame pywebview-API für Sequenz-Editor und Scan-Werkzeuge."""
@@ -81,12 +81,12 @@ class StudioBridge(
         self.points: list[PalettePoint] = palette_from_sequence(seq)
         # Was ohne ELSE passiert, steht in der config.json — gemerkt am
         # Zeitstempel, damit nicht jede Momentaufnahme die Datei liest.
-        self._cfg_stand: float = -1.0
+        self._cfg_state: float = -1.0
         self._cfg_info: dict = {}
         # Stand der Dateien beim Laden. Der Hauptprozess schreibt dieselben
         # Dateien (Aufnahme legt Punkte an, `save_data` schreibt die Sequenz) —
         # ohne diesen Vergleich überschreibt das Studio das kommentarlos.
-        self._stand_datei: Optional[float] = _mtime(self.filepath)
+        self._state_file: Optional[float] = _mtime(self.filepath)
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und
         # END hätte bei "eine Position hoch" keine Bedeutung, und die
         # Sammelaktionen wären nicht mehr eindeutig.
@@ -99,7 +99,7 @@ class StudioBridge(
         self._dirty = False
         # Wurde in dieser Sitzung mindestens einmal geschrieben? Nur dafür da,
         # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.
-        self._gespeichert = False
+        self._saved = False
         self._status = ("", "info")
         self._ask: Optional[dict] = None
         # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber

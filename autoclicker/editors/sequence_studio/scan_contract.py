@@ -1,47 +1,47 @@
 """Stabiles Protokoll zwischen Scan-Logik, Brücke und Weboberfläche."""
 
-MODUS_WAHL = "choice"
-MODUS_SLOT = "slot"
-MODUS_MESSEN = "measure"
-MODUS_KLICK = "click"
-MODUS_BEREICH = "area"
-MODUS_FINDEN = "find"
-MODI = (
-    MODUS_WAHL,
-    MODUS_FINDEN,
-    MODUS_SLOT,
-    MODUS_MESSEN,
-    MODUS_KLICK,
-    MODUS_BEREICH,
+MODE_CHOICE = "choice"
+MODE_SLOT = "slot"
+MODE_MEASURE = "measure"
+MODE_CLICK = "click"
+MODE_AREA = "area"
+MODE_FIND = "find"
+MODES = (
+    MODE_CHOICE,
+    MODE_FIND,
+    MODE_SLOT,
+    MODE_MEASURE,
+    MODE_CLICK,
+    MODE_AREA,
 )
 
 # Die beiden Werkzeuge der Erkennungs-Scans (Boss, Icon). Sie stehen NEBEN
-# `MODI` und nicht darin: `MODI` sind die Kacheln der Item-Ansicht, und ein Test
+# `MODES` und nicht darin: `MODES` sind die Kacheln der Item-Ansicht, und ein Test
 # hält die Kachelliste der Seite Zug um Zug dagegen. Eine Region aufzuziehen
 # ergibt bei Slots keinen Sinn, ein Slot-Suchlauf bei einem Boss keinen — zwei
 # Arten, zwei Werkzeugkästen.
-MODUS_REGION = "region"
-MODUS_AKTION = "action"
-MODI_ERKENNUNG = (
-    MODUS_WAHL,
-    MODUS_REGION,
-    MODUS_AKTION,
+MODE_REGION = "region"
+MODE_ACTION = "action"
+MODES_DETECTION = (
+    MODE_CHOICE,
+    MODE_REGION,
+    MODE_ACTION,
 )
 # Was `scan_mode_set()` überhaupt annimmt. Reihenfolge egal, Menge zählt.
-MODI_ALLE = MODI + (MODUS_REGION, MODUS_AKTION)
+MODES_ALL = MODES + (MODE_REGION, MODE_ACTION)
 
-ART_SLOT = "slot"
-ART_ITEM = "item"
-ART_SCAN = "scan"
-# Die Erkennungs-Scans. `ART_BOSS_SCAN`/`ART_ICON_SCAN` sind die Konfigurationen,
-# `ART_BOSS` ist ein einzelner Boss DARIN — dieselbe Trennung wie Scan/Slot bei
+KIND_SLOT = "slot"
+KIND_ITEM = "item"
+KIND_SCAN = "scan"
+# Die Erkennungs-Scans. `KIND_BOSS_SCAN`/`KIND_ICON_SCAN` sind die Konfigurationen,
+# `KIND_BOSS` ist ein einzelner Boss DARIN — dieselbe Trennung wie Scan/Slot bei
 # den Items: der Scan ist der Zusammenhang, das andere das bearbeitete Ding.
-ART_BOSS_SCAN = "boss_scan"
-ART_BOSS = "boss"
-ART_ICON_SCAN = "icon_scan"
+KIND_BOSS_SCAN = "boss_scan"
+KIND_BOSS = "boss"
+KIND_ICON_SCAN = "icon_scan"
 # Die globale Boss-Bibliothek ist keine Datei unter vielen, sondern EIN Eintrag
 # am Ende der Liste. Sie gilt zusätzlich in jedem Boss-Scan.
-ART_BIBLIOTHEK = "bibliothek"
+KIND_LIBRARY = "bibliothek"
 
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
 # Oberflächenzustand (`scanKind` in app.js) — die Brücke bekommt bei jedem Befehl
@@ -49,8 +49,8 @@ ART_BIBLIOTHEK = "bibliothek"
 SCAN_KINDS = ("item", "boss", "icon")
 
 MIN_SLOT = 8
-TREFFER_MIN = 14
-UNDO_TIEFE = 30
+HIT_MIN = 14
+UNDO_DEPTH = 30
 # Kleinste Kantenlänge einer Erkennungs-Region. Anders als beim Slot geht es
 # hier nicht ums Treffen mit der Maus, sondern ums Erkennen: unter ein paar
 # Pixeln hat ein Template keine Struktur mehr, an der es sich festhalten kann.
@@ -61,17 +61,17 @@ MIN_REGION = 6
 # Vorsatz der Konsolen-Editor daraus eine Beschriftung baut (`steps.py`).
 # `boss` hat ZWEI Felder: ein Boss-Scan wird als einmaliger Scan und als
 # Watcher benutzt, beide zeigen per Namen auf dieselbe Datei.
-_REF_FELDER = {
+_REF_FIELDS = {
     "item": (("item_scan",), "Scan:"),
     "boss": (("boss_scan", "boss_watcher"), None),
     "icon": (("icon_scan",), "Icon:"),
 }
 # Die Boss-Felder tragen verschiedene Vorsaetze, deshalb einzeln.
-_REF_VORSATZ = {"item_scan": "Scan:", "boss_scan": "Boss:",
+_REF_PREFIX = {"item_scan": "Scan:", "boss_scan": "Boss:",
                 "boss_watcher": "Watcher:", "icon_scan": "Icon:"}
 
 
-def referenzen_umbenennen(board, kind: str, old: str, new: str) -> int:
+def rename_references(board, kind: str, old: str, new: str) -> int:
     """Zieht jede Sequenz-Referenz auf einen Scan nach. Gibt die Anzahl zurück.
 
     **Der Name IST die Referenz** — ein Scan wird per Namen aus dem Schritt
@@ -89,16 +89,16 @@ def referenzen_umbenennen(board, kind: str, old: str, new: str) -> int:
       **nicht** angefasst: er gehört dem Nutzer, und ihn stillschweigend
       umzuschreiben wäre schlimmer als eine veraltete Beschriftung.
     """
-    felder = _REF_FELDER.get(kind, ((), None))[0]
-    getroffen = 0
+    fields = _REF_FIELDS.get(kind, ((), None))[0]
+    hit = 0
     for lane in getattr(board, "lanes", []):
         for step in lane.steps:
-            for field in felder:
+            for field in fields:
                 if getattr(step, field, None) != old:
                     continue
                 setattr(step, field, new)
-                getroffen += 1
-                vorsatz = _REF_VORSATZ[field]
-                if step.name == f"{vorsatz}{old}":
-                    step.name = f"{vorsatz}{new}"
-    return getroffen
+                hit += 1
+                prefix = _REF_PREFIX[field]
+                if step.name == f"{prefix}{old}":
+                    step.name = f"{prefix}{new}"
+    return hit

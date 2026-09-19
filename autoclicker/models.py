@@ -272,9 +272,9 @@ class SequenceStep:
                    else f"{ref.strip()} ({self.x}, {self.y})".strip())
         if wc:
             if wc.check_only:
-                zustand = "WEG" if wc.until_gone else "DA"
+                state_value = "WEG" if wc.until_gone else "DA"
                 vorlauf = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
-                return (f"{vorlauf}prüfe einmal ob Farbe {zustand} bei "
+                return (f"{vorlauf}prüfe einmal ob Farbe {state_value} bei "
                         f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
                         f"{else_str or ' | sonst: überspringen'}")
             gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
@@ -297,12 +297,12 @@ class SequenceStep:
         wc = self.wait_condition
         if not wc:
             return self._delay_str()
-        zustand = "WEG" if wc.until_gone else "DA"
+        state_value = "WEG" if wc.until_gone else "DA"
         pixel = f"({wc.pixel[0]},{wc.pixel[1]})"
         if wc.check_only:
-            kind = f"prüfe einmal ob Farbe {zustand} bei {pixel}"
+            kind = f"prüfe einmal ob Farbe {state_value} bei {pixel}"
         else:
-            kind = f"warte bis Farbe {zustand} bei {pixel}"
+            kind = f"warte bis Farbe {state_value} bei {pixel}"
         if self.delay_before > 0:
             # "warte 2s, dann warte bis..." doppelt sich — die Vorlaufzeit sagt das schon.
             return f"warte {self._delay_str()}, dann {kind.removeprefix('warte ')}"
@@ -317,8 +317,8 @@ class SequenceStep:
         vc = self.verify_condition
         if not vc:
             return ""
-        zustand = "WEG" if vc.until_gone else "DA"
-        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {zustand}"
+        state_value = "WEG" if vc.until_gone else "DA"
+        return f" | PRUEF: ({vc.pixel[0]},{vc.pixel[1]}) {state_value}"
 
     def _else_str(self) -> str:
         """Hilfsfunktion für Else-Anzeige."""

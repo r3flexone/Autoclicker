@@ -18,7 +18,7 @@ from autoclicker.models import (
     ItemProfile, ItemScanConfig, Sequence,
 )
 from autoclicker.persistence import boss_scans, icon_scans, item_scans, presets
-from autoclicker.persistence import globals as bestand
+from autoclicker.persistence import globals as inventory
 from autoclicker.persistence.sequences import active_templates_dir
 from autoclicker.editors.item_editor import editor, commands
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
@@ -72,8 +72,8 @@ class EditorPersistenzTest(unittest.TestCase):
 
     def test_anzeige_und_loeschen_verwenden_dieselbe_nummer(self):
         editor._dispatch_command(self.state, "show", "show")
-        erste = next(z for z in self.ausgabe.getvalue().splitlines() if z.strip().startswith("1."))
-        angezeigt = "A" if " A:" in erste else "B"
+        first = next(z for z in self.ausgabe.getvalue().splitlines() if z.strip().startswith("1."))
+        angezeigt = "A" if " A:" in first else "B"
         editor._handle_delete_single(self.state, "del 1")
         self.assertNotIn(angezeigt, self.state.global_items)
 
@@ -93,7 +93,7 @@ class EditorPersistenzTest(unittest.TestCase):
         (folder / "alt.png").write_bytes(b"Original")
         item_scans.save_item_scan(self.scan)
         file = Path("sequences/alt/item_scans/inventar.json")
-        vorher = file.read_bytes()
+        before = file.read_bytes()
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
                 patch.object(editor, "safe_input", side_effect=["rename 1", "cancel"]), \
                 patch.object(commands, "safe_input", return_value="Neu"):
@@ -102,19 +102,19 @@ class EditorPersistenzTest(unittest.TestCase):
         self.assertEqual([i.name for i in self.state.item_scans["Inventar"].items], ["Alt"])
         self.assertEqual((folder / "alt.png").read_bytes(), b"Original")
         self.assertFalse((folder / "neu.png").exists())
-        self.assertEqual(file.read_bytes(), vorher)
+        self.assertEqual(file.read_bytes(), before)
 
     def test_cancel_nach_preset_laden_stellt_datei_wieder_her(self):
         item_scans.save_item_scan(self.scan)
         file = Path("sequences/alt/item_scans/inventar.json")
-        vorher = file.read_bytes()
+        before = file.read_bytes()
         preset = Path("presets/items/fremd.json")
         preset.parent.mkdir(parents=True)
         preset.write_text(json.dumps({"Fremd": {}}), encoding="utf-8")
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
                 patch.object(editor, "safe_input", side_effect=["load fremd", "cancel"]):
             editor.run_global_item_editor(self.state)
-        self.assertEqual(file.read_bytes(), vorher)
+        self.assertEqual(file.read_bytes(), before)
         self.assertEqual(self.state.item_scans["Inventar"].item_names, ["A", "B"])
 
     def test_rename_dateifehler_laesst_referenz_unveraendert(self):
@@ -137,7 +137,7 @@ class EditorPersistenzTest(unittest.TestCase):
         folder.mkdir(parents=True)
         (folder / "a.png").write_bytes(b"Original")
         self.assertTrue(commands._apply_item_rename(self.state, "A", "Neu"))
-        self.assertTrue(bestand.save_global_items(self.state))
+        self.assertTrue(inventory.save_global_items(self.state))
         for name in ("inventar", "zweiter"):
             loaded = item_scans.load_item_scan_file(Path(f"sequences/alt/item_scans/{name}.json"))
             item = next(i for i in loaded.items if i.name == ("Neu" if name == "inventar" else "A"))
@@ -145,7 +145,7 @@ class EditorPersistenzTest(unittest.TestCase):
         self.assertEqual(foreign.items[0].name, "A")
 
     def test_speicherfehler_wird_bis_zum_aufrufer_gemeldet(self):
-        for save in (bestand.save_global_items, bestand.save_global_slots):
+        for save in (inventory.save_global_items, inventory.save_global_slots):
             with self.subTest(save=save.__name__), \
                     patch.object(item_scans, "save_item_scan", return_value=False):
                 self.ausgabe.seek(0)
@@ -176,7 +176,7 @@ class EditorPersistenzTest(unittest.TestCase):
 
     def test_studio_lehnt_reservierten_bossnamen_auch_beim_umbenennen_ab(self):
         bridge = StudioBridge(Sequence(name="Alt"), Path("sequences/alt/sequence.json"), "sequences")
-        bridge._scan_geladen = True
+        bridge._scan_loaded = True
         bridge.boss_scan_new({"name": "Bibliothek"})
         self.assertEqual(bridge.boss_scans, {})
         bridge.boss_scan_new({"name": "Erlaubt"})
@@ -187,11 +187,11 @@ class EditorPersistenzTest(unittest.TestCase):
         self.state.global_bosses = [BossProfile("Drache")]
         boss_scans.save_global_bosses(self.state)
         file = Path("sequences/alt/boss_scans/bibliothek.json")
-        vorher = file.read_bytes()
+        before = file.read_bytes()
         for name in ("bibliothek", "Bibliothek", "bibliothek!"):
             with self.subTest(name=name):
                 self.assertFalse(boss_scans.save_boss_scan(BossScanConfig(name, owner_sequence="Alt")))
-                self.assertEqual(file.read_bytes(), vorher)
+                self.assertEqual(file.read_bytes(), before)
 
     def test_scan_loader_fangen_falsche_json_strukturen_ab(self):
         faelle = [(item_scans.load_item_scan_file, x) for x in (
@@ -209,7 +209,7 @@ class EditorPersistenzTest(unittest.TestCase):
     def test_defektes_preset_laesst_bestand_und_datei_unveraendert(self):
         item_scans.save_item_scan(self.scan)
         scan_datei = Path("sequences/alt/item_scans/inventar.json")
-        vorher = scan_datei.read_bytes()
+        before = scan_datei.read_bytes()
         for kind, load, attribut in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
@@ -222,7 +222,7 @@ class EditorPersistenzTest(unittest.TestCase):
                     file.write_text(json.dumps(data), encoding="utf-8")
                     self.assertFalse(load(self.state, "broken"))
                     self.assertEqual(getattr(self.state, attribut), bestand_vorher)
-                    self.assertEqual(scan_datei.read_bytes(), vorher)
+                    self.assertEqual(scan_datei.read_bytes(), before)
 
     def test_preset_meldet_speicherfehler(self):
         for kind, load, save in (

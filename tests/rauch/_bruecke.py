@@ -144,7 +144,7 @@ class Fenster:
 
     def __init__(self, bruecke, width: int = 1500, height: int = 900):
         self.bruecke = bruecke
-        self.fehler: list[str] = []
+        self.error: list[str] = []
         self._groesse = (width, height)
         self._pw = None
         self._browser = None
@@ -158,8 +158,8 @@ class Fenster:
             **({"executable_path": path} if path else {}))
         self.seite = self._browser.new_page(
             viewport={"width": self._groesse[0], "height": self._groesse[1]})
-        self.seite.on("pageerror", lambda e: self.fehler.append(f"pageerror: {e}"))
-        self.seite.on("console", lambda m: self.fehler.append(
+        self.seite.on("pageerror", lambda e: self.error.append(f"pageerror: {e}"))
+        self.seite.on("console", lambda m: self.error.append(
             f"console.error: {m.text}") if m.type == "error" else None)
         self.seite.expose_function("__bruecke", self._ruf)
         self.seite.add_init_script(STUB)
@@ -182,7 +182,7 @@ class Fenster:
         """
         fn = getattr(self.bruecke, name, None)
         if fn is None or not callable(fn):
-            self.fehler.append(f"Bruecke kennt '{name}' nicht")
+            self.error.append(f"Bruecke kennt '{name}' nicht")
             return None
         return fn(data)
 
@@ -213,11 +213,11 @@ class Fenster:
         self.seite.click(f'.tab[data-view="{name}"]')
         return self.ruhe()
 
-    def klick(self, wahl: str):
-        self.seite.click(wahl)
+    def click_value(self, choice: str):
+        self.seite.click(choice)
         return self.ruhe()
 
-    def klick_text(self, wahl: str, text: str):
+    def klick_text(self, choice: str, text: str):
         """Den Knopf mit diesem Text anklicken — robuster als eine Position.
 
         Ueber `nth-of-type` zu gehen bricht, sobald jemand einen Knopf davor
@@ -231,30 +231,30 @@ class Fenster:
         # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
         letzter = None
         for _ in range(3):
-            match = [k for k in self.seite.query_selector_all(wahl)
+            match = [k for k in self.seite.query_selector_all(choice)
                        if text in (k.inner_text() or "")]
             if not match:
                 self.seite.wait_for_timeout(150)
                 continue
             try:
                 match[0].click()
-            except Exception as fehler:      # noqa: BLE001 - erneut versuchen
-                letzter = fehler
+            except Exception as error:      # noqa: BLE001 - erneut versuchen
+                letzter = error
                 self.seite.wait_for_timeout(150)
                 continue
             return self.ruhe()
-        raise AssertionError(f"kein '{text}' in {wahl}" + (f" ({letzter})" if letzter else ""))
+        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({letzter})" if letzter else ""))
 
     # ---------------------------------------------------------------- Ablesen
 
-    def text(self, wahl: str) -> str:
-        return self.seite.inner_text(wahl)
+    def text(self, choice: str) -> str:
+        return self.seite.inner_text(choice)
 
     def status(self) -> str:
         return self.seite.inner_text("#status")
 
-    def count(self, wahl: str) -> int:
-        return len(self.seite.query_selector_all(wahl))
+    def count(self, choice: str) -> int:
+        return len(self.seite.query_selector_all(choice))
 
     def image(self, name: str):
         target = Path(tempfile.gettempdir()) / f"rauchtest_{name}.png"
@@ -262,7 +262,7 @@ class Fenster:
         return target
 
 
-def haupt(name: str, lauf) -> int:
+def haupt(name: str, run) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
     # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
     # `tests/alle_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
@@ -279,17 +279,17 @@ def haupt(name: str, lauf) -> int:
         return 0
     cwd = os.getcwd()
     try:
-        fehler = lauf()
+        error = run()
     finally:
         os.chdir(cwd)
-    if fehler:
+    if error:
         print(f"FAIL  {name}")
-        for f in fehler:
+        for f in error:
             print(f"        {f}")
         return 1
     print(f"OK    {name}")
     return 0
 
 
-def main(name: str, lauf) -> None:
-    sys.exit(haupt(name, lauf))
+def main(name: str, run) -> None:
+    sys.exit(haupt(name, run))

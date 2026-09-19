@@ -518,10 +518,10 @@ def _verwerf_text(reason):
         _STEP(point_id=1), _STEP(point_id=2)])]),
            [_point(1, 10, 10), _point(2, 20, 20)])
     _ruesten(st)
-    puffer = _io_nk.StringIO()
-    with _cl_nk.redirect_stdout(puffer):
+    buffer = _io_nk.StringIO()
+    with _cl_nk.redirect_stdout(buffer):
         _bns(st, dict({"discard": "1"}, **({"reason": reason} if reason else {})))
-    return puffer.getvalue()
+    return buffer.getvalue()
 
 
 _txt_knopf = _verwerf_text("button")

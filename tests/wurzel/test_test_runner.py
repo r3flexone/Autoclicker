@@ -31,14 +31,14 @@ class TestRunnerTest(unittest.TestCase):
                 ([], 0, "ÜBERSPRUNGEN"), (["--rauch-pflicht"], 1, "FAIL")):
             with self.subTest(arguments=arguments), \
                     patch("tests.rauch._bruecke.playwright_da", return_value=(False, "Browser fehlt")), \
-                    patch.object(alle_tests, "_lauf") as lauf, \
+                    patch.object(alle_tests, "_lauf") as run, \
                     redirect_stdout(io.StringIO()) as ausgabe:
                 self.assertEqual(alle_tests.main(["runner", "--nur", "rauch", *arguments]), exitcode)
                 self.assertIn(message, ausgabe.getvalue())
                 self.assertIn("Browser fehlt", ausgabe.getvalue())
                 if exitcode:
                     self.assertNotIn("alles grün", ausgabe.getvalue())
-                lauf.assert_not_called()
+                run.assert_not_called()
 
     def test_roter_browserlauf_bleibt_rot(self):
         with patch("tests.rauch._bruecke.playwright_da", return_value=(True, "")), \
@@ -51,23 +51,23 @@ class TestRunnerTest(unittest.TestCase):
         for code in (0, 1):
             befehle = []
 
-            def lauf(command):
+            def run(command):
                 befehle.append(command)
                 if "test_logic.py" in command[-1]:
                     return code, "1 PASS / 0 FAIL " if code == 0 else "0 PASS / 1 FAIL "
                 return 0, "OK"
 
-            with self.subTest(code=code), patch.object(alle_tests, "_lauf", side_effect=lauf), \
+            with self.subTest(code=code), patch.object(alle_tests, "_lauf", side_effect=run), \
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(alle_tests.main(["runner", "--nur", "vertrag", "--nur", "wurzel"]), code)
             self.assertEqual(len(befehle), 2)
             self.assertIn("--ohne-vertrag", befehle[1])
 
     def test_wurzel_allein_behaelt_den_vertragswrapper(self):
-        with patch.object(alle_tests, "_lauf", return_value=(0, "OK")) as lauf, \
+        with patch.object(alle_tests, "_lauf", return_value=(0, "OK")) as run, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(alle_tests.main(["runner", "--nur", "wurzel"]), 0)
-        self.assertNotIn("--ohne-vertrag", lauf.call_args.args[0])
+        self.assertNotIn("--ohne-vertrag", run.call_args.args[0])
 
     def test_discovery_entfernt_nur_den_vertragswrapper(self):
         def ids(suite):

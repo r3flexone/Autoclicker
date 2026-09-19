@@ -12,7 +12,7 @@ und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
 `.lauf.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
 *Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
-über `auswerten()` aus `tools/log_report.py`, Stückzahlen mal
+über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
 `scan_market_value_file`).
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine

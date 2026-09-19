@@ -618,15 +618,15 @@ check("alte Schritte ohne point_id -> None",
 # ist eine Kopie zurueck, und die naechste Kalibrierung erwischt sie nicht.
 _KOORD_KEYS = ("x", "y", "wait_pixel", "wait_color", "else_x", "else_y",
                "recorded_color", "name", "else_name")
-_gespeichert = [_step_to_dict(st) for st in _s]
+_saved = [_step_to_dict(st) for st in _s]
 check("kein Schritt MIT Punkt speichert noch eine Koordinate",
       all(not any(k in d for k in _KOORD_KEYS)
-          for d, st in zip(_gespeichert, _s) if st.point_id is not None))
+          for d, st in zip(_saved, _s) if st.point_id is not None))
 check("die ID wird stattdessen gespeichert",
-      all("point_id" in d for d, st in zip(_gespeichert, _s) if st.point_id is not None))
+      all("point_id" in d for d, st in zip(_saved, _s) if st.point_id is not None))
 check("auch der Pruef-Pixel speichert nur seine ID",
-      _gespeichert[1].get("wait_point_id") == 11
-      and "wait_pixel" not in _gespeichert[1])
+      _saved[1].get("wait_point_id") == 11
+      and "wait_pixel" not in _saved[1])
 
 # --------------------------------- Klick-Ziele ausserhalb der Sequenzen
 section("Punkt-Referenzen: auch Bestaetigung, Boss- und Icon-Aktion")
@@ -850,9 +850,9 @@ section("Debug-Stufen im Punkte-Menue umschaltbar (ohne config.json editieren)")
 import autoclicker.config as _cfgmod
 import autoclicker.handlers as _hnd
 
-_gespeichert = []
+_saved = []
 _orig_save = _cfgmod.save_config
-_cfgmod.save_config = lambda c: _gespeichert.append((c.debug_log, c.debug_detail))
+_cfgmod.save_config = lambda c: _saved.append((c.debug_log, c.debug_detail))
 
 _st3 = AutoClickerState()
 _st3.config.debug_log = _st3.config.debug_detail = False
@@ -865,7 +865,7 @@ check("Toggle 'detail' laesst Stufe 1 in Ruhe", _st3.config.debug_log is True)
 _hnd.handle_debug_toggle(_st3, "log")
 check("geflippt: Stufe 1 aus, Stufe 2 bleibt an",
       _st3.config.debug_log is False and _st3.config.debug_detail is True)
-check("jede Umschaltung wird persistiert", len(_gespeichert) == 3)
+check("jede Umschaltung wird persistiert", len(_saved) == 3)
 _cfgmod.save_config = _orig_save
 
 
@@ -1249,9 +1249,9 @@ check("nichts zu meckern wenn alles da ist", _meld == [])
 
 from autoclicker.persistence.serialization import _item_scan_to_dict as _isc2d
 _vom_editor = _ISC(name="neu", slots=[_slot4], items=[_item4])
-_gespeichert = _isc2d(_vom_editor)
-check("vollständiger Slot wird eingebettet", "S1" in _gespeichert["slots"])
-check("vollständiges Item wird eingebettet", "Kohle" in _gespeichert["items"])
+_saved = _isc2d(_vom_editor)
+check("vollständiger Slot wird eingebettet", "S1" in _saved["slots"])
+check("vollständiges Item wird eingebettet", "Kohle" in _saved["items"])
 
 # Zwei gleichnamige Items in zwei Scans bleiben getrennt.
 _zweites = ItemProfile(name="Kohle", marker_colors=[(9, 9, 9)])
@@ -1271,13 +1271,13 @@ from autoclicker.models import (ItemProfile as _IP, ItemSlot as _IS2,
                                 ItemScanConfig as _ISCFG)
 
 def _dataclass_defaults(cls):
-    raus = {}
+    out = {}
     for f in _dc.fields(cls):
         if f.default is not _dc.MISSING:
-            raus[f.name] = f.default
+            out[f.name] = f.default
         elif f.default_factory is not _dc.MISSING:      # type: ignore[misc]
-            raus[f.name] = f.default_factory()          # type: ignore[misc]
-    return raus
+            out[f.name] = f.default_factory()          # type: ignore[misc]
+    return out
 
 # Steht in der Tabelle ein anderer Wert als in der Dataclass, wuerde das Feld beim
 # Speichern weggelassen und beim Laden mit einem ANDEREN Wert wieder auftauchen -
@@ -1471,10 +1471,10 @@ check("nachtraeglich gesetzte Objekte tragen ihre Namen nach",
       _cfg_spaet.slot_names == ["S1"])
 
 # Gespeichert werden vollständige, scanlokale Objekte.
-_gespeichert = _item_scan_to_dict(_cfg_editor)
+_saved = _item_scan_to_dict(_cfg_editor)
 check("Datei enthaelt den vollständigen Scan-Bestand",
-      set(_gespeichert.get("slots", {})) == {"S1", "S2"}
-      and set(_gespeichert.get("items", {})) == {"Kohle"})
+      set(_saved.get("slots", {})) == {"S1", "S2"}
+      and set(_saved.get("items", {})) == {"Kohle"})
 
 
 # ------------------------------------------------------- Setup-Pruefung
@@ -1690,15 +1690,15 @@ def _immediate_lauf(items, slots, match):
     st.item_scans = {"inv": cfg}
     # Erkennung: Slot X erkennt Item Y. _check_profile_match sieht nur das Item,
     # daher ueber den gerade gescannten Slot mitgefuehrt.
-    zustand = {"slot": None}
+    state_value = {"slot": None}
     _orig_exec = _IS.execute_item_scan
     def _prof(profile, img, tol, state, debug, label="gefunden",
               return_score=False):
-        passt = match.get(zustand["slot"]) == profile.name
+        passt = match.get(state_value["slot"]) == profile.name
         return (passt, 1.0 if passt else 0.0) if return_score else passt
     _IS._check_profile_match = _prof
     def _exec(state, name, mode="all", slots_override=None):
-        zustand["slot"] = slots_override[0].name if slots_override else None
+        state_value["slot"] = slots_override[0].name if slots_override else None
         return _orig_exec(state, name, mode, slots_override)
     _IS.execute_item_scan = _exec
     _RS.execute_item_scan = _exec
@@ -2211,11 +2211,11 @@ def _kalib_state():
 
 # Die Vorschau darf nichts anfassen — sonst waere ein 'nein' beim Nachfragen wirkungslos
 _vs, _, _, _ = _kalib_state()
-_vorschau = _IE.calibration_preview(_vs, _t)
+_preview = _IE.calibration_preview(_vs, _t)
 check("Vorschau laesst den Bestand unveraendert",
       (_vs.points[0].x, _vs.points[0].y) == (100, 200))
 check("Vorschau meldet vorher und nachher",
-      ("Punkt #1 Bank", (100, 200), (140, 175)) in _vorschau)
+      ("Punkt #1 Bank", (100, 200), (140, 175)) in _preview)
 
 # In einem temporaeren Verzeichnis arbeiten: calibrate_inventory SCHREIBT
 _kalib_tmp = tempfile.mkdtemp()
@@ -2326,10 +2326,10 @@ try:
     from autoclicker.editors.import_export_editor import _adjust_offset as _va
     import autoclicker.editors.import_export_editor as _IEE
 
-    def _anpassen_mit(eingaben):
-        folge = list(eingaben)
+    def _anpassen_mit(inputs):
+        consequence = list(inputs)
         _o = _IEE.safe_input
-        _IEE.safe_input = lambda _p="": folge.pop(0)
+        _IEE.safe_input = lambda _p="": consequence.pop(0)
         try:
             with _cl2.redirect_stdout(_io2.StringIO()):
                 return _va({"scale_x": 1.0, "scale_y": 1.0,
@@ -2465,12 +2465,12 @@ _orig_poll = _IO._read_key_polling
 _gesehen = {}
 try:
     _IO._REAL_CONSOLE = False          # IDE-Konsole erzwingen
-    _IO._read_key_polling = (lambda zusatz=None, timeout=None:
-                             _gesehen.update(zusatz=zusatz, timeout=timeout) or "a")
+    _IO._read_key_polling = (lambda extra=None, timeout=None:
+                             _gesehen.update(extra=extra, timeout=timeout) or "a")
     check("IDE-Konsole: read_command liefert den Buchstaben direkt",
           _IO.read_command() == "a")
     check("IDE-Konsole: die Buchstaben werden ans Polling durchgereicht",
-          _gesehen["zusatz"] is _IO._VK_LETTERS)
+          _gesehen["extra"] is _IO._VK_LETTERS)
     # Die Zeitgrenze des Gates kommt ebenfalls dort an — ohne sie blockierte
     # das Gate in der Konsole, und CTRL+ALT+G kaeme nie zum Zug.
     _IO.read_command(timeout=0.2)
@@ -2490,9 +2490,9 @@ def _walk_pfad(tasten):
     st = AutoClickerState()
     st.points = [_WCP(x=i * 10, y=i * 10, name=f"P{i}", id=i) for i in range(1, 6)]
     besucht = []
-    folge = list(tasten)
+    consequence = list(tasten)
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
-    _DBG.read_command = lambda *a, **k: folge.pop(0) if folge else "q"
+    _DBG.read_command = lambda *a, **k: consequence.pop(0) if consequence else "q"
     _DBG.set_cursor_pos = lambda x, y: besucht.append(x // 10)
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
@@ -2534,13 +2534,13 @@ def _walk_setzen(tasten, maus, color=(9, 9, 9)):
     st = AutoClickerState()
     st.points = [_WCP(x=10, y=10, name="P1", id=1, color=(1, 2, 3)),
                  _WCP(x=20, y=20, name="P2", id=2)]
-    folge = list(tasten)
+    consequence = list(tasten)
     _o_read, _o_cursor = _DBG.read_command, _DBG.set_cursor_pos
     _o_get = _DBG.get_cursor_pos
     import autoclicker.imaging as _IMG
     import autoclicker.persistence as _PERS
     _o_pix, _o_save = _IMG.get_pixel_color, _PERS.save_points
-    _DBG.read_command = lambda *a, **k: folge.pop(0) if folge else "q"
+    _DBG.read_command = lambda *a, **k: consequence.pop(0) if consequence else "q"
     _DBG.set_cursor_pos = lambda x, y: None
     _DBG.get_cursor_pos = lambda: maus
     _IMG.get_pixel_color = lambda x, y: color
@@ -2642,9 +2642,9 @@ for _pfad in sorted(_paket.rglob("*.py")):
     _rel = _pfad.relative_to(_paket.parent).as_posix()
     if _rel in PLATTFORM_MODULE:
         continue
-    _treffer = _WIN_MUSTER.findall(_pfad.read_text(encoding="utf-8"))
-    if _treffer:
-        _ausreisser.append(f"{_rel} ({len(_treffer)}x)")
+    _matches = _WIN_MUSTER.findall(_pfad.read_text(encoding="utf-8"))
+    if _matches:
+        _ausreisser.append(f"{_rel} ({len(_matches)}x)")
 
 check("kein Windows-Aufruf ausserhalb der Plattform-Schicht",
       _ausreisser == [])
@@ -3493,12 +3493,12 @@ check("Unsinn mit Strich -> None", _bp("a-b", 10) is None)
 check("zu viele Teile -> None", _bp("1-2-3", 10) is None)
 
 
-def _auswahl(eingaben, entries=None, vorgewaehlt=(), **kw):
+def _selection(inputs, entries=None, vorgewaehlt=(), **kw):
     """Fuettert multi_select mit einer Tastenfolge."""
     entries = list(entries if entries is not None else ["A", "B", "C", "D"])
-    folge = list(eingaben)
+    consequence = list(inputs)
     _o = _ISE.safe_input
-    _ISE.safe_input = lambda _p="": folge.pop(0) if folge else "cancel"
+    _ISE.safe_input = lambda _p="": consequence.pop(0) if consequence else "cancel"
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return _ISE.multi_select(
@@ -3508,41 +3508,41 @@ def _auswahl(eingaben, entries=None, vorgewaehlt=(), **kw):
         _ISE.safe_input = _o
 
 
-check("Einzelauswahl per Nummer", _auswahl(["2", "done"]) == ["B"])
-check("nochmal dieselbe Nummer waehlt ab", _auswahl(["2", "2", "done"]) == [])
-check("Bereich waehlt mehrere", _auswahl(["2-4", "done"]) == ["B", "C", "D"])
-check("'all' waehlt alles", _auswahl(["all", "done"]) == ["A", "B", "C", "D"])
-check("'clear' leert die Auswahl", _auswahl(["all", "clear", "done"]) == [])
+check("Einzelauswahl per Nummer", _selection(["2", "done"]) == ["B"])
+check("nochmal dieselbe Nummer waehlt ab", _selection(["2", "2", "done"]) == [])
+check("Bereich waehlt mehrere", _selection(["2-4", "done"]) == ["B", "C", "D"])
+check("'all' waehlt alles", _selection(["all", "done"]) == ["A", "B", "C", "D"])
+check("'clear' leert die Auswahl", _selection(["all", "clear", "done"]) == [])
 check("Vorauswahl bleibt erhalten",
-      _auswahl(["done"], vorgewaehlt=["C"]) == ["C"])
-check("'cancel' gibt None zurueck", _auswahl(["2", "cancel"]) is None)
+      _selection(["done"], vorgewaehlt=["C"]) == ["C"])
+check("'cancel' gibt None zurueck", _selection(["2", "cancel"]) is None)
 check("Bereich fuegt nichts doppelt hinzu",
-      _auswahl(["1-3", "2-4", "done"]) == ["A", "B", "C", "D"])
-check("ungueltige Nummer aendert nichts", _auswahl(["9", "1", "done"]) == ["A"])
-check("unbekannter Befehl aendert nichts", _auswahl(["quatsch", "1", "done"]) == ["A"])
-check("'show' aendert die Auswahl nicht", _auswahl(["1", "show", "done"]) == ["A"])
+      _selection(["1-3", "2-4", "done"]) == ["A", "B", "C", "D"])
+check("ungueltige Nummer aendert nichts", _selection(["9", "1", "done"]) == ["A"])
+check("unbekannter Befehl aendert nichts", _selection(["quatsch", "1", "done"]) == ["A"])
+check("'show' aendert die Auswahl nicht", _selection(["1", "show", "done"]) == ["A"])
 
 # leer_fehler erzwingt mindestens einen Eintrag — 'done' darf dann nicht durchgehen
 check("leer_fehler: 'done' ohne Auswahl wird abgelehnt",
-      _auswahl(["done", "1", "done"], leer_fehler="Mindestens 1!") == ["A"])
-check("ohne leer_fehler ist eine leere Auswahl erlaubt", _auswahl(["done"]) == [])
+      _selection(["done", "1", "done"], leer_fehler="Mindestens 1!") == ["A"])
+check("ohne leer_fehler ist eine leere Auswahl erlaubt", _selection(["done"]) == [])
 
 # Der 'new'-Befehl haengt einen Eintrag an UND waehlt ihn aus
 _neu_liste = ["A", "B"]
-_ergebnis = _auswahl(["new 1", "done"], entries=_neu_liste,
+_ergebnis = _selection(["new 1", "done"], entries=_neu_liste,
                      extra_praefix="new", extra_fn=lambda raw: "Frisch")
 check("'new' waehlt den neuen Eintrag gleich mit", _ergebnis == ["Frisch"])
 check("'new' bekommt die Roh-Eingabe (Slot-Nummer bleibt lesbar)",
-      _auswahl(["new 3", "done"], extra_praefix="new",
+      _selection(["new 3", "done"], extra_praefix="new",
                extra_fn=lambda raw: raw) == ["new 3"])
 check("'new' ohne Ergebnis aendert nichts",
-      _auswahl(["new 1", "done"], extra_praefix="new",
+      _selection(["new 1", "done"], extra_praefix="new",
                extra_fn=lambda raw: None) == [])
 
 # Regression: '1-5' darf nicht als unbekannter Befehl durchfallen, und 'new' nicht
 # als Bereich gelesen werden (beides stand vorher in derselben elif-Kette)
 check("'new' wird nicht als Bereich missverstanden",
-      _auswahl(["new-quatsch", "1", "done"], extra_praefix="new",
+      _selection(["new-quatsch", "1", "done"], extra_praefix="new",
                extra_fn=lambda raw: None) == ["A"])
 
 
@@ -3639,8 +3639,8 @@ def _lauf(wirkt_ab_klick, retries, else_cfg=None):
                    verify_condition=_WC4(point_id=2, pixel=(5, 6), color=(0, 255, 0)),
                    else_config=else_cfg)
         with _cl2.redirect_stdout(_io2.StringIO()):
-            erg = _RS.execute_step(st, step, 1, 1, "Loop")
-        return erg, st.total_clicks, counters["shots"]
+            res = _RS.execute_step(st, step, 1, 1, "Loop")
+        return res, st.total_clicks, counters["shots"]
     finally:
         _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
 
@@ -3896,8 +3896,8 @@ import struct as _struct12
 
 def _symbolpixel12(bits, edge, x, y):
     """(B, G, R, A) an (x, y) mit Ursprung OBEN links - die Datei steht kopf."""
-    versatz = 40 + ((edge - 1 - y) * edge + x) * 4
-    return tuple(bits[versatz:versatz + 4])
+    offset = 40 + ((edge - 1 - y) * edge + x) * 4
+    return tuple(bits[offset:offset + 4])
 
 
 _symbol_loecher12 = []
@@ -4258,8 +4258,8 @@ section("Sequenz-Studio sortiert per Ziehen um - auch ueber Phasengrenzen")
 # die halbe GUI stilllegte; seit sie in der Bruecke liegt, laeuft dieser Abschnitt
 # ohne jede GUI und auf jeder Plattform.
 from autoclicker.editors.sequence_studio.bridge import (
-    StudioBridge as _SB8, TRIGGER_DA as _TDA8, TRIGGER_KEIN as _TKEIN8,
-    TRIGGER_WEG as _TWEG8, trigger_name as _tn8)
+    StudioBridge as _SB8, TRIGGER_PRESENT as _TDA8, TRIGGER_NONE as _TKEIN8,
+    TRIGGER_GONE as _TWEG8, trigger_name as _tn8)
 from autoclicker.editors.sequence_studio.model import PalettePoint as _PP8
 from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
 
@@ -4564,7 +4564,7 @@ _b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
 _fehler10, _typen10 = [], []
 for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["type_key"])
+        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["type"])
     except Exception as _e10:                                    # noqa: BLE001
         _fehler10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
 check("jeder Block-Typ laesst sich anzeigen", _fehler10 == [])
@@ -4578,8 +4578,8 @@ check("und wird als das erkannt, was er ist",
 _b10.select({"phase": 1, "row": 0})
 _fehler10b = []
 for _t10 in [t["key"] for t in _b10.snapshot()["types"]]:
-    _z10 = _b10.block_set_type({"type_key": _t10})
-    if _z10["block"]["type_key"] != _t10:
+    _z10 = _b10.block_set_type({"type": _t10})
+    if _z10["block"]["type"] != _t10:
         _fehler10b.append(_t10)
 check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 
@@ -4590,8 +4590,8 @@ check("jeder Typ laesst sich auch einstellen", _fehler10b == [])
 # den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
 # block_trigger schon hatte.
 _b10.select({"phase": 1, "row": 0})
-_b10.block_set_type({"type_key": "click"})
-_b10.block_set_type({"type_key": "wait_click"})
+_b10.block_set_type({"type": "click"})
+_b10.block_set_type({"type": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
 check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
       _wc10 is not None and _wc10.point_id == 1)
@@ -4600,11 +4600,11 @@ check("gespeichert wird auch hier die Referenz, keine Farb-Kopie",
       _d10b.get("wait_point_id") == 1 and _d10b.get("wait_pixel") is None
       and _d10b.get("wait_color") is None)
 _b10.select({"phase": 1, "row": 1})            # Taste, ohne Punkt
-_b10.block_set_type({"type_key": "click"})
-_zustand10 = _b10.block_set_type({"type_key": "wait_click"})
+_b10.block_set_type({"type": "click"})
+_zustand10 = _b10.block_set_type({"type": "wait_click"})
 check("ohne Punkt wird FARBE+KLICK abgelehnt",
       _seq10.loop_phases[0].steps[1].wait_condition is None
-      and _zustand10["block"]["type_key"] == "click")
+      and _zustand10["block"]["type"] == "click")
 check("und auch das wird begruendet",
       _zustand10["status"]["kind"] == "warn" and "Punkt" in _zustand10["status"]["text"])
 
@@ -4797,23 +4797,23 @@ check("und legt nichts am Schritt an", not hasattr(_schritt11, "gibtsnicht"))
 _b13, _s13 = _bruecke9()
 _b13.block_trigger({"choice": _TDA8})
 check("Ausgangslage: Farbe+Klick mit Trigger",
-      _b13.snapshot()["block"]["type_key"] == "wait_click")
+      _b13.snapshot()["block"]["type"] == "wait_click")
 
-_b13.block_set_type({"type_key": "wait"})
+_b13.block_set_type({"type": "wait"})
 check("der Chip WARTEN macht daraus einen Warte-Block",
-      _b13.snapshot()["block"]["type_key"] == "wait"
+      _b13.snapshot()["block"]["type"] == "wait"
       and _b13.snapshot()["block"]["wait_only"] is True)
 check("und laesst den Farb-Trigger stehen", _s13.wait_condition is not None)
 
-_b13.block_set_type({"type_key": "wait_click"})
+_b13.block_set_type({"type": "wait_click"})
 check("der Chip FARBE+KLICK ist der verlustfreie Weg zurueck",
-      _b13.snapshot()["block"]["type_key"] == "wait_click"
+      _b13.snapshot()["block"]["type"] == "wait_click"
       and _s13.wait_condition is not None and _s13.wait_condition.point_id == 1)
 
 # KLICK verliert den Trigger - das ist keine Nebenwirkung, sondern die Bedeutung
 # von KLICK. Nur deshalb braucht es FARBE+KLICK als zweiten Rueckweg.
-_b13.block_set_type({"type_key": "wait"})
-_b13.block_set_type({"type_key": "click"})
+_b13.block_set_type({"type": "wait"})
+_b13.block_set_type({"type": "click"})
 check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is None)
 
 # Die Bruecke konnte das alles schon vorher - der Fehler sass in der ANSICHT, und
@@ -5022,7 +5022,7 @@ check("und ein Boss-Watcher ohne Namen ebenfalls erkannt",
 # Jede Scan-Art, die der Dispatcher kennt, muss auch hier stehen - sonst faellt
 # genau die eine wieder bis zum Klick durch.
 from autoclicker.runtime.steps import _SCAN_FIELDS as _sf12
-from autoclicker.editors.sequence_studio.bridge import SCAN_FELD as _sfeld12
+from autoclicker.editors.sequence_studio.bridge import SCAN_FIELD as _sfeld12
 check("Executor und Studio kennen dieselben Scan-Felder",
       sorted(f for f, _ in _sf12) == sorted(_sfeld12.values()))
 
@@ -5732,12 +5732,12 @@ try:
     _lane17 = next(i for i, ln in enumerate(_b17.board.lanes) if ln.steps)
     _b17.select({"phase": _lane17, "row": 0})
     _schritt17 = _b17.board.lanes[_lane17].steps[0]
-    _z17 = _b17.block_set_type({"type_key": "click"})
+    _z17 = _b17.block_set_type({"type": "click"})
     check("Typwechsel ohne Ausloeser raeumt das ELSE weg",
           _schritt17.else_config is None)
     check("und sagt es", "ELSE entfernt" in _z17["status"]["text"])
     # Zurueck: der Abschnitt ist wieder da, aber leer - frisch auswaehlbar.
-    _b17.block_set_type({"type_key": "wait_click"})
+    _b17.block_set_type({"type": "wait_click"})
     check("zurueckgestellt ist der Ausloeser wieder da",
           _schritt17.wait_condition is not None)
     check("...aber ohne ELSE", _b17._block_detail()["else_action"] == "")
@@ -5825,10 +5825,10 @@ if not _hat_maske:
 else:
     _HG_M = (30, 128, 108)
 
-    def _slotbild(hintergrund, saat):
+    def _slotbild(background, saat):
         """Ein Slot: Hintergrund + ein Symbol in der Mitte."""
         import random
-        b = _PILm.new("RGB", (40, 40), hintergrund)
+        b = _PILm.new("RGB", (40, 40), background)
         r = random.Random(saat)
         for x in range(14, 26):
             for y in range(14, 26):
@@ -6052,9 +6052,9 @@ check("und der Detailteil wiederholt ihn nicht",
 # darueber zusammen hoeher sind als das Fenster, bleibt fuer den letzten nichts
 # uebrig. Im Scans-Reiter war das die Liste (Scans/Slots/Items) - auf wenige
 # Pixel gequetscht und unerreichbar, obwohl die Spalte scrollte.
-def _css_regel18(wahl: str) -> str:
-    position = _html18.index("\n" + wahl + "{")
-    return _html18[position + len(wahl) + 2:_html18.index("}", position)]
+def _css_regel18(choice: str) -> str:
+    position = _html18.index("\n" + choice + "{")
+    return _html18[position + len(choice) + 2:_html18.index("}", position)]
 
 # --- Der „alle"-Schieber hat drei Stellungen, nicht zwei ---
 # Ueber 56 Schaltern stand er meistens weder auf ein noch auf aus - deshalb gab
@@ -6200,7 +6200,7 @@ check("optionale Felder sind genau die mit Standard None",
       sorted(_opt17()) == sorted(k for k, v in _defaults17.items() if v is None))
 
 # --- Der Wertvergleich der Bruecke ---
-from autoclicker.editors.sequence_studio.bridge import _gleicher_wert as _gw17
+from autoclicker.editors.sequence_studio.bridge import _same_value as _gw17
 
 check("600 und 600.0 sind derselbe Wert", _gw17(600, 600.0))
 check("True ist nicht 1", not _gw17(True, 1))
@@ -6295,7 +6295,7 @@ for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.
         continue
     for _nr17, _zeile17 in enumerate(_pf17.read_text(encoding="utf-8").splitlines(), 1):
         # Nur der State: ein `self.config = ...` in einem Stellvertreter-Objekt
-        # (scans._NurConfig) ist kein Austausch der Programm-Config.
+        # (scans._ConfigOnly) ist kein Austausch der Programm-Config.
         if _re13.search(r"^\s*(?:\w+\.)?state\.config\s*=\s*", _zeile17):
             _zuweisungen17.append(f"{_pf17.name}:{_nr17}: {_zeile17.strip()}")
 # Ohne Zeilennummer: die waere bei jeder Einfuegung in main.py falsch, und der

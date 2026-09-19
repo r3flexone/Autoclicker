@@ -32,7 +32,7 @@ _web = studio_web_source()
 _WURZEL = str(Path(__file__).resolve().parents[2])
 if _WURZEL not in sys.path:
     sys.path.insert(0, _WURZEL)
-from tools.log_report import auswerten as _auswerten, report as _bericht  # noqa: E402
+from tools.log_report import evaluate as _auswerten, report as _bericht  # noqa: E402
 
 
 _SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]

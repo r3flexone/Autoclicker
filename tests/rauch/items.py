@@ -11,30 +11,30 @@ def aufbau():
     from autoclicker.models import Sequence
 
     sandkasten("rauch_items_")
-    image, ecken = inventar()
+    image, corners = inventar()
     stelle_bildschirm(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
                      Path("sequences/rauch/sequence.json"), "sequences")
     b.scan_new({"name": "Inventar"})
     b.scan_screenshot()
-    for sx, sy in ecken:
+    for sx, sy in corners:
         b.scan_mode_set({"mode": "slot"})
         b.scan_click({"x": sx, "y": sy})
         b.scan_click({"x": sx + 62, "y": sy + 60})
     b.scan_learn_preview({"scope": "all"})
     b.scan_learn_preview_apply({})
     b.scan_recognize()
-    return b, len(ecken)
+    return b, len(corners)
 
 
-def lauf():
+def run():
     b, count = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     pruefe(len(b.items) == count, f"{count} Items erwartet, gelernt: {sorted(b.items)}")
 
@@ -61,8 +61,8 @@ def lauf():
         # Die Suchregion darf mit der zweiten Ecke aus dem Bild heraus in die
         # mittlere Buehne gezogen werden. Gespeichert wird der Bildrand, denn
         # nur innerhalb davon gibt es Pixel fuer die Erkennung.
-        f.klick('[data-scan-schritt="2"]')
-        f.klick("#scan-slots-find")
+        f.click_value('[data-scan-schritt="2"]')
+        f.click_value("#scan-slots-find")
         bildrand = f.seite.locator("#scan-overlay").bounding_box()
         buehnenrand = f.seite.locator("#scan-stage").bounding_box()
         x_draussen = bildrand["x"] + bildrand["width"] + 5
@@ -74,11 +74,11 @@ def lauf():
         f.seite.mouse.click(x_draussen,
                             bildrand["y"] + bildrand["height"] * .8)
         f.ruhe()
-        rechter_bildrand = (b._foto_info["left"]
-                            + round(b._foto_info["width"] / b._foto_info["scale"]))
-        pruefe(b._suchbereich is not None
-               and b._suchbereich[2] == rechter_bildrand,
-               f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._suchbereich}")
+        rechter_bildrand = (b._photo_info["left"]
+                            + round(b._photo_info["width"] / b._photo_info["scale"]))
+        pruefe(b._search_area is not None
+               and b._search_area[2] == rechter_bildrand,
+               f"Ecke ausserhalb rastet nicht am Bildrand ein: {b._search_area}")
         f.seite.keyboard.press("Escape")
         f.ruhe()
         pruefe(f.text("#scan-sequence").strip() == "Rauch",
@@ -90,8 +90,8 @@ def lauf():
         f.image("items_masken")
 
         # Ohne vorhandene Kategorien ist es ein Textfeld - es gibt nichts zu waehlen.
-        typ = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
-        pruefe(typ == "INPUT", f"ohne Kategorien erwartet INPUT, da: {typ}")
+        type_value = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
+        pruefe(type_value == "INPUT", f"ohne Kategorien erwartet INPUT, da: {type_value}")
 
         # Eine neue Kategorie anlegen ...
         f.seite.fill("#scan-insp .category-chooser input", "Helme")
@@ -99,8 +99,8 @@ def lauf():
             "#scan-insp .category-chooser input",
             "e => e.dispatchEvent(new Event('change', {bubbles: true}))")
         f.ruhe()
-        typ = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
-        pruefe(typ == "SELECT", f"nach dem Anlegen erwartet SELECT, da: {typ}")
+        type_value = f.seite.eval_on_selector("#scan-insp .category-chooser > *", "e => e.tagName")
+        pruefe(type_value == "SELECT", f"nach dem Anlegen erwartet SELECT, da: {type_value}")
 
         # ... und sie muss beim NAECHSTEN Item waehlbar sein. Genau dafuer gibt es
         # `refreshCategoryOptions()`; ohne das tippt man sie zwanzigmal.
@@ -150,11 +150,11 @@ def lauf():
         # sie wird nachgeholt, und dieser Aufbau rettete den Fokus nicht.
         f.klick_text("#scan-insp .tabs .tab", "Items")
         f.ruhe()
-        vorher = f.seite.eval_on_selector_all(
+        before = f.seite.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
-        pruefe(all(n.startswith("maske:item:") for n in vorher),
-               f"jede Item-Maske braucht ihre id: {vorher[:3]}")
-        ziel_id = vorher[0] or "(ohne id)"
+        pruefe(all(n.startswith("maske:item:") for n in before),
+               f"jede Item-Maske braucht ihre id: {before[:3]}")
+        ziel_id = before[0] or "(ohne id)"
 
         # 1. Umbenennen: echtes Tippen, echtes TAB.
         #
@@ -193,8 +193,8 @@ def lauf():
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         pruefe(nach[0] == "maske:item:Zeta",
                f"das Umbenennen verschiebt die Zeile: {nach}")
-        pruefe(len(nach) == len(vorher) and nach[1:] == vorher[1:],
-               f"die uebrigen Zeilen haben sich bewegt: {vorher} -> {nach}")
+        pruefe(len(nach) == len(before) and nach[1:] == before[1:],
+               f"die uebrigen Zeilen haben sich bewegt: {before} -> {nach}")
         wo = f.seite.evaluate("""() => {
           const a = document.activeElement;
           const m = a && a.closest ? a.closest('.scan-card') : null;
@@ -234,13 +234,13 @@ def lauf():
         # Das ERSTE Item auf einen hohen Rang setzen: sortiert die Liste
         # sofort, stuende es danach am Ende seiner Gruppe. Genau daran misst
         # sich, ob die Reihenfolge stehen bleibt.
-        erste = vor_prio[0]
+        first = vor_prio[0]
         f.seite.eval_on_selector_all('.scan-card input[type="number"]', """(ns, id) => {
           const e = ns.find((n) => n.closest(".scan-card").id === id) || ns[0];
           e.focus();
           e.value = "9";
           e.dispatchEvent(new Event('change', {bubbles: true}));
-        }""", erste)
+        }""", first)
         f.ruhe()
         nach_prio = f.seite.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
@@ -312,9 +312,9 @@ def lauf():
         # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand
         # in der Spalte, die man damit gerade verlassen hatte.
         f.klick_text("#scan-insp .tabs .tab", "Scans")
-        f.klick('#scan-insp .scan-card[id="maske:scan:Inventar"] input')
+        f.click_value('#scan-insp .scan-card[id="maske:scan:Inventar"] input')
         f.ruhe()
-        f.klick('#scan-insp .scan-card[id="maske:scan:Inventar"] .scan-card-state')
+        f.click_value('#scan-insp .scan-card[id="maske:scan:Inventar"] .scan-card-state')
         reiter_danach = f.text("#scan-insp .tabs .tab.on")
         pruefe(reiter_danach.startswith("Scans"),
                f"nach dem Oeffnen steht der Reiter auf „{reiter_danach}“")
@@ -328,7 +328,7 @@ def lauf():
         # Bedienelement — im Modell und in den Konsolen-Editoren gibt es sie
         # seit jeher.
         f.klick_text("#scan-insp .tabs .tab", "Items")
-        f.klick("#scan-insp .scan-card .scan-card-fields input")
+        f.click_value("#scan-insp .scan-card .scan-card-fields input")
         f.ruhe()
         beschriftungen = f.seite.eval_on_selector_all(
             "#scan-insp .scan-card-detail .heading",
@@ -351,8 +351,8 @@ def lauf():
             f.ruhe()
             f.seite.keyboard.press(f"Control+{key}")
             f.ruhe()
-            modus = f.seite.evaluate("SC.mode")
-            pruefe(modus == "choice", f"{name} wechselt den Modus auf '{modus}'")
+            mode = f.seite.evaluate("SC.mode")
+            pruefe(mode == "choice", f"{name} wechselt den Modus auf '{mode}'")
         # Ohne Modifikator muss der Buchstabe weiterhin greifen — sonst hat der
         # Riegel das Werkzeug gleich mit abgeschaltet. Erst aus dem Textfeld
         # heraus: in einem Eingabefeld ist „F“ ein Buchstabe und kein Werkzeug.
@@ -376,15 +376,15 @@ def lauf():
         f.ruhe()
         # Das Namensfeld traegt kein `type` (s. `cardName`) — ein Selektor auf
         # `[type=text]` findet es deshalb nicht.
-        felder = "#scan-insp .scan-card .scan-card-fields > input:not([type])"
-        names = f.seite.locator(felder)
+        fields = "#scan-insp .scan-card .scan-card-fields > input:not([type])"
+        names = f.seite.locator(fields)
         if names.count() >= 2:
             names.nth(0).fill("Zuerst")
             names.nth(0).press("Tab")          # meldet und plant das Speichern
             f.seite.wait_for_timeout(120)
-            f.seite.locator(felder).nth(1).click()
-            f.seite.locator(felder).nth(1).type("Getippt", delay=20)
-            getippt = f.seite.locator(felder).nth(1).input_value()
+            f.seite.locator(fields).nth(1).click()
+            f.seite.locator(fields).nth(1).type("Getippt", delay=20)
+            getippt = f.seite.locator(fields).nth(1).input_value()
             # **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand
             # eine feste Wartezeit von 1800 ms mit dem Kommentar „laenger als
             # die 900 ms" — nur liegen hier ZWEI Runden hintereinander: das
@@ -410,11 +410,11 @@ def lauf():
             pruefe(not f.seite.evaluate("SC.dirty"),
                    "der Entwurf wurde nicht von selbst gespeichert")
         else:
-            fehler.append("keine zwei Item-Namensfelder fuer die Tipp-Probe")
+            error.append("keine zwei Item-Namensfelder fuer die Tipp-Probe")
 
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Items", lauf)
+    main("Items", run)

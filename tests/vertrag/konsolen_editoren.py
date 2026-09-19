@@ -28,11 +28,11 @@ section("Geteilte Capture-Helfer der Erkennungs-Editoren")
 import autoclicker.editors._detection_capture as _DC
 
 
-def _dc_folge(fn, eingaben, **kw):
+def _dc_folge(fn, inputs, **kw):
     """Ruft eine Capture-Funktion mit einer festen Tastenfolge auf."""
-    folge = list(eingaben)
+    consequence = list(inputs)
     _alt = _DC.safe_input
-    _DC.safe_input = lambda _p="": folge.pop(0) if folge else "cancel"
+    _DC.safe_input = lambda _p="": consequence.pop(0) if consequence else "cancel"
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return fn(**kw)
@@ -185,11 +185,11 @@ import autoclicker.editors._item_felder as _IF
 from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
 
 
-def _feld_folge(fn, eingaben, **kw):
+def _feld_folge(fn, inputs, **kw):
     """Ruft eine Feld-Abfrage mit einer festen Tastenfolge auf."""
-    folge = list(eingaben)
+    consequence = list(inputs)
     _alt = _IF.safe_input
-    _IF.safe_input = lambda _p="": folge.pop(0) if folge else ""
+    _IF.safe_input = lambda _p="": consequence.pop(0) if consequence else ""
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return fn(**kw)
@@ -253,10 +253,10 @@ try:
           _feld_folge(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
     check("leere Eingabe behaelt die Vorgabe",
           _feld_folge(_IF.ask_priority, [""], state=_st_f,
-                      category="Helme", vorgabe=4) == 4)
+                      category="Helme", default_value=4) == 4)
     check("Zahlensalat behaelt die Vorgabe",
           _feld_folge(_IF.ask_priority, ["abc"], state=_st_f,
-                      category="Helme", vorgabe=4) == 4)
+                      category="Helme", default_value=4) == 4)
     check("negative Zahlen werden auf 1 gehoben",
           _feld_folge(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
     # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.

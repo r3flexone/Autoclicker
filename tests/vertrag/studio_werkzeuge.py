@@ -8,7 +8,7 @@ import tempfile as _tf
 from pathlib import Path as _P
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.bridge_werkzeuge import KALIB_UMFANG
+from autoclicker.editors.sequence_studio.bridge_werkzeuge import CALIB_EXTENT
 from autoclicker.models import (
     AutoClickerState as _ST, ClickPoint as _CP, ItemProfile as _IP,
     ItemScanConfig as _ISC, ItemSlot as _IS, LoopPhase as _LP, Sequence as _SEQ,
@@ -104,7 +104,7 @@ try:
     check("und die Antwort aendert sich mit", _b.tool_data()["open"] is True)
     _b._dirty = False
     check("und der Umfang kommt aus der Tabelle",
-          [u["key"] for u in _d["scope"]] == [k for k, _, _ in KALIB_UMFANG])
+          [u["key"] for u in _d["scope"]] == [k for k, _, _ in CALIB_EXTENT])
     # Die Ansicht zeigt dieselben Schalter; laufen sie auseinander, schaltet ein
     # Haken etwas anderes als beschriftet.
     check("Slots sind standardmaessig AUS",
@@ -280,7 +280,7 @@ try:
     check("der Editor-Knopf verweist auf das Werkzeug",
           'wzOpen("recording")' in _js)
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
-          all(wort in _js for wort in ("wzStartRecording", "wzStopRecording",
+          all(word in _js for word in ("wzStartRecording", "wzStopRecording",
                                        "wzWatchRecording")))
     from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
@@ -423,12 +423,12 @@ try:
     _rec.remove_mouse_hook = lambda: None
     _rec.remove_keyboard_hook = lambda: None
     try:
-        _gespeichert = _rec.stop_recording(_st)
+        _saved = _rec.stop_recording(_st)
     finally:
         _rec.safe_input = _alt_input
         _rec.remove_mouse_hook = _alt_maus_weg
         _rec.remove_keyboard_hook = _alt_tasten_weg
-    check("die UI-Vorgaben speichern ohne safe_input", _gespeichert == "aufnahme_ui")
+    check("die UI-Vorgaben speichern ohne safe_input", _saved == "aufnahme_ui")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
     _geladen = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
     check("die Aufnahme wird wirklich zur Sequenz", _geladen is not None)
@@ -677,7 +677,7 @@ finally:
 section("Jeder Griff mit der Maus sagt, dass er wartet")
 
 # `_await_position()` und `area_capture()` warten GLOBAL auf ENTER — bis zu
-# WARTE_TIMEOUT Sekunden, und der Bruecken-Aufruf blockiert dabei. Die Seite
+# WAIT_TIMEOUT Sekunden, und der Bruecken-Aufruf blockiert dabei. Die Seite
 # bekommt in dieser Zeit keine Antwort, kann also nichts anzeigen, was von drueben
 # kaeme: sie muss VOR dem Aufruf sagen, worauf gewartet wird. Ohne das sah es aus,
 # als tue das Fenster nichts — eine Minute lang.
@@ -731,12 +731,12 @@ for _m in sorted(_wartend):
 
 # Die Zeitgrenze steht an EINER Stelle und wird mitgeliefert: ohne das liefe der
 # Countdown der Seite neben dem echten Zeitablauf der Bruecke.
-from autoclicker.editors.sequence_studio.bridge_contract import WARTE_TIMEOUT as _WT
+from autoclicker.editors.sequence_studio.bridge_contract import WAIT_TIMEOUT as _WT
 check("die Zeitgrenze ist eine Konstante, kein Literal im Aufruf",
       all("timeout=60" not in t for t in _quellen_wt.values()))
 check("und sie steht in der Momentaufnahme",
-      '"wait_timeout": WARTE_TIMEOUT' in
+      '"wait_timeout": WAIT_TIMEOUT' in
       (_studio_wt / "bridge_view.py").read_text(encoding="utf-8"))
 check("wie auch in den Werkzeug-Daten",
-      '"wait_timeout": WARTE_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
+      '"wait_timeout": WAIT_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
 check("der Wert ist eine sinnvolle Zeitgrenze", 10 <= _WT <= 300)

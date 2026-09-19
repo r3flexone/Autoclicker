@@ -87,11 +87,11 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
                     for c in state.icon_scans.values()]
 
     template_ordner = sequence_templates_dir(owner) if owner else Path("sequences")
-    missing = [(wer, tpl) for wer, tpl in quellen
+    missing = [(who, tpl) for who, tpl in quellen
                if tpl and not (template_ordner / tpl).exists()]
     report.checked.append(f"{sum(1 for _, t in quellen if t)} Template-Verweise")
-    for wer, tpl in missing:
-        report.add_finding(LEVEL_ERROR, wer,
+    for who, tpl in missing:
+        report.add_finding(LEVEL_ERROR, who,
                       f"Template '{tpl}' fehlt in {template_ordner}/",
                       "Template neu aufnehmen oder den Verweis entfernen")
 
@@ -111,14 +111,14 @@ def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
         items = [(f"Item '{i.name}' (Scan '{scan.name}')", i)
                  for scan in state.item_scans.values() for i in scan.items]
 
-    for wer, profil in candidates:
-        if not profil.template and not profil.marker_colors:
-            report.add_finding(LEVEL_ERROR, wer,
+    for who, profile in candidates:
+        if not profile.template and not profile.marker_colors:
+            report.add_finding(LEVEL_ERROR, who,
                           "weder Template noch Farb-Marker — wird nie erkannt",
                           "Template aufnehmen oder Marker-Farben setzen")
-    for wer, item in items:
+    for who, item in items:
         if not item.template_names() and not item.marker_colors:
-            report.add_finding(LEVEL_HINT, wer,
+            report.add_finding(LEVEL_HINT, who,
                           "weder Template noch Farb-Marker — wird in keinem Scan gefunden")
     report.checked.append(f"{len(candidates) + len(items)} Erkennungs-Profile")
 
@@ -184,10 +184,10 @@ def _check_coordinates(state: AutoClickerState, report: CheckReport) -> None:
     left, top, right, bottom = rect
     with state.lock:
         points = list(state.points)
-    draussen = [p for p in points
+    outside = [p for p in points
                 if not (left <= p.x < right and top <= p.y < bottom)]
     report.checked.append(f"{len(points)} Punkt(e)")
-    for p in draussen:
+    for p in outside:
         report.add_finding(LEVEL_ERROR, f"Punkt #{p.id} {p.name}".strip(),
                       f"({p.x}, {p.y}) liegt ausserhalb aller Monitore "
                       f"({left},{top})-({right},{bottom})",
@@ -202,10 +202,10 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
     """
     from .persistence import list_available_sequences, load_sequence_file
 
-    dateien = list_available_sequences()
-    report.checked.append(f"{len(dateien)} Sequenz(en)")
+    files = list_available_sequences()
+    report.checked.append(f"{len(files)} Sequenz(en)")
 
-    for name, path in dateien:
+    for name, path in files:
         seq = load_sequence_file(path)
         if seq is None:
             report.add_finding(LEVEL_ERROR, f"Sequenz '{name}'",
@@ -215,7 +215,7 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
         from .persistence import (list_available_item_scans, list_available_boss_scans,
                                   list_available_icon_scans)
         punkt_ids = {p.id for p in seq.points}
-        bekannt = {
+        known = {
             "item_scan": {n for n, _ in list_available_item_scans(seq.name)},
             "boss_scan": {n for n, _ in list_available_boss_scans(seq.name)},
             "boss_watcher": {n for n, _ in list_available_boss_scans(seq.name)},
@@ -230,7 +230,7 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
             for i, step in enumerate(steps, 1):
                 if step.point_id is not None and step.point_id not in punkt_ids:
                     tote_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
-                for attr, names in bekannt.items():
+                for attr, names in known.items():
                     verweis = getattr(step, attr, None)
                     if verweis and verweis not in names:
                         tote_scans.append(f"{phase}[{i}] → {attr} '{verweis}'")

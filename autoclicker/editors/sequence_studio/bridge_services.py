@@ -12,7 +12,7 @@ from ...persistence import (
 )
 from ...utils import sanitize_filename
 from .bridge_contract import (
-    _gleicher_wert,
+    _same_value,
     _hex,
     _mtime,
     scan_warnungen,
@@ -35,15 +35,15 @@ class BridgeServicesMixin:
         Antwort den Editor-Zustand. Über `load_sequence_file()`, damit Migration und
         Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
         """
-        raus: list[dict] = []
+        out: list[dict] = []
         wurzel = Path(self.sequences_dir)
-        dateien = sorted(
+        files = sorted(
             (folder / "sequence.json" for folder in wurzel.iterdir()
              if folder.is_dir() and (folder / "sequence.json").exists()),
             key=lambda path: path.parent.name,
         ) if wurzel.exists() else []
-        for path in dateien:
-            gespeicherter_name = path.parent.name
+        for path in files:
+            saved_name = path.parent.name
             try:
                 changed = path.stat().st_mtime
             except OSError:
@@ -53,11 +53,11 @@ class BridgeServicesMixin:
                 # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
-                raus.append({"name": gespeicherter_name, "file": str(path), "broken": True,
+                out.append({"name": saved_name, "file": str(path), "broken": True,
                              "changed": changed, "open": path == self.filepath,
                              "scope": self._sequence_extent(path.parent)})
                 continue
-            raus.append({
+            out.append({
                 "name": seq.name,
                 "file": str(path),
                 "broken": False,
@@ -75,7 +75,7 @@ class BridgeServicesMixin:
                 "scope": self._sequence_extent(path.parent),
                 "warnings": scan_warnungen(sequence_to_board(seq)),
             })
-        return raus
+        return out
 
     # Was in einem Sequenzordner ausser der sequence.json noch liegt. Reihenfolge
     # = Anzeige; der Schluessel ist der Unterordner.
@@ -84,7 +84,7 @@ class BridgeServicesMixin:
     # an, und das ergab "2x Item-Scann" und "3x gemerkter Bildschirmn" - bei drei
     # von fuenf Woertern falsch. Deutsche Mehrzahl ist keine Regel, die man in
     # einer Zeile JavaScript trifft; sie gehoert zu den Daten.
-    _UMFANG = (("item_scans", "Item-Scan", "Item-Scans"),
+    _EXTENT = (("item_scans", "Item-Scan", "Item-Scans"),
                ("boss_scans", "Boss-Scan", "Boss-Scans"),
                ("icon_scans", "Icon-Scan", "Icon-Scans"),
                ("templates", "Vorlage", "Vorlagen"),
@@ -99,16 +99,16 @@ class BridgeServicesMixin:
         vorher liest, loescht einen Nachmittag Arbeit an Item-Vorlagen mit, weil
         er „nur die Sequenz" wegraeumen wollte.
         """
-        raus = []
-        for unter, eins, viele in cls._UMFANG:
+        out = []
+        for below, one_item, many in cls._EXTENT:
             try:
-                n = sum(1 for p in (folder / unter).iterdir() if p.is_file())
+                n = sum(1 for p in (folder / below).iterdir() if p.is_file())
             except OSError:
                 n = 0
             if n:
-                raus.append({"kind": unter, "word": eins if n == 1 else viele,
+                out.append({"kind": below, "word": one_item if n == 1 else many,
                              "count": n})
-        return raus
+        return out
 
     def _sequence_folder(self, name: str) -> Optional[Path]:
         """Ordner einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
@@ -193,8 +193,8 @@ class BridgeServicesMixin:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(folder), str(target))
-        except (OSError, shutil.Error) as fehler:
-            return {"ok": False, "message": f"Konnte nicht wegräumen: {fehler}"}
+        except (OSError, shutil.Error) as error:
+            return {"ok": False, "message": f"Konnte nicht wegräumen: {error}"}
         return {"ok": True, "message": f"'{name}' liegt jetzt unter {target}."}
 
     def run_status(self, data: Optional[dict] = None) -> dict:
@@ -207,31 +207,31 @@ class BridgeServicesMixin:
         from ...config import RUN_STATUS_FILE
         try:
             with open(RUN_STATUS_FILE, "r", encoding="utf-8") as f:
-                zustand = json.load(f)
+                state_value = json.load(f)
         except (OSError, ValueError):
             return {"active": False}
-        if not isinstance(zustand, dict):
+        if not isinstance(state_value, dict):
             return {"active": False}
         # Ein abgeschlossener Lauf (`end`) darf beliebig alt sein — er IST
         # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
         # laufend hält.
-        if not zustand.get("active"):
-            return zustand if (zustand.get("end") or zustand.get("countdown")) else {"active": False}
+        if not state_value.get("active"):
+            return state_value if (state_value.get("end") or state_value.get("countdown")) else {"active": False}
         # Älter als 5 s heisst: der Schreiber lebt nicht mehr. Ein abgestürzter
         # Lauf soll nicht ewig als „läuft" in der Oberfläche stehen — der Worker
         # schreibt spätestens alle 200 ms, und selbst ein Schritt, der auf eine
         # Farbe wartet, geht durch `execute_step`.
-        if time.time() - float(zustand.get("stamp") or 0) > 5:
+        if time.time() - float(state_value.get("stamp") or 0) > 5:
             return {"active": False, "orphaned": True}
         # Typ → Farbe und Marke: die Laufzeit schreibt nur den Schlüssel, weil
         # `runtime/` die Ansicht nicht kennen darf. Übersetzt wird hier, damit
         # der laufende Block dieselbe Farbe trägt wie seine Karte im Board — die
         # Farbe ist die Legende, und sie muss in beiden Ansichten dieselbe sein.
-        typ = zustand.get("block_set_type")
-        if typ in BLOCK_COLORS:
-            zustand["block_color"] = _hex(BLOCK_COLORS[typ])
-            zustand["block_badge"] = BLOCK_LABELS[typ]
-        return zustand
+        type_value = state_value.get("block_set_type")
+        if type_value in BLOCK_COLORS:
+            state_value["block_color"] = _hex(BLOCK_COLORS[type_value])
+            state_value["block_badge"] = BLOCK_LABELS[type_value]
+        return state_value
 
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `COMMANDS`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
@@ -260,10 +260,10 @@ class BridgeServicesMixin:
         name = str(data.get("name") or "").strip()
         if not name:
             return {"ok": False, "message": "Bitte zuerst einen Namen eingeben."}
-        sicher = sanitize_filename(name)
-        target = Path(self.sequences_dir) / sicher / "sequence.json"
+        safe_name = sanitize_filename(name)
+        target = Path(self.sequences_dir) / safe_name / "sequence.json"
         if target.exists():
-            return {"ok": False, "message": f"'{sicher}' gibt es bereits."}
+            return {"ok": False, "message": f"'{safe_name}' gibt es bereits."}
         try:
             cycles = max(0, int(data.get("cycles") or 0))
         except (TypeError, ValueError):
@@ -275,10 +275,10 @@ class BridgeServicesMixin:
             Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
         except OSError:
             pass
-        if not send_command("recording", name=sicher, cycles=cycles,
+        if not send_command("recording", name=safe_name, cycles=cycles,
                      description=str(data.get("description") or "").strip()):
             return {"ok": False, "message": "Aufnahme konnte nicht gestartet werden."}
-        return {"ok": True, "name": sicher,
+        return {"ok": True, "name": safe_name,
                 "message": "Aufnahme startet — jetzt ins Spiel wechseln."}
 
     def recording_stop(self, data: Optional[dict] = None) -> dict:
@@ -319,17 +319,17 @@ class BridgeServicesMixin:
         arguments: dict = {}
         if command in ("start", "start_manual", "schedule"):
             if self._dirty:
-                zustand = self.save()
-                if zustand["status"]["kind"] == "err":
-                    return zustand      # Meldung steht schon drin, Start faellt aus
+                state_value = self.save()
+                if state_value["status"]["kind"] == "err":
+                    return state_value      # Meldung steht schon drin, Start faellt aus
             if not self.filepath.exists():
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
             arguments = {"file": str(self.filepath), "sequence": self.board.name}
         if command == "schedule":
-            zeit = str((data or {}).get("time") or "").strip()
-            if not zeit:
+            time_value = str((data or {}).get("time") or "").strip()
+            if not time_value:
                 return self._report("Bitte eine Startzeit eingeben.", "warn")
-            arguments["time"] = zeit
+            arguments["time"] = time_value
         if command == "manual_action":
             action = str((data or {}).get("action") or "")
             if action not in ("run", "skip", "continue", "stop"):
@@ -363,12 +363,12 @@ class BridgeServicesMixin:
         # Ein Block hat bis zu drei Stellen, und die Frage „sitzt das noch?"
         # stellt sich bei allen dreien: der Klick, der Prüf-Pixel des Triggers
         # und der ELSE-Klick. Welche gemeint ist, sagt der Aufrufer.
-        welche = (data or {}).get("which") or "click"
+        which = (data or {}).get("which") or "click"
         source = {
             "trigger": lambda: step.wait_condition,
             "verify": lambda: step.verify_condition,
             "else": lambda: step.else_config,
-        }.get(welche)
+        }.get(which)
         point = self._point(source().point_id if source and source() else step.point_id)
         if point is None:
             return self._report("Diese Stelle hat keinen Punkt zum Zeigen.", "warn")
@@ -390,9 +390,9 @@ class BridgeServicesMixin:
         if step is None or lane is None or row is None:
             return self._report("Bitte genau einen Block wählen.", "warn")
         if self._dirty:
-            zustand = self.save()
-            if zustand["status"]["kind"] == "err":
-                return zustand
+            state_value = self.save()
+            if state_value["status"]["kind"] == "err":
+                return state_value
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)
         from ...mailbox import send_command
@@ -417,8 +417,8 @@ class BridgeServicesMixin:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {}, ""
-        except (OSError, ValueError) as fehler:
-            return {}, f"config.json ist nicht lesbar: {fehler}"
+        except (OSError, ValueError) as error:
+            return {}, f"config.json ist nicht lesbar: {error}"
         if not isinstance(raw, dict):
             return {}, "config.json enthält kein Objekt."
         return raw, ""
@@ -434,7 +434,7 @@ class BridgeServicesMixin:
             AppConfig, CONFIG_FILE, config_sections, optional_fields,
         )
         from ...config_meta import META
-        raw, fehler = self._config_file()
+        raw, error = self._config_file()
         return {
             "path": str(Path(CONFIG_FILE).resolve()),
             "values": AppConfig.from_dict(raw).to_dict(),
@@ -448,7 +448,7 @@ class BridgeServicesMixin:
             # alt sie ist, und genau das ist die Frage, die man an eine
             # geholte Liste hat.
             "states": self._config_states(),
-            "error": fehler,
+            "error": error,
         }
 
     @staticmethod
@@ -473,19 +473,19 @@ class BridgeServicesMixin:
         except (OSError, ValueError) as e:
             return f"nicht lesbar ({e})"
         count = len(raw.get("items") or {})
-        gegner = len(raw.get("gegner") or [])
-        wann = str(raw.get("_erzeugt") or "")
-        parts = [f"{count} Items", f"{gegner} Gegner"]
+        enemy = len(raw.get("gegner") or [])
+        when = str(raw.get("_erzeugt") or "")
+        parts = [f"{count} Items", f"{enemy} Gegner"]
         try:
             # `_erzeugt` steht in UTC (…Z). Angezeigt wird Ortszeit — ein
             # Zeitstempel, den man mit der eigenen Uhr vergleichen soll, darf
             # nicht in einer anderen Zone stehen.
-            roh_zeit = datetime.strptime(wann, "%Y-%m-%dT%H:%M:%SZ")
-            lokal = roh_zeit.replace(tzinfo=timezone.utc).astimezone()
-            parts.append("geholt am " + lokal.strftime("%d.%m.%Y um %H:%M"))
+            raw_time = datetime.strptime(when, "%Y-%m-%dT%H:%M:%SZ")
+            local = raw_time.replace(tzinfo=timezone.utc).astimezone()
+            parts.append("geholt am " + local.strftime("%d.%m.%Y um %H:%M"))
         except ValueError:
-            if wann:
-                parts.append("geholt am " + wann)
+            if when:
+                parts.append("geholt am " + when)
         return " · ".join(parts)
 
     def _config_states(self) -> dict:
@@ -509,17 +509,17 @@ class BridgeServicesMixin:
         if not isinstance(values, dict) or not values:
             return {"ok": False, "message": "Nichts zu speichern."}
 
-        raw, fehler = self._config_file()
-        if fehler:
+        raw, error = self._config_file()
+        if error:
             # Kaputt ist nicht leer: draufschreiben würde den einzigen Rest
             # wegwerfen, den man noch von Hand reparieren kann.
-            return {"ok": False, "message": fehler + " — nicht überschrieben."}
+            return {"ok": False, "message": error + " — nicht überschrieben."}
 
         new = AppConfig.from_dict({**raw, **values})
-        fertig = new.to_dict()
-        korrekturen = [{"key": k, "sent": v, "became": fertig.get(k)}
+        done = new.to_dict()
+        corrections = [{"key": k, "sent": v, "became": done.get(k)}
                        for k, v in values.items()
-                       if k in fertig and not _gleicher_wert(v, fertig[k])]
+                       if k in done and not _same_value(v, done[k])]
         save_config(new)
         # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
         # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
@@ -544,8 +544,8 @@ class BridgeServicesMixin:
         send_command("config")
         # Was ohne ELSE passiert, steht in derselben Datei — der gemerkte
         # Zeitstempel ist damit veraltet.
-        self._cfg_stand = -1.0
-        return {"ok": True, "values": fertig, "corrections": korrekturen}
+        self._cfg_state = -1.0
+        return {"ok": True, "values": done, "corrections": corrections}
 
     def catalog_fetch(self, data: Optional[dict] = None) -> dict:
         """Holt den Item-Katalog aus der Spiel-API und traegt den Pfad ein.
@@ -607,12 +607,12 @@ class BridgeServicesMixin:
             message += " — " + " ".join(hints)
             kind = "warn"
         if not str(CONFIG.scan_catalog_file or "").strip():
-            erg = self.config_write({"values": {"scan_catalog_file": str(target)}})
-            if not erg.get("ok"):
+            res = self.config_write({"values": {"scan_catalog_file": str(target)}})
+            if not res.get("ok"):
                 return {"ok": False,
                         "message": f"{message} — geschrieben nach '{target}', aber der "
                                    f"Pfad liess sich nicht eintragen: "
-                                   f"{erg.get('message', '')}"}
+                                   f"{res.get('message', '')}"}
             return {"ok": True, "kind": kind, "message": f"{message}. Eingetragen: {target}",
                     "path": str(target)}
         return {"ok": True, "kind": kind, "message": f"{message}. Aktualisiert: {target}",
@@ -724,7 +724,7 @@ class BridgeServicesMixin:
         old = self.filepath
         new = (Path(self.sequences_dir) / sanitize_filename(self.board.name)
                / "sequence.json")
-        umbenannt = new != old
+        renamed = new != old
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
@@ -744,44 +744,44 @@ class BridgeServicesMixin:
 
         # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
         # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
-        alt_ordner = old.parent
-        neu_ordner = new.parent
-        verschoben = False
-        if umbenannt and old.exists():
-            if neu_ordner.exists():
+        old_folder = old.parent
+        new_folder = new.parent
+        moved = False
+        if renamed and old.exists():
+            if new_folder.exists():
                 return self._report(
-                    f"Nicht gespeichert: Ordner '{neu_ordner.name}' existiert bereits.",
+                    f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
                     "err")
             try:
-                alt_ordner.rename(neu_ordner)
-                verschoben = True
-            except OSError as fehler:
-                return self._report(f"Sequenzordner konnte nicht umbenannt werden: {fehler}",
+                old_folder.rename(new_folder)
+                moved = True
+            except OSError as error:
+                return self._report(f"Sequenzordner konnte nicht umbenannt werden: {error}",
                                    "err")
 
         from .model import palette_to_points
         sequence = board_to_sequence(self.board)
         sequence.points = palette_to_points(self.points)
         if not save_sequence_file(sequence, new):
-            if verschoben:
+            if moved:
                 try:
-                    neu_ordner.rename(alt_ordner)
+                    new_folder.rename(old_folder)
                 except OSError:
                     pass
             return self._report("Speichern fehlgeschlagen!", "err")
 
         self.filepath = new
-        if verschoben:
+        if moved:
             self._scan_init()
             self._scan_load()
-        self._gespeichert = True
+        self._saved = True
         self._dirty = False
         self._state_remember()
         from ...sequence_studio import remember_last_used
         remember_last_used(self.filepath)
         text = f"Gespeichert: {new.name}"
-        if verschoben:
-            text = f"Umbenannt → {neu_ordner.name}/ (alle Scans mitgenommen)"
+        if moved:
+            text = f"Umbenannt → {new_folder.name}/ (alle Scans mitgenommen)"
 
         empty = self._scan_without_name()
         if empty:
@@ -797,7 +797,7 @@ class BridgeServicesMixin:
         geprüft: die schreibt das Studio bei jedem Speichern mit, und der
         Hauptprozess legt dort während einer Aufnahme neue Punkte an.
         """
-        if target is not None and _mtime(target) not in (None, self._stand_datei):
+        if target is not None and _mtime(target) not in (None, self._state_file):
             return Path(target).name
         return ""
 
@@ -807,7 +807,7 @@ class BridgeServicesMixin:
         # derselben Datei. Hier lag daneben ein `_stand_punkte`, das
         # dreimal gesetzt und nirgends gelesen wurde — ein Rest aus der
         # Zeit der eigenen `points.json`.
-        self._stand_datei = _mtime(self.filepath)
+        self._state_file = _mtime(self.filepath)
 
     def rescue_write(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

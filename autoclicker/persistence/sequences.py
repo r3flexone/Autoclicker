@@ -272,16 +272,16 @@ def _as_points(points) -> list[ClickPoint]:
     Noetig, weil die Aufrufer beides liefern — der Sweep rohe Dicts (er will den
     State nicht anfassen), die Editoren `list(state.points)`.
     """
-    raus = []
+    out = []
     for p in points or []:
         if isinstance(p, dict):
             try:
-                raus.append(_point_from_dict(p))
+                out.append(_point_from_dict(p))
             except (KeyError, TypeError, ValueError):
                 continue
         else:
-            raus.append(p)
-    return raus
+            out.append(p)
+    return out
 
 
 # `_als_dicts()` ist mit der Migrationskette entfallen. Es reichte die Punkte als rohe
@@ -376,11 +376,11 @@ def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoi
 
 def _phases(sequence):
     """(Phasenname, Schrittliste) fuer INIT, jede Loop-Phase und END."""
-    raus = [("INIT", sequence.init_steps)]
+    out = [("INIT", sequence.init_steps)]
     for lp in sequence.loop_phases:
-        raus.append((lp.name, lp.steps))
-    raus.append(("END", sequence.end_steps))
-    return raus
+        out.append((lp.name, lp.steps))
+    out.append(("END", sequence.end_steps))
+    return out
 
 
 def resolve(points: dict, sequence, still: bool = False) -> list[str]:

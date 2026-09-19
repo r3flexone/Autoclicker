@@ -528,9 +528,9 @@ def _pixel_crop(x: int, y: int):
     try:
         import base64
         from io import BytesIO
-        puffer = BytesIO()
-        img.save(puffer, format="PNG")
-        return "data:image/png;base64," + base64.b64encode(puffer.getvalue()).decode("ascii")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     except (OSError, ValueError, AttributeError):
         return None
 
@@ -562,8 +562,8 @@ def _timeout_consequence(state: AutoClickerState, step: SequenceStep) -> str:
     Sequenz gestoppt wird.
     """
     if step.else_config:
-        was = ACTION_TEXT.get(step.else_config.action, step.else_config.action)
-        return f"ELSE: {was}"
+        what = ACTION_TEXT.get(step.else_config.action, step.else_config.action)
+        return f"ELSE: {what}"
     return TIMEOUT_TEXT.get(state.config.pixel_timeout_action,
                             TIMEOUT_TEXT[TIMEOUT_STOP])
 

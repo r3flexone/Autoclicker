@@ -98,8 +98,8 @@ try:
           _woerter.get("templates") == "Vorlagen")
     from autoclicker.editors.sequence_studio.bridge_services import BridgeServicesMixin
     check("kein Wort entsteht durch ein angehaengtes n",
-          all(viele != eins + "n" or eins.endswith("e")
-              for _, eins, viele in BridgeServicesMixin._UMFANG))
+          all(many != one_item + "n" or one_item.endswith("e")
+              for _, one_item, many in BridgeServicesMixin._EXTENT))
 
     # --- Die offene Sequenz nicht ------------------------------------------
     _z = _b.sequence_delete({"name": "Farm"})

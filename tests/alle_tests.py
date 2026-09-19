@@ -90,11 +90,11 @@ def _lauf(command: list[str], umgebung: dict | None = None) -> tuple[int, str]:
     umw["PYTHONUTF8"] = "1"
     umw["PYTHONIOENCODING"] = "utf-8"
     umw.update(umgebung or {})
-    fertig = subprocess.run(command, cwd=WURZEL, env=umw, capture_output=True,
+    done = subprocess.run(command, cwd=WURZEL, env=umw, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
-    sys.stdout.write(fertig.stdout)
-    sys.stderr.write(fertig.stderr)
-    return fertig.returncode, fertig.stdout + fertig.stderr
+    sys.stdout.write(done.stdout)
+    sys.stderr.write(done.stderr)
+    return done.returncode, done.stdout + done.stderr
 
 
 def vertrag() -> Ergebnis:

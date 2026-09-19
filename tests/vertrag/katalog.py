@@ -41,7 +41,7 @@ check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet
 check("unbekannter Name -> None", _k.category("Gibtsnicht") is None)
 check("unbekannter Name hat keinen Wert", _k.value("Gibtsnicht") is None)
 check("Wert kommt als Zahl", _k.value("Godlike Pickaxe") == 500000.0)
-check("Gegner stehen bereit", _k.gegner == ["Black Dragon", "Banshee"])
+check("Gegner stehen bereit", _k.enemy == ["Black Dragon", "Banshee"])
 check("names() ist die geschlossene Liste", "Godlike Pickaxe" in _k.names() and len(_k.names()) == 4)
 
 # Der Rang gilt INNERHALB des Scans und dicht. Ein globaler Rang aus dem Katalog
@@ -94,7 +94,7 @@ check("gute Eintraege kommen an", _gl.category("Citadel Helmet") == "Helm")
 check("kaputter Eintrag fliegt einzeln raus", _gl.match("Kaputt") is None)
 check("fehlender Wert wird 0", _gl.value("Ohne Wert") == 0.0)
 check("unbrauchbarer Wert wird 0", _gl.value("Wert ist Text") == 0.0)
-check("leerer Gegnername faellt weg", _gl.gegner == ["Black Dragon"])
+check("leerer Gegnername faellt weg", _gl.enemy == ["Black Dragon"])
 check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
       load_catalog(str(_gut)) is _gl)
 
@@ -393,15 +393,15 @@ def _lauf_mit(debug, nutzlast=None):
     _CFG_mit.llm_debug = debug
     _lv.urllib.request.urlopen = lambda *a, **kw: _FakeAntwort_mit(
         nutzlast if nutzlast is not None else _ANTWORT_mit)
-    puffer = _io_mit.StringIO()
+    buffer = _io_mit.StringIO()
     try:
-        with _ctx_mit.redirect_stdout(puffer):
-            erg = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
+        with _ctx_mit.redirect_stdout(buffer):
+            res = _lv.analyze_image(img=_BILD_mit, provider="lmstudio",
                                     model="testmodell", prompt="Wer ist das?")
     finally:
         _lv.urllib.request.urlopen = _echt_open
         _CFG_mit.llm_debug = _alt_debug
-    return erg, puffer.getvalue()
+    return res, buffer.getvalue()
 
 
 _hat_pil_mit = False

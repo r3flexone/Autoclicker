@@ -29,14 +29,14 @@ from ...persistence import (
     list_available_sequences,
 )
 from .bridge_contract import (
-    ELSE_AKTIONEN,
-    SCAN_FELD,
+    ELSE_ACTIONS,
+    SCAN_FIELD,
     SCAN_MODES,
-    TYP_REIHENFOLGE,
-    WARTE_TIMEOUT,
+    TYPE_ORDER,
+    WAIT_TIMEOUT,
     _hex,
-    _stelle,
-    _wartetext,
+    _position,
+    _wait_text,
     else_applies,
     trigger_name,
 )
@@ -73,15 +73,15 @@ class BridgeViewMixin:
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
-            "wait_timeout": WARTE_TIMEOUT,
+            "wait_timeout": WAIT_TIMEOUT,
             "status": {"text": text, "kind": kind},
             "question": ask,
             "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_names": self._scan_names(),
             "types": [{"key": t, "label": BLOCK_LABELS[t],
-                       "color": _hex(BLOCK_COLORS[t])} for t in TYP_REIHENFOLGE],
+                       "color": _hex(BLOCK_COLORS[t])} for t in TYPE_ORDER],
             "scan_modes": SCAN_MODES,
-            "else_actions": ELSE_AKTIONEN,
+            "else_actions": ELSE_ACTIONS,
             "without_else": self._without_else(),
             "phases": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "points": [self._point_json(p) for p in self.points],
@@ -105,11 +105,11 @@ class BridgeViewMixin:
             stamp = Path(CONFIG_FILE).stat().st_mtime
         except OSError:
             stamp = 0.0
-        if stamp != self._cfg_stand:
-            self._cfg_stand = stamp
+        if stamp != self._cfg_state:
+            self._cfg_state = stamp
             from ...config import CONFIG
-            raw, fehler = self._config_file()
-            if fehler:
+            raw, error = self._config_file()
+            if error:
                 self._cfg_info = {}
             else:
                 action = raw.get("pixel_timeout_action", CONFIG.pixel_timeout_action)
@@ -131,18 +131,18 @@ class BridgeViewMixin:
         wird bei jeder Momentaufnahme, damit eine im Hauptprozess angelegte
         Konfiguration beim nächsten Klick auftaucht.
         """
-        def names(auflisten) -> list[str]:
+        def names(list_all) -> list[str]:
             try:
-                return sorted(name for name, _ in auflisten(self.board.name))
+                return sorted(name for name, _ in list_all(self.board.name))
             except OSError:
                 return []
 
-        bosse = names(list_available_boss_scans)
+        bosses = names(list_available_boss_scans)
         return {
             BLOCK_ITEM_SCAN: names(list_available_item_scans),
             BLOCK_ICON_SCAN: names(list_available_icon_scans),
-            BLOCK_BOSS_SCAN: bosse,
-            BLOCK_BOSS_WATCHER: bosse,
+            BLOCK_BOSS_SCAN: bosses,
+            BLOCK_BOSS_WATCHER: bosses,
         }
 
     def _sel_index(self) -> Optional[int]:
@@ -173,37 +173,37 @@ class BridgeViewMixin:
             if 0 <= row < len(self.sel_lane.steps)
         ]
 
-        def gemeinsam(field: str):
+        def shared(field: str):
             values = [getattr(step, field) for step in steps]
-            gemischt = bool(values) and any(value != values[0] for value in values[1:])
-            return (None if gemischt or not values else values[0]), gemischt
+            mixed = bool(values) and any(value != values[0] for value in values[1:])
+            return (None if mixed or not values else values[0]), mixed
 
-        delay_before, before_gemischt = gemeinsam("delay_before")
-        delay_max, max_gemischt = gemeinsam("delay_max")
+        delay_before, before_mixed = shared("delay_before")
+        delay_max, max_mixed = shared("delay_max")
         return {
             "phase": self._sel_index(),
             "rows": rows,
             "delay_before": delay_before,
-            "delay_before_mixed": before_gemischt,
+            "delay_before_mixed": before_mixed,
             "delay_max": delay_max,
-            "delay_max_mixed": max_gemischt,
+            "delay_max_mixed": max_mixed,
         }
 
     def _block_json(self, lane: Lane, row: int, step: SequenceStep) -> dict:
         """Eine Karte im Board — knapp genug, dass 50 davon untereinander passen."""
-        typ = block_type(step)
+        type_value = block_type(step)
         wc = step.wait_condition
-        field = SCAN_FELD.get(typ)
+        field = SCAN_FIELD.get(type_value)
         point = self._point(step.point_id)
         block = {
             "row": row,
-            "type_key": typ,
-            "label": BLOCK_LABELS[typ],
-            "color": _hex(BLOCK_COLORS[typ]),
+            "type": type_value,
+            "label": BLOCK_LABELS[type_value],
+            "color": _hex(BLOCK_COLORS[type_value]),
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
             "title": step.name or "",
-            "rows": self._lines(step, typ),
+            "rows": self._lines(step, type_value),
             "checks": step.verify_condition is not None,
             "breakpoint": bool(step.breakpoint),
             "selected": self.sel_lane is lane and row in self.sel_rows,
@@ -227,7 +227,7 @@ class BridgeViewMixin:
         }
         return block
 
-    def _lines(self, step: SequenceStep, typ: str) -> list[str]:
+    def _lines(self, step: SequenceStep, type_value: str) -> list[str]:
         """Ein bis drei knappe Zeilen im Kartenkörper.
 
         Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
@@ -237,31 +237,31 @@ class BridgeViewMixin:
         Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
         hängt die Ansicht das Farbfeldchen des Punkts (`point_color`).
         """
-        if typ == BLOCK_SCREENSHOT:
+        if type_value == BLOCK_SCREENSHOT:
             r = step.screenshot_region
             return [f"Bereich {r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild"]
-        if typ in SCAN_FELD:
-            name = (getattr(step, SCAN_FELD[typ]) or "").strip() or "(kein Name)"
-            modus = f" · {step.item_scan_mode}" if typ == BLOCK_ITEM_SCAN else ""
-            lines = [f"{name}{modus}"]
-        elif typ == BLOCK_KEY:
+        if type_value in SCAN_FIELD:
+            name = (getattr(step, SCAN_FIELD[type_value]) or "").strip() or "(kein Name)"
+            mode = f" · {step.item_scan_mode}" if type_value == BLOCK_ITEM_SCAN else ""
+            lines = [f"{name}{mode}"]
+        elif type_value == BLOCK_KEY:
             lines = [f"Taste „{step.key_press}“"]
-        elif typ == BLOCK_WAIT:
+        elif type_value == BLOCK_WAIT:
             lines = []
         else:
-            lines = [_stelle(step)]
+            lines = [_position(step)]
         if step.scroll:
             # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
             # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
             lines.append(f"Rad {step.scroll:+d}")
         if step.delay_before or step.delay_max or not lines:
-            lines.append(_wartetext(step))
+            lines.append(_wait_text(step))
         return lines
 
     def _trigger_text(self, wc: WaitCondition) -> str:
-        was = "prüft" if wc.check_only else "wartet bis"
-        wohin = "weg" if wc.until_gone else "present"
-        return f"{was} RGB{tuple(wc.color)} {wohin}"
+        what = "prüft" if wc.check_only else "wartet bis"
+        where_to = "weg" if wc.until_gone else "present"
+        return f"{what} RGB{tuple(wc.color)} {where_to}"
 
     def _else_text(self, step: SequenceStep) -> str:
         ec = step.else_config
@@ -290,14 +290,14 @@ class BridgeViewMixin:
         lane, row, step = self._single()
         if step is None:
             return None
-        typ = block_type(step)
+        type_value = block_type(step)
         wc, vc, ec = step.wait_condition, step.verify_condition, step.else_config
         return {
             "phase": self.board.lanes.index(lane),
             "row": row,
-            "type_key": typ,
-            "label": BLOCK_LABELS[typ],
-            "color": _hex(BLOCK_COLORS[typ]),
+            "type": type_value,
+            "label": BLOCK_LABELS[type_value],
+            "color": _hex(BLOCK_COLORS[type_value]),
             "name": step.name or "",
             "point_id": step.point_id,
             # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
@@ -308,7 +308,7 @@ class BridgeViewMixin:
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
             # falschen Stelle"). Die Liste ist Zustand, also Text — nicht ⓘ.
-            "point_others": (self._point_usages(step.point_id, ausser=step)
+            "point_others": (self._point_usages(step.point_id, except_step=step)
                              if step.point_id is not None else []),
             "x": step.x,
             "y": step.y,

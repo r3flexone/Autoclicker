@@ -82,18 +82,18 @@ def _color_text(color) -> str:
 def _status_events(events: list) -> list[dict]:
     """Die letzten drei Ereignisse als feste, webtaugliche Ausgabezeilen."""
     start = max(0, len(events) - 3)
-    raus = []
+    out = []
     for i in range(start, len(events)):
         event = events[i]
         delay = None if i == 0 else round(event.t - events[i - 1].t, 2)
-        raus.append({
+        out.append({
             "number": i + 1,
             "text": str(event),
             "time": "sofort" if delay is None else f"+{delay:.2f}s",
             "color": list(event.color) if event.color else None,
             "color_text": _color_text(event.color),
         })
-    return raus
+    return out
 
 
 def _write_status(state: AutoClickerState, events: list | None = None,
@@ -120,8 +120,8 @@ def _write_status(state: AutoClickerState, events: list | None = None,
 def _report_event(event: RecordEvent, idx: int, delay: float | None) -> None:
     """Eine Zeile pro aufgezeichnetem Ereignis — der Nutzer sieht nur die Konsole."""
     color = f" {describe_color(event.color)}" if event.color else ""
-    zeit = "sofort" if delay is None else f"+{delay:.2f}s"
-    print(f"  {col('[REC]', 'red')} #{idx} {event}  {zeit}{color}")
+    time_value = "sofort" if delay is None else f"+{delay:.2f}s"
+    print(f"  {col('[REC]', 'red')} #{idx} {event}  {time_value}{color}")
 
 
 def _append_event(state: AutoClickerState, event: RecordEvent) -> bool:
@@ -521,14 +521,14 @@ def steps_from_events(events: list, point_id_for: dict) -> list:
         if ev.kind == REC_WAIT_COLOR:
             continue                      # geht in den naechsten Schritt ein
         delay = 0.0 if i == 0 else round(ev.t - events[i - 1].t, 2)
-        bedingung = None
-        vorher = events[i - 1] if i > 0 else None
-        if vorher is not None and vorher.kind == REC_WAIT_COLOR:
+        condition = None
+        before = events[i - 1] if i > 0 else None
+        if before is not None and before.kind == REC_WAIT_COLOR:
             pid = point_id_for.get(i)
-            bedingung = WaitCondition(point_id=pid)
+            condition = WaitCondition(point_id=pid)
             # Uhr anhalten: die Zeit bis zum MARKER zaehlt, die danach ist das Warten.
             davor = events[i - 2] if i > 1 else None
-            delay = 0.0 if davor is None else round(vorher.t - davor.t, 2)
+            delay = 0.0 if davor is None else round(before.t - davor.t, 2)
 
         pid = point_id_for.get(i)
         if ev.kind == REC_KEY:
@@ -552,12 +552,12 @@ def steps_from_events(events: list, point_id_for: dict) -> list:
         elif ev.kind == REC_SCROLL:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay, scroll=ev.scroll,
                                       point_id=pid, recorded_color=ev.color,
-                                      wait_condition=bedingung))
+                                      wait_condition=condition))
         else:
             steps.append(SequenceStep(x=ev.x, y=ev.y, delay_before=delay,
                                       name=f"Klick {len(steps) + 1}",
                                       recorded_color=ev.color, point_id=pid,
-                                      wait_condition=bedingung))
+                                      wait_condition=condition))
     return steps
 
 

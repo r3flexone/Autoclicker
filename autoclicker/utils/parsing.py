@@ -253,32 +253,32 @@ def sanitize_filename(name: str) -> str:
     return name
 
 
-def next_free_name(praefix: str, vergeben) -> str:
+def next_free_name(praefix: str, assigned) -> str:
     """Erste freie Nummer einer Serie: 'Slot 1', 'Slot 2', ...
 
     Fuer durchnummerierte Serien die bessere Wahl als `unique_name`: sie
     fuellt Luecken auf, waehrend ein angehaengter Zaehler 'Slot 3 2' ergaebe.
     """
     n = 1
-    while f"{praefix} {n}" in vergeben:
+    while f"{praefix} {n}" in assigned:
         n += 1
     return f"{praefix} {n}"
 
 
-def unique_name(basis: str, vergeben) -> str:
-    """Hängt eine Zahl an, bis der Name in `vergeben` frei ist.
+def unique_name(basis: str, assigned) -> str:
+    """Hängt eine Zahl an, bis der Name in `assigned` frei ist.
 
     Items, Slots und Presets liegen in Name→Eintrag-Dicts: ein doppelter Name
     überschreibt den alten still, und weil Scans per Name referenzieren, läuft
     der Scan danach weiter und tut etwas anderes. 'Slot <len+1>' trägt das nicht,
     sobald einmal gelöscht oder umbenannt wurde.
 
-    `vergeben` ist alles, was `in` beantwortet (Dict, Set, Liste).
+    `assigned` ist alles, was `in` beantwortet (Dict, Set, Liste).
     """
-    if basis not in vergeben:
+    if basis not in assigned:
         return basis
     n = 2
-    while f"{basis} {n}" in vergeben:
+    while f"{basis} {n}" in assigned:
         n += 1
     return f"{basis} {n}"
 

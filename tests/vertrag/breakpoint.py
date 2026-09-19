@@ -139,14 +139,14 @@ section("Haltepunkt: aus dem Studio gestartet, im Studio beantwortet")
 
 def _studio_gate(st, step):
     """Das Gate in einem Thread, bis die Tafel im Laufstatus steht."""
-    erg = {}
-    t = threading.Thread(target=lambda: erg.setdefault(
+    res = {}
+    t = threading.Thread(target=lambda: res.setdefault(
         "value", _dbg.step_gate(st, step, "LOOP", 1, 2)))
     t.start()
     frist = time.time() + 1.0
     while not _status._state.get("manual") and time.time() < frist:
         time.sleep(0.01)
-    return t, erg
+    return t, res
 
 
 _orig_read = _dbg.read_command

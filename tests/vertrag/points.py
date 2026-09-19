@@ -268,7 +268,7 @@ try:
         _br.boss_scans["wache"] = _BSC(name="wache", owner_sequence="Ref",
                                        default_scan="beutel")
         _br.icon_scans["lupe"] = _ISC(name="lupe", owner_sequence="Ref")
-        _br.scan_offen, _br.boss_offen, _br.icon_offen = "beutel", "wache", "lupe"
+        _br.open_scan, _br.boss_open, _br.icon_open = "beutel", "wache", "lupe"
         _br._detection_save()
         _br.scan_set({"name": "beutel", "field": "name", "value": "tasche"})
         _br.boss_scan_set({"name": "wache", "field": "name", "value": "drache"})

@@ -26,21 +26,21 @@ from typing import Optional
 # mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet: ohne Deckel
 # liest ein halbes Jahr Betrieb bei jedem Klick mit. Was wegfällt, wird gesagt —
 # eine stillschweigend gekürzte Auswertung ist schlimmer als eine kurze.
-MAX_DATEIEN = 50
+MAX_FILES = 50
 
 # Wie viele Zeilen eine Rangliste zeigt. Dieselbe Zahl wie in der Konsolen-
 # Ausgabe des Werkzeugs, damit beide Wege dasselbe Bild geben.
-RANG_ZEILEN = 10
+RANK_ROWS = 10
 
 
-class BridgeBerichtMixin:
+class BridgeReportMixin:
     """Der Reiter „Bericht": Session-Logs lesen und bewerten."""
 
     def _report_init(self) -> None:
         # Welche Sitzung offen ist. "" heisst „alle zusammen" — der Normalfall,
         # denn die Frage nach dem hängenden Schritt stellt sich über die Nacht
         # und nicht über eine einzelne Datei.
-        self._bericht_wahl: str = ""
+        self._report_choice: str = ""
 
     # ------------------------------------------------------------ Momentaufnahme
 
@@ -51,25 +51,25 @@ class BridgeBerichtMixin:
         als Momentaufnahme zu behandeln zerschösse den Editor-Zustand.
         """
         if isinstance(data, dict) and "file" in data:
-            self._bericht_wahl = str(data.get("file") or "")
+            self._report_choice = str(data.get("file") or "")
 
         folder = self._report_folder()
-        alle = self._report_files(folder)
-        auswerten, fehler = self._report_tool()
-        if auswerten is None:
-            return self._report_empty(folder, fehler)
+        all_of = self._report_files(folder)
+        evaluate, error = self._report_tool()
+        if evaluate is None:
+            return self._report_empty(folder, error)
 
-        total = auswerten(alle)
+        total = evaluate(all_of)
         names = {s["file"] for s in total["sessions"]}
         # Eine Wahl, deren Datei es nicht mehr gibt, fällt auf „alle" zurück
         # statt einen leeren Bericht zu zeigen: der Ordner wird aufgeräumt,
         # das Fenster steht derweil offen.
-        if self._bericht_wahl and self._bericht_wahl not in names:
-            self._bericht_wahl = ""
+        if self._report_choice and self._report_choice not in names:
+            self._report_choice = ""
 
-        if self._bericht_wahl:
-            eine = [p for p in alle if p.name == self._bericht_wahl]
-            report = auswerten(eine)
+        if self._report_choice:
+            one = [p for p in all_of if p.name == self._report_choice]
+            report = evaluate(one)
         else:
             report = total
 
@@ -78,20 +78,20 @@ class BridgeBerichtMixin:
             "active": bool(self._report_config("session_log_enabled", False)),
             "available": True,
             "error": "",
-            "selected": self._bericht_wahl,
+            "selected": self._report_choice,
             # Neueste zuerst: danach sucht man. Die Auswertung selbst liest in
             # Dateireihenfolge, das ändert an den Summen nichts.
             "sessions": list(reversed(total["sessions"])),
-            "skipped_files": max(0, len(self._report_all_files(folder)) - len(alle)),
+            "skipped_files": max(0, len(self._report_all_files(folder)) - len(all_of)),
             "bericht": self._report_brief(report),
             "yield_value": self._yield(report),
         }
 
     # ------------------------------------------------------------ Dateien
 
-    def _report_config(self, field: str, vorgabe):
+    def _report_config(self, field: str, default_value):
         from ...config import CONFIG
-        return getattr(CONFIG, field, vorgabe)
+        return getattr(CONFIG, field, default_value)
 
     def _report_folder(self) -> Optional[Path]:
         folder = Path(self._report_config("session_log_dir", "logs") or "logs")
@@ -104,11 +104,11 @@ class BridgeBerichtMixin:
         return sorted(folder.glob("*.csv"))
 
     def _report_files(self, folder: Optional[Path]) -> list:
-        return self._report_all_files(folder)[-MAX_DATEIEN:]
+        return self._report_all_files(folder)[-MAX_FILES:]
 
     @staticmethod
     def _report_tool():
-        """`auswerten` aus `tools/log_report.py`, oder der Grund, warum nicht.
+        """`evaluate` aus `tools/log_report.py`, oder der Grund, warum nicht.
 
         Der Import steht hier und nicht am Modulkopf: `tools/` gehört nicht zum
         Programm, sondern zum Repo. Fehlt es, soll der Reiter das sagen — nicht
@@ -118,17 +118,17 @@ class BridgeBerichtMixin:
         if str(wurzel) not in sys.path:
             sys.path.insert(0, str(wurzel))
         try:
-            from tools.log_report import auswerten
+            from tools.log_report import evaluate
         except ImportError as e:
             return None, f"tools/log_report.py nicht gefunden ({e})"
-        return auswerten, ""
+        return evaluate, ""
 
-    def _report_empty(self, folder: Optional[Path], fehler: str) -> dict:
+    def _report_empty(self, folder: Optional[Path], error: str) -> dict:
         return {
             "folder": str(folder.resolve()) if folder else "",
             "active": bool(self._report_config("session_log_enabled", False)),
             "available": False,
-            "error": fehler,
+            "error": error,
             "selected": "",
             "sessions": [],
             "skipped_files": 0,
@@ -154,17 +154,17 @@ class BridgeBerichtMixin:
             "clicks": raw["events"].get("click", 0),
             "keys": raw["events"].get("key", 0),
             "scrolls": raw["events"].get("scroll", 0),
-            "timeouts": raw["timeouts"][:RANG_ZEILEN],
+            "timeouts": raw["timeouts"][:RANK_ROWS],
             "timeouts_total": sum(n for _, n in raw["timeouts"]),
-            "items": raw["items"][:RANG_ZEILEN],
+            "items": raw["items"][:RANK_ROWS],
             "items_total": sum(n for _, n in raw["items"]),
-            "detected": raw["detected"][:RANG_ZEILEN],
+            "detected": raw["detected"][:RANK_ROWS],
             # Beide Seiten der Nachprüfung: „12x ohne Wirkung" allein sagt
             # nichts, solange nicht dabeisteht, wie oft es geklappt hat.
             "verify_ok_total": sum(verify_ok.values()),
             "verify_miss_total": sum(n for _, n in miss),
             "verify_miss": [[name, n, verify_ok.get(name, 0)]
-                            for name, n in miss[:RANG_ZEILEN]],
+                            for name, n in miss[:RANK_ROWS]],
             "disturbances": raw["disturbances"],
             "unbekannt": raw["unbekannt"],
             "unreadable": raw["unreadable"],
@@ -191,22 +191,22 @@ class BridgeBerichtMixin:
             return {"file": path, "readable": False, "rows": [],
                     "gold": 0.0, "per_hour": None, "without_value": []}
 
-        lines, ohne, gold = [], [], 0.0
+        lines, without, gold = [], [], 0.0
         for name, count in raw["items"]:
             value = values.get(name)
             if value is None:
-                ohne.append([name, count])
+                without.append([name, count])
                 continue
-            summe = value * count
-            gold += summe
-            lines.append([name, count, value, summe])
+            total_sum = value * count
+            gold += total_sum
+            lines.append([name, count, value, total_sum])
         lines.sort(key=lambda z: z[3], reverse=True)
-        stunden = raw["duration"] / 3600 if raw["duration"] > 0 else 0
+        hours = raw["duration"] / 3600 if raw["duration"] > 0 else 0
         return {
             "file": path,
             "readable": True,
             "rows": lines,
             "gold": gold,
-            "per_hour": (gold / stunden) if stunden else None,
-            "without_value": ohne,
+            "per_hour": (gold / hours) if hours else None,
+            "without_value": without,
         }

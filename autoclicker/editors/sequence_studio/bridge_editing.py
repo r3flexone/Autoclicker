@@ -6,13 +6,13 @@ from typing import Optional
 
 from ...models import BLOCK_WAIT_CLICK, SequenceStep, WaitCondition
 from .bridge_contract import (
-    ELSE_AKTIONEN,
-    TRIGGER_DA,
-    TRIGGER_KEIN,
-    TRIGGER_WEG,
-    WARTE_TIMEOUT,
-    _FELDER,
-    _bloecke,
+    ELSE_ACTIONS,
+    TRIGGER_PRESENT,
+    TRIGGER_NONE,
+    TRIGGER_GONE,
+    WAIT_TIMEOUT,
+    _FIELDS,
+    _blocks,
     _rgb,
     else_applies,
 )
@@ -87,20 +87,20 @@ class BridgeEditingMixin:
         if lane is None:
             return self._report("Phase nicht gefunden.", "err")
         try:
-            faktor = float(str((data or {}).get("factor") or "").replace(",", "."))
+            factor = float(str((data or {}).get("factor") or "").replace(",", "."))
         except ValueError:
             return self._report("Der Faktor muss eine Zahl sein.", "warn")
-        if faktor <= 0:
+        if factor <= 0:
             return self._report("Der Faktor muss grösser als 0 sein.", "warn")
         changed = 0
         for step in lane.steps:
             if step.delay_before > 0:
-                step.delay_before = round(step.delay_before * faktor, 2)
+                step.delay_before = round(step.delay_before * factor, 2)
                 changed += 1
             if step.delay_max:
-                step.delay_max = round(step.delay_max * faktor, 2)
+                step.delay_max = round(step.delay_max * factor, 2)
         return self._changed(
-            f"{changed} Wartezeit(en) in '{lane.name}' × {faktor:g} skaliert.")
+            f"{changed} Wartezeit(en) in '{lane.name}' × {factor:g} skaliert.")
 
     # --------------------------------------------------------------- Auswahl
 
@@ -127,17 +127,17 @@ class BridgeEditingMixin:
         if not (0 <= row < len(lane.steps)):
             self._selection_clear()
             return self.snapshot()
-        modus = data.get("mode") or "einzeln"
-        if modus == "dazu" and self.sel_lane is lane:
+        mode = data.get("mode") or "einzeln"
+        if mode == "dazu" and self.sel_lane is lane:
             self.sel_rows.symmetric_difference_update({row})
             if not self.sel_rows:
                 self._selection_clear()
             else:
                 self.sel_anchor = row
-        elif modus == "area" and self.sel_lane is lane and self.sel_rows:
-            anker = self.sel_anchor if self.sel_anchor is not None else row
-            von, until = sorted((anker, row))
-            area = set(range(von, until + 1))
+        elif mode == "area" and self.sel_lane is lane and self.sel_rows:
+            anchor = self.sel_anchor if self.sel_anchor is not None else row
+            from_index, until = sorted((anchor, row))
+            area = set(range(from_index, until + 1))
             # Derselbe Umschalt-Klick ist ein echter Schalter: ist der ganze
             # Bereich schon gewählt, wird er entfernt; sonst kommt er dazu.
             if area <= self.sel_rows:
@@ -160,8 +160,8 @@ class BridgeEditingMixin:
         if lane is None or not lane.steps:
             self._selection_clear()
             return self.snapshot()
-        alle_gewaehlt = self.sel_lane is lane and self.sel_rows == set(range(len(lane.steps)))
-        if alle_gewaehlt:
+        all_selected = self.sel_lane is lane and self.sel_rows == set(range(len(lane.steps)))
+        if all_selected:
             self._selection_clear()
         else:
             self.sel_lane = lane
@@ -179,14 +179,14 @@ class BridgeEditingMixin:
         if field not in ("delay_before", "delay_max"):
             return self._report(f"'{field}' lässt sich nicht gesammelt setzen.", "warn")
         try:
-            value = _FELDER[field](data.get("value"))
+            value = _FIELDS[field](data.get("value"))
         except (TypeError, ValueError):
             return self._report("Die Wartezeit muss eine Zahl sein.", "warn")
         rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
         for row in rows:
             setattr(lane.steps[row], field, value)
         return self._changed(
-            f"Wartezeit für {_bloecke(len(rows))} gemeinsam gesetzt.")
+            f"Wartezeit für {_blocks(len(rows))} gemeinsam gesetzt.")
 
     # -------------------------------------------------------------- Struktur
 
@@ -218,8 +218,8 @@ class BridgeEditingMixin:
         Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
         zwischen Phasen — Letzteres gibt es im Konsolen-Editor gar nicht.
         """
-        schritte = [source.steps[i] for i in sorted(rows)]
-        if not schritte:
+        steps_list = [source.steps[i] for i in sorted(rows)]
+        if not steps_list:
             return
         # Wie viele der entfernten Schritte lagen VOR der Zielposition? Um so viele
         # rutscht sie nach vorne — aber nur, wenn aus derselben Phase entfernt wird.
@@ -228,10 +228,10 @@ class BridgeEditingMixin:
         for i in sorted(rows, reverse=True):
             self.board.delete_step(source, i)
         at = max(0, min(at, len(target.steps)))
-        for versatz, step in enumerate(schritte):
-            self.board.add_step(target, step, at=at + versatz)
+        for offset, step in enumerate(steps_list):
+            self.board.add_step(target, step, at=at + offset)
         self.sel_lane = target
-        self.sel_rows = set(range(at, at + len(schritte)))
+        self.sel_rows = set(range(at, at + len(steps_list)))
         self.sel_anchor = at
         self._dirty = True
 
@@ -265,17 +265,17 @@ class BridgeEditingMixin:
             return self.snapshot()
         # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von hinten —
         # sonst überholen sich die Elemente gegenseitig.
-        folge = rows if delta < 0 else list(reversed(rows))
-        self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in folge}
+        consequence = rows if delta < 0 else list(reversed(rows))
+        self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in consequence}
         self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
         return self._changed()
 
-    _REF_FELDER = ("wait_condition", "verify_condition", "else_config")
+    _REF_FIELDS = ("wait_condition", "verify_condition", "else_config")
 
-    def _points_copy_along(self, step, abbildung: dict) -> None:
+    def _points_copy_along(self, step, mapping: dict) -> None:
         """Hängt alle Punkt-Referenzen eines kopierten Schritts auf eigene Punkte um.
 
-        `abbildung` gilt für den ganzen Durchgang: derselbe Ausgangspunkt ergibt
+        `mapping` gilt für den ganzen Durchgang: derselbe Ausgangspunkt ergibt
         denselben neuen. Zwei Wirkungen, und beide sind gewollt.
 
         **Innerhalb eines Blocks** bleibt zusammen, was zusammengehört: bei
@@ -287,26 +287,26 @@ class BridgeEditingMixin:
         entstünden bei einer Mehrfachauswahl drei Punkte auf einem Knopf statt
         zwei.
         """
-        def neu_fuer(alt_id):
-            if alt_id is None:
+        def new_for(old_id):
+            if old_id is None:
                 return None
-            if alt_id not in abbildung:
-                vorlage = self._point(alt_id)
-                if vorlage is None:
-                    return alt_id          # zeigt schon ins Leere — nicht erfinden
-                kopie = PalettePoint(
+            if old_id not in mapping:
+                template_value = self._point(old_id)
+                if template_value is None:
+                    return old_id          # zeigt schon ins Leere — nicht erfinden
+                copy_of = PalettePoint(
                     id=max([p.id for p in self.points], default=0) + 1,
-                    x=vorlage.x, y=vorlage.y, name=vorlage.name,
-                    color=vorlage.color, source="Sequenz-Studio")
-                self.points.append(kopie)
-                abbildung[alt_id] = kopie.id
-            return abbildung[alt_id]
+                    x=template_value.x, y=template_value.y, name=template_value.name,
+                    color=template_value.color, source="Sequenz-Studio")
+                self.points.append(copy_of)
+                mapping[old_id] = copy_of.id
+            return mapping[old_id]
 
-        step.point_id = neu_fuer(step.point_id)
-        for field in self._REF_FELDER:
-            bedingung = getattr(step, field, None)
-            if bedingung is not None and getattr(bedingung, "point_id", None) is not None:
-                bedingung.point_id = neu_fuer(bedingung.point_id)
+        step.point_id = new_for(step.point_id)
+        for field in self._REF_FIELDS:
+            condition = getattr(step, field, None)
+            if condition is not None and getattr(condition, "point_id", None) is not None:
+                condition.point_id = new_for(condition.point_id)
 
     def selection_duplicate(self, data: Optional[dict] = None) -> dict:
         """Legt Kopien der gewählten Blöcke direkt hinter die Auswahl.
@@ -338,22 +338,22 @@ class BridgeEditingMixin:
         # Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse eine
         # Mehrfachauswahl in abwechselnd Original/Kopie.
         target = rows[-1] + 1
-        vorher = len(self.points)
-        abbildung: dict = {}
-        for versatz, idx in enumerate(rows):
-            kopie = copy.deepcopy(lane.steps[idx])
-            self._points_copy_along(kopie, abbildung)
-            self.board.add_step(lane, kopie, target + versatz)
+        before = len(self.points)
+        mapping: dict = {}
+        for offset, idx in enumerate(rows):
+            copy_of = copy.deepcopy(lane.steps[idx])
+            self._points_copy_along(copy_of, mapping)
+            self.board.add_step(lane, copy_of, target + offset)
         # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
         # umstellen, nicht erneut suchen.
         self.sel_rows = {target + i for i in range(len(rows))}
         self.sel_anchor = target
         self._points_apply()
-        neue = len(self.points) - vorher
+        fresh = len(self.points) - before
         return self._changed(
-            f"{_bloecke(len(rows))} dupliziert."
-            + (f" {neue} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
-               f"verschieben, ohne das Original mitzunehmen." if neue else ""))
+            f"{_blocks(len(rows))} dupliziert."
+            + (f" {fresh} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
+               f"verschieben, ohne das Original mitzunehmen." if fresh else ""))
 
     def selection_delete(self, data: Optional[dict] = None) -> dict:
         lane = self.sel_lane
@@ -364,7 +364,7 @@ class BridgeEditingMixin:
             self.board.delete_step(lane, idx)
         count = len(self.sel_rows)
         self._selection_clear()
-        return self._changed(f"{_bloecke(count)} gelöscht.")
+        return self._changed(f"{_blocks(count)} gelöscht.")
 
     # ---------------------------------------------------------- Block-Felder
 
@@ -392,18 +392,18 @@ class BridgeEditingMixin:
         Ohne Punkt wird der Wechsel abgelehnt: lieber gar keine Bedingung als eine,
         die niemand mehr nachziehen kann.
         """
-        typ = (data or {}).get("type_key")
+        type_value = (data or {}).get("type")
         lane, row, step = self._single()
-        if step is None or typ not in BLOCK_LABELS:
+        if step is None or type_value not in BLOCK_LABELS:
             return self.snapshot()
-        if (typ == BLOCK_WAIT_CLICK and step.wait_condition is None
+        if (type_value == BLOCK_WAIT_CLICK and step.wait_condition is None
                 and step.point_id is None):
             return self._report("FARBE+KLICK braucht einen Punkt — erst eine Stelle wählen.",
                                "warn")
-        set_block_type(step, typ)
+        set_block_type(step, type_value)
         self._points_apply()
-        weg = self._else_cleanup(step)
-        return self._changed(weg, "warn" if weg else "ok")
+        gone = self._else_cleanup(step)
+        return self._changed(gone, "warn" if gone else "ok")
 
     def block_set(self, data: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
@@ -412,11 +412,11 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
-        wandeln = _FELDER.get(field)
-        if wandeln is None:
+        convert = _FIELDS.get(field)
+        if convert is None:
             return self._report(f"Unbekanntes Feld '{field}'.", "err")
         try:
-            setattr(step, field, wandeln(value))
+            setattr(step, field, convert(value))
         except (TypeError, ValueError):
             return self._report(f"'{value}' passt nicht zu {field}.", "warn")
         return self._changed()
@@ -456,18 +456,18 @@ class BridgeEditingMixin:
         from ...utils.io import wait_for_global_key
         from ...winapi import get_cursor_pos
 
-        ecken = []
+        corners = []
         for _ in (1, 2):
             key = wait_for_global_key(("enter", "escape"),
-                                    timeout=WARTE_TIMEOUT)
+                                    timeout=WAIT_TIMEOUT)
             if key != "enter":
                 return self._report(
                     "Abgebrochen — der Bereich bleibt, wie er war."
                     if key == "escape" else
                     "Nichts gedrückt — der Bereich bleibt, wie er war.", "warn")
-            ecken.append(get_cursor_pos())
+            corners.append(get_cursor_pos())
 
-        (x1, y1), (x2, y2) = ecken
+        (x1, y1), (x2, y2) = corners
         x1, x2 = min(x1, x2), max(x1, x2)
         y1, y2 = min(y1, y2), max(y1, y2)
         if x2 - x1 < 2 or y2 - y1 < 2:
@@ -489,7 +489,7 @@ class BridgeEditingMixin:
         from ...utils.io import wait_for_global_key
         from ...winapi import get_cursor_pos
 
-        key = wait_for_global_key(("enter", "escape"), timeout=WARTE_TIMEOUT)
+        key = wait_for_global_key(("enter", "escape"), timeout=WAIT_TIMEOUT)
         if key != "enter":
             return None, None, ("Abgebrochen" if key == "escape" else "Nichts gedrückt")
         x, y = get_cursor_pos()
@@ -539,20 +539,20 @@ class BridgeEditingMixin:
         if point is not None and color is not None:
             point.color = tuple(color)
             self._points_apply()
-        gemessen = f" · Farbe {tuple(color)}" if color else ""
-        return self._changed(f"Stelle: ({x}, {y}){gemessen}"
-                               + self._moved_along(step.point_id, ausser=step))
+        measured = f" · Farbe {tuple(color)}" if color else ""
+        return self._changed(f"Stelle: ({x}, {y}){measured}"
+                               + self._moved_along(step.point_id, except_step=step))
 
-    def _moved_along(self, point_id, ausser=None) -> str:
+    def _moved_along(self, point_id, except_step=None) -> str:
         """Nachsatz für eine Verschiebung: welche anderen Verwendungen mitziehen.
 
         Leer, wenn keine — dann ist die Meldung so kurz wie vorher.
         """
-        andere = self._point_usages(point_id, ausser=ausser)
-        if not andere:
+        other = self._point_usages(point_id, except_step=except_step)
+        if not other:
             return ""
-        return (f" — zieht {len(andere)} weitere Verwendung(en) mit: "
-                + ", ".join(andere))
+        return (f" — zieht {len(other)} weitere Verwendung(en) mit: "
+                + ", ".join(other))
 
     def point_detach(self, data: Optional[dict] = None) -> dict:
         """Gibt dem gewählten Block einen eigenen Punkt — die anderen behalten den alten.
@@ -570,14 +570,14 @@ class BridgeEditingMixin:
         if step.point_id is None:
             return self._report("Dieser Block hat keinen Punkt.", "warn")
         old = step.point_id
-        andere = self._point_usages(old, ausser=step)
-        if not andere:
+        other = self._point_usages(old, except_step=step)
+        if not other:
             return self._report(f"Punkt #{old} wird nur von diesem Block benutzt — "
                                "nichts abzutrennen.", "info")
         self._points_copy_along(step, {})
         self._points_apply()
         return self._changed(f"Block hat jetzt seinen eigenen Punkt #{step.point_id}; "
-                               f"#{old} bleibt bei: {', '.join(andere)}")
+                               f"#{old} bleibt bei: {', '.join(other)}")
 
     def block_point(self, data: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
@@ -616,12 +616,12 @@ class BridgeEditingMixin:
         return self._trigger_set(step, field, data)
 
     def _trigger_set(self, step: SequenceStep, field: str, data: dict) -> dict:
-        wahl = data.get("choice")
+        choice = data.get("choice")
         cond: Optional[WaitCondition] = getattr(step, field)
-        if wahl == TRIGGER_KEIN:
+        if choice == TRIGGER_NONE:
             setattr(step, field, None)
-            weg = self._else_cleanup(step)
-            return self._changed(weg, "warn" if weg else "ok")
+            gone = self._else_cleanup(step)
+            return self._changed(gone, "warn" if gone else "ok")
         if cond is None:
             point_id = data.get("point", step.point_id)
             point = self._point(point_id)
@@ -631,8 +631,8 @@ class BridgeEditingMixin:
             cond = WaitCondition(point_id=point.id, pixel=(point.x, point.y),
                                  color=tuple(point.color) if point.color else (0, 0, 0))
             setattr(step, field, cond)
-        if wahl in (TRIGGER_DA, TRIGGER_WEG):
-            cond.until_gone = (wahl == TRIGGER_WEG)
+        if choice in (TRIGGER_PRESENT, TRIGGER_GONE):
+            cond.until_gone = (choice == TRIGGER_GONE)
         if "check_only" in data:
             cond.check_only = bool(data["check_only"])
         if data.get("point") is not None:
@@ -652,7 +652,7 @@ class BridgeEditingMixin:
         if not action:
             step.else_config = None
             return self._changed()
-        if action not in ELSE_AKTIONEN:
+        if action not in ELSE_ACTIONS:
             return self._report(f"Unbekannte ELSE-Aktion '{action}'.", "err")
         ec = ensure_else(step, action)
         if "point" in data and data["point"] is not None:
@@ -693,7 +693,7 @@ class BridgeEditingMixin:
                 # und der zählt nicht als „weiterer".
                 _lane, _row, selected = self._single()
                 return self._changed(f"Punkt #{point.id} verschoben"
-                                       + self._moved_along(point.id, ausser=selected))
+                                       + self._moved_along(point.id, except_step=selected))
             elif field == "name":
                 point.name = str(value or "")
             elif field == "color":

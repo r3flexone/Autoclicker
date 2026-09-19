@@ -55,13 +55,13 @@ def aufbau():
     return b, sequence_dir("Raid")
 
 
-def lauf():
+def run():
     b, ordner_raid = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     with Fenster(b) as f:
         f.reiter("sequences")
@@ -70,11 +70,11 @@ def lauf():
 
         # **Gleiche Spalten heisst gleiche BREITE.** Genau dafuer ist der
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
-        breiten = f.seite.eval_on_selector_all(
+        widths = f.seite.eval_on_selector_all(
             ".seq-card .button-pair .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
-        pruefe(len(breiten) == 4, f"4 Knoepfe erwartet, da: {len(breiten)}")
-        pruefe(breiten and max(breiten) - min(breiten) < 0.5,
-               f"die Knoepfe sind verschieden breit: {breiten}")
+        pruefe(len(widths) == 4, f"4 Knoepfe erwartet, da: {len(widths)}")
+        pruefe(widths and max(widths) - min(widths) < 0.5,
+               f"die Knoepfe sind verschieden breit: {widths}")
         # Und jede Karte gibt dem Paar dieselbe Breite. Gemessen wird die
         # BREITE, nicht die rechte Kante: die Karten stehen nebeneinander in
         # einem Raster, ihre Fusszeilen enden also zwangslaeufig an
@@ -98,25 +98,25 @@ def lauf():
         f.image("sequenzen_loeschen_dialog")
 
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
-        f.klick("#dialog-cancel")
+        f.click_value("#dialog-cancel")
         pruefe(f.count(".seq-card") == 2, "Abbrechen hat trotzdem geloescht")
         pruefe(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
         f.klick_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
-        f.klick("#dialog-discard")
+        f.click_value("#dialog-discard")
         pruefe(f.count(".seq-card") == 1,
                f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-card')}")
         pruefe(not ordner_raid.exists(), "der Ordner steht noch")
         # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
-        sicherung = Path("backups/sequences") / ordner_raid.name
-        pruefe((sicherung / "templates/erz.png").exists(),
+        backup = Path("backups/sequences") / ordner_raid.name
+        pruefe((backup / "templates/erz.png").exists(),
                "die Vorlage fehlt in der Sicherung")
         pruefe("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")
         f.image("sequenzen_geloescht")
 
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Sequenz löschen", lauf)
+    main("Sequenz löschen", run)

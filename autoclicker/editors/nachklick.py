@@ -146,10 +146,10 @@ def click_points(seq: Sequence) -> tuple[list, list]:
     Der zweite Wert sind die Stellen, an denen in einem normalen Durchlauf
     niemand klickt — sie zu verschweigen hiesse, die Sequenz für repariert zu halten.
     """
-    schritte = list(seq.init_steps)
+    steps_list = list(seq.init_steps)
     for phase in seq.loop_phases:
-        schritte += list(phase.steps)
-    schritte += list(seq.end_steps)
+        steps_list += list(phase.steps)
+    steps_list += list(seq.end_steps)
 
     clicks, others = [], []
 
@@ -161,14 +161,14 @@ def click_points(seq: Sequence) -> tuple[list, list]:
     # Stelle, die ein früher Schritt nur BEOBACHTET und ein späterer klickt,
     # unter „unerreichbar" — und war damit aus der Runde draussen, obwohl man
     # sie gleich anklicken wird. Wer beides ist, ist ein Klick.
-    for step in schritte:
+    for step in steps_list:
         if block_type(step) in CLICK_BLOCKS and step.scroll is None:
             remember(clicks, step.point_id)
-    for step in schritte:
+    for step in steps_list:
         remember(others, step.point_id)
-        for bedingung in (step.wait_condition, step.verify_condition, step.else_config):
-            if bedingung is not None:
-                remember(others, bedingung.point_id)
+        for condition in (step.wait_condition, step.verify_condition, step.else_config):
+            if condition is not None:
+                remember(others, condition.point_id)
     return clicks, others
 
 
@@ -339,8 +339,8 @@ def _banner(name: str, count: int, target: str, others: list) -> None:
               "jedem anderen")
         print("  Fenster kannst du klicken, ohne einen Punkt zu verbrauchen.")
     print()
-    for key, was, warum in KEYS:
-        print(f"    {col(key.ljust(11), 'yellow')} {was.ljust(13)}"
+    for key, what, warum in KEYS:
+        print(f"    {col(key.ljust(11), 'yellow')} {what.ljust(13)}"
               f"{hint(warum)}")
     print()
     # **Der wichtigste Satz steht allein.** Alles bleibt in der Schwebe, bis
@@ -475,9 +475,9 @@ def reclick_skip(state: AutoClickerState) -> None:
         point_id = state.reclick_points[state.reclick_index]
         state.reclick_history.append((point_id, "skipped"))
         state.reclick_index += 1
-        fertig = state.reclick_index >= len(state.reclick_points)
+        done = state.reclick_index >= len(state.reclick_points)
     print(f"  {col('[ÜBERSPRUNGEN]', 'yellow')} #{point_id} bleibt, wo er ist.")
-    if fertig:
+    if done:
         stop_reclick(state, "alle Punkte durch")
     else:
         _show_current(state)
@@ -566,29 +566,29 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
         if point is None:
             state.reclick_history.append((point_id, "missing"))
             state.reclick_index += 1
-            fertig = state.reclick_index >= len(state.reclick_points)
-            name, old, gleich = "", None, False
+            done = state.reclick_index >= len(state.reclick_points)
+            name, old, same = "", None, False
         else:
             # **Der Punkt wird NICHT angefasst.** Die neue Stelle kommt auf die
             # Liste; geschrieben wird sie erst beim Übernehmen. Damit ist ein
             # Abbruch wirklich ein Abbruch — es gibt nichts zurückzudrehen.
             old = (point.x, point.y)
             # Ein Pixel Abweichung ist keine Korrektur — siehe MATCH_TOLERANCE.
-            gleich = (abs(old[0] - x) <= MATCH_TOLERANCE
+            same = (abs(old[0] - x) <= MATCH_TOLERANCE
                       and abs(old[1] - y) <= MATCH_TOLERANCE)
             name = point.name or f"Punkt {point.id}"
-            if not gleich:
+            if not same:
                 state.reclick_set = [
                     e for e in state.reclick_set if e[0] != point_id]
                 state.reclick_set.append((point_id, old, (x, y), color))
             state.reclick_history.append(
-                (point_id, "fits" if gleich else "placed"))
+                (point_id, "fits" if same else "placed"))
             state.reclick_index += 1
-            fertig = state.reclick_index >= len(state.reclick_points)
+            done = state.reclick_index >= len(state.reclick_points)
 
     if point is not None:
         color_text = f"  {describe_color(color)}" if point.color and color else ""
-        if gleich:
+        if same:
             # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
             # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
             # als „nichts passiert".
@@ -597,7 +597,7 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
         else:
             print(f"  {col('[GESETZT]', 'green')} #{point_id} {name}  "
                   f"({old[0]}, {old[1]}) → ({x}, {y}){color_text}")
-    if fertig:
+    if done:
         stop_reclick(state, "alle Punkte durch")
     else:
         _show_current(state, verzoegert=True)
@@ -613,9 +613,9 @@ def _jump(x: int, y: int, verzoegert: bool = False) -> None:
     if not verzoegert:
         set_cursor_pos(x, y)
         return
-    zeit = threading.Timer(JUMP_DELAY, set_cursor_pos, args=(x, y))
-    zeit.daemon = True
-    zeit.start()
+    time_value = threading.Timer(JUMP_DELAY, set_cursor_pos, args=(x, y))
+    time_value.daemon = True
+    time_value.start()
 
 
 def _show_current(state: AutoClickerState, verzoegert: bool = False) -> None:

@@ -63,13 +63,13 @@ def aufbau():
                         "sequences")
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     with Fenster(b) as f:
         f.reiter("bericht")
@@ -101,7 +101,7 @@ def lauf():
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.
-        f.klick(".rep-session:nth-of-type(2)")
+        f.click_value(".rep-session:nth-of-type(2)")
         pruefe(f.count(".rep-session.on") == 1,
                "genau eine Sitzung muss markiert sein")
         center = f.text("#rep-middle")
@@ -112,13 +112,13 @@ def lauf():
         f.image("bericht_eine")
 
         # Und zurueck auf alles zusammen.
-        f.klick(".rep-session:nth-of-type(1)")
+        f.click_value(".rep-session:nth-of-type(1)")
         pruefe("Bank oeffnen" in f.text("#rep-middle"),
                "zurueck auf „alle zusammen“ fehlt der Timeout wieder")
 
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Bericht", lauf)
+    main("Bericht", run)

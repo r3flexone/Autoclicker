@@ -191,7 +191,7 @@ def _load_template(template_path: str):
     return image
 
 
-def with_background_mask(img: 'Image.Image', hintergrund) -> 'Image.Image':
+def with_background_mask(img: 'Image.Image', background) -> 'Image.Image':
     """Legt einen Alpha-Kanal an: Hintergrund durchsichtig, Item deckend.
 
     Ein Slot besteht zu 60–90 % aus immer gleicher Slot-Fläche; ein Vergleich
@@ -200,19 +200,19 @@ def with_background_mask(img: 'Image.Image', hintergrund) -> 'Image.Image':
     einem anders gefärbten Menü. Sie steckt IM Template-PNG, nicht in einer
     Datei daneben.
     """
-    if img is None or not hintergrund:
+    if img is None or not background:
         return img
-    grenze = CONFIG.scan_slot_color_distance
+    limit = CONFIG.scan_slot_color_distance
     rgb = img.convert("RGB")
     width, height = rgb.size
     pixel = rgb.load()
     maske = Image.new("L", (width, height))
     mp = maske.load()
-    hr, hg, hb = hintergrund[:3]
+    hr, hg, hb = background[:3]
     for y in range(height):
         for x in range(width):
             r, g, b = pixel[x, y]
-            if ((r - hr) ** 2 + (g - hg) ** 2 + (b - hb) ** 2) ** 0.5 <= grenze:
+            if ((r - hr) ** 2 + (g - hg) ** 2 + (b - hb) ** 2) ** 0.5 <= limit:
                 mp[x, y] = 0
             else:
                 mp[x, y] = 255
@@ -229,12 +229,12 @@ def _masked_confidence(image, template, maske) -> float:
     gespeicherte `min_confidence` verschöbe sich still. Template und Ausschnitt
     sind hier immer gleich gross, also genau eine Korrelation und keine Suche.
     """
-    wahl = maske > 127
-    if int(wahl.sum()) < 16:
+    choice = maske > 127
+    if int(choice.sum()) < 16:
         # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
         return 0.0
-    a = template[wahl].astype(np.float64).ravel()
-    b = image[wahl].astype(np.float64).ravel()
+    a = template[choice].astype(np.float64).ravel()
+    b = image[choice].astype(np.float64).ravel()
     a -= a.mean()
     b -= b.mean()
     nenner = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
@@ -252,9 +252,9 @@ def _template_at_size(template_path: str, image, width: int, height: int):
     entry = _template_cache.get(template_path)
     key_name = (width, height)
     if entry is not None:
-        fertig = entry["skaliert"].get(key_name)
-        if fertig is not None:
-            return fertig
+        done = entry["skaliert"].get(key_name)
+        if done is not None:
+            return done
     skaliert = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
     if entry is not None:
         entry["skaliert"][key_name] = skaliert
@@ -473,10 +473,10 @@ def is_blank(image) -> bool:
     if image is None:
         return True
     try:
-        ecken = image.convert("RGB").getcolors(maxcolors=4)
+        corners = image.convert("RGB").getcolors(maxcolors=4)
     except (OSError, ValueError):
         return False
-    return bool(ecken) and len(ecken) <= 1
+    return bool(corners) and len(corners) <= 1
 
 
 def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
@@ -493,13 +493,13 @@ def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
     if direkt is not None and not is_blank(direkt[0]):
         return direkt[0], tuple(direkt[1]), ""
 
-    rechteck = get_client_rect_by_handle(hwnd)
-    if rechteck is None:
+    rect_value = get_client_rect_by_handle(hwnd)
+    if rect_value is None:
         return None
-    image = take_screenshot(rechteck)
+    image = take_screenshot(rect_value)
     if image is None:
         return None
-    return (image, tuple(rechteck),
+    return (image, tuple(rect_value),
             " Direkte Fensteraufnahme nicht verfügbar — sichtbaren "
             "Fensterbereich verwendet; es darf nichts davor liegen.")
 

@@ -659,7 +659,7 @@ def slot_repair(state: AutoClickerState) -> bool:
     print(f"  {len(new_rects)} Slot(s) erkannt.")
 
     inset = state.config.scan_slot_inset
-    pairs, versatz, messages = _check_assignment(
+    pairs, offset, messages = _check_assignment(
         old_slots, new_rects, inset, (region[0], region[1]))
 
     if not pairs:
@@ -678,9 +678,9 @@ def slot_repair(state: AutoClickerState) -> bool:
     if len(pairs) > 12:
         print(f"    {info(f'... und {len(pairs) - 12} weitere')}")
     print()
-    print(f"  Versatz durchgaengig: {col(f'{versatz[0]:+} X, {versatz[1]:+} Y', 'yellow')}")
+    print(f"  Versatz durchgaengig: {col(f'{offset[0]:+} X, {offset[1]:+} Y', 'yellow')}")
 
-    if versatz == (0, 0):
+    if offset == (0, 0):
         print(f"  {info('Die Slots sitzen schon richtig — nichts zu tun.')}")
         return False
 
@@ -689,9 +689,9 @@ def slot_repair(state: AutoClickerState) -> bool:
         return False
 
     from ..import_export import backup_before_calibration
-    sicherung = backup_before_calibration(state)
-    if sicherung:
-        print(f"  {ok('Sicherung angelegt:')} {sicherung}")
+    backup = backup_before_calibration(state)
+    if backup:
+        print(f"  {ok('Sicherung angelegt:')} {backup}")
     else:
         print(f"  {warn('Sicherung fehlgeschlagen — es wird trotzdem geschrieben.')}")
 
@@ -713,7 +713,7 @@ def slot_repair(state: AutoClickerState) -> bool:
         from ..import_export import (transform_from_offset, calibrate_inventory,
                                      calibration_preview)
         from .import_export_editor import _outside_all_monitors
-        t = transform_from_offset((0, 0), versatz)
+        t = transform_from_offset((0, 0), offset)
 
         # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
         # genauer gemessen, aber er stammt von EINEM Bildschirm: liegen Punkte auf
@@ -726,9 +726,9 @@ def slot_repair(state: AutoClickerState) -> bool:
             print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
         if len(preview) > 8:
             print(f"    {info(f'... und {len(preview) - 8} weitere')}")
-        draussen = _outside_all_monitors([n for _, _, n in preview])
-        if draussen:
-            print(f"  {warn(f'{draussen} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
+        outside = _outside_all_monitors([n for _, _, n in preview])
+        if outside:
+            print(f"  {warn(f'{outside} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
             print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")
         if not confirm("  Wirklich uebernehmen?", default=False):
             print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")

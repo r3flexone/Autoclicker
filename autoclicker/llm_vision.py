@@ -211,7 +211,7 @@ def _build_system_prompt(boss_names: list[str] = None) -> str:
 TIMEOUT = "timeout"
 
 
-def is_timeout(antwort: str) -> bool:
+def is_timeout(answer: str) -> bool:
     """War dieser Fehlschlag eine Zeitueberschreitung?
 
     **Der Unterschied entscheidet, ob sich ein zweiter Versuch lohnt.** Ein
@@ -223,7 +223,7 @@ def is_timeout(antwort: str) -> bool:
     Die Regel steht hier und nicht bei den Aufrufern: sie haengt am Text, den
     `analyze_image()` erzeugt, und der gehoert diesem Modul.
     """
-    return str(antwort or "").startswith("Timeout")
+    return str(answer or "").startswith("Timeout")
 
 _DEBUG_RAW_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
 

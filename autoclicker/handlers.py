@@ -67,8 +67,8 @@ def _block_if_recording(state: AutoClickerState) -> bool:
         recording = state.recording_active
         nachklick = state.reclick_active
     if recording or nachklick:
-        was = "Aufnahme" if recording else "Klick-Runde"
-        print(f"\n{err(was + ' läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
+        what = "Aufnahme" if recording else "Klick-Runde"
+        print(f"\n{err(what + ' läuft — erst mit CTRL+ALT+J stoppen (sonst gehen Klicks verloren)')}")
         return True
     return False
 
@@ -333,8 +333,8 @@ def handle_debug_toggle(state: AutoClickerState, level: str) -> None:
         snapshot = state.config
 
     save_config(snapshot)
-    zustand = col('AN', 'green') if active else col('AUS', 'cyan')
-    print(f"\n{col('[DEBUG]', 'cyan')} {name}: {zustand}")
+    state_value = col('AN', 'green') if active else col('AUS', 'cyan')
+    print(f"\n{col('[DEBUG]', 'cyan')} {name}: {state_value}")
     print(f"         Jetzt aktiv: Stufe 1 {'an' if log_an else 'aus'}, "
           f"Stufe 2 {'an' if detail_an else 'aus'}")
     if detail_an and not log_an:
@@ -842,8 +842,8 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
     set_cursor_pos(x, y)
     name = str(arguments.get("name") or "").strip()
     number = arguments.get("point")
-    kopf = f"#{number} " if number else ""
-    print(f"\n{col('[STUDIO]', 'cyan')} {kopf}{name} {coord_context(x, y)}")
+    head = f"#{number} " if number else ""
+    print(f"\n{col('[STUDIO]', 'cyan')} {head}{name} {coord_context(x, y)}")
     jetzt = get_screen_pixel(x, y)
     if jetzt:
         print(f"       Dort jetzt:  {describe_color(jetzt)}")
@@ -855,8 +855,8 @@ def command_show(state: AutoClickerState, arguments: dict) -> None:
         except (TypeError, ValueError):
             distance = None
         if distance is not None:
-            gleich = distance <= state.config.pixel_wait_tolerance
-            marke = ok("passt") if gleich else warn("weicht ab")
+            same = distance <= state.config.pixel_wait_tolerance
+            marke = ok("passt") if same else warn("weicht ab")
             print(f"       Gespeichert: {describe_color(tuple(expected))}  {marke}")
     print(hint("       Maus steht jetzt auf der Stelle."))
 
@@ -923,7 +923,7 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
 
 
 def command_reclick(state: AutoClickerState, arguments: dict) -> None:
-    """Startet die Klick-Runde — der Studio-Knopf statt `klick` im Punkte-Menü.
+    """Startet die Klick-Runde — der Studio-Knopf statt `click_value` im Punkte-Menü.
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
@@ -1044,9 +1044,9 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
     try:
         block = int(arguments.get("block"))
         phase_index = int(arguments.get("phase_index", -1))
-        schritte = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
+        steps_list = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
                     else seq.loop_phases[phase_index].steps)
-        step = schritte[block]
+        step = steps_list[block]
     except (TypeError, ValueError, IndexError):
         print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
         return
@@ -1064,7 +1064,7 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
     state.skip_step_event.clear()
     try:
         print(f"\n{col('[TEST]', 'cyan')} {step.name or 'Block'} — echter Systembefehl")
-        execute_step(state, probe, block + 1, len(schritte), "TEST")
+        execute_step(state, probe, block + 1, len(steps_list), "TEST")
     except Exception as e:                                      # noqa: BLE001
         print(f"\n{err(f'Block-Test fehlgeschlagen: {e}')}")
     finally:

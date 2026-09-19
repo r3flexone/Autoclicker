@@ -86,20 +86,20 @@ def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> lis
     kommen dabei verschiedene Ergebnisse heraus.
     """
     color_counts = {}
-    maskiert = img.mode == "RGBA"
+    masked = img.mode == "RGBA"
     pixels = img.load()
     width, height = img.size
 
     for x in range(width):
         for y in range(height):
             raw = pixels[x, y]
-            if maskiert and len(raw) > 3 and raw[3] <= 127:
+            if masked and len(raw) > 3 and raw[3] <= 127:
                 continue                      # Hintergrund, schon ausmaskiert
             pixel = raw[:3]
             rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 
-    if slot_color and not maskiert:
+    if slot_color and not masked:
         exclude_rounded = (slot_color[0] // 5 * 5, slot_color[1] // 5 * 5, slot_color[2] // 5 * 5)
         slot_color_dist = CONFIG.scan_slot_color_distance
         colors_to_remove = [c for c in color_counts if color_distance(c, exclude_rounded) <= slot_color_dist]
@@ -121,10 +121,10 @@ def _prepare_learning_image(img: 'Image.Image', slot_color: tuple = None):
     """
     from ...imaging import with_background_mask
 
-    maskiert = with_background_mask(img, slot_color)
-    marker = _collect_markers_silent(maskiert, slot_color)
+    masked = with_background_mask(img, slot_color)
+    marker = _collect_markers_silent(masked, slot_color)
     empty = bool(slot_color) and not marker
-    return maskiert, marker, empty
+    return masked, marker, empty
 
 
 def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
@@ -148,19 +148,19 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
     # Eine echte Vorlage derselben Slot-Groesse ist aussagekraeftiger als eine
     # hoch-/herunterskalierte. Erst wenn keine davon passt, darf die zweite Runde
     # ein Item aus einem anderen Slot-Typ als moegliche Identitaet erkennen.
-    for gleiche_groesse in (True, False):
+    for same_size in (True, False):
         bester_name = None
         beste_konfidenz = -1.0
         for name, item in existing_items:
             vorlagen = (item.template_names() if hasattr(item, "template_names")
                          else ([item.template] if item.template else []))
-            for vorlage in vorlagen:
-                passt_groesse = template_size(vorlage, template_root) == tuple(img.size)
-                if passt_groesse != gleiche_groesse:
+            for template_value in vorlagen:
+                passt_groesse = template_size(template_value, template_root) == tuple(img.size)
+                if passt_groesse != same_size:
                     continue
                 match, confidence, _pos = match_template_in_image(
-                    img, vorlage, min_confidence,
-                    resize_template=not gleiche_groesse,
+                    img, template_value, min_confidence,
+                    resize_template=not same_size,
                     report_size_mismatch=False,
                     template_root=template_root,
                 )
@@ -177,5 +177,5 @@ def _item_has_compatible_template(item, img: 'Image.Image', template_root=None) 
     from ...imaging import template_size
     vorlagen = (item.template_names() if hasattr(item, "template_names")
                  else ([item.template] if item.template else []))
-    return any(template_size(vorlage, template_root) == tuple(img.size)
-               for vorlage in vorlagen)
+    return any(template_size(template_value, template_root) == tuple(img.size)
+               for template_value in vorlagen)

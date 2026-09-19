@@ -28,13 +28,13 @@ def aufbau():
                         "sequences")
 
 
-def lauf():
+def run():
     b = aufbau()
-    fehler = []
+    error = []
 
-    def pruefe(bedingung, text):
-        if not bedingung:
-            fehler.append(text)
+    def pruefe(condition, text):
+        if not condition:
+            error.append(text)
 
     # Erst ein Buendel schreiben, damit der Reiter etwas zu zeigen hat.
     z = b.share_data()
@@ -48,19 +48,19 @@ def lauf():
         # drei Scan-Arten je eine eigene Kachel hatten. Seit sie im
         # Sequenzordner liegen, sind es zwei, und die Zahl war nur noch ein
         # Pin auf einen Stand, den es nicht mehr gibt.
-        from autoclicker.editors.sequence_studio.bridge_teilen import TEILE
+        from autoclicker.editors.sequence_studio.bridge_teilen import PARTS
         haken = f.count("#share-export input[type=checkbox]")
-        pruefe(haken == len(TEILE),
-               f"{len(TEILE)} Haken erwartet (je einer pro TEILE), da: {haken}")
+        pruefe(haken == len(PARTS),
+               f"{len(PARTS)} Haken erwartet (je einer pro TEILE), da: {haken}")
         pruefe("probe.zip" in f.text("#share-middle"), "das Buendel fehlt in der Liste")
         f.image("teilen")
-        f.klick("#share-middle button")
+        f.click_value("#share-middle button")
         pruefe("gelesen" in f.status(), f"Einlesen: {f.status()!r}")
         pruefe(bool(f.text("#share-import").strip()), "rechts steht nichts zum Import")
         f.image("teilen_import")
-        fehler.extend(f.fehler)
-    return fehler
+        error.extend(f.error)
+    return error
 
 
 if __name__ == "__main__":
-    main("Teilen", lauf)
+    main("Teilen", run)

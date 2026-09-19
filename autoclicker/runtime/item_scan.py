@@ -247,12 +247,12 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' konnte "
                       "nicht aufgenommen werden."))
             return []
-        fensterbild, window_rect, hinweis = aufnahme
-        if hinweis:
-            key_name = (scan_name, hinweis)
+        fensterbild, window_rect, hint = aufnahme
+        if hint:
+            key_name = (scan_name, hint)
             if key_name not in _window_capture_warnings:
                 _window_capture_warnings.add(key_name)
-                print(warn(f"Item-Scan '{scan_name}':{hinweis}"))
+                print(warn(f"Item-Scan '{scan_name}':{hint}"))
         if debug:
             screenshot_ms = (time.time() - screenshot_start) * 1000
             print(dbg(f"Fenster '{window_title}' einmal aufgenommen: "
@@ -365,7 +365,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     from ..persistence import save_global_items, active_templates_dir
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
-    maskiert, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
+    masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
     if is_blank:
         if debug:
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
@@ -400,7 +400,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             template_path = active_templates_dir(state) / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)
-                maskiert.save(template_path)
+                masked.save(template_path)
             except (OSError, ValueError) as e:
                 print(warn(f"Auto-Lernen: Vorlage für '{known}' konnte nicht "
                            f"gespeichert werden: {e}"))
@@ -444,7 +444,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     template_path = active_templates_dir(state) / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
-        maskiert.save(template_path)
+        masked.save(template_path)
     except (OSError, ValueError) as e:
         with state.lock:
             state.global_items.pop(name, None)

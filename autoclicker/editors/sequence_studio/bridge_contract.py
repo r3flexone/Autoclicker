@@ -25,11 +25,11 @@ from ...models import (
     WaitCondition,
     block_type,
 )
-from .model import BLOCK_LABELS, SequenceBoard, hex_color, rgbwert
+from .model import BLOCK_LABELS, SequenceBoard, hex_color, rgb_value
 
 # Reihenfolge der Block-Typen in der Typ-Auswahl: erst die drei Klick-Formen,
 # dann Taste, dann die Scans, zuletzt der Screenshot.
-TYP_REIHENFOLGE = [
+TYPE_ORDER = [
     BLOCK_CLICK, BLOCK_WAIT_CLICK, BLOCK_WAIT, BLOCK_KEY,
     BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER,
     BLOCK_SCREENSHOT,
@@ -44,20 +44,20 @@ TYP_REIHENFOLGE = [
 # muss deshalb selbst sagen, worauf gewartet wird. Damit ihr Countdown nicht
 # neben der Wirklichkeit laeuft, steht die Zahl hier und wird mitgeliefert,
 # statt in app.js ein zweites Mal zu stehen.
-WARTE_TIMEOUT = 60.0
+WAIT_TIMEOUT = 60.0
 
-TRIGGER_KEIN = "kein"
-TRIGGER_DA = "present"
-TRIGGER_WEG = "weg"
+TRIGGER_NONE = "kein"
+TRIGGER_PRESENT = "present"
+TRIGGER_GONE = "weg"
 
 SCAN_MODES = [SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY]
-ELSE_AKTIONEN = [ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY]
+ELSE_ACTIONS = [ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY]
 
 # Welches Feld hält den Namen eines Scan-Blocks? Ein Scan-Block mit leerem Namen
 # fällt beim Executor durch den Truthiness-Dispatch und degradiert still zu einem
 # Klick auf (0,0) — deshalb steht die Zuordnung hier einmal und wird an zwei
 # Stellen benutzt (Warnung am Block, Sperre beim Speichern).
-SCAN_FELD = {
+SCAN_FIELD = {
     BLOCK_ITEM_SCAN: "item_scan",
     BLOCK_ICON_SCAN: "icon_scan",
     BLOCK_BOSS_SCAN: "boss_scan",
@@ -67,7 +67,7 @@ SCAN_FELD = {
 # Einfache Felder eines Schritts: Name -> Umwandlung des Werts aus der Oberfläche.
 # Alles, was eine Stelle betrifft (Punkt, Trigger, else), hat eine eigene Methode —
 # dort hängt mehr dran als eine Zuweisung.
-_FELDER = {
+_FIELDS = {
     "name": lambda v: str(v or ""),
     "delay_before": lambda v: max(0.0, float(v or 0)),
     "delay_max": lambda v: (float(v) if float(v or 0) > 0 else None),
@@ -86,17 +86,17 @@ _FELDER = {
 # Die beiden Farbhelfer liegen in `model.py` — der Scans-Reiter braucht sie
 # genauso, und zwei Exemplare wären die Kopie, die irgendwann anders rundet.
 _hex = hex_color
-_rgb = rgbwert
+_rgb = rgb_value
 
 
 def trigger_name(cond: Optional[WaitCondition]) -> str:
     """Zustand einer Farb-Bedingung als Protokollwert."""
     if cond is None:
-        return TRIGGER_KEIN
-    return TRIGGER_WEG if cond.until_gone else TRIGGER_DA
+        return TRIGGER_NONE
+    return TRIGGER_GONE if cond.until_gone else TRIGGER_PRESENT
 
 
-def _wartetext(step: SequenceStep) -> str:
+def _wait_text(step: SequenceStep) -> str:
     if step.delay_max and step.delay_max > step.delay_before:
         return f"{step.delay_before:g}–{step.delay_max:g}s zufällig"
     if step.delay_before:
@@ -104,7 +104,7 @@ def _wartetext(step: SequenceStep) -> str:
     return "sofort"
 
 
-def _stelle(step: SequenceStep) -> str:
+def _position(step: SequenceStep) -> str:
     ref = f"#{step.point_id} " if step.point_id is not None else ""
     return f"{ref}({step.x},{step.y})"
 
@@ -128,7 +128,7 @@ def else_applies(step: SequenceStep) -> bool:
     return any(getattr(step, field, None) is not None for field in _ELSE_SCANS)
 
 
-def _gleicher_wert(a, b) -> bool:
+def _same_value(a, b) -> bool:
     """Ist das derselbe Config-Wert? Zahlen ohne Typunterschied, `bool` mit.
 
     JSON kennt nur eine Zahl: eine von Hand getippte `600` und die `600.0`, die
@@ -140,7 +140,7 @@ def _gleicher_wert(a, b) -> bool:
     if isinstance(a, bool) != isinstance(b, bool):
         return False
     if isinstance(a, list) and isinstance(b, list):
-        return len(a) == len(b) and all(_gleicher_wert(x, y) for x, y in zip(a, b))
+        return len(a) == len(b) and all(_same_value(x, y) for x, y in zip(a, b))
     if not isinstance(a, bool) and isinstance(a, (int, float)) \
             and not isinstance(b, bool) and isinstance(b, (int, float)):
         return float(a) == float(b)
@@ -155,7 +155,7 @@ def _mtime(path) -> Optional[float]:
         return None
 
 
-def _bloecke(count: int) -> str:
+def _blocks(count: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
     return "1 Block" if count == 1 else f"{count} Blöcke"
 
@@ -169,11 +169,11 @@ def scan_warnungen(board: SequenceBoard) -> list[str]:
     hinzuschreiben hiesse, dass eine Korrektur an der einen an der anderen
     vorbeigeht — dieselbe Begründung wie bei `multi_select()`.
     """
-    raus = []
+    out = []
     for lane in board.lanes:
         for row, step in enumerate(lane.steps, start=1):
-            typ = block_type(step)
-            field = SCAN_FELD.get(typ)
+            type_value = block_type(step)
+            field = SCAN_FIELD.get(type_value)
             if field is not None and not (getattr(step, field) or "").strip():
-                raus.append(f"{BLOCK_LABELS[typ]} in '{lane.name}' (Block {row})")
-    return raus
+                out.append(f"{BLOCK_LABELS[type_value]} in '{lane.name}' (Block {row})")
+    return out

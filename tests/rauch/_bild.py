@@ -23,7 +23,7 @@ def inventar(spalten: int = 3, lines: int = 2):
     image = Image.new("RGB", (800, 600), (18, 21, 27))
     colors = [(200, 60, 60), (60, 200, 90), (70, 110, 230),
               (230, 190, 60), (180, 80, 210), (60, 200, 210)]
-    ecken = []
+    corners = []
     for i in range(spalten * lines):
         sx, sy = 60 + (i % spalten) * 90, 80 + (i // spalten) * 90
         for x in range(sx, sx + 62):
@@ -32,8 +32,8 @@ def inventar(spalten: int = 3, lines: int = 2):
         for x in range(sx + 14, sx + 48):
             for y in range(sy + 12, sy + 48):
                 image.putpixel((x, y), colors[i % len(colors)])
-        ecken.append((sx, sy))
-    return image, ecken
+        corners.append((sx, sy))
+    return image, corners
 
 
 def flaeche_mit_marke():

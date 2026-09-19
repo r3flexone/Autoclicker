@@ -127,12 +127,12 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     erfasste von dreizehn Datendateien noch die `config.json`, und zwar still. Wer
     hier etwas ergaenzt, geht deshalb vom Sequenzordner aus.
     """
-    dateien: list[tuple[Path, str, RoundTrip]] = []
+    files: list[tuple[Path, str, RoundTrip]] = []
 
     from ..config import CONFIG_FILE
     cfg = Path(CONFIG_FILE)
     if cfg.exists():
-        dateien.append((cfg, KIND_CONFIG, _rt_config))
+        files.append((cfg, KIND_CONFIG, _rt_config))
 
     # Die Punkte haben keine eigene Datei mehr - sie stehen im Feld `points` der
     # `sequence.json` und werden mit ihr round-getrippt.
@@ -141,13 +141,13 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
         for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
             haupt = folder / "sequence.json"
             if haupt.exists():
-                dateien.append((haupt, KIND_SEQUENCE, _rt_sequence))
-            for unter, kind, rt in (
+                files.append((haupt, KIND_SEQUENCE, _rt_sequence))
+            for below, kind, rt in (
                 ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
                 ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
                 ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
             ):
-                d = folder / unter
+                d = folder / below
                 if not d.is_dir():
                     continue
                 for file in sorted(d.glob("*.json")):
@@ -155,10 +155,10 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
                     # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
                     # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
                     # unlesbar und wuerde als "uebersprungen" gemeldet.
-                    if unter == "boss_scans" and file.name == "bibliothek.json":
-                        dateien.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
+                    if below == "boss_scans" and file.name == "bibliothek.json":
+                        files.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
                     else:
-                        dateien.append((file, kind, rt))
+                        files.append((file, kind, rt))
 
     # Presets sind programmweit und gehoeren keiner Sequenz.
     for folder, kind, rt in (
@@ -168,9 +168,9 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
         d = Path(folder)
         if d.is_dir():
             for file in sorted(d.glob("*.json")):
-                dateien.append((file, kind, rt))
+                files.append((file, kind, rt))
 
-    return dateien
+    return files
 
 
 def _normalize_numbers(x):

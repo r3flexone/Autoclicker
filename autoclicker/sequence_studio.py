@@ -36,14 +36,14 @@ def last_edited() -> "Path | None":
     trotzdem — entscheidend ist das jüngere der beiden Ereignisse.
     """
     available = list_available_sequences()
-    neueste, zeit = None, -1
+    neueste, time_value = None, -1
     for _, path in available:
         try:
             m = path.stat().st_mtime_ns
         except OSError:
             continue
-        if m > zeit:
-            neueste, zeit = path, m
+        if m > time_value:
+            neueste, time_value = path, m
 
     marker = Path(STUDIO_LAST_SEQUENCE_FILE)
     try:
@@ -51,7 +51,7 @@ def last_edited() -> "Path | None":
         folder = str(data.get("folder") or "") if isinstance(data, dict) else ""
         gemerkt = next((path for _, path in available
                         if path.parent.name == folder), None)
-        if gemerkt is not None and marker.stat().st_mtime_ns >= zeit:
+        if gemerkt is not None and marker.stat().st_mtime_ns >= time_value:
             return gemerkt
     except (OSError, ValueError, TypeError):
         pass
@@ -112,8 +112,8 @@ def _save_scans_on_close(bridge) -> bool:
     if not getattr(bridge, "_scan_dirty", False):
         return False
 
-    antwort = bridge.scan_save()
-    status = antwort.get("status", {}) if isinstance(antwort, dict) else {}
+    answer = bridge.scan_save()
+    status = answer.get("status", {}) if isinstance(answer, dict) else {}
     if status.get("kind") == "err":
         print(f"\nItem-Scans konnten nicht gespeichert werden: "
               f"{status.get('text', 'unbekannter Fehler')}")
@@ -241,7 +241,7 @@ def _closing_message(bridge) -> None:
     Zweck und erscheint nur, wenn wirklich gespeichert wurde.
     """
     tag = col("[SEQUENZ-STUDIO]", "cyan")
-    if getattr(bridge, "_gespeichert", False):
+    if getattr(bridge, "_saved", False):
         print(f"\n{tag} Geschlossen — '{bridge.board.name}' gespeichert.")
         print(f"     Im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     else:
