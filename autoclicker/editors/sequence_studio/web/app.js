@@ -1072,7 +1072,7 @@ function askDelete(s) {
   // "2× Item-Scann" — deutsche Mehrzahl ist keine Regel fuer eine Zeile hier.
   const parts = (s.scope || []).map((u) => u.count + "× " + u.word);
   showQuestion({
-    kind: "seq_loeschen",
+    kind: "seq_delete",
     target: s.name,
     title: "„" + s.name + "“ löschen?",
     text: "Der ganze Ordner geht weg"
@@ -2004,7 +2004,7 @@ async function proceed(discard) {
   // Löschen geht über den fragenden Kanal: es ändert Dateien, nicht die offene
   // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
   // Steht vorn, weil es weder speichern noch laden will.
-  if (open.kind === "seq_loeschen") {
+  if (open.kind === "seq_delete") {
     const answer = await ask("sequence_delete", {name: open.target});
     if (answer) setStatus({text: answer.message, kind: answer.ok ? "ok" : "warn"});
     return renderSequenceList();
@@ -3883,7 +3883,7 @@ function scanScanDetails(target, c) {
     + "am LLM — sie funktioniert auch, wenn du den Namen selbst tippst. Der "
     + "Schalter steht hier und nicht in den Einstellungen, weil ein Katalog "
     + "immer nur für EIN Spiel gilt; wo die Datei liegt, sagt "
-    + "„Item-Katalog“ in den Einstellungen.", "katalog"));
+    + "„Item-Katalog“ in den Einstellungen.", "catalog"));
 
   if (c.missing_items.length) {
     target.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
@@ -5178,7 +5178,7 @@ let wzRecordingLivePoll = 0;
 let wzRecordingLive = {active: false, paused: false, count: 0, events: []};
 /* Der Live-Stand der Klick-Runde. Sie laeuft im HAUPTPROZESS (dort haengt der
  * Maus-Hook), also weiss dieses Fenster von sich aus nichts ueber sie — der
- * Stand kommt ueber `.nachklick.json`. Ohne ihn stand hier nur „gestartet",
+ * Stand kommt ueber `.reclick.json`. Ohne ihn stand hier nur „gestartet",
  * waehrend die Konsole jeden Schritt einzeln meldete. */
 let wzReclickPoll = 0;
 let wzReclickLive = {active: false, index: 0, total: 0, history: [], point: {}};
@@ -5392,7 +5392,7 @@ async function withWait(kind, name, data_reload) {
 }
 
 const WZ_TOOLS = [
-  {key: "recording", name: "Sequenz aufnehmen", command: "rec", scopeKind: "neu",
+  {key: "recording", name: "Sequenz aufnehmen", command: "rec", scopeKind: "new",
    short: "Echtes Spielen als neue Sequenz aufzeichnen"},
   {key: "check", name: "Bestand prüfen", command: "check", scopeKind: "inventory",
    short: "Fehler und unvollständige Verknüpfungen finden"},
@@ -5402,7 +5402,7 @@ const WZ_TOOLS = [
   // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
   // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
   // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
-  {key: "colors", name: "Farben analysieren", command: "color", scopeKind: "nichts",
+  {key: "colors", name: "Farben analysieren", command: "color", scopeKind: "none",
    short: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
   {key: "calibrate", name: "Kalibrieren", command: "fix", scopeKind: "inventory",
    short: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
@@ -5475,7 +5475,7 @@ function wzInfo(title, text) {
 function wzScope(key) {
   const w = WZ_TOOLS.find(x => x.key === key);
   const boxEl = el("div", {class: "wz-scope"});
-  if (w && w.scopeKind === "neu") {
+  if (w && w.scopeKind === "new") {
     boxEl.classList.add("single");
     boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "eine neue Sequenz — die offene Sequenz "),
@@ -5483,7 +5483,7 @@ function wzScope(key) {
       el("span", {}, " bleibt unverändert"));
     return boxEl;
   }
-  if (w && w.scopeKind === "nichts") {
+  if (w && w.scopeKind === "none") {
     boxEl.classList.add("single");
     boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "nichts — es misst nur den Bildschirm und ändert keine Datei"));
@@ -6573,7 +6573,7 @@ function cfgRow(key) {
 /** Der Knopf UNTER einem Feld, wenn die Meta-Tabelle einen anmeldet.
  *
  * **Es gibt genau einen, und der Grund steht in `config_meta.py`:** den
- * Katalog konnte bis hierhin nur `python tools/katalog.py` anlegen — also
+ * Katalog konnte bis hierhin nur `python tools/catalog.py` anlegen — also
  * ausgerechnet die Datei, ohne die das LLM frei raet und die Kategorie leer
  * bleibt, liess sich im Fenster nicht beschaffen. Generisch statt als
  * Sonderfall, damit der naechste Fall keinen zweiten Bedienweg erfindet.

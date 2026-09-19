@@ -625,7 +625,7 @@ def suggest_item_name_with_reason(
 ) -> tuple:
     """Fragt das LLM nach einem Namen für den Gegenstand auf dem Bild.
 
-    Mit `candidates` (den echten Item-Namen aus `katalog.py`) darf das Modell
+    Mit `candidates` (den echten Item-Namen aus `catalog.py`) darf das Modell
     nur noch AUSWAEHLEN statt zu erfinden — aus "Bogen" wird "Godlike Bow".
     Zurueck kommt dann garantiert ein Name aus der Liste oder None; eine
     Antwort daneben wird einmal auf den naechsten Kandidaten gezogen und sonst

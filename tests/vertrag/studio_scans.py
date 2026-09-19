@@ -1766,12 +1766,12 @@ try:
         # IMMER aus. Ein Test, der nur den Namen prueft, sieht das nicht — es
         # muss die ganze Kette sein.
         from autoclicker.config import CONFIG as _CFG_an
-        Path("katalog.json").write_text(_json_an.dumps({"items": {
+        Path("catalog.json").write_text(_json_an.dumps({"items": {
             "Godlike Bow": {"kategorie": "Bogen", "wert": 900},
             "Citadel Helmet": {"kategorie": "Helm", "wert": 500},
         }}), encoding="utf-8")
         _altkat_an = _CFG_an.scan_catalog_file
-        _CFG_an.scan_catalog_file = str(Path("katalog.json").resolve())
+        _CFG_an.scan_catalog_file = str(Path("catalog.json").resolve())
         try:
             _bk = _bau_an()
             # `item_names` gehoert NICHT in den Konstruktor: die Namen sind

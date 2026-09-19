@@ -475,7 +475,7 @@ class ExtendedJsonTest(unittest.TestCase):
     Hier stand eine Regex, die genau `ObjectId` kannte — als die Achievements
     `NumberLong(0)` mitbrachten, brach die Analyse ab, obwohl sie diese Felder
     nie liest. Dieselben Faelle stehen in `tests/vertrag/katalog.py` fuer den
-    Zwilling in `tools/katalog.py`; die beiden Kopien duerfen nicht
+    Zwilling in `tools/catalog.py`; die beiden Kopien duerfen nicht
     auseinanderlaufen.
     """
 

@@ -30,7 +30,7 @@ python tests/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne
 python -m tests.wurzeltests     # Wurzelmodule (--ohne-vertrag laesst den Wrapper weg)
 python -m tests.rauch.werkzeuge   # ein Rauchtest im Browser
 python tests/mutationspruefung.py      # Gegenproben einzeln (--fall NAME)
-python tools/katalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
+python tools/catalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
                                 # (--zeige = nur anzeigen, --ziel = anderer Pfad)
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
@@ -291,7 +291,7 @@ Eingabe durch.
 **Der Worker räumt auch nach einem Fehler auf.** `sequence_worker()` liegt
 vollständig in `try/except/finally`: eine Ausnahme in einem Schritt beendete
 früher den Thread, ohne den Schedule-Watcher zu stoppen, das Session-Log zu
-schliessen oder `.lauf.json` abzuschliessen — zurück blieb ein Lauf, der laut
+schliessen oder `.run.json` abzuschliessen — zurück blieb ein Lauf, der laut
 Statusdatei noch läuft, und ein Timer-Thread als Geist. Gemeldet wird die
 Ausnahme, nicht verschluckt.
 
@@ -400,7 +400,7 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
 - **Bearbeiten = aktuellen Wert vorauswählen**: `interactive_select(..., default=<idx>)` bei Edit-Flows, damit Enter nichts überschreibt.
 - **Vor Editoren mit Konsolen-Input**: `_block_if_recording(state)` + `_block_if_running(state)` aus `handlers.py` (sonst kollidiert Konsolen-Input mit Worker/Recorder). Beide melden selbst und geben `True` zurück, wenn der Handler abbrechen soll.
 - **Feedback-Bausteine** aus `utils/console.py` nutzen: `ok/err/warn/info/hint`, `header`, `breadcrumb`, `cmd_hint`, `describe_color` — keine rohen ANSI-Strings.
-- **Geteilte Feld-Abfragen** stehen in `editors/_item_felder.py`:
+- **Geteilte Feld-Abfragen** stehen in `editors/_item_fields.py`:
   `ask_priority()` und `ask_confirm_click()`. Sie standen vier- bzw.
   sechsmal ausgeschrieben da (`items.py`, `learn.py`, `autoscan.py`,
   `item_scan_editor.py`) — die staerkste gemessene Duplikation des Repos, und
@@ -573,14 +573,14 @@ Kategorie gewinnt das kleinste `priority`). Sie von Hand zu tippen hat den
 Fehler, den man nicht sehen kann — an einem echten Bestand standen 55 von 56
 Items ohne Kategorie da und das eine mit trug `"Wafen"`.
 
-`tools/katalog.py` holt die Namen deshalb von dort, wo sie herkommen:
+`tools/catalog.py` holt die Namen deshalb von dort, wo sie herkommen:
 `query.idleclans.com/api/Configuration/game-data`, dieselbe Quelle, aus der auch
 die Wiki gespeist wird — **Scraping braucht es dafür nicht.** Heraus kommen 1006
 Items mit Kategorie und Grundwert plus rund 50 Gegnernamen.
 
 **Die Verbindung ist eine Datei, kein Import** — genau wie bei `marktwert.json`:
 das Werkzeug weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug.
-Gelesen wird in `autoclicker/katalog.py` (Cache am Dateistand, kaputte Einträge
+Gelesen wird in `autoclicker/catalog.py` (Cache am Dateistand, kaputte Einträge
 fliegen einzeln raus). Es liegt **nicht** unter `runtime/`, weil vor allem
 Editoren es brauchen und `runtime/__init__` den Worker samt `imaging` und
 `winapi` nachzöge — dieselbe Überlegung wie bei `mailbox.py`.
@@ -594,10 +594,10 @@ eines von beiden gilt, und global gesetzt ordnete er das andere still falsch
 ein. Im Studio steht er in den Scan-Einstellungen direkt neben „Slots
 rückwärts", der Pfad im Einstellungen-Reiter — **samt dem Knopf, der die
 Datei holt** (`catalog_fetch`, angemeldet über `M.aktion` in
-`config_meta.py`). Bis dahin konnte nur `python tools/katalog.py` sie
+`config_meta.py`). Bis dahin konnte nur `python tools/catalog.py` sie
 anlegen: ausgerechnet die Datei, ohne die das LLM frei rät und die
 Kategorie leer bleibt, liess sich im Fenster nicht beschaffen. Gerechnet
-wird weiter im Werkzeug — **die Brücke ruft `tools/katalog.py`, nie
+wird weiter im Werkzeug — **die Brücke ruft `tools/catalog.py`, nie
 umgekehrt**, dieselbe Richtung wie beim Bericht-Reiter. Ein gesetzter Pfad
 wird dabei aktualisiert und nicht überschrieben, und weder ein Netzfehler
 noch eine leere Antwort fassen die vorhandene Datei an.
@@ -605,12 +605,12 @@ noch eine leere Antwort fassen die vorhandene Datei an.
 **Die API schreibt Mongo-Shell-JSON, und ein Spiel-Update darf das Werkzeug
 nicht stoppen.** `Configuration/game-data` kommt mit `ObjectId("…")`,
 `NumberLong(0)` und womöglich morgen etwas Drittem. Der Bereiniger war eine
-Regex, die genau `ObjectId` kannte, dreimal ausgeschrieben (`tools/katalog.py`,
+Regex, die genau `ObjectId` kannte, dreimal ausgeschrieben (`tools/catalog.py`,
 `market_analysis/analyse.py`, `market_analysis/apicheck.py`) — als die
 Achievements `NumberLong` mitbrachten, starben alle drei an einem Feld, das
 keiner von ihnen liest, und der Katalog-Knopf im Studio meldete „Nicht
 erreichbar". Jetzt ist es ein kleiner Scanner (`bereinige_extended_json` in
-`tools/katalog.py`, Zwilling `market_analysis/extended_json.py` — bewusst
+`tools/catalog.py`, Zwilling `market_analysis/extended_json.py` — bewusst
 kopiert, die beiden Teile importieren einander nicht): Bekanntes wird
 übersetzt, ein unbekanntes `Name(…)` als sein Wert übernommen und **gemeldet**
 — das Werkzeug auf stderr, der Studio-Knopf in der Statuszeile (`kind: warn`).
@@ -873,11 +873,11 @@ backups/<pfad>.bak                       Sicherungen des Start-Durchgangs (Struk
 screenshots/                             Screenshot-Schritte zur Laufzeit
 logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
 
-.lauf.json                               Laufstatus fuer das Sequenz-Studio (transient)
-.aufnahme.json                           letzte 3 Ereignisse der Aufnahme (transient)
-.nachklick.json                          Stand der Klick-Runde (transient)
-.befehl.json                             Briefkasten Studio → Hauptprozess (transient)
-.studio-sequenz.json                     zuletzt geoeffnete/gespeicherte Sequenz (transient)
+.run.json                               Laufstatus fuer das Sequenz-Studio (transient)
+.recording.json                           letzte 3 Ereignisse der Aufnahme (transient)
+.reclick.json                          Stand der Klick-Runde (transient)
+.command.json                             Briefkasten Studio → Hauptprozess (transient)
+.studio-sequence.json                     zuletzt geoeffnete/gespeicherte Sequenz (transient)
 ```
 
 **Es gibt keinen globalen Bestand mehr.** `sequences/points.json`,
@@ -920,7 +920,7 @@ Zwei Tests messen beide Richtungen bis auf die **Platte** — einer, der nur die
 Liste im Speicher prüft, sieht die Wirkung nicht, denn geschrieben wird erst
 beim Speichern.
 
-**`.lauf.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
+**`.run.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
 beschreibt den Zustand JETZT und wird überschrieben statt angehängt
 (`runtime/status.py`). Am Sequenz-Ende bleibt genau **ein** Eintrag stehen — die
 Zusammenfassung des letzten Laufs —, bis der nächste Start sie überschreibt. Dass es **oben** liegt und nicht in
@@ -1203,7 +1203,7 @@ es die Marker-Farben.
 - `autoclicker/config_meta.py` — was `AppConfig` über ein Feld nicht sagt: Beschriftung, Erklärung, Art des Bedienelements, Abhängigkeit. Einzige Quelle für den Einstellungen-Reiter des Sequenz-Studios; ein Test hält sie gegen die Dataclass (s.u.).
 - `autoclicker/llm_vision.py` — HTTP-Calls (urllib) an Ollama/LM Studio, Reasoning-Support, `<think>`-Strip, Boss-Name-Extraktion + Matching.
 - `autoclicker/ocr.py` — Texterkennung über EasyOCR oder Tesseract (`ocr_backend`, `None` = automatisch). Wie OpenCV/Pillow **optional**: `is_available()` prüfen, sauber degradieren. Liefert `detect_boss_name()` für `runtime/boss_detection.py`.
-- `autoclicker/diagnose.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_on_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
+- `autoclicker/diagnostics.py` — Selbstdiagnose: fehlende Templates, Profile ohne jede Erkennungsmethode, tote Slot-/Item-/Scan-Verweise, Punkte ausserhalb aller Monitore. Beim Start ohne Sequenzdateien und still wenn sauber (`check_on_start`), auf Zuruf vollständig (Punkte-Menü → `check`).
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe. **Ausgewertet wird er mit
   `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig) — auf der
   Kommandozeile und im Reiter „Bericht" des Studios, über **dieselbe** Funktion
@@ -1303,9 +1303,9 @@ es die Marker-Farben.
   - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
   - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
   - `bridge_editing.py`: Phasen-, Block-, Auswahl- und Punkt-Kommandos.
-  - `bridge_teilen.py`: Export/Import im Reiter „Teilen".
-  - `bridge_werkzeuge.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
-  - `bridge_bericht.py`: Session-Logs und Ertrag im Reiter „Bericht".
+  - `bridge_share.py`: Export/Import im Reiter „Teilen".
+  - `bridge_tools.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
+  - `bridge_report.py`: Session-Logs und Ertrag im Reiter „Bericht".
   - `scans.py`: stabile `ScanTeil`-Fassade.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
@@ -1317,9 +1317,9 @@ es die Marker-Farben.
   - `scan_capture.py`: Screenshot-/Fensteraufnahme; `scan_model.py`:
     GUI-freies Laden/Speichern; `model.py`: Board und Farbhelfer.
   - `web/`: HTML, CSS, JavaScript und Logo.
-- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_klickfenster.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
+- Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_click_window.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
-- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `nachklick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
+- `autoclicker/editors/` — Interaktive Console-Editoren. `sequence_editor/` und `item_editor/` sind Subpackages. Zwei Ausnahmen laufen aus den Hook-Callbacks statt aus Konsolen-Eingaben: `sequence_recorder.py` (die Aufnahme, s.o.) und `reclick.py` (die Klick-Runde, die Punkte durch Nachklicken kalibriert — s.u. bei „Koordinaten nach einem Bildschirm-Umbau“).
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analyse.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
@@ -2527,7 +2527,7 @@ Für das LLM gibt es nur die Erreichbarkeitslampe (`llm_check`); ein echter
 Probelauf kostet bis `llm_timeout` und hat im Zeichnen einer Momentaufnahme
 nichts verloren.
 
-**Der Reiter „Teilen" arbeitet auf dem GESPEICHERTEN Stand** (`bridge_teilen.py`).
+**Der Reiter „Teilen" arbeitet auf dem GESPEICHERTEN Stand** (`bridge_share.py`).
 Export und Import bauen sich dafür einen frischen `AutoClickerState` aus den
 Dateien — der Studio-Prozess kennt sonst nur, was seine Reiter geöffnet haben.
 Vier Regeln:
@@ -2547,7 +2547,7 @@ Vier Regeln:
 Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
 Briefkasten-Befehl `data_reload`, der Hauptprozess.
 
-**Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_werkzeuge.py`).
+**Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_tools.py`).
 Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`klick`) lagen im
 Punkte-Menü — also ausgerechnet die Handgriffe, die man nach einem Bildschirm-Umbau
 braucht, und die man dann in einem Fenster sucht, das schon offen ist.
@@ -2561,11 +2561,11 @@ Kalibrierung, also läuft sie im Fenster. Die Klick-Runde braucht dagegen einen
 — sonst gingen `CTRL+ALT+K`/`U`/`H`/`J` ins Leere. Nur dafür gibt es den
 Briefkasten-Befehl `reclick`.
 
-**Und weil sie drüben läuft, gibt es einen Rückkanal** (`.nachklick.json`,
+**Und weil sie drüben läuft, gibt es einen Rückkanal** (`.reclick.json`,
 `RECLICK_STATUS_FILE`). Ohne ihn stand im Fenster nur „gestartet", während die
 Konsole jeden Schritt einzeln meldete — und *welcher Punkt gerade dran ist* ist
-genau die Frage, die man beim Klicken hat. Dieselbe Bauart wie `.lauf.json` und
-`.aufnahme.json`: kein Log, sondern der Stand JETZT, überschrieben bei jeder
+genau die Frage, die man beim Klicken hat. Dieselbe Bauart wie `.run.json` und
+`.recording.json`: kein Log, sondern der Stand JETZT, überschrieben bei jeder
 Bewegung der Runde. Gelesen wird er über `reclick_status()` im `ask()`-Kanal.
 
 Drei Regeln dazu:
@@ -2626,10 +2626,10 @@ der Knopf aber aus, als täte er nichts.
 
 **Jedes Werkzeug sagt, WORAUF es wirkt** — und „jedes" heisst jedes: „Farben
 analysieren" trug als einziges keine Bezugszeile, während in `WZ_TOOLS`
-`bezug: "bestand"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
+`scopeKind: "inventory"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
 den Bildschirm und schreibt nirgends hin), und weil die Zeile gar nicht
 gezeichnet wurde, fiel die Unwahrheit nicht auf. Dafür gibt es die vierte Art
-**`nichts`** — kein fehlender Wert, sondern eine eigene Aussage, und bei einem
+**`none`** — kein fehlender Wert, sondern eine eigene Aussage, und bei einem
 Werkzeug neben `kalibrieren` und `nachklicken` die beruhigende.
 
 Die Kopfleiste blendet hier ihr
@@ -2652,7 +2652,7 @@ wie bei `command_start`; ohne sie passiert gar nichts.
 Vier Regeln, an denen der Reiter hängt:
 
 - **Gerechnet wird mit denselben Funktionen wie in der Konsole**
-  (`import_export.calibrate_inventory`, `diagnose.check_setup`), auf einem frischen
+  (`import_export.calibrate_inventory`, `diagnostics.check_setup`), auf einem frischen
   State von Platte (`_inventory()`). Eine zweite Rechnung „fürs Fenster" wäre eine,
   die etwas anderes tut als der Weg, den die README beschreibt — und ein Bericht
   über das, was die Reiter zufällig offen haben, meldete „sauber", weil er die
@@ -2678,7 +2678,7 @@ Danach lesen beide Seiten neu: der Reiter seine Punkte, der Hauptprozess über d
 Briefkasten-Befehl `data_reload` — der zieht dabei auch die Punkte der Sequenz
 nach, denn bei einer Kalibrierung wandert **jede** gespeicherte Stelle.
 
-**Der Reiter „Bericht" liest `logs/`** (`bridge_bericht.py`). Der Live-Run zeigt das
+**Der Reiter „Bericht" liest `logs/`** (`bridge_report.py`). Der Live-Run zeigt das
 Jetzt, dieser Reiter das Gestern — und er beantwortet die Frage, die man nach einer
 langen Nacht hat und bis dahin nur auf der Kommandozeile stellen konnte: **welcher
 Schritt läuft am häufigsten in den Timeout?**
@@ -3439,7 +3439,7 @@ weiter — eine Aufnahme ohne Klicks wäre dagegen sinnlos. Beide Hooks werden a
 Beenden entfernt (`handle_quit`), sonst hängt ein Tastatur-Hook systemweit weiter.
 
 **Der Klick auf einen Studio-Knopf ist keine Spielaktion — und welches Fenster
-den Klick bekam, sagt `clicked_window()`** (`editors/_klickfenster.py`, geteilt
+den Klick bekam, sagt `clicked_window()`** (`editors/_click_window.py`, geteilt
 mit der Klick-Runde). Start und Stopp sind im Studio echte Knöpfe; ihr Klick darf
 nicht als Block in der Sequenz landen. Gefiltert wird deshalb, was im
 Studio-Fenster ankommt — und zwar am Fenster **unter dem Zeiger**, nicht am
@@ -3538,7 +3538,7 @@ gehen:
 | Runde | wo | wie |
 |---|---|---|
 | `walk` | Punkte-Menü | Zeiger springt hin, `n` setzt auf die Mausposition — **ohne Klick** |
-| `klick` | Punkte-Menü **oder** Studio → Werkzeuge | die Sequenz einmal von Hand **nachklicken** (`editors/nachklick.py`) |
+| `klick` | Punkte-Menü **oder** Studio → Werkzeuge | die Sequenz einmal von Hand **nachklicken** (`editors/reclick.py`) |
 
 **Der Unterschied ist der Klick, und er entscheidet.** `walk` fasst nichts an —
 also bleibt das Spiel stehen, wo es steht, und ein Punkt im dritten Untermenü
@@ -3589,7 +3589,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   wegwirft, sähe aus wie ein kaputter Hook.
 
   **Gefragt wird, in WELCHES Fenster geklickt wurde — nicht, welches vorn ist**
-  (`clicked_window()` in `editors/_klickfenster.py`: `get_window_title_at()`,
+  (`clicked_window()` in `editors/_click_window.py`: `get_window_title_at()`,
   Rückfall auf den Vordergrund — dieselbe Funktion, die die Aufnahme benutzt,
   seit ihr an genau dieser Frage der erste Klick fehlte). Windows liefert den
   Button-Down an das Fenster unter dem Zeiger; war das nicht das aktive, wird es
@@ -3625,7 +3625,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
   Basis-Ebene ist voll (s. o. beim Hotkey-Flow); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
-  `KEYS` in `editors/nachklick.py`; das Studio zeigt sie als **Tabelle**
+  `KEYS` in `editors/reclick.py`; das Studio zeigt sie als **Tabelle**
   (`WZ_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
   mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
   Lesen von vorn, und dann liest ihn niemand.
@@ -3780,7 +3780,7 @@ nachziehen (`Renamer({...}).javascript()` auf `app.js`) — das ist ohnehin die
 Richtung von Phase 3 — oder den Namen aus der Tabelle lassen.
 
 **Nicht Teil der Umstellung sind Schlüssel in gespeicherten Dateien** —
-`config.json`, `sequence.json`, `katalog.json`, `marktwert.json`. Das sind
+`config.json`, `sequence.json`, `catalog.json`, `marktwert.json`. Das sind
 Daten, kein Code; wer sie umbenennt, verstellt den Bestand des Nutzers. Sie
 bleiben, bis eine Formatänderung sie ohnehin anfasst — und dann gilt die Regel
 von oben: Default in der Dataclass, kein Migrationsschritt.
@@ -3887,7 +3887,7 @@ Das gilt auch für `imaging.py`: es ist seit dem Umbau plattformneutral und holt
 den Screenshot über das Backend, statt selbst BitBlt zu rufen.
 
 **Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
-lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnose`, `scan_studio`,
+lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnostics`, `scan_studio`,
 `utils/console`), jedes Mal mit eigenen `SM_*`-Konstanten und eigenem `try/except`. Wer
 die Fenstergrösse oder den virtuellen Desktop braucht, nimmt:
 
@@ -3897,7 +3897,7 @@ die Fenstergrösse oder den virtuellen Desktop braucht, nimmt:
 - `get_screen_center()` → Mitte, mit Rückfallkette bis `(960, 540)`
 
 `None` statt `(0, 0, 0, 0)` ist Absicht: eine Fläche von 0×0 würde jede Koordinate als
-„ausserhalb aller Monitore" melden — genau der Fehler, den `diagnose.py` sonst produziert
+„ausserhalb aller Monitore" melden — genau der Fehler, den `diagnostics.py` sonst produziert
 hätte.
 
 ## Bekannte Stolperfallen

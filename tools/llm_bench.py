@@ -47,7 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from autoclicker.config import load_config                          # noqa: E402
-from autoclicker.katalog import load_catalog                        # noqa: E402
+from autoclicker.catalog import load_catalog                        # noqa: E402
 from autoclicker.llm_vision import (                                # noqa: E402
     TIMEOUT, analyze_image, chat_endpoint, clean_boss_name,
     suggest_item_name_with_reason, test_endpoint_for,
@@ -126,7 +126,7 @@ def lade_foto(path: Path):
 
 # ---------------------------------------------------------------- Proben
 
-def proben_aus_vorlagen(scan: dict, katalog, reason: bool, limit: int) -> list:
+def proben_aus_vorlagen(scan: dict, catalog, reason: bool, limit: int) -> list:
     """`(Wahrheit, Bild)` je Item mit Vorlage, dessen Name im Katalog steht."""
     from PIL import Image
     proben = []
@@ -134,7 +134,7 @@ def proben_aus_vorlagen(scan: dict, katalog, reason: bool, limit: int) -> list:
         if len(proben) >= limit:
             break
         file = entry.get("template")
-        if not file or not katalog.match(name):
+        if not file or not catalog.match(name):
             continue
         path = scan["templates"] / file
         try:
@@ -142,7 +142,7 @@ def proben_aus_vorlagen(scan: dict, katalog, reason: bool, limit: int) -> list:
                 image = raw.copy()
         except (OSError, ValueError):
             continue
-        proben.append((katalog.match(name), auf_grund(image) if reason else image))
+        proben.append((catalog.match(name), auf_grund(image) if reason else image))
     return proben
 
 
@@ -156,7 +156,7 @@ def auf_grund(image, color=NEUTRAL):
     return flaeche
 
 
-def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
+def proben_aus_slots(scan: dict, catalog, config, limit: int) -> list:
     """`(Wahrheit, Ausschnitt)` je Slot — die Wahrheit kommt aus dem Template.
 
     **Der belastbarere Bezug.** Bei den Vorlagen ist die Wahrheit der Name, der
@@ -191,12 +191,12 @@ def proben_aus_slots(scan: dict, katalog, config, limit: int) -> list:
             continue
         ausschnitt = image.crop(kasten).convert("RGB")
         for item in profile:
-            if not katalog.match(item.name):
+            if not catalog.match(item.name):
                 continue
             if _check_profile_match(item, ausschnitt, scan["tolerance"],
                                     stellvertreter, False,
                                     template_root=scan["templates"]):
-                proben.append((katalog.match(item.name), ausschnitt))
+                proben.append((catalog.match(item.name), ausschnitt))
                 break
     return proben
 
@@ -211,7 +211,7 @@ def frage_einstufig(image, candidates: list, config, modell: str) -> tuple:
         candidates=candidates)
 
 
-def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
+def frage_zweistufig(image, catalog, config, modell: str) -> tuple:
     """Erst die Art, dann der Name aus NUR dieser Art.
 
     Gegen den Fehler, der uebrig bleibt: die Art trifft das Modell zuverlaessig
@@ -219,8 +219,8 @@ def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
     Aufruf sieht statt tausend Namen nur noch die paar Dutzend seiner Art —
     und damit ist die Stufe die einzige Frage, die offenbleibt.
     """
-    categories = sorted({katalog.category(n) for n in katalog.names()
-                         if katalog.category(n)})
+    categories = sorted({catalog.category(n) for n in catalog.names()
+                         if catalog.category(n)})
     system = ("You identify items from the game Idle Clans by their inventory "
               "icon.\nAnswer with exactly one word copied verbatim from the "
               "CATEGORIES list below. No explanation.\n\nCATEGORIES:\n"
@@ -238,7 +238,7 @@ def frage_zweistufig(image, katalog, config, modell: str) -> tuple:
         # Eine erfundene Art ist kein Ergebnis: die zweite Frage haette dann
         # gar keine Kandidaten. Lieber sagen, woran es lag.
         return None, f"unbekannte Art '{kind}'"
-    eng = [n for n in katalog.names() if katalog.category(n) == passend]
+    eng = [n for n in catalog.names() if catalog.category(n) == passend]
     return frage_einstufig(image, eng, config, modell)
 
 
@@ -273,15 +273,15 @@ def aufwaermen(image, config, modell: str) -> float:
     return time.time() - start
 
 
-def lauf(proben: list, katalog, config, args, modell: str) -> dict:
+def lauf(proben: list, catalog, config, args, modell: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
-    candidates = katalog.names()
+    candidates = catalog.names()
     match, remaining, zeiten, fehler = 0, 0, [], []
     for wahrheit, image in proben:
         start = time.time()
         if args.zweistufig:
             def einmal():
-                return frage_zweistufig(image, katalog, config, modell)
+                return frage_zweistufig(image, catalog, config, modell)
         else:
             def einmal():
                 return frage_einstufig(image, candidates, config, modell)
@@ -347,16 +347,16 @@ def main(argv=None) -> int:
     config = load_config()
     if args.reasoning:
         config.llm_reasoning = True
-    katalog = load_catalog(config.scan_catalog_file)
-    if not katalog:
+    catalog = load_catalog(config.scan_catalog_file)
+    if not catalog:
         raise SystemExit("Kein Katalog — Einstellungen → 'Item-Katalog', "
-                         "oder python tools/katalog.py")
+                         "oder python tools/catalog.py")
 
     scan = lade_scan(finde_scan(args.scan))
     if args.image == "slot":
-        proben = proben_aus_slots(scan, katalog, config, args.limit)
+        proben = proben_aus_slots(scan, catalog, config, args.limit)
     else:
-        proben = proben_aus_vorlagen(scan, katalog, args.image == "reason", args.limit)
+        proben = proben_aus_vorlagen(scan, catalog, args.image == "reason", args.limit)
     if not proben:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "
@@ -380,7 +380,7 @@ def main(argv=None) -> int:
         if not args.ohne_aufwaermen:
             print(f"  \033[90maufwaermen … {aufwaermen(proben[0][1], config, modell):.0f}s"
                   "\033[0m")
-        ergebnisse[modell] = lauf(proben, katalog, config, args, modell)
+        ergebnisse[modell] = lauf(proben, catalog, config, args, modell)
         e = ergebnisse[modell]
         print(f"  {e['match']}/{e['total']} richtig, "
               f"{e['seconds']:.1f}s je Item"

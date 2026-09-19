@@ -22,7 +22,7 @@ Gescannt wird zeichenweise mit Ruecksicht auf JSON-Strings: ein `ObjectId(` in
 einer Beschreibung bleibt, was es ist. Die Regex von frueher haette es
 umgeschrieben.
 
-Nur Standardbibliothek. `tools/katalog.py` im Autoclicker traegt eine Kopie
+Nur Standardbibliothek. `tools/catalog.py` im Autoclicker traegt eine Kopie
 dieser Funktionen — die beiden Teile importieren einander bewusst nicht (die
 Verbindung ist eine Datei, kein Import).
 """

@@ -1,6 +1,6 @@
 """Der Item-/Gegner-Katalog aus der offiziellen Idle-Clans-API.
 
-Geschrieben wird die Datei von `tools/katalog.py`, gelesen hier. Wie bei
+Geschrieben wird die Datei von `tools/catalog.py`, gelesen hier. Wie bei
 `marktwert.json` ist die Verbindung **eine Datei, kein Import**: das Werkzeug
 weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug. Fehlt die
 Datei, laeuft alles wie vorher — der Katalog ist Zusatz, nie Voraussetzung.
@@ -102,7 +102,7 @@ def load_catalog(path: str) -> Catalog:
     stand = (st.st_mtime, st.st_size)
     entry = _cache.get(path)
     if entry is not None and entry["stand"] == stand:
-        return entry["katalog"]
+        return entry["catalog"]
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -126,9 +126,9 @@ def load_catalog(path: str) -> Catalog:
                             "wert": value}
     enemy = [str(g) for g in (raw.get("gegner") or []) if g]
 
-    katalog = Catalog(items, enemy)
-    _cache[path] = {"stand": stand, "katalog": katalog}
-    return katalog
+    catalog = Catalog(items, enemy)
+    _cache[path] = {"stand": stand, "catalog": catalog}
+    return catalog
 
 
 def ranks(namen_und_werte: list) -> dict:

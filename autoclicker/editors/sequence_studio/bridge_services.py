@@ -555,7 +555,7 @@ class BridgeServicesMixin:
         die einzige, die man im Fenster nicht beschaffen konnte. Der
         Einstellungen-Reiter zeigt den Pfad, also gehoert der Knopf dorthin.
 
-        Gerechnet wird in `tools/katalog.py`, mit denselben Funktionen, die die
+        Gerechnet wird in `tools/catalog.py`, mit denselben Funktionen, die die
         Kommandozeile benutzt — dieselbe Richtung wie beim Bericht-Reiter:
         **die Bruecke ruft das Werkzeug, nie umgekehrt.** Der Import steht
         deshalb hier drin und in einem `try`: `tools/` gehoert zum Repo, nicht
@@ -572,11 +572,11 @@ class BridgeServicesMixin:
         if str(root_dir) not in sys.path:
             sys.path.insert(0, str(root_dir))
         try:
-            from tools.katalog import (baue_katalog, hole_spieldaten,
+            from tools.catalog import (baue_katalog, hole_spieldaten,
                                        _zusammenfassung, STANDARD_ZIEL)
         except ImportError as e:
             return {"ok": False,
-                    "message": f"tools/katalog.py nicht gefunden ({e})."}
+                    "message": f"tools/catalog.py nicht gefunden ({e})."}
 
         target = Path(str(CONFIG.scan_catalog_file or "").strip() or STANDARD_ZIEL)
         # Was das Werkzeug an der Antwort nicht kannte, gehoert in die
@@ -584,24 +584,24 @@ class BridgeServicesMixin:
         # Konstrukt nach einem Spiel-Update ist ein Hinweis, kein Abbruch.
         hints: list = []
         try:
-            katalog = baue_katalog(hole_spieldaten(hints=hints))
+            catalog = baue_katalog(hole_spieldaten(hints=hints))
         except Exception as e:
             # Netz, DNS, ein geaendertes Antwortformat — alles derselbe Fall
             # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
             # damit "geht nicht" nicht die ganze Auskunft ist.
             return {"ok": False, "message": f"Nicht erreichbar: {e}"}
-        if not katalog.get("items"):
+        if not catalog.get("items"):
             return {"ok": False, "message": "Die API hat keine Items geliefert — "
                                             "nichts geschrieben."}
         try:
             from ...utils import atomic_write
             import json as _json
             target.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(target, _json.dumps(katalog, ensure_ascii=False, indent=1))
+            atomic_write(target, _json.dumps(catalog, ensure_ascii=False, indent=1))
         except OSError as e:
             return {"ok": False, "message": f"Konnte '{target}' nicht schreiben: {e}"}
 
-        message = _zusammenfassung(katalog).splitlines()[0]
+        message = _zusammenfassung(catalog).splitlines()[0]
         kind = "ok"
         if hints:
             message += " — " + " ".join(hints)
@@ -664,7 +664,7 @@ class BridgeServicesMixin:
     def new(self, data: Optional[dict] = None) -> dict:
         """Legt eine leere Sequenz an (noch ohne Datei auf Platte)."""
         if self._dirty and not (data or {}).get("discard"):
-            self._ask = {"kind": "neu", "target": "",
+            self._ask = {"kind": "new", "target": "",
                            "title": "Ungespeicherte Änderungen",
                            "text": f"'{self.board.name}' hat ungespeicherte Änderungen. "
                                    "Vor dem Anlegen speichern?",

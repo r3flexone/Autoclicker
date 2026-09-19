@@ -56,7 +56,7 @@ class M:
     empty: str = ""
     # Ein Knopf UNTER dem Feld: `(Bruecken-Methode, Beschriftung)`. Dafuer gibt
     # es genau einen Fall und einen guten Grund — den Katalog konnte bis hierhin
-    # nur `python tools/katalog.py` anlegen, also ausgerechnet die Datei, ohne
+    # nur `python tools/catalog.py` anlegen, also ausgerechnet die Datei, ohne
     # die das LLM frei raet, liess sich im Fenster nicht beschaffen. Wer die
     # Datei im Feld sieht, soll sie dort auch holen koennen.
     action: tuple = ()

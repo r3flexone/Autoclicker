@@ -17,7 +17,7 @@ from ...utils import (
     confirm, info, is_cancel, next_free_name, safe_input,
     sanitize_filename,
 )
-from .._item_felder import ask_confirm_click, ask_priority
+from .._item_fields import ask_confirm_click, ask_priority
 
 
 def select_category(state: AutoClickerState, show_explanation: bool = True) -> Optional[str]:

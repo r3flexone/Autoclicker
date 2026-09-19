@@ -502,9 +502,9 @@ class ScanLearningMixin:
         einem Neustart greift, ist der Fall, in dem man den Knopf fuer kaputt
         haelt. `load_catalog` haengt seinen Cache ohnehin am Dateistand.
         """
-        from ...katalog import EMPTY
-        katalog, _reason = self._catalog_check()
-        return katalog if katalog is not None else EMPTY
+        from ...catalog import EMPTY
+        catalog, _reason = self._catalog_check()
+        return catalog if catalog is not None else EMPTY
 
     def _catalog_check(self):
         """(Katalog, Grund) — genau einer von beiden ist gesetzt.
@@ -519,7 +519,7 @@ class ScanLearningMixin:
         # (`config_write` ruft `apply_config(CONFIG, …)` auf dem eigenen
         # Prozess), und `load_catalog` haengt seinen Cache am Dateistand.
         from ...config import CONFIG
-        from ...katalog import load_catalog
+        from ...catalog import load_catalog
 
         cfg = self.scans.get(self.open_scan)
         if cfg is None:
@@ -534,10 +534,10 @@ class ScanLearningMixin:
                           "SCAN-EINSTELLUNGEN → 'Item-Katalog', dort holt der "
                           "Knopf 'Katalog aus der Spiel-API holen' sie und "
                           "trägt den Pfad gleich ein.")
-        katalog = load_catalog(path)
-        if not katalog:
+        catalog = load_catalog(path)
+        if not catalog:
             return None, f"Katalog '{path}' ist leer oder nicht lesbar."
-        return katalog, None
+        return catalog, None
 
     def _catalog_target(self, data: Optional[dict]) -> list:
         """Worauf eine Katalog-Aktion wirkt: die Auswahl, sonst der offene Scan.
@@ -552,19 +552,19 @@ class ScanLearningMixin:
         return list(self._candidates())
 
     @staticmethod
-    def _catalog_name(name: str, katalog) -> str:
+    def _catalog_name(name: str, catalog) -> str:
         """Unter welchem Namen dieses Item im Katalog steht — oder "".
 
         Zwei Anlaeufe, und die Reihenfolge ist die Regel: der volle Name
         gewinnt, der ohne Eindeutigkeits-Zaehler ist der Rueckfall.
         """
         from ...utils import without_counter
-        if katalog.match(name):
+        if catalog.match(name):
             return name
         base_name = without_counter(name)
-        return base_name if base_name != name and katalog.match(base_name) else ""
+        return base_name if base_name != name and catalog.match(base_name) else ""
 
-    def _catalog_plan(self, items: list, katalog) -> tuple:
+    def _catalog_plan(self, items: list, catalog) -> tuple:
         """Was sich aendern WUERDE — `(Aenderungen, bekannte Items)`.
 
         Getrennt vom Anwenden, damit `_remember()` nur bei einer echten Aenderung
@@ -574,7 +574,7 @@ class ScanLearningMixin:
 
         `Aenderungen` ist eine Liste `(Item, Kategorie, Prioritaet)`.
         """
-        from ...katalog import ranks
+        from ...catalog import ranks
         # **Ein angehaengter Zaehler macht den Namen fuer den Katalog
         # unbekannt.** "Godlike Bow 2" steht dort nicht, und das Item blieb
         # deshalb ohne Kategorie neben seinem eingeordneten Zwilling stehen.
@@ -582,9 +582,9 @@ class ScanLearningMixin:
         # gewinnt — "Slot 1" bleibt "Slot 1".
         known = []
         for i in items:
-            search = self._catalog_name(i.name, katalog)
+            search = self._catalog_name(i.name, catalog)
             if search:
-                known.append((i, katalog.category(search), katalog.value(search)))
+                known.append((i, catalog.category(search), catalog.value(search)))
         rank = ranks([(i.name, category, value) for i, category, value in known])
 
         changes = []
@@ -682,15 +682,15 @@ class ScanLearningMixin:
         selbst vergebenen Namen ("item_12") behaelt, was es hat, statt in eine
         geratene Kategorie zu rutschen.
         """
-        katalog, reason = self._catalog_check()
-        if katalog is None:
+        catalog, reason = self._catalog_check()
+        if catalog is None:
             return self._scan_report(reason, "err")
 
         target = self._catalog_target(data)
         if not target:
             return self._scan_report("Keine Items ausgewählt.", "warn")
 
-        changes, known = self._catalog_plan(target, katalog)
+        changes, known = self._catalog_plan(target, catalog)
         if not known:
             return self._scan_report(
                 f"Keiner der {len(target)} Namen steht im Katalog. Erst benennen — "
@@ -730,7 +730,7 @@ class ScanLearningMixin:
                          "Versuch) — llm_timeout in den Einstellungen erhöhen")
         if not selection:
             parts.append("ohne Katalog frei geraten — Einstellungen → "
-                         "'Item-Katalog', anlegen mit python tools/katalog.py")
+                         "'Item-Katalog', anlegen mit python tools/catalog.py")
         return ("; " + "; ".join(parts) + ".") if parts else "."
 
     def _autoname_target(self, data: Optional[dict]) -> tuple:
@@ -813,7 +813,7 @@ class ScanLearningMixin:
         # fuer den Durchgang festgehalten: die Liste darf sich zwischen zwei
         # Schritten nicht aendern, sonst waehlt Item 30 aus einer anderen Menge
         # als Item 1.
-        katalog = self._catalog()
+        catalog = self._catalog()
         self._autoname = {
             # **Die Config wird einmal geholt und festgehalten**, nicht je
             # Schritt: `load_config()` liest die Datei und schreibt eine Zeile
@@ -826,7 +826,7 @@ class ScanLearningMixin:
             "config": config,
             "open": [i.name for i in candidates],
             "total": len(candidates),
-            "selection": katalog.names() or None,
+            "selection": catalog.names() or None,
             "named": [],
             "renamed": 0,
             "variants": 0,
@@ -978,9 +978,9 @@ class ScanLearningMixin:
         if cancelled:
             head += " — abgebrochen, " + str(remaining) + " nicht angesehen"
 
-        katalog = self._catalog()
-        if katalog and run["named"]:
-            changes, _known = self._catalog_plan(run["named"], katalog)
+        catalog = self._catalog()
+        if catalog and run["named"]:
+            changes, _known = self._catalog_plan(run["named"], catalog)
             if changes:
                 categories = self._catalog_apply(changes)
                 return self._scan_changed(

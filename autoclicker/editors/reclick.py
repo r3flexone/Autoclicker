@@ -48,7 +48,7 @@ from ..winapi import (
     remove_mouse_hook,
     set_cursor_pos,
 )
-from ._klickfenster import clicked_window
+from ._click_window import clicked_window
 
 # Die beiden Block-Typen, die wirklich klicken. `block_type()` ist die eine
 # Klassifikation im Projekt — eine zweite Liste hier wäre die Stelle, an der ein
@@ -74,8 +74,8 @@ MATCH_TOLERANCE = 2
 # stünde bei jedem Klick in einem Menü dieselbe Zeile.
 _reported_windows: set = set()
 
-# Der Rückkanal zum Studio-Fenster: dieselbe Bauart wie `.aufnahme.json` bei der
-# Aufnahme und `.lauf.json` beim Lauf. Kein Log — die Datei beschreibt den Stand
+# Der Rückkanal zum Studio-Fenster: dieselbe Bauart wie `.recording.json` bei der
+# Aufnahme und `.run.json` beim Lauf. Kein Log — die Datei beschreibt den Stand
 # JETZT und wird überschrieben.
 _STATUS_PATH = Path(RECLICK_STATUS_FILE)
 

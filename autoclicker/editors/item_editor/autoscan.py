@@ -13,7 +13,7 @@ from ...persistence import save_global_items, active_templates_dir
 from ...utils import (
     col, confirm, err, header, hint, safe_input, sanitize_filename,
 )
-from .._item_felder import ask_confirm_click
+from .._item_fields import ask_confirm_click
 from ..scan_services import crop_screen_region
 from .items import select_category
 from .markers import (

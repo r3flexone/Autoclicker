@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Schreibt den Item-/Gegner-Katalog aus der offiziellen Idle-Clans-API.
 
-    python tools/katalog.py            # schreibt katalog.json
-    python tools/katalog.py --ziel X   # anderer Pfad
-    python tools/katalog.py --zeige    # nur anzeigen, nichts schreiben
+    python tools/catalog.py            # schreibt katalog.json
+    python tools/catalog.py --ziel X   # anderer Pfad
+    python tools/catalog.py --zeige    # nur anzeigen, nichts schreiben
 
 Der Katalog beantwortet zwei Fragen, die der Autoclicker sonst raten muss:
 **wie heisst das Item wirklich** und **womit konkurriert es**. Beides steht in
@@ -50,7 +50,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
-STANDARD_ZIEL = "katalog.json"
+STANDARD_ZIEL = "catalog.json"
 
 # EquipmentSlot -> Kategorie. Die Zuordnung ist aus den Item-Namen der jeweiligen
 # Gruppe abgelesen (alle 19 Eintraege von Slot 1 enden auf `_boots` usw.).
@@ -208,7 +208,7 @@ def hole_spieldaten(url: str = GAME_URL, timeout: int = 60, hinweise: list = Non
     Meldung in `hinweise` (falls uebergeben) — der Aufrufer entscheidet, wo sie
     hingehoert: die Kommandozeile auf stderr, das Studio in seine Statuszeile.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-katalog"})
+    req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-catalog"})
     with urllib.request.urlopen(req, timeout=timeout) as antwort:
         raw = antwort.read().decode("utf-8")
     bereinigt, unbekannt = bereinige_extended_json(raw)
@@ -255,14 +255,14 @@ def baue_katalog(spieldaten: dict) -> dict:
     }
 
 
-def _zusammenfassung(katalog: dict) -> str:
+def _zusammenfassung(catalog: dict) -> str:
     """Was drinsteht — die Zeile, die man nach dem Lauf liest."""
     kategorien = {}
-    for entry in katalog["items"].values():
+    for entry in catalog["items"].values():
         kategorien[entry["kategorie"]] = kategorien.get(entry["kategorie"], 0) + 1
     gross = sorted(kategorien.items(), key=lambda kv: -kv[1])[:8]
-    return (f"{len(katalog['items'])} Items in {len(kategorien)} Kategorien, "
-            f"{len(katalog['gegner'])} Gegner\n"
+    return (f"{len(catalog['items'])} Items in {len(kategorien)} Kategorien, "
+            f"{len(catalog['gegner'])} Gegner\n"
             "  groesste Kategorien: "
             + ", ".join(f"{name} ({count})" for name, count in gross))
 
@@ -291,13 +291,13 @@ def main(argv=None) -> int:
     for hinweis in hinweise:
         print(f"[WARNUNG] {hinweis}", file=sys.stderr)
 
-    katalog = baue_katalog(spieldaten)
-    print(_zusammenfassung(katalog))
+    catalog = baue_katalog(spieldaten)
+    print(_zusammenfassung(catalog))
     if args.zeige:
         return 0
 
     with open(args.target, "w", encoding="utf-8") as f:
-        json.dump(katalog, f, ensure_ascii=False, indent=1)
+        json.dump(catalog, f, ensure_ascii=False, indent=1)
     print(f"[OK] Geschrieben: {args.target}")
     print("  Eintragen unter Einstellungen -> SCAN-EINSTELLUNGEN -> 'Item-Katalog' "
           "(config.json: scan_catalog_file)")

@@ -8,7 +8,7 @@ import tempfile as _tf
 from pathlib import Path as _P
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.bridge_werkzeuge import CALIB_EXTENT
+from autoclicker.editors.sequence_studio.bridge_tools import CALIB_EXTENT
 from autoclicker.models import (
     AutoClickerState as _ST, ClickPoint as _CP, ItemProfile as _IP,
     ItemScanConfig as _ISC, ItemSlot as _IS, LoopPhase as _LP, Sequence as _SEQ,
@@ -252,7 +252,7 @@ finally:
 section("Studio: Sequenz-Aufnahme geht an den Hauptprozess")
 try:
     _sand, _b = _sandkasten()
-    _bf.COMMAND_PATH = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("command.json")
     check("der Studio-Knopf kann eine Aufnahme starten",
           _b.recording_start({"name": "Aufnahme UI", "cycles": 3,
                                "description": "sichtbar"})["ok"])
@@ -325,7 +325,7 @@ try:
     _b.phase_scale({"phase": _loop_index, "factor": "0,5"})
     check("die Wartezeit wird mit deutschem Komma skaliert",
           _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
-    _bf.COMMAND_PATH = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("command.json")
     _b.select({"phase": _loop_index, "row": 0})
     _erg = _b.block_test()
     _auftrag = _bf.fetch_command()
@@ -445,7 +445,7 @@ try:
     # stoppen" als Spielklick in der Sequenz (gemessen: `(1347, 709)`, Farbe
     # `#1C2333` = Panel-Grau des Studios). Derselbe Fehler wie in der
     # Klick-Runde, deshalb derselbe Helfer — und dieselben vier Faelle.
-    import autoclicker.editors._klickfenster as _kf
+    import autoclicker.editors._click_window as _kf
     _klick_state = _State(recording_active=True)
     _vorn, _unter = ["Idle Clans"], [None]   # None = wie der Vordergrund
     _alt_vorn, _alt_unter = _kf.get_foreground_window_title, _kf.get_window_title_at
@@ -509,7 +509,7 @@ finally:
 section("Studio-Werkzeuge: die Klick-Runde geht an den Hauptprozess")
 try:
     _sand, _b = _sandkasten()
-    _bf.COMMAND_PATH = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("command.json")
     check("gestartet wird ueber den Briefkasten", _b.reclick_start()["ok"])
     _auftrag = _bf.fetch_command()
     check("und der Befehl heisst 'nachklick'",
@@ -553,7 +553,7 @@ try:
     save_data(_st2)
 
     from autoclicker.handlers import command_reclick as _bn
-    import autoclicker.editors.nachklick as _nk
+    import autoclicker.editors.reclick as _nk
     _gestartet = {}
 
     def _fake_start(state, seq=None):
@@ -648,7 +648,7 @@ finally:
 section("Studio-Werkzeuge: die Klick-Runde laesst sich beenden")
 try:
     _sand, _b = _sandkasten()
-    _bf.COMMAND_PATH = _P("befehl.json")
+    _bf.COMMAND_PATH = _P("command.json")
     check("beenden geht ueber den Briefkasten", _b.reclick_end()["ok"])
     _auftrag = _bf.fetch_command()
     check("und heisst 'reclick_stop'",
@@ -656,7 +656,7 @@ try:
 
     # Der Hauptprozess sagt, was er vorgefunden hat - hier wird nicht geraten.
     from autoclicker.handlers import command_reclick_stop as _bns
-    import autoclicker.editors.nachklick as _nk
+    import autoclicker.editors.reclick as _nk
     _st3 = _ST()
     _gestoppt = {}
     _echt = _nk.stop_reclick
@@ -690,7 +690,7 @@ from pathlib import Path as _P_wt
 
 _studio_wt = _P_wt(__file__).resolve().parent.parent.parent / "autoclicker" / "editors" / "sequence_studio"
 _quellen_wt = {n: (_studio_wt / f"{n}.py").read_text(encoding="utf-8")
-               for n in ("bridge_editing", "bridge_werkzeuge")}
+               for n in ("bridge_editing", "bridge_tools")}
 _appjs_wt = (_studio_wt / "web" / "app.js").read_text(encoding="utf-8")
 
 # Welche oeffentlichen Methoden warten? Eine Methode wartet, wenn ihr Rumpf
@@ -738,5 +738,5 @@ check("und sie steht in der Momentaufnahme",
       '"wait_timeout": WAIT_TIMEOUT' in
       (_studio_wt / "bridge_view.py").read_text(encoding="utf-8"))
 check("wie auch in den Werkzeug-Daten",
-      '"wait_timeout": WAIT_TIMEOUT' in _quellen_wt["bridge_werkzeuge"])
+      '"wait_timeout": WAIT_TIMEOUT' in _quellen_wt["bridge_tools"])
 check("der Wert ist eine sinnvolle Zeitgrenze", 10 <= _WT <= 300)

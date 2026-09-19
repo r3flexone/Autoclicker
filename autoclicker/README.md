@@ -10,7 +10,7 @@ getrennt. Einstiegspunkt der Anwendung ist weiterhin `main.py` im Projektwurzelo
 | `config.py`, `config_meta.py` | Konfiguration, Laden/Speichern und UI-Metadaten |
 | `models.py` | Persistierte Datenklassen und gemeinsamer Laufzeitzustand |
 | `handlers.py` | Hotkeys und Orchestrierung der Benutzeraktionen |
-| `diagnose.py` | Verständliche Prüfung des gesamten Setups |
+| `diagnostics.py` | Verständliche Prüfung des gesamten Setups |
 | `mailbox.py` | Dateibasierte Befehle vom Studio an den Hauptprozess |
 | `session_log.py` | Threadsicheres CSV-Protokoll pro Lauf |
 | `import_export.py` | Validierte ZIP-Bundles, Remapping und transaktionaler Import |

@@ -13,7 +13,7 @@ nötig, wo wirklich der Hauptprozess gemeint ist — bei der Klick-Runde, die ei
 Maus-Hook installiert.
 
 **Gerechnet wird mit denselben Funktionen wie in der Konsole**
-(`import_export.calibrate_inventory`, `diagnose.check_setup`). Eine zweite
+(`import_export.calibrate_inventory`, `diagnostics.check_setup`). Eine zweite
 Rechnung „für das Fenster" wäre eine, die etwas anderes tut als der Weg, den die
 README beschreibt.
 """
@@ -299,7 +299,7 @@ class BridgeToolsMixin:
         die Reiter gerade offen haben — sonst prüfte der Bericht einen Ausschnitt
         und meldete „sauber", weil er die halben Daten gar nicht kennt.
         """
-        from ...diagnose import LEVEL_ERROR, check_setup
+        from ...diagnostics import LEVEL_ERROR, check_setup
         try:
             report = check_setup(self._inventory())
         except Exception as e:                                   # noqa: BLE001
@@ -609,7 +609,7 @@ class BridgeToolsMixin:
     RECLICK_MAX_AGE = 5.0
 
     def reclick_status(self, data: Optional[dict] = None) -> dict:
-        """Was die Runde GERADE macht — gelesen aus `.nachklick.json`.
+        """Was die Runde GERADE macht — gelesen aus `.reclick.json`.
 
         Der Zustand liegt im Hauptprozess (dort haengt der Maus-Hook), und ohne
         diesen Rueckkanal stand im Fenster nur „gestartet": welcher Punkt dran

@@ -909,21 +909,21 @@ _MIGRATE_AUSNAHMEN = {
     "autoclicker/runtime/item_scan.py":
         "liest die externe Marktwert-JSON (Fremdformat ohne Schema)",
     # Derselbe Fall wie die Marktwert-Datei: der Katalog kommt aus der Spiel-API
-    # (geschrieben von tools/katalog.py), ist Name -> {kategorie, wert} und traegt
+    # (geschrieben von tools/catalog.py), ist Name -> {kategorie, wert} und traegt
     # kein schema_version. Es gibt nichts zu heben; kaputte Eintraege fliegen
     # einzeln raus, statt den Katalog unbrauchbar zu machen.
-    "autoclicker/katalog.py":
+    "autoclicker/catalog.py":
         "liest die externe Katalog-JSON (Fremdformat ohne Schema)",
-    # Die Bruecke laedt aus zwei transienten Zustandsdateien (.lauf.json aus
-    # runtime/status.py, .aufnahme.json aus dem Recorder): kein Bestand, also
+    # Die Bruecke laedt aus zwei transienten Zustandsdateien (.run.json aus
+    # runtime/status.py, .recording.json aus dem Recorder): kein Bestand, also
     # nichts zu heben. Sequenzen laedt sie ueber load_sequence_file(), und das
     # migriert.
     "autoclicker/editors/sequence_studio/bridge_services.py":
         "liest nur transiente Zustandsdateien; Sequenzen ueber load_sequence_file()",
-    # Dasselbe im Werkzeuge-Reiter: .nachklick.json ist der Live-Stand der
+    # Dasselbe im Werkzeuge-Reiter: .reclick.json ist der Live-Stand der
     # Klick-Runde aus dem Hauptprozess. Er wird bei jeder Bewegung ueberschrieben
     # und beschreibt den Moment, nicht einen Bestand.
-    "autoclicker/editors/sequence_studio/bridge_werkzeuge.py":
+    "autoclicker/editors/sequence_studio/bridge_tools.py":
         "liest nur den transienten Stand der Klick-Runde",
 }
 _leser, _ohne_aufruf = [], []
@@ -1479,7 +1479,7 @@ check("Datei enthaelt den vollständigen Scan-Bestand",
 
 # ------------------------------------------------------- Setup-Pruefung
 section("Setup-Pruefung findet die stillen Fehler")
-from autoclicker.diagnose import check_setup, LEVEL_ERROR, LEVEL_HINT
+from autoclicker.diagnostics import check_setup, LEVEL_ERROR, LEVEL_HINT
 from autoclicker.models import (BossProfile as _BP2, BossScanConfig as _BSC2,
                                 IconScanConfig as _ISC4)
 
@@ -4635,7 +4635,7 @@ check("und ohne Punkt entsteht gar keine Bedingung",
 # --------------------------- Befehle aus dem Studio an den Hauptprozess
 section("Der Briefkasten zwischen Studio und Hauptprozess")
 
-# Die Gegenrichtung zu .lauf.json: dort schreibt der Hauptprozess, was laeuft,
+# Die Gegenrichtung zu .run.json: dort schreibt der Hauptprozess, was laeuft,
 # hier legt das Studio ab, was passieren soll. Die Regeln, an denen alles haengt:
 # genau einmal ausfuehren, und niemals einen Befehl von frueher nachfeuern - ein
 # vergessenes "starte" wuerde sonst irgendwann spaeter unerwartet klicken.
@@ -4981,7 +4981,7 @@ try:
     check("ein Scan ohne Konfiguration verhindert das Speichern NICHT",
           _b12.filepath.exists())
     check("Speichern merkt die zuletzt verwendete Sequenz",
-          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["folder"]
+          json.loads(Path(".studio-sequence.json").read_text(encoding="utf-8"))["folder"]
           == _b12.filepath.parent.name)
     check("gemeldet wird er trotzdem", _zustand12["status"]["kind"] == "warn")
     check("und die Meldung nennt die Scan-Art",
@@ -5222,7 +5222,7 @@ try:
 
     # Speichert danach ein anderer Programmteil eine Sequenz, ist dieses Ereignis
     # neuer als das Öffnen und muss wieder gewinnen.
-    _marker14 = Path(".studio-sequenz.json")
+    _marker14 = Path(".studio-sequence.json")
     _nach_marker14 = _marker14.stat().st_mtime_ns + 1_000_000_000
     _os.utime(_all14, ns=(_nach_marker14, _nach_marker14))
     _seq14e, _pfad14e = _rs14("")
@@ -5310,7 +5310,7 @@ try:
                  Path("sequences") / "gross" / "sequence.json", "sequences")
     _b16b.load({"name": "gross"})
     check("Laden merkt die zuletzt verwendete Sequenz",
-          json.loads(Path(".studio-sequenz.json").read_text(encoding="utf-8"))["folder"]
+          json.loads(Path(".studio-sequence.json").read_text(encoding="utf-8"))["folder"]
           == "gross")
     check("Speichern und Uebersicht benutzen dieselbe Regel",
           _b16b._scan_without_name() == _nach16["gross"]["warnings"][0])
@@ -6144,7 +6144,7 @@ if _tote17:
     print("        fehlt in der Bruecke: " + ", ".join(_tote17))
 check("und die Ansicht zeichnet ihn", "cfgAction(" in _H.studio_web_source())
 # Der Katalog ist der Fall, fuer den es das gibt: bis dahin konnte ihn nur
-# `python tools/katalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
+# `python tools/catalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
 # frei raet und die Kategorie leer bleibt.
 check("und der Katalog laesst sich im Fenster holen",
       _aktionen17.get("scan_catalog_file", ("",))[0] == "catalog_fetch")
@@ -6476,12 +6476,12 @@ import tests.vertrag.studio_erkennung     # noqa: F401,E402
 import tests.vertrag.studio_werkzeuge     # noqa: F401,E402
 import tests.vertrag.konsolen_editoren     # noqa: F401,E402
 import tests.vertrag.persistenz_basis      # noqa: F401,E402
-import tests.vertrag.nachklick            # noqa: F401,E402
+import tests.vertrag.reclick            # noqa: F401,E402
 import tests.vertrag.studio_teilen        # noqa: F401,E402
 import tests.vertrag.report              # noqa: F401,E402
 import tests.vertrag.points               # noqa: F401,E402
 import tests.vertrag.sequence_delete     # noqa: F401,E402
-import tests.vertrag.katalog               # noqa: F401,E402
+import tests.vertrag.catalog               # noqa: F401,E402
 import tests.vertrag.breakpoint            # noqa: F401,E402
 
 

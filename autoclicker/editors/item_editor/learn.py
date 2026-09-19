@@ -17,7 +17,7 @@ from ...utils import (
     confirm, unique_name, is_cancel, next_free_name, ok,
     safe_input, sanitize_filename,
 )
-from .._item_felder import (
+from .._item_fields import (
     CANCELLED, ask_confirm_click, ask_priority,
 )
 from .items import select_category

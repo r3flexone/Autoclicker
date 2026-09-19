@@ -9,9 +9,9 @@ inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
 (`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
-`.lauf.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
+`.run.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
-*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_bericht.py`
+*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_report.py`
 über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
 `scan_market_value_file`).
 
@@ -41,7 +41,7 @@ Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
 - **Nutzen:** Ein Schritt-Typ „Sequenz X ausführen". Ändert sich der Weg, ändert man ihn
   einmal. Dasselbe Argument wie „Referenzen statt Kopien", nur eine Ebene höher.
 - **Tradeoff:** Punkte sind sequenzlokal, der Baustein bringt seine eigenen mit — das passt.
-  Was nicht passt: Live-Run, Phasenleiste und `.lauf.json` beschreiben **eine** Sequenz mit
+  Was nicht passt: Live-Run, Phasenleiste und `.run.json` beschreiben **eine** Sequenz mit
   Phasen; ein Aufruf macht daraus einen Stapel, und „Phase 2 von 4" stimmt dann nicht mehr.
   Dazu die Rekursion (A ruft B ruft A) und die Frage, was `restart` in einem Baustein
   bedeutet. Deutlich billiger und fast so gut: eine reine Editor-Funktion „Schritte aus

@@ -48,7 +48,7 @@ def run():
         # drei Scan-Arten je eine eigene Kachel hatten. Seit sie im
         # Sequenzordner liegen, sind es zwei, und die Zahl war nur noch ein
         # Pin auf einen Stand, den es nicht mehr gibt.
-        from autoclicker.editors.sequence_studio.bridge_teilen import PARTS
+        from autoclicker.editors.sequence_studio.bridge_share import PARTS
         haken = f.count("#share-export input[type=checkbox]")
         pruefe(haken == len(PARTS),
                f"{len(PARTS)} Haken erwartet (je einer pro TEILE), da: {haken}")

@@ -503,7 +503,7 @@ darin stehen) und meldet es mit `⚠` – neue Items, Skills oder Felder brauche
 nichts: Items kommen aus der API, unbekannte Skills bekommen `DEFAULT_SKILL_CONFIG`.
 Taucht die Meldung auf, trägt man den Namen in `ZAHL_HUELLEN` oder `TEXT_HUELLEN` ein;
 `apicheck.py` listet alle Konstrukte der aktuellen Antwort auf. Dasselbe Modul liegt
-als Kopie in `tools/katalog.py` (der Katalog-Knopf des Autoclickers liest dieselbe
+als Kopie in `tools/catalog.py` (der Katalog-Knopf des Autoclickers liest dieselbe
 API) – die beiden Teile importieren einander bewusst nicht.
 
 ## Anpassen

@@ -176,7 +176,7 @@ check("beide Knoepfe teilen sich gleiche Spalten",
       'el("div", {class: "button-pair"}' in _karte)
 check("und die Klasse ist auch gestaltet", ".seq-footer .button-pair{" in _web)
 _forts = _web[_web.index("async function proceed"):_web.index("Ansicht: Scans")]
-check("der Dialog kennt den Loesch-Fall", 'open.kind === "seq_loeschen"' in _forts)
+check("der Dialog kennt den Loesch-Fall", 'open.kind === "seq_delete"' in _forts)
 check("und ruft die Bruecke ueber den fragenden Kanal",
       'ask("sequence_delete"' in _forts)
 check("danach wird die Uebersicht neu gezeichnet",

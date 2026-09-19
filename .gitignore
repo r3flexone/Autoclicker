@@ -43,15 +43,15 @@ config.json
 # Laufstatus des Workers (runtime/status.py) - existiert nur waehrend eine
 # Sequenz laeuft. Liegt hier oben und nicht in sequences/, weil ein
 # *.json-Glob ueber den Ordner sie sonst als Sequenz auflisten wuerde.
-.lauf.json
-.aufnahme.json
-.studio-sequenz.json
-.nachklick.json
+.run.json
+.recording.json
+.studio-sequence.json
+.reclick.json
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben
-# wie .lauf.json.
-.befehl.json
+# wie .run.json.
+.command.json
 
 # Aktueller Bestand: vollständige Sequenzordner und wiederverwendbare Presets.
 sequences/

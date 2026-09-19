@@ -31,7 +31,7 @@ from autoclicker.persistence import (
     ensure_sequences_dir, init_directories,
     list_available_sequences, sweep_on_start,
 )
-from autoclicker.diagnose import check_on_start
+from autoclicker.diagnostics import check_on_start
 from autoclicker.runtime import print_status
 from autoclicker.utils import col, err, info, warn, hint, init_logging
 from autoclicker.handlers import (

@@ -30,12 +30,12 @@ from .bridge_contract import (
     scan_warnings,
     trigger_name,
 )
-from .bridge_bericht import BridgeReportMixin
+from .bridge_report import BridgeReportMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
-from .bridge_teilen import BridgeShareMixin
+from .bridge_share import BridgeShareMixin
 from .bridge_view import BridgeViewMixin
-from .bridge_werkzeuge import BridgeToolsMixin
+from .bridge_tools import BridgeToolsMixin
 from .model import Lane, PalettePoint, SequenceBoard, palette_from_sequence, sequence_to_board
 from .scans import ScanTeil
 

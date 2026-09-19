@@ -18,7 +18,7 @@ from ..persistence import (
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
     save_global_items, active_templates_dir
 )
-from ._item_felder import ask_confirm_click, ask_priority
+from ._item_fields import ask_confirm_click, ask_priority
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
@@ -438,7 +438,7 @@ def _step_catalog(use_catalog: bool, state: AutoClickerState) -> bool:
     print("  LLM-Benennung wählt aus den echten Namen statt frei zu raten.")
     if not path:
         print("  " + warn("Noch keine Katalog-Datei eingetragen."))
-        print("  " + hint("Anlegen mit: python tools/katalog.py"))
+        print("  " + hint("Anlegen mit: python tools/catalog.py"))
         print("  " + hint("Eintragen unter scan_catalog_file (Studio: Einstellungen)."))
     else:
         print(f"  Katalog: {path}")

@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from ._harness import check, section
-from autoclicker.editors.nachklick import (
+from autoclicker.editors.reclick import (
     click_points as _klickpunkte,
     reclick_pause as _pause,
     reclick_skip as _skip,
@@ -213,7 +213,7 @@ section("Nachklicken: der Zeiger steht auf der Stelle, bevor man klickt")
 # gespeichert ist, kostet ein Punkt, der noch stimmt, genau einen Klick — und nur
 # die verrutschten eine Mausbewegung. Ohne den Sprung stand die alte Stelle nur
 # als Zahlenpaar in der Konsole, und man musste sie auf dem Schirm suchen.
-import autoclicker.editors.nachklick as _nk
+import autoclicker.editors.reclick as _nk
 
 _gesprungen = []
 _echt_springe = _nk._jump
@@ -342,9 +342,9 @@ section("Nachklicken: nur Klicks im Zielfenster zählen")
 # korrekt abgewiesen hatte.
 _vordergrund = ["Idle Clans"]
 _geklickt = [None]          # None = dieselbe Antwort wie der Vordergrund
-# Die Frage „welches Fenster hat den Klick" beantwortet `_klickfenster` —
+# Die Frage „welches Fenster hat den Klick" beantwortet `_click_window` —
 # fuer die Runde UND die Aufnahme. Gestubbt wird deshalb dort.
-import autoclicker.editors._klickfenster as _kf
+import autoclicker.editors._click_window as _kf
 _echt_titel = _kf.get_foreground_window_title
 _echt_unter = _kf.get_window_title_at
 _echt_rect = _nk.get_client_rect_by_title
@@ -573,7 +573,7 @@ try:
 
     def _stand():
         with open(_nk.RECLICK_STATUS_FILE if hasattr(_nk, "RECLICK_STATUS_FILE")
-                  else ".nachklick.json", "r", encoding="utf-8") as f:
+                  else ".reclick.json", "r", encoding="utf-8") as f:
             return _json_nk.load(f)
 
     _st0 = _stand()

@@ -20,7 +20,7 @@ from ..winapi import (
     install_mouse_hook, remove_mouse_hook, install_keyboard_hook, remove_keyboard_hook,
     get_cursor_pos, WHEEL_DELTA,
 )
-from ._klickfenster import clicked_window
+from ._click_window import clicked_window
 from ..imaging import get_pixel_color
 from ..config import RECORD_STATUS_FILE
 from ..utils import (

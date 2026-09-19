@@ -181,7 +181,7 @@ section("Geteilte Feld-Abfragen der Item-Editoren")
 # erste Test hier — er ist der Grund, warum die Zusammenlegung mehr ist als
 # Kosmetik.
 
-import autoclicker.editors._item_felder as _IF
+import autoclicker.editors._item_fields as _IF
 from autoclicker.models import AutoClickerState as _ST_F, ClickPoint as _CP_F
 
 

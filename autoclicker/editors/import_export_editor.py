@@ -700,7 +700,7 @@ def _calibration_reference(state: AutoClickerState, points: list, title: str,
 
 def _outside_all_monitors(targets: list[tuple[int, int]]) -> int:
     """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
-    from ..diagnose import _virtueller_desktop
+    from ..diagnostics import _virtueller_desktop
     rect = _virtueller_desktop()
     if rect is None:
         return 0

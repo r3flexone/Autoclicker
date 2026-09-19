@@ -42,7 +42,7 @@ def aufbau():
     image, _ecken = inventar()
     stelle_bildschirm(image)
 
-    file = Path("katalog.json").resolve()
+    file = Path("catalog.json").resolve()
     file.write_text(json.dumps({"items": {
         "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
         "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
@@ -178,7 +178,7 @@ def run():
 
         # Ein Rauchtest geht nicht ins Netz: die Spieldaten kommen gestellt,
         # der Weg von der Seite bis in die Datei ist trotzdem der echte.
-        import tools.katalog as tk
+        import tools.catalog as tk
         echt = tk.hole_spieldaten
         tk.hole_spieldaten = lambda *a, **kw: {"Items": {"Items": [
             {"Name": "godlike_bow", "EquipmentSlot": 7, "BaseValue": 900}]}}

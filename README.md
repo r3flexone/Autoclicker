@@ -1261,7 +1261,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
-| `scan_catalog_file` | Pfad zu `katalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/katalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
+| `scan_catalog_file` | Pfad zu `catalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/catalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
 
 ### Debug-Einstellungen
 
@@ -1291,7 +1291,7 @@ Autoclicker-Idleclans/
 │   ├── handlers.py         # Hotkey-Handler
 │   ├── mailbox.py          # Briefkasten Studio -> Hauptprozess
 │   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
-│   ├── diagnose.py         # Selbstdiagnose (fehlende Templates, tote Verweise)
+│   ├── diagnostics.py      # Selbstdiagnose (fehlende Templates, tote Verweise)
 │   ├── symbol.py           # Programm-Symbol als Geometrie
 │   ├── sequence_studio.py  # Einstiegspunkt des Studio-Subprozesses
 │   ├── utils/              # Hilfsfunktionen
@@ -1330,7 +1330,7 @@ Autoclicker-Idleclans/
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
 │       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
-│       │   ├── bridge_teilen.py, bridge_werkzeuge.py, model.py
+│       │   ├── bridge_share.py, bridge_tools.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
@@ -1366,7 +1366,7 @@ Autoclicker-Idleclans/
 │   ├── wurzeltests.py      # Discovery der Wurzelmodule ohne doppelten Vertragslauf
 │   └── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
 └── tools/                  # Hilfswerkzeuge — hier steht kein Test mehr
-    ├── katalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
+    ├── catalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben

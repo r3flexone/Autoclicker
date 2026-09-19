@@ -27,23 +27,23 @@ SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 # Start-Migration — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
 # `last_edited()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
 # unter backups/ liegen statt neben dem Original.
-RUN_STATUS_FILE: str = ".lauf.json"
+RUN_STATUS_FILE: str = ".run.json"
 # Rollende Live-Ausgabe der Sequenz-Aufnahme für das Studio. Kein Bestand und
 # kein Log: die Datei wird bei jedem Ereignis überschrieben.
-RECORD_STATUS_FILE: str = ".aufnahme.json"
+RECORD_STATUS_FILE: str = ".recording.json"
 # Dasselbe fuer die Klick-Runde: welcher Punkt gerade dran ist und was mit den
 # vorherigen passiert ist. Sie laeuft im Hauptprozess (systemweiter Maus-Hook),
 # bedient wird sie aber oft aus dem Studio — ohne diese Datei stuende dort nur
 # "laeuft", waehrend die Konsole jeden Schritt einzeln meldet.
-RECLICK_STATUS_FILE: str = ".nachklick.json"
+RECLICK_STATUS_FILE: str = ".reclick.json"
 # Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
-STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequenz.json"
+STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
 
 # Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
 # sondern ein Briefkasten, der beim Lesen geleert wird.
-COMMAND_FILE: str = ".befehl.json"
+COMMAND_FILE: str = ".command.json"
 
 
 @dataclass
@@ -98,7 +98,7 @@ class AppConfig:
     # Pfad zu einer Item-Name -> Gold-pro-Stueck-JSON (schreibt market_analysis).
     # Leer = aus: dann entscheidet wie bisher die von Hand gesetzte Item-Prioritaet.
     scan_market_value_file: str = ""
-    # Pfad zum Item-/Gegner-Katalog aus der Spiel-API (schreibt tools/katalog.py).
+    # Pfad zum Item-/Gegner-Katalog aus der Spiel-API (schreibt tools/catalog.py).
     # Leer = aus: dann bleibt das Benennen frei und die Kategorie Handarbeit.
     scan_catalog_file: str = ""
     scan_slot_hsv_tolerance: int = 25               # HSV-Toleranz für Slot-Erkennung

@@ -1,6 +1,6 @@
 """Der Item-Katalog: Laden, Einordnen, geschlossene LLM-Auswahl.
 
-Gemessen wird an beiden Enden — `tools/katalog.py` bildet die Kategorie, der
+Gemessen wird an beiden Enden — `tools/catalog.py` bildet die Kategorie, der
 Autoclicker liest sie. Laufen die auseinander, ist der Katalog stillschweigend
 nutzlos: die Namen passen, aber die Einordnung greift nie.
 """
@@ -21,7 +21,7 @@ if str(_repo) not in sys.path:
 section("Katalog: Nachschlagen und Raenge")
 # =============================================================================
 
-from autoclicker.katalog import Catalog, load_catalog, ranks, EMPTY  # noqa: E402
+from autoclicker.catalog import Catalog, load_catalog, ranks, EMPTY  # noqa: E402
 
 _k = Catalog({
     "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
@@ -100,10 +100,10 @@ check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
 
 
 # =============================================================================
-section("tools/katalog.py: die Kategorie wird ENG gebildet")
+section("tools/catalog.py: die Kategorie wird ENG gebildet")
 # =============================================================================
 
-from tools.katalog import anzeigename, kategorie_fuer, baue_katalog  # noqa: E402
+from tools.catalog import anzeigename, kategorie_fuer, baue_katalog  # noqa: E402
 
 check("Schluessel wird Anzeigename", anzeigename("godlike_bow") == "Godlike Bow")
 
@@ -151,7 +151,7 @@ check("Quelle steht in der Datei", "idleclans" in _gebaut["_quelle"])
 _rund = _sand / "rund.json"
 _rund.write_text(json.dumps(_gebaut), encoding="utf-8")
 _rl = load_catalog(str(_rund))
-check("was tools/katalog.py schreibt, liest autoclicker/katalog.py",
+check("was tools/catalog.py schreibt, liest autoclicker/katalog.py",
       _rl.category("Godlike Bow") == "Bow" and _rl.value("Bronze Helmet") == 32.0)
 
 
@@ -207,7 +207,7 @@ _cwd2 = _os.getcwd()
 _os.chdir(_sand2)
 try:
     Path("sequences").mkdir()
-    _kat_datei = Path("katalog.json").resolve()
+    _kat_datei = Path("catalog.json").resolve()
     _kat_datei.write_text(json.dumps({"items": {
         "Citadel Helmet": {"kategorie": "Helm", "wert": 15000},
         "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
@@ -464,7 +464,7 @@ section("Katalog holen: aus dem Fenster statt von der Kommandozeile")
 # =============================================================================
 # **Ausgerechnet die Datei, ohne die das LLM frei raet und die Kategorie leer
 # bleibt, liess sich im Studio nicht beschaffen** — der Einstellungen-Reiter
-# zeigte den Pfad und verwies auf `python tools/katalog.py`. Gerechnet wird
+# zeigte den Pfad und verwies auf `python tools/catalog.py`. Gerechnet wird
 # weiterhin dort; die Bruecke RUFT das Werkzeug, nie umgekehrt.
 import shutil as _sh_kh                                            # noqa: E402
 import sys as _sys_kh                                              # noqa: E402
@@ -477,7 +477,7 @@ from autoclicker.models import Sequence as _SEQ_kh                 # noqa: E402
 _wurzel_kh = _P_kh(__file__).resolve().parents[2]
 if str(_wurzel_kh) not in _sys_kh.path:
     _sys_kh.path.insert(0, str(_wurzel_kh))
-import tools.katalog as _tk_kh                                     # noqa: E402
+import tools.catalog as _tk_kh                                     # noqa: E402
 
 _SPIELDATEN_kh = {"Items": {"Items": [
     {"Name": "godlike_bow", "EquipmentSlot": 7, "BaseValue": 900},
@@ -498,15 +498,15 @@ try:
     _tk_kh.hole_spieldaten = lambda *a, **kw: _SPIELDATEN_kh
     _erg_kh = _bau_kh().catalog_fetch()
     check("der Knopf holt und schreibt die Datei",
-          _erg_kh["ok"] and _P_kh("katalog.json").exists())
-    _inhalt_kh = _json_mit.loads(_P_kh("katalog.json").read_text(encoding="utf-8"))
+          _erg_kh["ok"] and _P_kh("catalog.json").exists())
+    _inhalt_kh = _json_mit.loads(_P_kh("catalog.json").read_text(encoding="utf-8"))
     check("mit den echten Namen aus der API",
           "Godlike Bow" in _inhalt_kh["items"]
           and _inhalt_kh["items"]["Godlike Bow"]["kategorie"] == "Bow")
     # Ohne diesen Schritt hat man die Datei und trotzdem keine Wirkung — der
     # Scan liest den Pfad, nicht den Ordner.
     check("und traegt den Pfad gleich in die Config ein",
-          _CFG_mit.scan_catalog_file.endswith("katalog.json"))
+          _CFG_mit.scan_catalog_file.endswith("catalog.json"))
     check("die Meldung nennt, was drin ist", "2 Items" in _erg_kh["message"])
 
     # Ein selbst gesetzter Pfad wird AKTUALISIERT, nicht ueberschrieben: wer
@@ -520,17 +520,17 @@ try:
     # Kein Netz ist der haeufigste Fehlerfall — und darf die vorhandene Datei
     # nicht zerstoeren. Dieselbe Haltung wie beim Start-Durchgang: lieber
     # nichts tun als halb schreiben.
-    _vorher_kh = _P_kh("katalog.json").read_text(encoding="utf-8")
+    _vorher_kh = _P_kh("catalog.json").read_text(encoding="utf-8")
 
     def _wirf_kh(*a, **kw):
         raise OSError("kein Netz")
 
     _tk_kh.hole_spieldaten = _wirf_kh
-    _CFG_mit.scan_catalog_file = str(_P_kh("katalog.json"))
+    _CFG_mit.scan_catalog_file = str(_P_kh("catalog.json"))
     _erg3_kh = _bau_kh().catalog_fetch()
     check("ohne Netz wird nichts geschrieben",
           _erg3_kh["ok"] is False and "kein Netz" in _erg3_kh["message"]
-          and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
+          and _P_kh("catalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
     # Eine Antwort ohne Items ist kein Katalog — eine leere Datei zu schreiben
     # hiesse, die brauchbare gegen eine unbrauchbare zu tauschen.
@@ -538,7 +538,7 @@ try:
     _erg4_kh = _bau_kh().catalog_fetch()
     check("und eine leere Antwort ueberschreibt die gute Datei nicht",
           _erg4_kh["ok"] is False
-          and _P_kh("katalog.json").read_text(encoding="utf-8") == _vorher_kh)
+          and _P_kh("catalog.json").read_text(encoding="utf-8") == _vorher_kh)
 
     # --- Ein Spiel-Update darf den Knopf nicht stoppen ---------------------
     # Die API schreibt Mongo-Shell-JSON, und der Bereiniger kannte genau EIN
@@ -588,7 +588,7 @@ try:
     check("aber nur der angehaengte", _oz_kh("Bogen") == "Bogen"
           and _oz_kh("Iron Helmet 12") == "Iron Helmet")
 
-    from autoclicker.katalog import Catalog as _Kat_kh
+    from autoclicker.catalog import Catalog as _Kat_kh
     _kat_kh = _Kat_kh({"Godlike Bow": {"kategorie": "Bow", "wert": 9},
                        "Slot 1": {"kategorie": "Sonder", "wert": 1}})
     check("ein Item mit Zaehler findet seinen Katalog-Eintrag",
