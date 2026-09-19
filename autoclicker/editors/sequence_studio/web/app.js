@@ -3917,7 +3917,7 @@ const SCAN_KINDS = ["item", "boss", "icon"];
  * Als Ternaeroperator an jeder Aufrufstelle waeren die Namen sechsmal da, und
  * der Test „jeder Aufruf der Seite passt zur Bruecke" faende keinen davon: er
  * sucht den Methodennamen direkt hinter der oeffnenden Klammer. Hier stehen sie
- * einmal und sind messbar (`tests/vertrag/studio_detection.py`). */
+ * einmal und sind messbar (`tests/contract/studio_detection.py`). */
 const DET_COMMAND = {
   boss: {open: "boss_scan_open", new: "boss_scan_new",
          scan_field: "boss_scan_set", field: "boss_set",

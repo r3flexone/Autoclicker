@@ -48,7 +48,7 @@ config.json
 .studio-sequence.json
 .reclick.json
 
-# Briefkasten fuer Befehle aus dem Sequenz-Studio (befehl.py) - existiert nur
+# Briefkasten fuer Befehle aus dem Sequenz-Studio (mailbox.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben
 # wie .run.json.
 .command.json
@@ -82,7 +82,7 @@ logs/
 # Markt-Analyse - generierte Ausgaben
 market_analysis/output/
 
-# Item-/Gegner-Katalog aus der Spiel-API (tools/katalog.py) — generierte Daten,
+# Item-/Gegner-Katalog aus der Spiel-API (tools/catalog.py) — generierte Daten,
 # dieselbe Ueberlegung wie beim Programm-Symbol: eine Kopie im Repo veraltet
 # still, sobald das Spiel Items nachlegt. Neu holen kostet ein Kommando.
 katalog.json

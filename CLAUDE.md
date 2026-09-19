@@ -9,18 +9,18 @@ Konsolen-getriebene Python-App mit globalen Hotkeys, Sequenz-Editor,
 OpenCV-basierter Item-Erkennung und optionaler LLM-Vision für Boss-Detection
 (Ollama / LM Studio). Wayland wird nicht unterstützt. **Bezeichner im Code sind
 Englisch, alles Gelesene ist Deutsch** — Kommentare, Docstrings, UI-Texte,
-Meldungen, Testbeschreibungen; neue Strings ebenso. Der Bestand ist noch
-grösstenteils deutsch benannt und wird phasenweise umgestellt (s. „Bezeichner
-auf Englisch" bei den Konventionen).
+Meldungen, Testbeschreibungen; neue Strings ebenso. Der Bestand ist
+umgestellt; was dabei bewusst deutsch geblieben ist und wie man umbenennt,
+steht bei „Bezeichner auf Englisch" unter den Konventionen.
 
 ## Run / Lint / Test
 
 ```bash
 python tests/all_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
-python tests/all_tests.py --only vertrag     # nur die Vertragssuite (schnell)
-python tests/all_tests.py --only rauch --smoke-test werkzeuge   # eine Ansicht
+python tests/all_tests.py --only contract    # nur die Vertragssuite (schnell)
+python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
 python tests/all_tests.py --mutations      # dazu die Gegenproben (so ruft CI es auf)
-python tests/all_tests.py --only rauch --rauch-pflicht  # fehlender Browser = rot
+python tests/all_tests.py --only smoke --smoke-required  # fehlender Browser = rot
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
@@ -28,7 +28,7 @@ python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
 # Die Schichten einzeln, falls man sie direkt braucht:
 python tests/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
 python -m tests.root_tests      # Wurzelmodule (--without-contract laesst den Wrapper weg)
-python -m tests.rauch.werkzeuge   # ein Rauchtest im Browser
+python -m tests.smoke.tools     # ein Rauchtest im Browser
 python tests/mutation_check.py         # Gegenproben einzeln (--case NAME)
 python tools/catalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
                                 # (--show = nur anzeigen, --target = anderer Pfad)
@@ -37,7 +37,7 @@ python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
-                                    # (--image slot|grund, --model X, --all-models,
+                                    # (--image slot|background, --model X, --all-models,
                                     #  --two-stage, --votes 3, --reasoning)
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
@@ -55,8 +55,8 @@ python tools/rename.py alt=neu  # Benennt einen Bezeichner im ganzen Repo um —
 | Schicht | was sie prüft | braucht |
 |---|---|---|
 | Vertragssuite (`tests/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`tests/wurzel/`) | Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow (sonst übersprungen) |
-| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Wurzelmodule (`tests/root/`) | Import/Export-Sicherheit, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow (sonst übersprungen) |
+| Rauchtests (`tests/smoke/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
 **Alles Testbare liegt unter `tests/`, und `tools/` enthält nur noch Werkzeuge.**
 Vorher lagen die drei Schichten an drei Orten: elf `test_*.py` im
@@ -68,9 +68,9 @@ Programm nie aufmacht.
 | liegt jetzt | war vorher |
 |---|---|
 | `tests/all_tests.py`, `tests/mutation_check.py`, `tests/root_tests.py` | `tools/` |
-| `tests/test_logic.py` + `tests/vertrag/` | `tools/test_logic.py` + `tools/tests/` |
-| `tests/wurzel/` | die `test_*.py` im Wurzelverzeichnis |
-| `tests/rauch/` | `tools/rauchtests/` |
+| `tests/test_logic.py` + `tests/contract/` | `tools/test_logic.py` + `tools/tests/` |
+| `tests/root/` | die `test_*.py` im Wurzelverzeichnis |
+| `tests/smoke/` | `tools/rauchtests/` |
 
 Zwei Dinge, die dabei auffallen sollen:
 
@@ -80,7 +80,7 @@ Zwei Dinge, die dabei auffallen sollen:
   etwas Falsches verspricht, ist hier sonst ein Fehler; diese beiden bleiben in
   `tools/`, weil sie **dort** hingehören, und der Baum in der README sagt es
   ausdrücklich dazu.
-- **`tests/wurzel/` ist ein flacher Ordner ohne `__init__.py`**, und das ist
+- **`tests/root/` ist ein flacher Ordner ohne `__init__.py`**, und das ist
   Absicht: `unittest.discover()` legt sein Startverzeichnis selbst in
   `sys.path`, also findet jedes Modul sein `test_support` weiterhin als
   schlichten Nachbarn. Das Repo-Wurzelverzeichnis legt `root_tests.py`
@@ -95,7 +95,7 @@ erinnern muss, ist keine.
 Der Grund für die Trennung ist weg: `test_itemscan_editor_ux` und
 `test_scan_services` importierten `PIL` auf Modulebene und starben ohne Pillow
 schon beim LADEN, womit `unittest` gar nicht erst sammelte. Beide überspringen
-jetzt sauber (`@braucht_pillow`), und damit läuft ein Aufruf überall — 106 Tests
+jetzt sauber (`@needs_pillow`), und damit läuft ein Aufruf überall — 106 Tests
 mit Pillow, dieselben 106 mit 23 übersprungenen ohne.
 
 **Was fehlt, wird übersprungen und gesagt, nicht als Fehler gemeldet.** Ein roter
@@ -109,23 +109,23 @@ Zustand, der einen Neuaufbau nicht überlebt — nichts davon fällt dort auf, u
 Fenster sofort (der Reiter bleibt leer). Deshalb steht dort ein Chromium mit der
 echten `index.html` davor und der echten `StudioBridge` dahinter; `window.pywebview.api`
 ist ein Proxy, der jeden Aufruf nach Python weiterreicht. Kein Nachbau — dieselben
-zwei Seiten wie im Fenster, nur ohne pywebview dazwischen (`rauchtests/_bridge.py`).
+zwei Seiten wie im Fenster, nur ohne pywebview dazwischen (`tests/smoke/_bridge.py`).
 
-Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Fenster`, `sandkasten`,
-`stelle_bildschirm`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
+Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Window`, `sandbox`,
+`mock_screen`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
 Job, weil dort erst ein Browser installiert werden muss.
 
-**Gewartet wird auf den Zustand der Seite, nicht auf die Uhr** (`Fenster.ruhe()`).
+**Gewartet wird auf den Zustand der Seite, nicht auf die Uhr** (`Window.settle()`).
 Nach jedem Klick und Reiterwechsel stand ein `wait_for_timeout(700)` — ein blinder
 Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen über alle acht Tests:
 **86 s Laufzeit, davon 70 s Schlaf** in 117 Aufrufen und 6,5 s echte Arbeit. Der
 Prüfstand hat den Brücken-Proxy in der Hand, also zählt er dort, wie viele
-Aufrufe unterwegs sind (`window.__offen`); `ruhe()` wartet, bis das zwei Frames
+Aufrufe unterwegs sind (`window.__pending`); `settle()` wartet, bis das zwei Frames
 lang null ist — der Neuaufbau nach einer Antwort läuft in Microtasks, also vor
 dem nächsten Frame, und eine Kette (Antwort → Neuaufbau → Vorschau nachladen)
-fängt ihr nächstes Glied noch im selben Frame an. `reiter()`, `klick()` und
-`klick_text()` rufen es selbst; ein Test schreibt nach einer eigenen Aktion
-`f.ruhe()`. Ergebnis: 86 s → 27 s, und die Wartezeit wächst nicht mehr mit der
+fängt ihr nächstes Glied noch im selben Frame an. `tab()`, `click()` und
+`click_text()` rufen es selbst; ein Test schreibt nach einer eigenen Aktion
+`f.settle()`. Ergebnis: 86 s → 27 s, und die Wartezeit wächst nicht mehr mit der
 Zahl der Klicks, sondern mit dem, was die Seite tut. Ohne den Zähler werden
 alle acht Tests rot — die Bedingung trägt, sie ist kein Schmuck.
 
@@ -167,7 +167,7 @@ andere nicht.
 **Ein grüner Exitcode ist kein grüner Lauf.** `contract()` verlangt zusätzlich die
 Schlusszeile im Muster `N PASS / 0 FAIL` mit N > 0: eine Suite, die vor ihrem
 Abschluss stirbt, meldete sonst Erfolg, weil niemand mehr etwas gedruckt hat.
-Dasselbe Muster in der Gegenrichtung ist `--rauch-pflicht` — lokal darf ein
+Dasselbe Muster in der Gegenrichtung ist `--smoke-required` — lokal darf ein
 fehlender Browser überspringen, im Browser-Job ist genau das ein Fehler.
 
 **`--mutations` prüft die Tests, nicht den Code** (`tests/mutation_check.py`).
@@ -179,20 +179,20 @@ schon einmal schiefging. Nur ein Assertion-Fehler zählt als erkannt: ein
 Importfehler, ein übersprungener Test oder ein Timeout beweist nichts.
 
 **Das ist eine gezielte Regressionsprüfung, keine vollständige Mutationsanalyse** —
-die Fälle stehen als Liste in `FAELLE` und wachsen mit den Fehlern, die auffallen,
+die Fälle stehen als Liste in `CASES` und wachsen mit den Fehlern, die auffallen,
 nicht mit dem Code.
 
 `tests/root_tests.py` gibt es, weil `unittest discover` die Vertragssuite über
 ihren Wrapper ein zweites Mal mitzog: im Gesamtlauf lief sie damit doppelt (und
-die Zähler standen zweimal da). `--ohne-vertrag` lässt genau diesen Wrapper weg;
+die Zähler standen zweimal da). `--without-contract` lässt genau diesen Wrapper weg;
 einzeln aufgerufen bleibt er drin, sonst fehlte er dort ganz.
 
 **Ein Einstiegspunkt, mehrere Dateien.** `tests/test_logic.py` war mit über 7.000
 Zeilen die grösste Datei des Repos — mehr als jedes Produktivmodul —, und die
 durchnummerierten Variablennamen (`_b18`, `_sand18`) waren das Symptom: so
 benennt man, wenn der Namensraum voll ist. Neue Sektionen kommen deshalb als
-eigenes Modul unter **`tests/vertrag/`**, holen Stubs, Zähler und `check`/`section`
-aus `tests/vertrag/_harness.py` und werden am Ende von `test_logic.py` importiert
+eigenes Modul unter **`tests/contract/`**, holen Stubs, Zähler und `check`/`section`
+aus `tests/contract/_harness.py` und werden am Ende von `test_logic.py` importiert
 (Import = ausführen, wie im Rest der Datei auch).
 
 Zwei Dinge hängen daran: **die Zähler leben im Harness**, nicht im Aufrufer —
@@ -593,7 +593,7 @@ Grund wie `reverse`: wer zwei Spiele betreibt, hat einen Katalog, der nur für
 eines von beiden gilt, und global gesetzt ordnete er das andere still falsch
 ein. Im Studio steht er in den Scan-Einstellungen direkt neben „Slots
 rückwärts", der Pfad im Einstellungen-Reiter — **samt dem Knopf, der die
-Datei holt** (`catalog_fetch`, angemeldet über `M.aktion` in
+Datei holt** (`catalog_fetch`, angemeldet über `M.action` in
 `config_meta.py`). Bis dahin konnte nur `python tools/catalog.py` sie
 anlegen: ausgerechnet die Datei, ohne die das LLM frei rät und die
 Kategorie leer bleibt, liess sich im Fenster nicht beschaffen. Gerechnet
@@ -609,7 +609,7 @@ Regex, die genau `ObjectId` kannte, dreimal ausgeschrieben (`tools/catalog.py`,
 `market_analysis/analysis.py`, `market_analysis/apicheck.py`) — als die
 Achievements `NumberLong` mitbrachten, starben alle drei an einem Feld, das
 keiner von ihnen liest, und der Katalog-Knopf im Studio meldete „Nicht
-erreichbar". Jetzt ist es ein kleiner Scanner (`bereinige_extended_json` in
+erreichbar". Jetzt ist es ein kleiner Scanner (`clean_extended_json` in
 `tools/catalog.py`, Zwilling `market_analysis/extended_json.py` — bewusst
 kopiert, die beiden Teile importieren einander nicht): Bekanntes wird
 übersetzt, ein unbekanntes `Name(…)` als sein Wert übernommen und **gemeldet**
@@ -1189,7 +1189,7 @@ hat:
   gelesen wirkt das wie eine kaputte Zahl, und man sucht den Fehler in der Rechnung.
   Unter 0 steht deshalb „keine Ähnlichkeit".
 
-Die Sperre bleibt: gemeldet wird **einmal je Grössenpaarung** (`_gemeldete_groessen`),
+Die Sperre bleibt: gemeldet wird **einmal je Grössenpaarung** (`_reported_sizes`),
 sonst stehen zwei Dutzend gleichlautende Zeilen da und die Meldung ist so gut wie
 keine.
 
@@ -1207,7 +1207,7 @@ es die Marker-Farben.
 - `autoclicker/session_log.py` — CSV-Logger, thread-safe. **Ausgewertet wird er mit
   `tools/log_report.py`** (ohne Windows, ohne Abhängigkeiten lauffähig) — auf der
   Kommandozeile und im Reiter „Bericht" des Studios, über **dieselbe** Funktion
-  (`evaluate()` rechnet und gibt Daten zurück, `bericht()` druckt sie). Geloggt wird
+  (`evaluate()` rechnet und gibt Daten zurück, `report()` druckt sie). Geloggt wird
   nicht nur, *was geklickt* wurde, sondern auch, *was gesehen* wurde: `timeout` (welcher
   Schritt hängt — das diagnostisch wertvollste Ereignis), `item_found`, `detected`,
   `verify_ok`/`verify_miss`. Ohne diese Ereignisse konnte der Bericht die eine Frage
@@ -1306,7 +1306,7 @@ es die Marker-Farben.
   - `bridge_share.py`: Export/Import im Reiter „Teilen".
   - `bridge_tools.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
   - `bridge_report.py`: Session-Logs und Ertrag im Reiter „Bericht".
-  - `scans.py`: stabile `ScanTeil`-Fassade.
+  - `scans.py`: stabile `ScanPart`-Fassade.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
     Verantwortlichkeiten.
@@ -1421,7 +1421,7 @@ Ausflug überleben.
 | Live-Run | was gerade läuft | `run_status()` |
 | Scans | Slots, Items, Item-Scans auf einem Screenshot | `scan_data()` + `scan_*` |
 | Teilen | Bündel schreiben und einlesen | `share_data()` + `export_/import_*` |
-| Werkzeuge | prüfen, kalibrieren, Klick-Runde | `tool_data()` + `werkzeug_/kalib_*` |
+| Werkzeuge | prüfen, kalibrieren, Klick-Runde | `tool_data()` + `tool_/calib_*` |
 | Bericht | was die vergangenen Läufe hinterlassen haben | `report_data()` |
 | Einstellungen | `config.json` bearbeiten | `config_read()` / `config_write()` |
 
@@ -1513,7 +1513,7 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `load`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanTeil`-
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanPart`-
 Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
 in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
 Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `sequences/<name>/item_scans/<n>.json` — Slots und Items stehen
@@ -1958,8 +1958,8 @@ Sechs Regeln, an denen der Reiter hängt:
   ist die Zahl, die man an einer Nummer sucht: wann ist dieser Slot dran".
   Das stimmt, ist aber genau deshalb die falsche Zahl für EINE Kachel: die
   Stelle ändert sich mit Absicht, sobald ein Slot ab- und wieder angeschaltet
-  wird (`scan_mitglied()` entfernt ihn aus `slot_names` und hängt ihn beim
-  Wiedereinschalten ans Ende an) — eine Kennung, die beim Ausschalten verloren
+  wird (`scan_slot_set` schaltet `enabled` um, und die Nummer zählt nur die
+  eingeschalteten durch) — eine Kennung, die beim Ausschalten verloren
   geht, ist für eine ID unbrauchbar. `ItemSlot` trägt deshalb ein eigenes,
   stabiles `id`-Feld (`models.py`), vergeben von `_next_slot_id()` bei der
   Entstehung — dieselbe Rechnung wie bei `ClickPoint`/`PalettePoint`
@@ -2304,7 +2304,7 @@ ohne Einzug lernt jedes Item den Rahmen als Merkmal mit. Abgezogen wird nie mehr
 als übrig bleiben darf. **Von Hand aufgezogene Slots bleiben unangetastet** —
 dort ist das Rechteck genau das, was gemeint war.
 
-Neu daran ist nur der Regler: `sv_toleranz` (Sättigung/Helligkeit) war fest auf
+Neu daran ist nur der Regler: `sv_tolerance` (Sättigung/Helligkeit) war fest auf
 ±50 verdrahtet, und **bei dunklen Oberflächen liegt der Panel-Hintergrund darin**
 — dann verschmilzt alles zu einer Fläche und heraus kommt EIN Rechteck über dem
 ganzen Inventar. Der Konsolen-Weg umgeht das, indem der Nutzer vorher eine enge
@@ -2687,7 +2687,7 @@ Fünf Regeln, an denen er hängt:
 
 - **Gerechnet wird in `tools/log_report.py`**, mit derselben Funktion, die die
   Kommandozeile benutzt. Dafür ist die Auswertung dort in zwei Hälften zerlegt:
-  `evaluate()` gibt **Daten** zurück und druckt keine Zeile, `bericht()` druckt sie.
+  `evaluate()` gibt **Daten** zurück und druckt keine Zeile, `report()` druckt sie.
   Eine zweite Auswertung „fürs Fenster" wäre eine, die andere Zahlen nennt als der
   Weg, den die README beschreibt. Ein Test misst beides — die Zahlen *und* dass
   `evaluate()` schweigt: eine übrig gebliebene `print`-Zeile landete in der Konsole
@@ -2720,8 +2720,8 @@ Fünf Regeln, an denen er hängt:
 
 Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: jeder
 `data-view`-Knopf braucht seine Umschalt-Zeile in `setView()` (und keine
-Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/rauch/` muss in
-`RAUCHTESTS` (`tests/all_tests.py`) stehen — eine getippte Liste ist genau die
+Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/smoke/` muss in
+`SMOKE_TESTS` (`tests/all_tests.py`) stehen — eine getippte Liste ist genau die
 Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
@@ -3714,15 +3714,30 @@ UI-Texte, Meldungen, Hilfetexte, Testbeschreibungen (`check("…")`,
 angezeigt wird, ist Sprache; ein String, der etwas *adressiert*
 (`call("block_set")`, `"start_manual"`, ein Dispatch-Schlüssel), ist Code.
 
-**Der Bestand ist noch deutsch benannt, und die Umstellung läuft phasenweise**
-— nicht alles auf einmal, sondern je ein grüner PR: (1) Werkzeug und diese
-Regel, (2) Python-Interna unter `autoclicker/`, (3) Brücke und Seite zusammen
-(die Tests halten beide Seiten gegeneinander, also gehen sie nur gemeinsam),
-(4) Modulnamen per `git mv` samt Briefkasten und Statusdateien, (5) `tests/`,
-`tools/`, `market_analysis/`, (6) Doku-Durchgang. Dazwischen gilt: **wer eine
-Stelle anfasst, benennt die deutschen Namen darin um — samt allen Aufrufern.**
-Eine halb umbenannte Funktion (Definition englisch, drei Aufrufer deutsch) gibt
-es nicht; flake8 `--select=F` findet den Rest, die Suite den Rest vom Rest.
+**Der Bestand ist umgestellt, phasenweise und je ein grüner Stand**: (1)
+Werkzeug und diese Regel, (2) Python-Interna unter `autoclicker/`, (3) Brücke
+und Seite zusammen (die Tests halten beide Seiten gegeneinander, also gingen
+sie nur gemeinsam), (4) Modulnamen per `git mv` samt Briefkasten und
+Statusdateien, (5) `tests/`, `tools/`, `market_analysis/`, (6) Doku-Durchgang.
+Die Tabellen jeder Phase liegen unter `tools/rename_tables/` — wer wissen
+will, wie ein Name vorher hiess, findet ihn dort. Seither gilt: **wer eine
+Stelle anfasst und dort noch einen deutschen Namen findet, benennt ihn um —
+samt allen Aufrufern.** Eine halb umbenannte Funktion (Definition englisch,
+drei Aufrufer deutsch) gibt es nicht; flake8 `--select=F` findet den Rest, die
+Suite den Rest vom Rest.
+
+**Bewusst deutsch geblieben** — weil es gelesen wird, nicht gerufen:
+
+- Testmethoden-Namen (`def test_sequenzwechsel_entfernt_fremden_bestand`) —
+  sie sind die Beschreibung, die im Lauf ausgegeben wird, dasselbe wie
+  `check("…")`.
+- Die Matrix-Achsen `ohne`/`pillow`/`mit` in `tests.yml` — Beschriftungen
+  der CI-Jobs, und diese Datei nennt sie so.
+- Die Beispiele im Docstring von `tools/rename.py` und die Fixtures in
+  `tests/root/test_rename.py` (`neu`, `alt`, `punkt_id`): das Werkzeug muss
+  an deutschen Namen vorgeführt werden, sonst prüft der Test nichts.
+- Schlüssel gespeicherter Dateien (s. u.) und die Spaltennamen der
+  SQLite-Historie in `market_analysis/` — Daten, kein Code.
 
 **Umbenannt wird mit `tools/rename.py`, nie mit Suchen/Ersetzen.** `neu`, `alt`,
 `empty`, `point`, `row` sind zugleich Wörter in den Kommentaren, und ein
@@ -3785,8 +3800,8 @@ Daten, kein Code; wer sie umbenennt, verstellt den Bestand des Nutzers. Sie
 bleiben, bis eine Formatänderung sie ohnehin anfasst — und dann gilt die Regel
 von oben: Default in der Dataclass, kein Migrationsschritt.
 
-**Ein Begriff, ein Wort.** Damit sechs Phasen nicht sechs Vokabeln erzeugen,
-gilt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
+**Ein Begriff, ein Wort.** Damit sechs Phasen nicht sechs Vokabeln erzeugt
+haben, galt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
 
 | deutsch | englisch | | deutsch | englisch |
 |---|---|---|---|---|

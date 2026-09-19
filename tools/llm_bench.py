@@ -53,7 +53,7 @@ from autoclicker.llm_vision import (                                # noqa: E402
     suggest_item_name_with_reason, test_endpoint_for,
 )
 
-IMAGE_SOURCES = ("vorlage", "reason", "slot")
+IMAGE_SOURCES = ("template", "background", "slot")
 NEUTRAL = (38, 42, 52)      # der Ton der Studio-Flaeche, nicht Schwarz: ein
                             # ausgeschnittenes Item auf Schwarz ist ein anderer
                             # Kontrast als eines in seinem Slot.
@@ -126,7 +126,7 @@ def load_photo(path: Path):
 
 # ---------------------------------------------------------------- Proben
 
-def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> list:
+def samples_from_templates(scan: dict, catalog, background: bool, limit: int) -> list:
     """`(Wahrheit, Bild)` je Item mit Vorlage, dessen Name im Katalog steht."""
     from PIL import Image
     samples = []
@@ -142,7 +142,7 @@ def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> lis
                 image = raw.copy()
         except (OSError, ValueError):
             continue
-        samples.append((catalog.match(name), on_background(image) if reason else image))
+        samples.append((catalog.match(name), on_background(image) if background else image))
     return samples
 
 
@@ -172,7 +172,7 @@ def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
     photo = load_photo(scan["image"])
     if photo is None:
         raise SystemExit(f"Kein gemerktes Bild ({scan['image']}) — "
-                         "im Scans-Reiter einmal aufnehmen, oder --image vorlage.")
+                         "im Scans-Reiter einmal aufnehmen, oder --image template.")
     image, left, top = photo
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
     stand_in = ConfigOnly(config)
@@ -329,8 +329,8 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Misst die LLM-Benennung gegen den eigenen Bestand.")
     p.add_argument("--scan", default="", help="Scan-Datei (Standard: die zuletzt bearbeitete)")
-    p.add_argument("--image", choices=IMAGE_SOURCES, default="vorlage",
-                   help="vorlage = gelerntes Template, grund = ohne Alpha, "
+    p.add_argument("--image", choices=IMAGE_SOURCES, default="template",
+                   help="template = gelerntes Template, background = ohne Alpha, "
                         "slot = Ausschnitt aus dem gemerkten Bild")
     p.add_argument("--model", default="", help="Modellname (Standard: aus config.json)")
     p.add_argument("--all-models", action="store_true",
@@ -356,7 +356,7 @@ def main(argv=None) -> int:
     if args.image == "slot":
         samples = samples_from_slots(scan, catalog, config, args.limit)
     else:
-        samples = samples_from_templates(scan, catalog, args.image == "reason", args.limit)
+        samples = samples_from_templates(scan, catalog, args.image == "background", args.limit)
     if not samples:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "

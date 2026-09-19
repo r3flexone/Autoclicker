@@ -15,16 +15,16 @@ Drei Schichten, von innen nach aussen:
 | Schicht | was sie prüft | braucht |
 |---|---|---|
 | Vertragssuite (`test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX | Pillow (sonst übersprungen) |
-| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Wurzelmodule (`tests/root/`) | Import/Export, Plattformvertrag, Studio-UX | Pillow (sonst übersprungen) |
+| Rauchtests (`tests/smoke/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
-Jede Schicht ist einzeln aufrufbar (`--only vertrag|wurzel|rauch`) — beim
+Jede Schicht ist einzeln aufrufbar (`--only contract|root|smoke`) — beim
 Arbeiten an einer Sache will man nicht auf die anderen warten. Der Volllauf ist
 der vor dem Commit.
 
 Was fehlt, wird ÜBERSPRUNGEN und gesagt, nicht als Fehler gemeldet: ein roter
 Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen.
-Im Browser-CI macht --rauch-pflicht diese Schicht verbindlich.
+Im Browser-CI macht --smoke-required diese Schicht verbindlich.
 --mutations ergänzt gezielte Gegenproben in getrennten Prozessen.
 """
 
@@ -175,7 +175,7 @@ def main(argv: list[str]) -> int:
     args = p.parse_args(argv[1:])
     layers = tuple(args.only) if args.only else LAYERS
     if args.smoke_required and "smoke" not in layers:
-        p.error("--rauch-pflicht braucht die Schicht rauch")
+        p.error("--smoke-required braucht die Schicht smoke")
 
     results_list = []
     if "contract" in layers:

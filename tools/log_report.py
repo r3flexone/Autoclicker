@@ -219,7 +219,7 @@ def report(paths: list[Path]) -> None:
 
 def main() -> int:
     args = [a for a in sys.argv[1:] if a]
-    if args and args[0] not in ("--last", "--last"):
+    if args and args[0] != "--last":
         paths = [Path(a) for a in args]
         missing = [p for p in paths if not p.exists()]
         if missing:

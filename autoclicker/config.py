@@ -40,7 +40,7 @@ RECLICK_STATUS_FILE: str = ".reclick.json"
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
 STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
 
-# Der Rückweg: Befehle von aussen an den Hauptprozess (befehl.py). Liegt aus
+# Der Rückweg: Befehle von aussen an den Hauptprozess (mailbox.py). Liegt aus
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
 # sondern ein Briefkasten, der beim Lesen geleert wird.
 COMMAND_FILE: str = ".command.json"

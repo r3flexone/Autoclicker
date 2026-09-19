@@ -5802,7 +5802,7 @@ finally:
     _os.chdir(_cwd16)
 
 
-# Die Scans-Sektionen des Studios stehen in `tests/vertrag/studio_scans.py` —
+# Die Scans-Sektionen des Studios stehen in `tests/contract/studio_scans.py` —
 # ueber 1.200 Zeilen und in sich geschlossen, also das erste eigene Modul.
 
 
@@ -5982,7 +5982,7 @@ else:
 # Flaeche traegt die Aussage - fehlt zu einem Zustand die Fuellungs-Regel, sieht
 # er aus wie der Normalfall und niemand merkt es.
 # Die Seite selbst - frueher hing dieser Block an einer Variablen aus den
-# Scans-Sektionen, die jetzt in `tests/vertrag/studio_scans.py` stehen. Was eine
+# Scans-Sektionen, die jetzt in `tests/contract/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
 _html18 = _H.studio_web_source()
 _states18 = ("match", "foreign-item", "empty")
@@ -6469,7 +6469,7 @@ if _tote10:
 # Die ausgelagerten Themen-Module
 # Der Einstiegspunkt bleibt genau einer, aber nicht alles muss in dieser Datei
 # stehen (sie war mit ueber 7.000 Zeilen die groesste des Repos). Neue Sektionen
-# kommen als eigenes Modul unter `tests/vertrag/`, holen ihr Geruest aus
+# kommen als eigenes Modul unter `tests/contract/`, holen ihr Geruest aus
 # `_harness.py` und werden hier importiert - Import = ausfuehren.
 import tests.contract.studio_scans          # noqa: F401,E402
 import tests.contract.studio_detection     # noqa: F401,E402

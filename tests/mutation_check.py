@@ -1,4 +1,4 @@
-"""Gezielte Gegenproben: python tests/mutationspruefung.py [--case NAME].
+"""Gezielte Gegenproben: python tests/mutation_check.py [--case NAME].
 
 Jeder Fall läuft zuerst unverändert, danach mit einer entfernten Sicherung in
 einem frischen Prozess. Nur Assertion-Fehler erkennen einen Mutanten; Import-
@@ -60,7 +60,7 @@ CASES = {
 
 def run_check(name: str, mutated: bool) -> int:
     # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
-    # `tests/wurzel` fuer die Testmodule, die `CASES` beim Namen nennt.
+    # `tests/root` fuer die Testmodule, die `CASES` beim Namen nennt.
     for _path in (ROOT, ROOT / "tests" / "root"):
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))

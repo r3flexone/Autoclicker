@@ -151,7 +151,7 @@ check("Quelle steht in der Datei", "idleclans" in _built["_source"])
 _round_file = _sandbox / "rund.json"
 _round_file.write_text(json.dumps(_built), encoding="utf-8")
 _rl = load_catalog(str(_round_file))
-check("was tools/catalog.py schreibt, liest autoclicker/katalog.py",
+check("was tools/catalog.py schreibt, liest autoclicker/catalog.py",
       _rl.category("Godlike Bow") == "Bow" and _rl.value("Bronze Helmet") == 32.0)
 
 

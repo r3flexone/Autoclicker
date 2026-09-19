@@ -65,7 +65,7 @@ abgefangen und als Diagnose gemeldet.
 - `editors/sequence_studio/bridge_contract.py`, `bridge_view.py`,
   `bridge_services.py`, `bridge_editing.py`: Protokoll, Darstellung, Dienste
   und Editor-Kommandos.
-- `editors/sequence_studio/scans.py`: stabile `ScanTeil`-Fassade.
+- `editors/sequence_studio/scans.py`: stabile `ScanPart`-Fassade.
 - `editors/sequence_studio/scan_contract.py`, `scan_state.py`,
   `scan_interaction.py`, `scan_learning.py`, `scan_library.py`: getrennte
   Scan-Verantwortlichkeiten.
@@ -91,12 +91,12 @@ Die Weboberfläche des Studios ist bewusst ohne Framework und ohne Netzwerk:
 Die vollständige lokale Prüfung entspricht der CI-Matrix:
 
 ```bash
-python -m unittest -v test_*.py
+python tests/all_tests.py --mutations
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
 ```
 
-`tests/wurzel/test_regression.py` bindet dabei die große, plattformunabhängige
-Vertragssuite `tests/test_logic.py` ein. Die übrigen Module in `tests/wurzel/`
+`tests/root/test_regression.py` bindet dabei die große, plattformunabhängige
+Vertragssuite `tests/test_logic.py` ein. Die übrigen Module in `tests/root/`
 prüfen Sicherheitsgrenzen,
 Editor-UX, Marktberechnung und Laufzeit-Härtungen. GitHub Actions führt die
 Unit-Tests auf Ubuntu und Windows aus; der Lint läuft separat auf Ubuntu.

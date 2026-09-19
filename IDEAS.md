@@ -101,7 +101,7 @@ mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde),
   und Slots mitwandern, sonst klickt es richtig und erkennt falsch. Und ein Anker, dessen
   Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der gespeicherte
   Stand, einmal gemeldet.
-- **Ansatz:** Feld `fenster_anker` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
+- **Ansatz:** Feld `window_anchor` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
   Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
   gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
   bleiben, wie sie sind.

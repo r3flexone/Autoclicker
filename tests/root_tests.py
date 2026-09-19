@@ -5,10 +5,10 @@ from pathlib import Path
 import sys
 import unittest
 
-# Die Wurzelmodule liegen in `tests/wurzel/`, importieren aber `autoclicker`,
+# Die Wurzelmodule liegen in `tests/root/`, importieren aber `autoclicker`,
 # `main` und `market_analysis` — die stehen im Repo-Wurzelverzeichnis. Beim
-# Aufruf als `python -m tests.wurzeltests` liegt das ohnehin in `sys.path`;
-# ausgeschrieben (`python tests/wurzeltests.py`) nicht. Eine Zeile, und beide
+# Aufruf als `python -m tests.root_tests` liegt das ohnehin in `sys.path`;
+# ausgeschrieben (`python tests/root_tests.py`) nicht. Eine Zeile, und beide
 # Wege funktionieren.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

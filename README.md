@@ -1325,17 +1325,20 @@ Autoclicker-Idleclans/
 │       │   ├── bridge.py     # stabile StudioBridge-Fassade
 │       │   ├── bridge_contract.py, bridge_view.py
 │       │   ├── bridge_services.py, bridge_editing.py
-│       │   ├── scans.py      # stabile ScanTeil-Fassade
+│       │   ├── scans.py      # stabile ScanPart-Fassade
 │       │   ├── scan_contract.py, scan_state.py
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
 │       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
-│       │   ├── bridge_share.py, bridge_tools.py, model.py
+│       │   ├── bridge_share.py, bridge_tools.py, bridge_report.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
 │       ├── slot_editor.py
 │       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
+│       ├── icon_scan_editor.py
+│       ├── sequence_recorder.py       # die Aufnahme (läuft aus dem Maus-Hook)
+│       ├── reclick.py                 # die Klick-Runde (läuft aus dem Maus-Hook)
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
@@ -1360,9 +1363,9 @@ Autoclicker-Idleclans/
 ├── tests/                  # ALLE Tests — drei Schichten und ihre Läufer
 │   ├── all_tests.py       # EIN Aufruf für alles — das vor einem Commit
 │   ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
-│   ├── vertrag/            # weitere Sektionen der Vertragssuite
-│   ├── wurzel/             # Wurzelmodule (unittest): Import/Export, Plattform, Studio
-│   ├── rauch/              # die echte Seite im Browser vor der echten Brücke
+│   ├── contract/           # weitere Sektionen der Vertragssuite
+│   ├── root/               # Wurzelmodule (unittest): Import/Export, Plattform, Studio
+│   ├── smoke/              # die echte Seite im Browser vor der echten Brücke
 │   ├── root_tests.py       # Discovery der Wurzelmodule ohne doppelten Vertragslauf
 │   └── mutation_check.py   # Gegenproben: entfernte Sicherung muss auffallen
 └── tools/                  # Hilfswerkzeuge — hier steht kein Test mehr
@@ -1370,6 +1373,9 @@ Autoclicker-Idleclans/
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
     ├── log_report.py       # Session-Logs auswerten (welcher Schritt hängt?)
     ├── symbol.py           # Programm-Symbol als PNG + ICO schreiben
+    ├── rename.py           # Bezeichner im ganzen Repo umbenennen (token-basiert)
+    ├── rename_tables/      # die Tabellen der Umstellung auf englische Namen
+    ├── llm_bench.py        # LLM-Benennung gegen den eigenen Bestand messen
     ├── slot_tester.py      # Slot-Erkennung testen
     ├── test_llm.py         # LLM-Verbindungstest + Screenshot-Analyse (Werkzeug, kein Test)
     └── test_ocr.py         # OCR-Backend-Test + Texterkennung (Werkzeug, kein Test)
@@ -1485,8 +1491,8 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ```bash
 python tests/all_tests.py                      # alles
-python tests/all_tests.py --only vertrag        # nur die Vertragssuite (schnell)
-python tests/all_tests.py --only rauch --smoke-test werkzeuge   # eine Ansicht
+python tests/all_tests.py --only contract       # nur die Vertragssuite (schnell)
+python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
 python tests/all_tests.py --mutations         # zusätzlich gezielte Gegenproben
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 ```
@@ -1494,8 +1500,8 @@ python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 | Schicht | was sie prüft | braucht |
 |---|---|---|
 | Vertragssuite (`tests/test_logic.py`) | Logik ohne GUI, ohne Windows, ohne Netz | nichts |
-| Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
-| Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
+| Wurzelmodule (`tests/root/`) | Import/Export, Plattformvertrag, Studio-UX, Runtime-Härtung | Pillow |
+| Rauchtests (`tests/smoke/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
 Was fehlt, wird **übersprungen und gesagt**, nicht als Fehler gemeldet. Für die
 volle Abdeckung lohnen sich die optionalen Pakete — ohne OpenCV/Pillow
@@ -1506,8 +1512,8 @@ pip install opencv-python-headless pillow numpy
 pip install playwright && python -m playwright install chromium
 ```
 
-Im Browser-CI gilt `--rauch-pflicht`: Ein fehlender Browser macht diesen Job rot.
-Im Gesamtlauf läuft die Vertragssuite genau einmal; `--only wurzel` und normale
+Im Browser-CI gilt `--smoke-required`: Ein fehlender Browser macht diesen Job rot.
+Im Gesamtlauf läuft die Vertragssuite genau einmal; `--only root` und normale
 Unittest-Discovery behalten den Vertragswrapper. Die PASS-Zahl der Vertragssuite
 zählt einzelne Zusicherungen, nicht unabhängige Testszenarien.
 
