@@ -234,7 +234,7 @@ check("der Schalter nimmt ihn auch wieder weg", _schritt.breakpoint is False)
 _web = (Path(__file__).resolve().parents[2] / "autoclicker" / "editors"
         / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
 check("der Inspektor schaltet ueber block_set/breakpoint",
-      '{field: "breakpoint", value: an}' in _web)
+      '{field: "breakpoint", value: on}' in _web)
 check("die Karte zeigt die Marke", "block.breakpoint" in _web)
 check("die Tafel im Live-Run kennt den Haltepunkt und 'ab hier schrittweise'",
       "m.breakpoint" in _web and '"step"' in _web)

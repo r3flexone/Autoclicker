@@ -89,7 +89,7 @@ def _status_events(events: list) -> list[dict]:
         raus.append({
             "number": i + 1,
             "text": str(event),
-            "zeit": "sofort" if delay is None else f"+{delay:.2f}s",
+            "time": "sofort" if delay is None else f"+{delay:.2f}s",
             "color": list(event.color) if event.color else None,
             "color_text": _color_text(event.color),
         })

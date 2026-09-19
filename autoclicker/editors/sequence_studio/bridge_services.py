@@ -326,7 +326,7 @@ class BridgeServicesMixin:
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
             arguments = {"file": str(self.filepath), "sequence": self.board.name}
         if command == "schedule":
-            zeit = str((data or {}).get("zeit") or "").strip()
+            zeit = str((data or {}).get("time") or "").strip()
             if not zeit:
                 return self._report("Bitte eine Startzeit eingeben.", "warn")
             arguments["time"] = zeit
@@ -731,7 +731,7 @@ class BridgeServicesMixin:
         # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
         # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
         foreign = self._changed_externally(old)
-        if foreign and not (data or {}).get("erzwingen"):
+        if foreign and not (data or {}).get("force"):
             self._ask = {
                 "kind": "save",
                 "title": "Ausserhalb geändert",

@@ -46,10 +46,10 @@ class ScanInteractionMixin:
         if modus in (MODUS_REGION, MODUS_AKTION) and not self._region_ziel:
             return self._scan_report(
                 "Erst einen Boss- bzw. Icon-Scan öffnen.", "warn")
-        if "fixiert" in (data or {}):
-            self.scan_werkzeug_fixiert = bool((data or {}).get("fixiert"))
+        if "pinned" in (data or {}):
+            self.scan_werkzeug_fixiert = bool((data or {}).get("pinned"))
         if (modus == self.scan_modus and modus != MODUS_WAHL
-                and "fixiert" not in (data or {})):
+                and "pinned" not in (data or {})):
             self._ecke = None
             self._suchbereich = None
             self.scan_modus = MODUS_WAHL
@@ -137,7 +137,7 @@ class ScanInteractionMixin:
             return self._click_region(x, y)
         if self.scan_modus == MODUS_AKTION:
             return self._click_action(x, y)
-        return self._click_select(x, y, bool((data or {}).get("zusatz")))
+        return self._click_select(x, y, bool((data or {}).get("additive")))
 
     def _click_slot(self, x: int, y: int) -> dict:
         """Zwei Ecken ergeben einen Slot — der Weg, den der Nutzer verlangt hat.

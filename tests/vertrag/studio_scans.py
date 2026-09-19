@@ -145,7 +145,7 @@ try:
             # Auswaehlen aktiv. Fuer zwanzig Slots laesst es sich anheften.
             check("ein einmaliges Werkzeug kehrt zum Auswaehlen zurueck",
                   _z18["mode"] == _MW18)
-            _b18.scan_mode_set({"mode": _MS18, "fixiert": True})
+            _b18.scan_mode_set({"mode": _MS18, "pinned": True})
             _b18.scan_click({"x": 260, "y": 260})
             _z18 = _b18.scan_click({"x": 200, "y": 200})
             check("auch von rechts unten nach links oben",
@@ -176,7 +176,7 @@ try:
             _b18.slots["Winzling"] = _SLOT8(name="Winzling",
                                             scan_region=(340, 40, 342, 42),
                                             click_pos=(341, 41))
-            _b18.scan_mode_set({"mode": _MW18, "fixiert": False})
+            _b18.scan_mode_set({"mode": _MW18, "pinned": False})
             _z18 = _b18.scan_click({"x": 344, "y": 44})
             check("ein winziger Slot ist auch daneben noch zu treffen",
                   _z18["choice"]["name"] == "Winzling")
@@ -243,10 +243,10 @@ try:
             # STRG nimmt einzelne dazu und wieder heraus. Vorher einen normalen
             # Klick, sonst waere "dazu" von "nur dieser" nicht zu unterscheiden.
             _b18.scan_click({"x": 210, "y": 210})
-            _z18 = _b18.scan_click({"x": 130, "y": 130, "zusatz": True})
+            _z18 = _b18.scan_click({"x": 130, "y": 130, "additive": True})
             check("STRG-Klick nimmt einen Slot zur Auswahl DAZU",
                   sorted(_z18["selection"]) == ["Slot 1", "Slot 2"])
-            _z18 = _b18.scan_click({"x": 130, "y": 130, "zusatz": True})
+            _z18 = _b18.scan_click({"x": 130, "y": 130, "additive": True})
             check("nochmal darauf nimmt ihn wieder heraus",
                   _z18["selection"] == ["Slot 2"])
 
@@ -318,7 +318,7 @@ try:
                   and Path("sequences/s/templates", _i18["template"]).exists())
             check("gelernt heisst nicht stumm", _i18["silent"] is False)
             check("die Vorschau kommt auf Nachfrage",
-                  _b18.scan_preview({"namen": [_i18["name"]]})[_i18["name"]]
+                  _b18.scan_preview({"names": [_i18["name"]]})[_i18["name"]]
                   .startswith("data:image/png;base64,"))
 
             # --- Die drei Schritte zu einem Scan ---
@@ -713,7 +713,7 @@ check("der Quellenstand wird nicht neben dem Vollbild-Knopf eingequetscht",
 check("die Slot-Suche nimmt Ecken in der mittleren Buehne an",
       'function scanSearchPositionFromStage(e)' in _html18
       and 'SC.mode !== "find"' in _html18
-      and 'buehne.addEventListener("click"' in _html18)
+      and 'stage.addEventListener("click"' in _html18)
 check("und begrenzt sie auf die vorhandenen Bildpixel",
       'bx = Math.max(0, Math.min(SC.photo.width, bx));' in _html18
       and 'by = Math.max(0, Math.min(SC.photo.height, by));' in _html18)
@@ -734,8 +734,8 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 # einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
 _maske18 = _html18[_html18.index("function scanItemCard("):]
 _maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
-for _feld18, _was18 in (('cardName("item"', "Name"), ('setze("category"', "Kategorie"),
-                        ('setze("priority"', "Prioritaet")):
+for _feld18, _was18 in (('cardName("item"', "Name"), ('setter("category"', "Kategorie"),
+                        ('setter("priority"', "Prioritaet")):
     check(f"die Maske setzt {_was18}", _feld18 in _maske18)
 
 # Und dieselbe Sache steht NICHT zweimal da. Der Inspektor als eigener Ort ist
@@ -774,7 +774,7 @@ check("die Lernvorschau ist als symmetrisches Raster gebaut",
       and 'class: "scan-review-image"' in _html18
       and ".scan-review-image{grid-area:bild;width:82px;height:82px" in _html18)
 check("gelernte Items haben nur Bild und Felder als Spalten",
-      'maske.classList.add("scan-item-card")' in _html18
+      'card.classList.add("scan-item-card")' in _html18
       and ".scan-card.scan-item-card{grid-template-columns:34px 56px minmax(0,1fr)}"
           in _html18)
 check("ein zweiter Klick klappt ein geoeffnetes Item wieder zu",
@@ -792,7 +792,7 @@ check("Scans werden als Maske gebaut", "function scanScanCard(" in _html18)
 check("der gefuehrte Bereich hat ein klar beschriftetes Scan-Namensfeld",
       'id="scan-name"' in _html18
       and 'callScan("scan_set", {name: SC.open, field: "name"' in _html18
-      and 'namensfeld.disabled = !open;' in _html18)
+      and 'nameField.disabled = !open;' in _html18)
 _bauform18 = [_n18 for _n18 in ("scanItemCard", "scanSlotCard", "scanScanCard")
               if "buildCard(" not in _html18[_html18.index(f"function {_n18}("):
                                               _html18.index(f"function {_n18}(") + 3000]]
@@ -822,7 +822,7 @@ check("ID-Kachel und Vorschaubild haben feste einheitliche Breiten",
 check("keine dritte Liste fuer die Mitgliedschaft",
       "hakenListe(" not in _html18 and "hakenZeile(" not in _html18)
 check("die Maske braucht keinen Mitgliedschaftshaken mehr",
-      "function maskeHaken(art, name, dabei, marke)" not in _html18)
+      "function maskeHaken(art, name, dabei, badge)" not in _html18)
 # Die Regel „gehoert dazu ODER wird gerade gesehen" stand in `hakenListe` — sie
 # muss den Umzug ueberlebt haben, sonst verschwindet genau die Auskunft, fuer
 # die es das Merkmal gibt: das Item kennt ein anderes Spiel schon, lerne es
@@ -853,13 +853,13 @@ check("kein scanfremder Eintrag wird blass dargestellt",
 check("Vorlage, Marker und Konfidenz baut EINE Funktion",
       _html18.count("function scanItemDetails(") == 1)
 check("die Maske klappt sie beim Gewaehlten auf",
-      "(kasten) => scanItemDetails(kasten, i)" in _html18)
+      "(boxEl) => scanItemDetails(boxEl, i)" in _html18)
 # Dasselbe fuer Slot und Scan: EIN Detailteil je Art, gerufen aus der Bauform.
 for _art18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
     check(f"{_art18} gibt es genau einmal",
           _html18.count(f"function {_art18}(") == 1)
     check(f"und die Maske klappt {_art18} auf",
-          f"(kasten) => {_art18}(kasten, {_bau18})" in _html18)
+          f"(boxEl) => {_art18}(boxEl, {_bau18})" in _html18)
 
 # **Waehlen ist der Normalfall, tippen die Ausnahme.** Ein freies Textfeld
 # allein macht aus „Helme" und „helme" zwei Kategorien - und Items derselben
@@ -1028,7 +1028,7 @@ try:
                             _html18.index("function scanSlotState(")]
     check("jede Slot-Kachel baut einen echten Ein-Aus-Schalter",
           'type: "checkbox"' in _slot_maskeN
-          and 'setze("active", box.checked)' in _slot_maskeN
+          and 'setter("active", box.checked)' in _slot_maskeN
           and '"aria-label": s.name + " ein- oder ausschalten"' in _slot_maskeN)
     check("der nutzlose Daneben-Knopf ist vollständig entfernt",
           "scan_slot_doppeln" not in _html18)
@@ -1048,7 +1048,7 @@ try:
                             _html18.index("function scanItemState(")]
     check("jede Item-Kachel baut einen echten Ein-Aus-Schalter",
           'type: "checkbox"' in _item_maskeN
-          and 'setze("active", box.checked)' in _item_maskeN
+          and 'setter("active", box.checked)' in _item_maskeN
           and '"aria-label": i.name + " ein- oder ausschalten"' in _item_maskeN)
     _bN.scan_toggle_all({"kind": "slot", "active": False})
     check("Alle aus schaltet wirklich jeden Slot aus",
@@ -1068,9 +1068,9 @@ try:
           all(i.enabled for i in _bN.items.values()))
     check("der wechselnde Sammelknopf steht direkt bei der Sortierung",
           '"↕ Sortieren"' in _html18
-          and 'irgendAn ? "Alle aus" : "Alle ein"' in _html18
-          and 'const irgendAn = eintraege.some((e) => !!e.active)' in _html18
-          and '{kind: kind, active: !irgendAn}' in _html18)
+          and 'anyOn ? "Alle aus" : "Alle ein"' in _html18
+          and 'const anyOn = entries.some((e) => !!e.active)' in _html18
+          and '{kind: kind, active: !anyOn}' in _html18)
 finally:
     _os.chdir(_cwdN)
     shutil.rmtree(_sandN, ignore_errors=True)
@@ -1273,7 +1273,7 @@ section("Der Fokus ueberlebt ein Umbenennen")
 # haengt.** Ohne den Hinweis suchte `restoreFocus()` nach dem alten Namen und
 # fand nichts; genau beim Namen tippt man aber, und genau dort faellt es auf.
 check("wer umbenennt, sagt die neue id an",
-      "function focusRename(von, nach)" in _html18)
+      "function focusRename(fromName, toName)" in _html18)
 check("und cardName() tut es fuer alle drei Arten",
       "focusRename(cardId(kind, name), cardId(kind, neu));" in _html18)
 # **Umbenennen aendert den Namen, nicht den Rang.** Die gemerkte Reihenfolge
@@ -1285,15 +1285,15 @@ check("und der Rang wird ebenfalls nachgezogen",
 # Lehnt die Bruecke den neuen Namen ab, heisst das Item weiter wie vorher —
 # und behaelt trotzdem seinen Platz.
 check("beide Namen stehen dafuer im Merkposten",
-      "merk.splice(i, 1, {name: neu, group: merk[i].group}, merk[i]);" in _html18)
+      "memo.splice(i, 1, {name: neu, group: memo[i].group}, memo[i]);" in _html18)
 check("rememberFocus loest den Hinweis genau einmal ein",
       "const renamed = focusRenamed;" in _html18
       and "focusRenamed = null;" in _html18)
 # Lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst die Maske
 # danach weiter wie vorher — und der Fokus soll trotzdem stehen bleiben.
 check("und die alte id bleibt als Rueckfall",
-      "alt: kasten.id" in _html18
-      and "document.getElementById(merk.id)\n              || document.getElementById(merk.alt)" in _html18)
+      "alt: boxEl.id" in _html18
+      and "document.getElementById(memo.id)\n              || document.getElementById(memo.alt)" in _html18)
 
 
 # ============================================================================
@@ -1304,9 +1304,9 @@ section("Prioritaeten: welche vergeben sind, und was ein neues Item bekommt")
 # ist oder fehlt, sah man erst, wenn man P1, P3, P4 las und selbst nachzaehlte.
 check("die Uebersicht spannt jeden Rang auf, nicht nur die belegten",
       "function priorityAllocation(category)" in _html18
-      and "for (let p = 1; p <= hoechste + 1; p += 1)" in _html18)
+      and "for (let p = 1; p <= highestRank + 1; p += 1)" in _html18)
 check("ein freier Rang wird als Luecke gezeichnet",
-      '"P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", "))' in _html18
+      '"P" + r.rank + " · " + (free ? "frei" : r.names.join(", "))' in _html18
       and ".priority-chip.free{border:1px dashed" in _html18)
 # Eine getippte P99 darf das nicht auf hundert Kacheln aufspannen.
 check("und eine Ausreisser-Zahl spannt sie nicht auf",
@@ -1318,7 +1318,7 @@ check("eine doppelte Prioritaet faellt schon in der Liste auf",
       "function priorityDuplicate(item)" in _html18
       and '"P" + i.priority + " doppelt"' in _html18)
 check("und das Feld selbst ist markiert",
-      'class: kollision.length ? "duplicate" : ""' in _html18
+      'class: collision.length ? "duplicate" : ""' in _html18
       and ".scan-card input.duplicate{" in _html18)
 
 _sandP = tempfile.mkdtemp(prefix="studioprio_")
@@ -1378,8 +1378,8 @@ section("Die Liste sortiert sich beim Laden, nicht beim Tippen")
 check("die Reihenfolge wird gemerkt", "let scanOrder = {item: null, slot: null}"
       in _html18)
 check("und beim Zeichnen angewandt statt neu gerechnet",
-      "const rang = scanOrderRank(\"item\");" in _html18
-      and "rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)" in _html18)
+      "const rankNr = scanOrderRank(\"item\");" in _html18
+      and "rankNr ? (rankNr(a.name) - rankNr(b.name)) || fresh(a, b)" in _html18)
 # **Die Kategorie war der erste Sortierschluessel und damit das letzte Feld,
 # das die Zeile noch wegspringen liess.** Steht eine gemerkte Reihenfolge, gilt
 # ausschliesslich sie — auch fuer die Gruppen.
@@ -1387,7 +1387,7 @@ check("mit Merkposten entscheidet nur er",
       "function scanOrderGroup(kind)" in _html18
       and "const group = scanOrderGroup(\"item\");" in _html18)
 check("die Ueberschrift kommt aus der eingefrorenen Gruppe",
-      "const gefroren = group ? group(i.name) : null;" in _html18)
+      "const frozen = group ? group(i.name) : null;" in _html18)
 # Sonst reisst ein gerade geaendertes Item eine zweite Ueberschrift mitten in
 # die Liste — wohin es wandert, sagt stattdessen seine Zustandszeile.
 check("und der Wechsel wird an der Maske angesagt",
@@ -1420,7 +1420,7 @@ check("und beim Laden sortiert es von selbst",
 # Reiterleiste nach drei Umdrehungen weg — und mit ihr der Weg in eine andere
 # Liste, der Speichern-Knopf und das Rueckgaengig.
 check("Reiter und Filter stehen im Kopf, nicht in der Liste",
-      "kopf.appendChild(tabs);" in _html18)
+      "head.appendChild(tabs);" in _html18)
 check("und der Kopf klebt oben",
       ".scan-header{position:sticky;top:0" in _html18
       and 'class: "section scan-header"' in _html18)
@@ -1705,7 +1705,7 @@ try:
             n = 0
             while (getattr(b, "_autoname", None) or {}).get("open"):
                 if schritte is not None and n >= schritte:
-                    return b.scan_autoname_end({"abgebrochen": True})
+                    return b.scan_autoname_end({"cancelled": True})
                 b.scan_autoname_step()
                 n += 1
             return b.scan_autoname_end()
@@ -1715,7 +1715,7 @@ try:
 
         _ba = _bau_an()
         _vorher_an = _ba.scan_data()["undo"]["depth"]
-        _erg_an = _durchlauf_an(_ba, {"alle": True})
+        _erg_an = _durchlauf_an(_ba, {"all_items": True})
         check("'alle' benennt jedes Item mit Vorlage, nicht nur die Kategorie 'Auto'",
               "Godlike Bow" in _ba.items and "Citadel Helmet" in _ba.items)
         # Ein Item ohne Vorlage hat nichts, was man dem Modell zeigen koennte —
@@ -1743,7 +1743,7 @@ try:
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, "")
         _bl = _bau_an()
         _leer_an = _bl.scan_data()["undo"]["depth"]
-        _erg_leer = _durchlauf_an(_bl, {"alle": True})
+        _erg_leer = _durchlauf_an(_bl, {"all_items": True})
         check("erkennt das Modell nichts, entsteht kein Rueckgaengig-Stand",
               _bl.scan_data()["undo"]["depth"] == _leer_an)
         check("und die Meldung sagt, wie viele ohne Vorschlag blieben",
@@ -1782,7 +1782,7 @@ try:
             _bk.scan_offen = "S"
             _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
             _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_kat_namen, None), "")
-            _erg_kat = _durchlauf_an(_bk, {"alle": True})
+            _erg_kat = _durchlauf_an(_bk, {"all_items": True})
             check("ein Katalogname bleibt woertlich stehen",
                   "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
             # Ueber `.get()`, damit ein roter erster Check die restliche Suite
@@ -1821,7 +1821,7 @@ try:
         _lv_an.suggest_item_name_with_reason = _erst_timeout
         _bt = _bau_an()
         _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to = _durchlauf_an(_bt, {"alle": True})
+        _erg_to = _durchlauf_an(_bt, {"all_items": True})
         check("nach einem Timeout wird einmal wiederholt", len(_versuche_an) == 2)
         check("und der zweite Versuch bekommt mehr Zeit",
               _versuche_an[1] > _versuche_an[0])
@@ -1832,7 +1832,7 @@ try:
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, _TO_an)
         _bt2 = _bau_an()
         _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to2 = _durchlauf_an(_bt2, {"alle": True})
+        _erg_to2 = _durchlauf_an(_bt2, {"all_items": True})
         _txt_to = _erg_to2["status"]["text"]
         check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
               "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
@@ -1847,7 +1847,7 @@ try:
         # Gegenstand.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bd = _bau_an()
-        _erg_dop = _durchlauf_an(_bd, {"alle": True})
+        _erg_dop = _durchlauf_an(_bd, {"all_items": True})
         check("derselbe Name legt kein zweites Item an",
               "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
         check("die zweite Vorlage haengt als Variante am Item",
@@ -1867,7 +1867,7 @@ try:
         _abb_namen = iter(["Godlike Bow", "Citadel Helmet"])
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_abb_namen, None), "")
         _bab = _bau_an()
-        _erg_abb = _durchlauf_an(_bab, {"alle": True}, schritte=1)
+        _erg_abb = _durchlauf_an(_bab, {"all_items": True}, schritte=1)
         # Was bis dahin benannt wurde, bleibt stehen: es wegzuwerfen hiesse,
         # eine Modell-Antwort zu verbrennen, weil man die zweite nicht mehr
         # abwarten wollte — und STRG+Z holt den ganzen Durchgang zurueck.
@@ -1885,7 +1885,7 @@ try:
         # des Schritts: die Seite baut sich nach jeder Bruecken-Antwort neu auf.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bfs = _bau_an()
-        _bfs.scan_autoname_start({"alle": True})
+        _bfs.scan_autoname_start({"all_items": True})
         _stand_an = _bfs.scan_data()["autoname"]
         check("die Momentaufnahme traegt den Fortschritt",
               _stand_an and _stand_an["total"] == 2 and _stand_an["done"] == 0)
@@ -1898,7 +1898,7 @@ try:
         # Feld; die Momentaufnahme sagt ihm, ob das LLM ueberhaupt an ist.
         _quelle_an = studio_web_source()
         check("die Seite treibt den Durchgang selbst",
-              "scanAutonameRun({alle: true})" in _quelle_an
+              "scanAutonameRun({all_items: true})" in _quelle_an
               and 'callScan("scan_autoname_start"' in _quelle_an
               and 'callScan("scan_autoname_step"' in _quelle_an
               and 'callScan("scan_autoname_end"' in _quelle_an)

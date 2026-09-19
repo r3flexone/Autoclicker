@@ -62,7 +62,7 @@ class ScanLearningMixin:
 
     def scan_learn_preview(self, data: Optional[dict] = None) -> dict:
         """Bereitet mehrere Items vor, ohne Bestand oder Templates zu veraendern."""
-        scope = str((data or {}).get("scope") or "alle")
+        scope = str((data or {}).get("scope") or "all")
         slots = self._selection_slots() if scope == "selection" else self._scan_slots()
         if not slots:
             return self._scan_report("Keine Slots fuer die Lernvorschau.", "warn")
@@ -546,7 +546,7 @@ class ScanLearningMixin:
         (`_scan_slots()`/`_candidates()`) — eine ausdrueckliche Auswahl gewinnt,
         sonst gilt der offene Scan und ohne Scan der Bestand.
         """
-        names = [str(n) for n in ((data or {}).get("namen") or [])]
+        names = [str(n) for n in ((data or {}).get("names") or [])]
         if names:
             return [self.items[n] for n in names if n in self.items]
         return list(self._candidates())
@@ -748,12 +748,12 @@ class ScanLearningMixin:
         `_candidates()` — der offene Scan, sonst der Bestand —, dieselbe Regel
         wie bei jeder anderen Sammel-Aktion des Reiters.
         """
-        names = [str(n) for n in ((data or {}).get("namen") or [])]
+        names = [str(n) for n in ((data or {}).get("names") or [])]
         if names:
             return ([i for i in self.items.values()
                      if i.name in names and i.template_names()],
                     "Keines der gewählten Items hat eine Vorlage.")
-        if (data or {}).get("alle"):
+        if (data or {}).get("all_items"):
             return ([i for i in self._candidates() if i.template_names()],
                     "Kein Item mit Vorlage gefunden — erst Items lernen, "
                     "dann benennen.")
@@ -965,7 +965,7 @@ class ScanLearningMixin:
         if not lauf:
             return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
         self._autoname = None
-        abgebrochen = bool((data or {}).get("abgebrochen"))
+        abgebrochen = bool((data or {}).get("cancelled"))
         remaining = len(lauf["open"])
         checked = lauf["total"] - remaining
         kopf = (str(lauf["renamed"]) + " von " + str(checked)

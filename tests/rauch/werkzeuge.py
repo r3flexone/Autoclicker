@@ -98,13 +98,13 @@ def lauf():
         # Falle wie einmal beim Status („Zustandsklassen bekommen ein Praefix").
         f.klick(".wz-nav.check")
         kompakt = f.seite.eval_on_selector_all(".wz-info-compact", """ns => ns.map(n => ({
-          klasse: n.className,
+          cls: n.className,
           text: (n.textContent || "").trim(),
-          breit: Math.round(n.getBoundingClientRect().width),
+          width: Math.round(n.getBoundingClientRect().width),
           links: Math.round(n.getBoundingClientRect().left)}))""")
         pruefe(kompakt, "kein einziger Hinweis mit ⓘ im Werkzeuge-Reiter")
         for k in kompakt:
-            pruefe("info" not in k["klasse"].split(),
+            pruefe("info" not in k["cls"].split(),
                    f"der Hinweiskasten traegt die ⓘ-Knopfklasse: {k}")
             pruefe(len(k["text"]) > 3, f"Hinweis ohne sichtbaren Titel: {k}")
             pruefe(k["links"] >= 0, f"Hinweis laeuft links aus dem Fenster: {k}")

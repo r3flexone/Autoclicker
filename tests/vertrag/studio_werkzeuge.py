@@ -322,7 +322,7 @@ section("Studio: Phasen-Zeiten skalieren und Block testen")
 try:
     _sand, _b = _sandkasten()
     _loop_index = next(i for i, lane in enumerate(_b.board.lanes) if lane.kind == "loop")
-    _b.phase_scale({"phase": _loop_index, "faktor": "0,5"})
+    _b.phase_scale({"phase": _loop_index, "factor": "0,5"})
     check("die Wartezeit wird mit deutschem Komma skaliert",
           _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
     _bf.COMMAND_PATH = _P("befehl.json")
@@ -399,7 +399,7 @@ check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messw
           "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung",
           "wird auch benutzt von")))
 check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
-      "const auswirkung = b.else_action" in _inspektor_ui
+      "const effect = b.else_action" in _inspektor_ui
       and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspektor_ui)
 
 section("Studio-Aufnahme: kein unsichtbarer Prompt und kein UI-Klick im Block")
@@ -495,7 +495,7 @@ try:
     check("ihre laufenden Nummern bleiben erhalten",
           [z["number"] for z in _live] == [2, 3, 4])
     check("Zeit, Klick und Farbname stehen getrennt zur Darstellung bereit",
-          _live[-1]["zeit"] == "+2.61s" and
+          _live[-1]["time"] == "+2.61s" and
           _live[-1]["text"] == "Klick (1378, 756)" and
           "Dunkelrot (123,51,65)" in _live[-1]["color_text"])
     _live_state = _State(recording_active=True, recording_events=_live_events)

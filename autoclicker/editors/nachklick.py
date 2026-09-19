@@ -582,7 +582,7 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
                     e for e in state.reclick_set if e[0] != point_id]
                 state.reclick_set.append((point_id, old, (x, y), color))
             state.reclick_history.append(
-                (point_id, "passt" if gleich else "placed"))
+                (point_id, "fits" if gleich else "placed"))
             state.reclick_index += 1
             fertig = state.reclick_index >= len(state.reclick_points)
 

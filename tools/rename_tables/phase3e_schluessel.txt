@@ -153,3 +153,12 @@ setzen=set_value
 beginn=begin
 unten=bottom
 standard=defaults
+
+# Nachtrag: Eingabe-Schluessel der Seite an die Bruecke, die auch JS-Lokale sind
+# (der Lokalen-Durchgang darf sie nicht allein umbenennen).
+namen=names
+zeit=time
+faktor=factor
+erzwingen=force
+fixiert=pinned
+abgebrochen=cancelled

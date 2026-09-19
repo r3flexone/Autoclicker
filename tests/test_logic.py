@@ -4490,7 +4490,7 @@ check("die Momentaufnahme zeigt denselben Zustand an",
 _b9.block_trigger({"choice": _TWEG8})
 check("Umschalten auf WEG dreht nur die Richtung",
       _s9.wait_condition.until_gone is True and _s9.wait_condition.point_id == 1)
-_b9.block_trigger({"choice": _TWEG8, "pruefen": True})
+_b9.block_trigger({"choice": _TWEG8, "check_only": True})
 check("'nur pruefen' ist eine eigene Eigenschaft, kein vierter Zustand",
       _s9.wait_condition.check_only is True and _s9.wait_condition.until_gone is True)
 _b9.block_trigger({"choice": _TKEIN8})
@@ -5461,7 +5461,7 @@ try:
     check("die Frage nennt die Datei",
           "sequence.json" in (_z18["question"] or {}).get("text", ""))
 
-    _z18 = _b18.save({"erzwingen": True})
+    _z18 = _b18.save({"force": True})
     check("mit Erzwingen wird geschrieben",
           _z18["question"] is None and "foreign" not in
           Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
@@ -5602,10 +5602,10 @@ try:
     # zwoelf Sekunden fast geschafft, bei 300 s Timeout gerade erst angefangen.
     _stat16.write_status(_fs16, {"block": 5}, sofort=True)
     _time16.sleep(0.25)     # Setzen ist gedrosselt wie jeder andere Schreibvorgang
-    _stat16.waiting_for(_fs16, {"kind": "zeit", "text": "Vor Klick", "since": 1.0,
+    _stat16.waiting_for(_fs16, {"kind": "time", "text": "Vor Klick", "since": 1.0,
                            "until": 7.0, "total": 6.0})
     check("der Warte-Teil kommt in die Datei",
-          _lauf16().get("waiting", {}).get("kind") == "zeit")
+          _lauf16().get("waiting", {}).get("kind") == "time")
     check("und laesst den Rest des Zustands stehen", _lauf16().get("block") == 5)
     # Das Abmelden umgeht die Drossel: zwischen "Farbe erkannt" und dem naechsten
     # Block liegt noch die eigene Aktion des Schritts - solange stuende in der
@@ -5760,7 +5760,7 @@ try:
     # dem Moment leer, in dem man sie ansieht: direkt nachdem etwas fertig
     # geworden ist.
     _stat16.write_status(_fs16, {"active": True, "sequence": "S", "phase": "A",
-                             "phase_pos": 1, "block": 5, "waiting": {"kind": "zeit"}},
+                             "phase_pos": 1, "block": 5, "waiting": {"kind": "time"}},
                      sofort=True)
     _stat16.finish_run(_fs16, "alle Zyklen durchgelaufen", 12, 90.5)
     _ende16 = _lauf16()

@@ -22,7 +22,7 @@ def aufbau():
         b.scan_mode_set({"mode": "slot"})
         b.scan_click({"x": sx, "y": sy})
         b.scan_click({"x": sx + 62, "y": sy + 60})
-    b.scan_learn_preview({"scope": "alle"})
+    b.scan_learn_preview({"scope": "all"})
     b.scan_learn_preview_apply({})
     b.scan_recognize()
     return b, len(ecken)

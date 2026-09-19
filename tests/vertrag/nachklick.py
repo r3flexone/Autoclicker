@@ -602,14 +602,14 @@ try:
     _klick(_s12, 200, 200, None)
     _st2 = _stand()
     check("ein bestaetigter Punkt heisst 'passt', nicht 'uebersprungen'",
-          [v["kind"] for v in _st2["history"]] == ["placed", "passt"])
+          [v["kind"] for v in _st2["history"]] == ["placed", "fits"])
     check("und zaehlt trotzdem nicht als Aenderung", _st2["changed"] == 1)
 
     _skip(_s12)
     _st3 = _stand()
     check("ein uebersprungener steht als solcher im Verlauf",
           [v["kind"] for v in _st3["history"]]
-          == ["placed", "passt", "skipped"])
+          == ["placed", "fits", "skipped"])
 
     # Der dritte Punkt WAR der letzte — die Runde endet damit von selbst, und
     # der Abschluss traegt den vollstaendigen Verlauf. Wuerde er erst nach dem

@@ -260,7 +260,7 @@ class ScanDetectMixin:
             # erkannt — nur noch per OCR/LLM. Das ist keine Warnung, sondern
             # eine Auskunft: der Reiter sagt daneben, ob OCR überhaupt an ist.
             "detection": ("template" if b.template
-                          else ("marker" if b.marker_colors else "keine")),
+                          else ("marker" if b.marker_colors else "none")),
         }
 
     def _icon_scan_json(self, cfg: IconScanConfig) -> dict:
@@ -278,7 +278,7 @@ class ScanDetectMixin:
             "action_key": cfg.action_key,
             "delay": cfg.action_delay,
             "detection": ("template" if cfg.template
-                          else ("marker" if cfg.marker_colors else "keine")),
+                          else ("marker" if cfg.marker_colors else "none")),
             # **Der Ausschnitt zeigt, was der Scan sieht.** Nur für den offenen:
             # bei zwanzig Icon-Scans wären das zwanzig Bilder in jeder
             # Momentaufnahme, und neunzehn davon sieht niemand an.

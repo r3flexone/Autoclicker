@@ -286,7 +286,7 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
 
         # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
         # Hier zugleich das Lebenszeichen: `waiting_for()` schreibt mit.
-        status.waiting_for(state, {"kind": "zeit", "text": message,
+        status.waiting_for(state, {"kind": "time", "text": message,
                               "since": time.time() - (seconds - remaining),
                               "until": time.time() + remaining,
                               "total": round(seconds, 2)})

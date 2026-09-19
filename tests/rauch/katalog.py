@@ -217,14 +217,14 @@ def lauf():
         f.ruhe()
         raus = f.seite.evaluate("""() => {
             const mitte = document.getElementById('cfg-fields');
-            const grenze = mitte.getBoundingClientRect().right;
-            const raus = [];
+            const limit = mitte.getBoundingClientRect().right;
+            const out = [];
             mitte.querySelectorAll('.cfg-rights > *').forEach((k) => {
               const r = k.getBoundingClientRect();
-              if (r.width && r.right > grenze + 1)
-                raus.push((k.textContent || '').slice(0, 40));
+              if (r.width && r.right > limit + 1)
+                out.push((k.textContent || '').slice(0, 40));
             });
-            return raus;
+            return out;
         }""")
         pruefe(not raus, f"ragt aus der Spalte: {raus}")
 

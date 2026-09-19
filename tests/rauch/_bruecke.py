@@ -46,10 +46,10 @@ window.pywebview = {api: new Proxy({}, {get: (t, name) => async (d) => {
 # Gliedern einer Kette liegen (Neuaufbau -> Vorschau nachladen -> Neuaufbau).
 _RUHE = """(ms) => new Promise((res, rej) => {
   const start = performance.now();
-  let ruhig = 0;
+  let quiet = 0;
   const tick = () => {
-    if ((window.__offen || 0) === 0) { if (++ruhig >= 2) return res(true); }
-    else ruhig = 0;
+    if ((window.__offen || 0) === 0) { if (++quiet >= 2) return res(true); }
+    else quiet = 0;
     if (performance.now() - start > ms)
       return rej(new Error("Seite kommt nicht zur Ruhe: " + window.__offen
                            + " Bruecken-Aufruf(e) offen"));

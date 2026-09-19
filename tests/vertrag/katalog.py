@@ -277,7 +277,7 @@ try:
           _b.items["Citadel Helmet"].category is None)
 
     # Eine ausdrueckliche Auswahl gewinnt ueber den ganzen Scan.
-    _b.scan_catalog_apply({"namen": ["Citadel Helmet"]})
+    _b.scan_catalog_apply({"names": ["Citadel Helmet"]})
     check("mit Auswahl wirkt es nur auf die Auswahl",
           _b.items["Citadel Helmet"].category == "Helm"
           and _b.items["Centaurs Helmet"].category is None)

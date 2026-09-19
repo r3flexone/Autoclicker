@@ -87,7 +87,7 @@ class BridgeEditingMixin:
         if lane is None:
             return self._report("Phase nicht gefunden.", "err")
         try:
-            faktor = float(str((data or {}).get("faktor") or "").replace(",", "."))
+            faktor = float(str((data or {}).get("factor") or "").replace(",", "."))
         except ValueError:
             return self._report("Der Faktor muss eine Zahl sein.", "warn")
         if faktor <= 0:
@@ -633,8 +633,8 @@ class BridgeEditingMixin:
             setattr(step, field, cond)
         if wahl in (TRIGGER_DA, TRIGGER_WEG):
             cond.until_gone = (wahl == TRIGGER_WEG)
-        if "pruefen" in data:
-            cond.check_only = bool(data["pruefen"])
+        if "check_only" in data:
+            cond.check_only = bool(data["check_only"])
         if data.get("point") is not None:
             point = self._point(data["point"])
             if point is not None:

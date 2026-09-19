@@ -82,14 +82,14 @@ class ItemscanEditorUxTest(unittest.TestCase):
         state = self.bridge.scan_click({"x": 115, "y": 60})
         self.assertEqual(state["mode"], MODUS_WAHL)
 
-        self.bridge.scan_mode_set({"mode": MODUS_SLOT, "fixiert": True})
+        self.bridge.scan_mode_set({"mode": MODUS_SLOT, "pinned": True})
         self.bridge.scan_click({"x": 65, "y": 15})
         state = self.bridge.scan_click({"x": 115, "y": 65})
         self.assertEqual(state["mode"], MODUS_SLOT)
         self.assertTrue(state["tool_pinned"])
 
     def test_learning_review_does_not_mutate_until_confirmed(self):
-        state = self.bridge.scan_learn_preview({"scope": "alle"})
+        state = self.bridge.scan_learn_preview({"scope": "all"})
         self.assertEqual(self.bridge.items, {})
         self.assertIsNotNone(state["review"])
         self.assertFalse(Path("sequences/test/templates").exists())
@@ -118,7 +118,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # Dieser Test prüft die Vorschau mit einem vorgegebenen Treffer;
         # die echte Bilderkennung wird separat mit OpenCV geprüft.
         with matcher, compatible, patch.object(self.bridge, "_has_opencv", return_value=True):
-            state = self.bridge.scan_learn_preview({"scope": "alle"})
+            state = self.bridge.scan_learn_preview({"scope": "all"})
             row = state["review"]["rows"][0]
             self.assertEqual(
                 (row["name"], row["category"], row["priority"]),
@@ -143,7 +143,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("bearbeitet", state["status"]["text"])
 
         with matcher, compatible, patch.object(self.bridge, "_has_opencv", return_value=True):
-            state = self.bridge.scan_learn_preview({"scope": "alle"})
+            state = self.bridge.scan_learn_preview({"scope": "all"})
             row = state["review"]["rows"][0]
             self.assertEqual(row["name"], "Bogen")
             self.assertEqual((row["category"], row["priority"]), ("Fernkampf", 2))
@@ -170,7 +170,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("wird nicht gelernt oder geändert", js)
         self.assertNotIn("wird aus diesem Scan entfernt", js)
         self.assertIn("als_anders: n.dataset.alsAnderes", js)
-        self.assertIn("kat.lock(bestehend && !normalerTreffer)", js)
+        self.assertIn("cat.lock(existingOne && !normalMatch)", js)
         self.assertIn('name.value = z.new_name || "Item"', js)
 
     def test_repeated_recognized_item_has_one_shared_scan_membership(self):
@@ -195,7 +195,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             "autoclicker.editors.item_editor.markers._item_has_compatible_template",
             return_value=True)
         with matcher, compatible:
-            state = self.bridge.scan_learn_preview({"scope": "alle"})
+            state = self.bridge.scan_learn_preview({"scope": "all"})
             rows = state["review"]["rows"]
             self.assertEqual(len(rows), 2)
             self.assertTrue(all(row["ticked"] for row in rows))
@@ -207,7 +207,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             ]})
             self.assertIn("Bogen", cfg.item_names)
 
-            state = self.bridge.scan_learn_preview({"scope": "alle"})
+            state = self.bridge.scan_learn_preview({"scope": "all"})
             rows = state["review"]["rows"]
             state = self.bridge.scan_learn_preview_apply({"rows": [
                 {"slot": row["slot"], "ticked": False} for row in rows
@@ -292,7 +292,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("function refreshCategoryOptions", js)
         # Getippt wird nur, wenn es nichts zu wählen gibt — sonst wäre das
         # Auswählen wieder das Angebot, das man kennen muss.
-        self.assertIn("tausche(!vorhandene.length", js)
+        self.assertIn("swap(!presentNames.length", js)
 
     def test_priority_zero_shifts_only_the_same_category(self):
         self.bridge.items = {
@@ -313,7 +313,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def test_learning_review_accepts_priority_zero(self):
         self.bridge.items["Goldhelm"] = ItemProfile(
             name="Goldhelm", category="Helme", priority=1)
-        state = self.bridge.scan_learn_preview({"scope": "alle"})
+        state = self.bridge.scan_learn_preview({"scope": "all"})
         row = state["review"]["rows"][0]
 
         self.bridge.scan_learn_preview_apply({"rows": [{
@@ -334,7 +334,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
             for y in range(20, 50):
                 self.bridge._foto.putpixel((x, y), (50, 120, 210))
 
-        state = self.bridge.scan_learn_preview({"scope": "alle"})
+        state = self.bridge.scan_learn_preview({"scope": "all"})
 
         self.assertEqual(len(state["review"]["rows"]), 2)
         self.assertEqual(
@@ -343,7 +343,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def test_completely_empty_slot_is_not_offered_or_learned(self):
         self.bridge._foto = Image.new("RGB", (120, 80), (40, 44, 52))
 
-        state = self.bridge.scan_learn_preview({"scope": "alle"})
+        state = self.bridge.scan_learn_preview({"scope": "all"})
 
         self.assertIsNone(state["review"])
         self.assertEqual(self.bridge.items, {})
@@ -371,7 +371,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         with patch(
                 "autoclicker.editors.item_editor.markers._find_matching_existing_item",
                 return_value=None):
-            state = self.bridge.scan_learn_preview({"scope": "alle"})
+            state = self.bridge.scan_learn_preview({"scope": "all"})
         row = state["review"]["rows"][0]
         self.assertIn("Roter Helm", state["review"]["item_names"])
 

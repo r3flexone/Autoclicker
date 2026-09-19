@@ -17,7 +17,7 @@ const $ = (id) => document.getElementById(id);
 const PRESENCE_ONLY = new Set(["disabled", "checked", "hidden", "readonly",
                             "required", "selected", "multiple", "open"]);
 
-function el(tag, attrs, ...kinder) {
+function el(tag, attrs, ...children) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
@@ -28,7 +28,7 @@ function el(tag, attrs, ...kinder) {
     else if (v === true) n.setAttribute(k, "");
     else n.setAttribute(k, v);
   }
-  for (const kind of kinder.flat()) {
+  for (const kind of children.flat()) {
     if (kind === null || kind === undefined || kind === false) continue;
     n.appendChild(typeof kind === "object" ? kind : document.createTextNode(String(kind)));
   }
@@ -64,39 +64,39 @@ function info(text, key) {
     svgEl("circle", {cx: "8", cy: "5", r: ".8", fill: "currentColor"}),
     svgEl("path", {d: "M8 7.5v4", fill: "none", stroke: "currentColor",
       "stroke-width": "1.3", "stroke-linecap": "round"}));
-  const zeichen = el("span", {class: "info", "data-hilfe": key || text}, image);
-  zeichen._text = text;
-  zeichen.addEventListener("click", (e) => {
+  const glyph = el("span", {class: "info", "data-hilfe": key || text}, image);
+  glyph._text = text;
+  glyph.addEventListener("click", (e) => {
     // Das ⓘ steckt in einem <label>; ohne das hier wuerde der Klick das Feld
     // fokussieren bzw. den Schalter umlegen.
     e.preventDefault();
     e.stopPropagation();
-    const hilfeId = zeichen.getAttribute("data-hilfe");
-    if (openHelps.has(hilfeId)) openHelps.delete(hilfeId);
-    else openHelps.add(hilfeId);
-    renderHelp(zeichen);
+    const helpId = glyph.getAttribute("data-hilfe");
+    if (openHelps.has(helpId)) openHelps.delete(helpId);
+    else openHelps.add(helpId);
+    renderHelp(glyph);
   });
-  return zeichen;
+  return glyph;
 }
 
 /** Bringt EIN ⓘ auf den Stand von `openHelps` — auf- oder zugeklappt. */
-function renderHelp(zeichen) {
-  const open = openHelps.has(zeichen.getAttribute("data-hilfe"));
-  const wirt = zeichen.closest("label") || zeichen.parentNode;
-  const nachbar = wirt.nextElementSibling;
-  const present = nachbar && nachbar.classList.contains("help-text") ? nachbar : null;
-  zeichen.classList.toggle("on", open);
+function renderHelp(glyph) {
+  const open = openHelps.has(glyph.getAttribute("data-hilfe"));
+  const host = glyph.closest("label") || glyph.parentNode;
+  const sibling = host.nextElementSibling;
+  const present = sibling && sibling.classList.contains("help-text") ? sibling : null;
+  glyph.classList.toggle("on", open);
   if (open && !present) {
-    wirt.parentNode.insertBefore(el("p", {class: "hint help-text"}, zeichen._text),
-                                 wirt.nextSibling);
+    host.parentNode.insertBefore(el("p", {class: "hint help-text"}, glyph._text),
+                                 host.nextSibling);
   } else if (!open && present) {
     present.remove();
   }
 }
 
 /** Nach dem Neuaufbau: alles wieder aufklappen, was aufgeklappt war. */
-function applyHelps(wurzel) {
-  for (const zeichen of wurzel.querySelectorAll(".info")) renderHelp(zeichen);
+function applyHelps(root) {
+  for (const glyph of root.querySelectorAll(".info")) renderHelp(glyph);
 }
 
 /** Beschriftung, ggf. mit ⓘ dahinter. */
@@ -104,12 +104,12 @@ function labeled(text, help, key) {
   return help ? el("span", {class: "with-info"}, text, info(help, key)) : text;
 }
 
-function field(beschriftung, value, beim_setzen, extra, help, key) {
-  const eingabe = el("input", Object.assign({value: value === null || value === undefined ? "" : value,
+function field(caption, value, onSet, extra, help, key) {
+  const inputEl = el("input", Object.assign({value: value === null || value === undefined ? "" : value,
                                              autocomplete: "off"}, extra || {}));
-  eingabe.addEventListener("change", () => beim_setzen(eingabe.value));
-  eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-  return el("label", {class: "field"}, labeled(beschriftung, help, key), eingabe);
+  inputEl.addEventListener("change", () => onSet(inputEl.value));
+  inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") inputEl.blur(); });
+  return el("label", {class: "field"}, labeled(caption, help, key), inputEl);
 }
 
 /** Kategorie als echtes Kombinationsfeld: vorhandene Namen lassen sich aus der
@@ -118,12 +118,12 @@ function field(beschriftung, value, beim_setzen, extra, help, key) {
  *  angelegt werden koennen sollen. */
 function categoryValues(zusatz) {
   const values = [];
-  const gesehen = new Set();
-  for (const roh of SC.categories.concat(zusatz || [])) {
-    const value = String(roh || "").trim();
+  const seen = new Set();
+  for (const raw of SC.categories.concat(zusatz || [])) {
+    const value = String(raw || "").trim();
     const key = value.toLocaleLowerCase("de");
-    if (value && !gesehen.has(key)) {
-      gesehen.add(key);
+    if (value && !seen.has(key)) {
+      seen.add(key);
       values.push(value);
     }
   }
@@ -161,10 +161,10 @@ function refreshCategoryOptions() {
   }
 }
 
-function categoryChooser(value, beim_setzen, opts) {
+function categoryChooser(value, onSet, opts) {
   opts = opts || {};
-  const huelle = el("span", {class: "category-chooser"
-    + (opts.klasse ? " " + opts.klasse : "")});
+  const wrapper = el("span", {class: "category-chooser"
+    + (opts.cls ? " " + opts.cls : "")});
   // Woran der Tipp-Modus haengt. Ohne Schluessel gibt es ihn nicht — dann
   // entscheidet allein, ob es etwas zu waehlen gibt.
   const key = opts.key || "";
@@ -179,10 +179,10 @@ function categoryChooser(value, beim_setzen, opts) {
     // sonst waere ein Vertipper („Enter" auf nichts) ein Rueckwurf in die
     // Auswahl, und man faengt von vorn an.
     if (key && v) categoryFree.delete(key);
-    beim_setzen(v);
+    onSet(v);
   };
 
-  const auswahlfeld = () => {
+  const selectEl = () => {
     const s = el("select", {title: opts.title
       || "Vorhandene Kategorie wählen — oder unten eine neue anlegen"});
     s.rebuildOptions = () => {
@@ -195,13 +195,13 @@ function categoryChooser(value, beim_setzen, opts) {
     };
     s.rebuildOptions();
     s.addEventListener("change", () => {
-      if (s.value === CATEGORY_NEW) return tausche(true, "");
+      if (s.value === CATEGORY_NEW) return swap(true, "");
       add_finding(s.value);
     });
     return s;
   };
 
-  const textfeld = (default_value) => {
+  const textEl = (default_value) => {
     const e = el("input", {value: default_value, autocomplete: "off",
       placeholder: opts.placeholder || "Neue Kategorie",
       title: "Neuen Namen tippen — beim nächsten Item steht er in der Liste"});
@@ -210,49 +210,49 @@ function categoryChooser(value, beim_setzen, opts) {
       if (ev.key === "Enter") e.blur();
       // ESC fuehrt zurueck in die Liste, sonst waere das Tippen eine Falltuer:
       // hinein kommt man mit einem Klick, heraus nur ueber einen Umweg.
-      if (ev.key === "Escape" && values().length) { ev.stopPropagation(); tausche(false); }
+      if (ev.key === "Escape" && values().length) { ev.stopPropagation(); swap(false); }
     });
     return e;
   };
 
-  function tausche(frei, default_value, merken) {
-    if (key && merken !== false) {
-      if (frei) categoryFree.add(key);
+  function swap(free, default_value, remember) {
+    if (key && remember !== false) {
+      if (free) categoryFree.add(key);
       else categoryFree.delete(key);
     }
-    const neu = frei ? textfeld(default_value === undefined ? current : default_value)
-                     : auswahlfeld();
+    const neu = free ? textEl(default_value === undefined ? current : default_value)
+                     : selectEl();
     neu.disabled = locked;
-    huelle.replaceChildren(neu);
-    huelle.value = () => (frei ? neu.value.trim() : neu.value);
-    huelle.optionenNeu = frei ? null : neu.rebuildOptions;
-    if (frei && merken !== false) neu.focus();
+    wrapper.replaceChildren(neu);
+    wrapper.value = () => (free ? neu.value.trim() : neu.value);
+    wrapper.optionenNeu = free ? null : neu.rebuildOptions;
+    if (free && remember !== false) neu.focus();
   }
 
   // **Getippt wird nur, wenn es nichts zu waehlen gibt** — oder wenn der
   // aktuelle Wert (ein Vorschlag der Lern-Vorschau) noch in keiner Liste steht,
   // oder wenn hier vor dem Neuaufbau schon getippt wurde.
-  const vorhandene = categoryValues(categoryNote());
-  tausche(!vorhandene.length
+  const presentNames = categoryValues(categoryNote());
+  swap(!presentNames.length
           || (key && categoryFree.has(key))
-          || (!!current && !vorhandene.some((k) => k === current)),
+          || (!!current && !presentNames.some((k) => k === current)),
           undefined, false);
-  huelle.lock = (an) => {
-    locked = an;
-    for (const n of huelle.children) n.disabled = an;
+  wrapper.lock = (on) => {
+    locked = on;
+    for (const n of wrapper.children) n.disabled = on;
   };
-  huelle.locked = () => locked;
+  wrapper.locked = () => locked;
   // Von aussen setzen (Sammel-Aktion der Lern-Vorschau). Steht der Wert nicht
   // in der Liste, muss das Feld dafuer ins Tippen wechseln — sonst schluckt
   // ein <select> ihn stillschweigend.
-  huelle.set_value = (v) => {
+  wrapper.set_value = (v) => {
     current = String(v || "");
     const present = categoryValues(categoryNote());
-    tausche(!!current && !present.some((k) => k === current), current);
-    if (huelle.optionenNeu) huelle.optionenNeu();
-    beim_setzen(current);
+    swap(!!current && !present.some((k) => k === current), current);
+    if (wrapper.optionenNeu) wrapper.optionenNeu();
+    onSet(current);
   };
-  return huelle;
+  return wrapper;
 }
 
 function itemsOfCategory(category) {
@@ -273,34 +273,34 @@ const PRIO_MAX_SHOW = 24;
 
 function priorityAllocation(category) {
   const items = itemsOfCategory(category);
-  const belegt = new Map();
+  const taken = new Map();
   for (const i of items) {
-    if (!belegt.has(i.priority)) belegt.set(i.priority, []);
-    belegt.get(i.priority).push(i.name);
+    if (!taken.has(i.priority)) taken.set(i.priority, []);
+    taken.get(i.priority).push(i.name);
   }
-  const hoechste = items.length ? Math.max(...items.map((i) => i.priority)) : 0;
-  if (hoechste + 1 > PRIO_MAX_SHOW) {
-    const ranks = [...belegt.keys()].sort((a, b) => a - b);
+  const highestRank = items.length ? Math.max(...items.map((i) => i.priority)) : 0;
+  if (highestRank + 1 > PRIO_MAX_SHOW) {
+    const ranks = [...taken.keys()].sort((a, b) => a - b);
     // Der naechste freie gehoert dazu — sonst nennt die Uebersicht keinen,
     // und genau den sucht man.
-    let frei = 1;
-    while (belegt.has(frei)) frei += 1;
-    if (!ranks.includes(frei)) ranks.push(frei);
+    let free = 1;
+    while (taken.has(free)) free += 1;
+    if (!ranks.includes(free)) ranks.push(free);
     ranks.sort((a, b) => a - b);
-    return ranks.map((p) => ({prio: p, namen: belegt.get(p) || []}));
+    return ranks.map((p) => ({rank: p, names: taken.get(p) || []}));
   }
   const alle = [];
-  for (let p = 1; p <= hoechste + 1; p += 1) alle.push({prio: p, namen: belegt.get(p) || []});
+  for (let p = 1; p <= highestRank + 1; p += 1) alle.push({rank: p, names: taken.get(p) || []});
   return alle;
 }
 
 /** Die Prioritaet, die dieses Item bekaeme, wenn niemand etwas einstellt:
  *  der erste freie Rang seiner Kategorie. */
-function nextFreePriority(category, ausser) {
-  const vergeben = new Set(itemsOfCategory(category)
-    .filter((i) => i.name !== ausser).map((i) => i.priority));
+function nextFreePriority(category, exceptName) {
+  const assigned = new Set(itemsOfCategory(category)
+    .filter((i) => i.name !== exceptName).map((i) => i.priority));
   let p = 1;
-  while (vergeben.has(p)) p += 1;
+  while (assigned.has(p)) p += 1;
   return p;
 }
 
@@ -314,26 +314,26 @@ function priorityDuplicate(item) {
 
 /** Sichtbare Rangfolge statt einer Zahl ohne Zusammenhang. Prioritaeten gelten
  *  innerhalb einer Kategorie; deshalb waere eine globale Liste irrefuehrend. */
-function priorityOverview(category, aktuellerName) {
+function priorityOverview(category, currentName) {
   if (!category) {
     return el("p", {class: "hint priority-hint"},
       "Ohne Kategorie konkurriert dieses Item mit keinem anderen Item.");
   }
-  const belegung = priorityAllocation(category);
+  const allocation = priorityAllocation(category);
   return el("div", {class: "priority-overview"},
     el("span", {class: "small"}, "Rangfolge in „" + category + "“"),
-    el("div", {class: "priority-chips"}, belegung.map((r) => {
-      const dieses = r.namen.includes(aktuellerName);
-      const frei = !r.namen.length;
+    el("div", {class: "priority-chips"}, allocation.map((r) => {
+      const thisOne = r.names.includes(currentName);
+      const free = !r.names.length;
       return el("span", {
         // Ein freier Rang ist kein Eintrag, sondern eine Luecke — gestrichelt
         // und ohne Namen. Sonst zaehlt man die vergebenen ab, um ihn zu finden.
-        class: "priority-chip" + (dieses ? " current" : "")
-               + (frei ? " free" : "") + (r.namen.length > 1 ? " duplicate" : ""),
-        title: frei ? "Priorität " + r.prio + " ist frei"
-                    : r.namen.join(", ") + " · Priorität " + r.prio
-                      + (r.namen.length > 1 ? " — doppelt vergeben" : ""),
-      }, "P" + r.prio + " · " + (frei ? "frei" : r.namen.join(", ")));
+        class: "priority-chip" + (thisOne ? " current" : "")
+               + (free ? " free" : "") + (r.names.length > 1 ? " duplicate" : ""),
+        title: free ? "Priorität " + r.rank + " ist frei"
+                    : r.names.join(", ") + " · Priorität " + r.rank
+                      + (r.names.length > 1 ? " — doppelt vergeben" : ""),
+      }, "P" + r.rank + " · " + (free ? "frei" : r.names.join(", ")));
     })),
     el("small", {class: "input-help"},
       "Kleinere Zahl gewinnt. Zwei Items mit derselben Zahl entscheidet die "
@@ -360,31 +360,31 @@ function scanReviewRefreshCategories() {
   refreshCategoryOptions();
 }
 
-function scanReviewCategoryToSelection(eingabe) {
-  const value = eingabe.value();
+function scanReviewCategoryToSelection(inputEl) {
+  const value = inputEl.value();
   if (!value) return;
   for (const row of document.querySelectorAll(".scan-review-row")) {
-    const haken = row.querySelector(".scan-review-check");
+    const checkbox = row.querySelector(".scan-review-check");
     const category = row.querySelector(".scan-review-category");
-    if (haken && haken.checked && category && !category.locked()) {
+    if (checkbox && checkbox.checked && category && !category.locked()) {
       category.set_value(value);
     }
   }
 }
 
-function numberField(beschriftung, value, beim_setzen, extra, help, key) {
-  return field(beschriftung, value, (v) => beim_setzen(Number(v) || 0),
+function numberField(caption, value, onSet, extra, help, key) {
+  return field(caption, value, (v) => onSet(Number(v) || 0),
               Object.assign({type: "number"}, extra || {}), help, key);
 }
 
 /** Farbwähler mit Hex daneben. Ohne gemessene Farbe bleibt er leer statt eine
  *  zu behaupten — dieselbe Regel wie beim Quadrat in der Punkte-Palette. */
-function color_swatch(beschriftung, hex, beim_setzen, help, key) {
+function color_swatch(caption, hex, onSet, help, key) {
   const choice = el("input", {type: "color", value: hex || "#000000",
                             style: "width:44px;height:28px;padding:2px"});
   const text = el("span", {class: "small mono"}, hex || "keine Farbe aufgenommen");
-  choice.addEventListener("change", () => beim_setzen(choice.value.toUpperCase()));
-  return el("label", {class: "field"}, labeled(beschriftung, help, key),
+  choice.addEventListener("change", () => onSet(choice.value.toUpperCase()));
+  return el("label", {class: "field"}, labeled(caption, help, key),
     el("div", {class: "row"}, choice, text));
 }
 
@@ -394,22 +394,22 @@ function color_swatch(beschriftung, hex, beim_setzen, help, key) {
  * Absaetze untereinander sind eine Textwand, in der das Bedienelement
  * untergeht; wer die Regel schon kennt, liest sie trotzdem jedes Mal mit. Das
  * ⓘ zeigt sie auf Wunsch, und `openHelps` merkt sich, welche offen sind. */
-function toggle(beschriftung, an, beim_setzen, help, key) {
+function toggle(caption, on, onSet, help, key) {
   const box = el("input", {type: "checkbox"});
-  box.checked = !!an;
-  box.addEventListener("change", () => beim_setzen(box.checked));
-  return el("label", {class: "on"}, box, labeled(beschriftung, help, key));
+  box.checked = !!on;
+  box.addEventListener("change", () => onSet(box.checked));
+  return el("label", {class: "on"}, box, labeled(caption, help, key));
 }
 
-function selection(beschriftung, values, current, beim_setzen, help, key) {
+function selection(caption, values, current, onSet, help, key) {
   const s = el("select");
   for (const w of values) {
     const o = el("option", {value: String(w.value)}, w.text);
     if (String(w.value) === String(current)) o.selected = true;
     s.appendChild(o);
   }
-  s.addEventListener("change", () => beim_setzen(s.value));
-  return beschriftung ? el("label", {class: "field"}, labeled(beschriftung, help, key), s) : s;
+  s.addEventListener("change", () => onSet(s.value));
+  return caption ? el("label", {class: "field"}, labeled(caption, help, key), s) : s;
 }
 
 /* ---------------------------------------------------- Fokus ueber den Neuaufbau
@@ -437,15 +437,15 @@ function rememberFocus() {
   focusRenamed = null;
   const a = document.activeElement;
   if (!a || !["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return null;
-  const kasten = a.closest("[id]");
-  if (!kasten) return null;
-  const felder = [...kasten.querySelectorAll("input, select, textarea")];
-  const i = felder.indexOf(a);
+  const boxEl = a.closest("[id]");
+  if (!boxEl) return null;
+  const fields = [...boxEl.querySelectorAll("input, select, textarea")];
+  const i = fields.indexOf(a);
   if (i < 0) return null;
   // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
   let start = null, end = null;
   try { start = a.selectionStart; end = a.selectionEnd; } catch (e) { /* egal */ }
-  const neu = renamed && renamed.von === kasten.id ? renamed.nach : kasten.id;
+  const neu = renamed && renamed.fromName === boxEl.id ? renamed.toName : boxEl.id;
   // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
   // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
   //
@@ -458,31 +458,31 @@ function rememberFocus() {
   // zu retten waere nicht nur ueberfluessig, sondern falsch: bei einem
   // abgelehnten Namen (schon vergeben) stuende danach der abgelehnte Text im
   // Feld, waehrend die Daten den alten tragen.
-  return {id: neu, alt: kasten.id, i: i, start: start, end: end};
+  return {id: neu, alt: boxEl.id, i: i, start: start, end: end};
 }
 
 /** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
-function focusRename(von, nach) {
-  focusRenamed = von && nach && von !== nach ? {von: von, nach: nach} : null;
+function focusRename(fromName, toName) {
+  focusRenamed = fromName && toName && fromName !== toName ? {fromName: fromName, toName: toName} : null;
 }
 let focusRenamed = null;
 
-function restoreFocus(merk) {
-  if (!merk) return;
-  const kasten = document.getElementById(merk.id)
-              || document.getElementById(merk.alt);
-  if (!kasten) return;
-  const target = [...kasten.querySelectorAll("input, select, textarea")][merk.i];
+function restoreFocus(memo) {
+  if (!memo) return;
+  const boxEl = document.getElementById(memo.id)
+              || document.getElementById(memo.alt);
+  if (!boxEl) return;
+  const target = [...boxEl.querySelectorAll("input, select, textarea")][memo.i];
   if (!target) return;
   target.focus();
-  if (merk.start !== null) {
-    try { target.setSelectionRange(merk.start, merk.end); } catch (e) { /* egal */ }
+  if (memo.start !== null) {
+    try { target.setSelectionRange(memo.start, memo.end); } catch (e) { /* egal */ }
   }
 }
 
-function segment(values, current, beim_setzen) {
+function segment(values, current, onSet) {
   return el("div", {class: "segment"}, values.map((w) =>
-    el("button", {class: w.value === current ? "on" : "", onclick: () => beim_setzen(w.value)},
+    el("button", {class: w.value === current ? "on" : "", onclick: () => onSet(w.value)},
        w.text)));
 }
 
@@ -509,13 +509,13 @@ function waitForBridge() {
 /** Ein Befehl an die Brücke. Antwort ist immer die neue Momentaufnahme. */
 async function call(name, data_reload) {
   try {
-    const antwort = await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
-    const wechsel = name === "load" || name === "new";
-    if (wechsel) {
+    const answer = await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
+    const switched = name === "load" || name === "new";
+    if (switched) {
       selectedPhase = null;
       openSpecialPhases.clear();
     }
-    adopt(antwort);
+    adopt(answer);
     // **Der offene Reiter muss dem Wechsel folgen.** Scans, Teilen und
     // Werkzeuge lesen alle aus `sequences/<name>/` — ihre Ansicht haengt aber
     // an eigenem Zustand (`SC`, `T`, `W`), den `render()` nicht anfasst. Seit
@@ -527,7 +527,7 @@ async function call(name, data_reload) {
     // Nur bei einem WIRKLICHEN Wechsel: hat die Bruecke stattdessen nach
     // ungespeicherten Aenderungen gefragt, ist noch gar nichts geladen —
     // `proceed()` kommt danach ohnehin hier vorbei.
-    if (wechsel && S && !S.question && view !== "editor") setView(view);
+    if (switched && S && !S.question && view !== "editor") setView(view);
   } catch (e) {
     setStatus({text: String(e && e.message ? e.message : e), kind: "err"});
   }
@@ -600,7 +600,7 @@ function setView(neu) {
 
 function render() {
   if (!S) return;
-  const merk = rememberFocus();
+  const memo = rememberFocus();
   $("footer-file").textContent = S.file || "";
   $("footer-points").textContent = S.points.length + " Punkte";
   $("dirty-dot").hidden = !S.dirty;
@@ -616,7 +616,7 @@ function render() {
   renderPoints();
   renderPhases();
   renderInspector();
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /* Wie oft der Status seit Programmstart geschrieben wurde. Ein verzoegerter
@@ -662,9 +662,9 @@ function renderSequence() {
 
 function renderPoints() {
   const filter = $("point-filter").value.trim().toLowerCase();
-  const liste = S.points.filter((p) => !filter ||
+  const listEl = S.points.filter((p) => !filter ||
       (p.name + " #" + p.id + " " + p.x + "," + p.y).toLowerCase().includes(filter));
-  $("points-count").textContent = liste.length + "/" + S.points.length;
+  $("points-count").textContent = listEl.length + "/" + S.points.length;
   const target = $("points");
   target.replaceChildren();
   if (!S.points.length) {
@@ -672,7 +672,7 @@ function renderPoints() {
       "Noch keine Punkte aufgenommen. Im Hauptprozess mit CTRL+ALT+A anlegen."));
     return;
   }
-  for (const p of liste) {
+  for (const p of listEl) {
     target.appendChild(el("div", {
       class: "point", draggable: "true", title: p.source || "",
       ondragstart: (e) => { drag = {kind: "point", point: p.id};
@@ -699,15 +699,15 @@ function renderPhases() {
   if (!S.phases.some((p) => p.index === selectedPhase && p.kind === "loop")) {
     selectedPhase = null;
   }
-  const sichtbar = S.phases.filter((phase) => phase.kind === "loop" ||
+  const visible = S.phases.filter((phase) => phase.kind === "loop" ||
     phase.blocks.length || openSpecialPhases.has(phase.kind));
-  for (const phase of sichtbar) target.appendChild(renderPhase(phase));
+  for (const phase of visible) target.appendChild(renderPhase(phase));
 
-  const verborgen = S.phases.filter((phase) => phase.kind !== "loop" &&
+  const hiddenOne = S.phases.filter((phase) => phase.kind !== "loop" &&
     !phase.blocks.length && !openSpecialPhases.has(phase.kind));
   const werkzeuge = el("div", {class: "phase phases-create"},
     el("button", {class: "empty-zone", onclick: () => call("phase_append")}, "+ Phase"));
-  for (const phase of verborgen) {
+  for (const phase of hiddenOne) {
     const title = phase.kind === "init" ? "+ Startphase (einmal davor)"
                                        : "+ Abschlussphase (einmal danach)";
     werkzeuge.appendChild(el("button", {class: "empty-zone", onclick: () => {
@@ -719,9 +719,9 @@ function renderPhases() {
 }
 
 function renderPhase(phase) {
-  const phaseGewaehlt = phase.kind === "loop" && phase.index === selectedPhase;
-  const kopf = el("div", {
-    class: "phase-header " + phase.kind + (phaseGewaehlt ? " selected" : ""),
+  const phaseSelected = phase.kind === "loop" && phase.index === selectedPhase;
+  const head = el("div", {
+    class: "phase-header " + phase.kind + (phaseSelected ? " selected" : ""),
     title: phase.kind === "loop" ? "Phase auswählen — Entf löscht sie" : "",
     onclick: (e) => {
       if (phase.kind !== "loop" || e.target.closest("input, button")) return;
@@ -730,25 +730,25 @@ function renderPhase(phase) {
     }});
   // INIT und END tragen keinen frei wählbaren Namen — sie bekommen deshalb auch
   // kein Eingabefeld, das nichts annimmt.
-  const sondername = phase.kind === "init" ? "START · einmal davor"
+  const specialName = phase.kind === "init" ? "START · einmal davor"
                    : phase.kind === "end" ? "ABSCHLUSS · einmal danach" : phase.name;
   const name = phase.kind === "loop"
     ? el("input", {class: "phase-name grow", value: phase.name})
-    : el("span", {class: "phase-name grow"}, sondername);
+    : el("span", {class: "phase-name grow"}, specialName);
   name.addEventListener("change", () => call("phase_set",
     {phase: phase.index, field: "name", value: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
   // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
   // sich nicht ändern lässt. Die zugehörige Klasse `.zaehler` ist damit
   // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.zahl`).
-  kopf.appendChild(el("div", {class: "row"}, name,
+  head.appendChild(el("div", {class: "row"}, name,
     el("span", {class: "small mono"}, phase.blocks.length + " Schritte")));
 
   if (phase.kind === "loop") {
-    const wdh = el("input", {type: "number", min: "1", value: phase.repeat,
+    const reps = el("input", {type: "number", min: "1", value: phase.repeat,
                              title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
-    wdh.addEventListener("change", () => call("phase_set",
-      {phase: phase.index, field: "repeat", value: Number(wdh.value) || 1}));
+    reps.addEventListener("change", () => call("phase_set",
+      {phase: phase.index, field: "repeat", value: Number(reps.value) || 1}));
     const start = el("input", {value: phase.start, placeholder: "HH:MM",
                                title: "Start erst ab dieser Uhrzeit"});
     start.addEventListener("change", () => call("phase_set",
@@ -775,8 +775,8 @@ function renderPhase(phase) {
     // Damit die halbe Breite auch etwas trägt, bekommen sie ihre Beschriftung:
     // „× 1" und ein leeres „HH:MM" sagten bis dahin nur im Tooltip, was sie
     // sind — und ein Tooltip ist keine Beschriftung.
-    kopf.appendChild(el("div", {class: "phase-tool"},
-      el("label", {class: "field"}, "Läufe je Zyklus", wdh),
+    head.appendChild(el("div", {class: "phase-tool"},
+      el("label", {class: "field"}, "Läufe je Zyklus", reps),
       el("label", {class: "field"}, "Start ab Uhrzeit", start)));
   }
   // **Was auf ALLE Blöcke der Phase wirkt, steht beieinander** — und nur, wenn
@@ -787,39 +787,39 @@ function renderPhase(phase) {
   if (phase.blocks.length) {
     const alle = S.selection.phase === phase.index &&
                  S.selection.rows.length === phase.blocks.length;
-    // `knopfpaar`, nicht `reihe` mit `wachse`: für „mehrere Knöpfe teilen sich
+    // `knopfpaar`, nicht `series` mit `wachse`: für „mehrere Knöpfe teilen sich
     // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
     // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
-    const sammel = el("div", {class: "button-pair phase-all"},
+    const bulk = el("div", {class: "button-pair phase-all"},
       el("button", {class: "btn quiet",
         onclick: () => call("phase_selection", {phase: phase.index})},
         alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
     if (phase.kind === "loop") {
-      sammel.appendChild(el("button", {
+      bulk.appendChild(el("button", {
         class: "btn quiet",
         title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
         onclick: () => {
-          const faktor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-          if (faktor !== null) call("phase_scale", {phase: phase.index, faktor: faktor});
+          const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+          if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
         }}, "Zeiten skalieren …"));
     }
-    kopf.appendChild(sammel);
+    head.appendChild(bulk);
   }
 
-  const spalte = el("div", {class: "phase"}, kopf);
+  const column = el("div", {class: "phase"}, head);
   phase.blocks.forEach((block, i) => {
-    spalte.appendChild(dropZone(phase.index, i));
-    spalte.appendChild(renderCard(phase, block));
+    column.appendChild(dropZone(phase.index, i));
+    column.appendChild(renderCard(phase, block));
   });
-  spalte.appendChild(dropZone(phase.index, phase.blocks.length));
-  spalte.appendChild(el("button", {
+  column.appendChild(dropZone(phase.index, phase.blocks.length));
+  column.appendChild(el("button", {
     class: "empty-zone",
     onclick: () => call("block_append", {phase: phase.index}),
     ondragover: (e) => { if (drag) { e.preventDefault(); highlight(e.currentTarget); } },
     ondragleave: () => clearDropZone(),
     ondrop: (e) => drop(e, phase.index, phase.blocks.length),
   }, phase.blocks.length ? "+ Block" : "leer — Block anlegen oder Punkt herziehen"));
-  return spalte;
+  return column;
 }
 
 /** Einfügestelle zwischen zwei Karten: nur ein Strich, der aufleuchtet. */
@@ -864,7 +864,7 @@ function renderCard(phase, block) {
   // Block, der einen Punkt hat, nicht nur an der Farb-Bedingung. Beim
   // Überfliegen unterscheidet man Karten an der Farbe des Knopfs, nicht an
   // vierstelligen Koordinaten.
-  const leib = el("div", {class: "card-body"},
+  const body = el("div", {class: "card-body"},
     block.rows.map((z, i) => (i === 0 && block.point_color)
       ? el("div", {class: "card-row with-color"},
           el("span", {class: "swatch", style: "background:" + block.point_color,
@@ -873,14 +873,14 @@ function renderCard(phase, block) {
       : el("div", {class: "card-row"}, z)));
 
   if (block.color_swatch) {
-    leib.appendChild(el("div", {class: "card-color"},
+    body.appendChild(el("div", {class: "card-color"},
       el("span", {class: "swatch", style: "background:" + block.color_swatch}),
       block.color_text));
   }
   if (block.else_text) {
     // Ein ELSE ohne Bedingung feuert nie — auf der Karte stuende es sonst als
     // Zusage da („sonst: Schritt überspringen"), die nichts einloest.
-    leib.appendChild(el("div", {class: "card-else" + (block.else_applies ? "" : " dead")},
+    body.appendChild(el("div", {class: "card-else" + (block.else_applies ? "" : " dead")},
       block.else_text + (block.else_applies ? "" : " · greift nie")));
   }
 
@@ -911,9 +911,9 @@ function renderCard(phase, block) {
       e.preventDefault();
       const r = e.currentTarget.getBoundingClientRect();
       const bottom = e.clientY > r.top + r.height / 2;
-      const strich = bottom ? e.currentTarget.nextElementSibling
+      const line = bottom ? e.currentTarget.nextElementSibling
                            : e.currentTarget.previousElementSibling;
-      if (strich && strich.classList.contains("dropzone")) highlight(strich);
+      if (line && line.classList.contains("dropzone")) highlight(line);
     },
     ondrop: (e) => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -932,7 +932,7 @@ function renderCard(phase, block) {
                             "⏸ halt") : null,
       block.warning ? el("span", {class: "badge-small warn"}, block.warning) : null,
       el("span", {class: "card-nr"}, String(block.row + 1).padStart(2, "0"))),
-    leib);
+    body);
 }
 
 /* -------------------------------------------------------- Ansicht: Sequenzen */
@@ -974,19 +974,19 @@ function phaseBar(s) {
       what: p.name + ": " + p.steps + " Schritte ×" + p.repeat +
            (p.start ? " ab " + p.start : "")})))
     .concat([{n: s.end, color: phaseColor("end"), what: "END: " + s.end}]);
-  const summe = parts.reduce((a, t) => a + t.n, 0) || 1;
+  const totalSum = parts.reduce((a, t) => a + t.n, 0) || 1;
   return el("div", {class: "bar"}, parts.filter((t) => t.n).map((t) =>
-    el("span", {style: "flex:" + t.n / summe + ";background:" + t.color, title: t.what})));
+    el("span", {style: "flex:" + t.n / totalSum + ";background:" + t.color, title: t.what})));
 }
 
 async function renderSequenceList() {
   const target = $("view-sequences");
-  const liste = await ask("sequence_list");
+  const listEl = await ask("sequence_list");
   // Zwischen Frage und Antwort kann umgeschaltet worden sein — dann gehoert
   // die Antwort in eine Ansicht, die niemand mehr ansieht.
   if (view !== "sequences") return;
   target.replaceChildren();
-  if (!liste || !liste.length) {
+  if (!listEl || !listEl.length) {
     // grid-column: sonst stünde der Text in der ersten Spalte des Rasters und
     // wäre auf einem breiten Fenster in die linke Ecke gequetscht.
     target.appendChild(el("p", {class: "empty", style: "grid-column:1/-1"},
@@ -994,7 +994,7 @@ async function renderSequenceList() {
       "Hauptprozess mit CTRL+ALT+J eine aufnehmen."));
     return;
   }
-  for (const s of liste) target.appendChild(seqCard(s));
+  for (const s of listEl) target.appendChild(seqCard(s));
 }
 
 /** Eine Sequenz als Karte — mit FESTEN Zeilen, damit die Karten sich einmessen.
@@ -1006,9 +1006,9 @@ async function renderSequenceList() {
  * die Zeilenhöhen (siehe `.seq-card` im Stylesheet) — dafür muss jede Zeile
  * aber DA sein, sonst rutscht der Rest wieder eine Stelle nach oben. */
 function seqCard(s) {
-  const karte = el("div", {class: "seq-card" + (s.open ? " open" : "") +
+  const cardEl = el("div", {class: "seq-card" + (s.open ? " open" : "") +
                                   (s.broken ? " broken" : "")});
-  karte.appendChild(el("div", {class: "seq-header"},
+  cardEl.appendChild(el("div", {class: "seq-header"},
     el("span", {class: "seq-name"}, s.name),
     s.open ? el("span", {class: "num", style: "color:var(--accent)"}, "open") : null));
 
@@ -1028,10 +1028,10 @@ function seqCard(s) {
         (s.warnings.length > 1 ? " u. a." : "")));
     }
   }
-  karte.appendChild(text);
-  karte.appendChild(el("div", {class: "seq-bar"},
+  cardEl.appendChild(text);
+  cardEl.appendChild(el("div", {class: "seq-bar"},
     s.broken ? null : phaseBar(s)));
-  karte.appendChild(el("div", {class: "seq-numbers"}, s.broken ? null : [
+  cardEl.appendChild(el("div", {class: "seq-numbers"}, s.broken ? null : [
     el("span", {class: "num"}, s.steps + " Schritte"),
     el("span", {class: "num"}, s.phases.length + " Loop-Phasen"),
     el("span", {class: "num"}, s.cycles ? s.cycles + " Zyklen" : "endlos")]));
@@ -1041,7 +1041,7 @@ function seqCard(s) {
   // nebeneinander lesen sich als zwei Rangstufen. Bei einer defekten Datei
   // bleibt die erste Spalte leer statt zu verschwinden — sonst säße das
   // Löschen dort, wo bei den Nachbarkarten das Öffnen steht.
-  karte.appendChild(el("div", {class: "seq-footer"},
+  cardEl.appendChild(el("div", {class: "seq-footer"},
     el("span", {class: "small mono grow", title: s.file},
        s.file + " · " + timestamp(s.changed)),
     el("div", {class: "button-pair"},
@@ -1059,7 +1059,7 @@ function seqCard(s) {
           : "Räumt den ganzen Sequenzordner nach backups/ weg",
         onclick: () => askDelete(s),
       }, "Löschen"))));
-  return karte;
+  return cardEl;
 }
 
 /** Die Rückfrage vor dem Löschen — mit dem, was wirklich weggeht.
@@ -1094,9 +1094,9 @@ let runWasRunning = false;
  * ganze Nacht — und die Datei liegt auf derselben Platte, auf die der Worker
  * gerade schreibt. Daneben gibt es den langsamen Puls (s.u.), der nur die eine
  * Frage stellt: hat gerade ein Lauf angefangen? */
-function setRunPolling(an) {
+function setRunPolling(on) {
   if (runPolling) { clearInterval(runPolling); runPolling = null; }
-  if (!an) return;
+  if (!on) return;
   renderRun();
   runPolling = setInterval(renderRun, 500);
 }
@@ -1199,62 +1199,62 @@ function colorChip(text, rgb) {
  *
  * Heruntergezaehlt wird hier, aus den absoluten Zeitstempeln der Statusdatei —
  * mit Restwerten aus dem Worker ruckelte die Anzeige in dessen Sekundentakt. */
-function waitBox(w, jetzt) {
+function waitBox(w, now) {
   if (!w) return null;
-  const uebrig = w.until ? Math.max(0, w.until - jetzt) : null;
+  const remaining = w.until ? Math.max(0, w.until - now) : null;
   // „Knapp" meint knapp vor dem TIMEOUT — eine Warnung. Eine ablaufende
   // Wartezeit ist keine: die soll ablaufen, und amber daneben hiesse Alarm, wo
   // alles nach Plan läuft.
-  const knapp = w.kind === "color" && uebrig !== null && uebrig <= 5;
-  const kasten = el("div", {class: "waiting kind-" + (w.kind === "color" ? "color" : "time") +
-                                   (knapp ? " tight" : "")});
+  const tight = w.kind === "color" && remaining !== null && remaining <= 5;
+  const boxEl = el("div", {class: "waiting kind-" + (w.kind === "color" ? "color" : "time") +
+                                   (tight ? " tight" : "")});
 
   if (w.kind === "color") {
     const match = w.distance !== null && w.distance !== undefined &&
                     w.distance <= w.tolerance;
     // Das Ziel hängt an der Richtung: bei `until_gone` ist ein Treffer genau das,
     // worauf NICHT gewartet wird — dieselbe Zahl, umgekehrte Bedeutung.
-    const erfuellt = w.until_gone ? !match : match;
-    kasten.appendChild(el("div", {class: "header"},
+    const fulfilled = w.until_gone ? !match : match;
+    boxEl.appendChild(el("div", {class: "header"},
       el("span", {class: "grow"},
          (w.until_gone ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
          " bei (" + w.point.join(",") + ")"),
-      el("span", {class: "small mono"}, "seit " + duration(jetzt - w.since))));
-    const angaben = el("div", {class: "grow"},
+      el("span", {class: "small mono"}, "seit " + duration(now - w.since))));
+    const details = el("div", {class: "grow"},
       el("div", {class: "color-pair"},
         colorChip("target", w.target),
         colorChip("jetzt", w.actual),
         w.distance === null || w.distance === undefined
           ? el("span", {class: "small"}, "nicht messbar")
-          : el("span", {class: "badge-match" + (erfuellt ? "" : " beside")},
+          : el("span", {class: "badge-match" + (fulfilled ? "" : " beside")},
                "Δ " + w.distance + " · " +
                (match ? "im Toleranzbereich" : "ausserhalb") + " (" + w.tolerance + ")")));
     // Das Bild steht links neben den Zahlen: es beantwortet die Anschlussfrage
     // („was ist da statt dessen zu sehen?"), nicht dieselbe.
-    kasten.appendChild(w.image
+    boxEl.appendChild(w.image
       ? el("div", {class: "pixel-box"},
           el("div", {class: "live-pixel"},
             el("div", {class: "frame"}, el("img", {src: w.image, alt: ""})),
             el("span", {class: "sign"}, "LIVE-PIXEL")),
-          angaben)
-      : angaben);
+          details)
+      : details);
   } else {
-    kasten.appendChild(el("div", {class: "header"},
+    boxEl.appendChild(el("div", {class: "header"},
       el("span", {class: "grow"}, w.text || "wartet"),
-      el("span", {class: "remainder"}, uebrig === null ? "" : "noch " + remainingTime(uebrig))));
+      el("span", {class: "remainder"}, remaining === null ? "" : "noch " + remainingTime(remaining))));
   }
 
-  if (uebrig !== null) {
-    kasten.appendChild(bar(jetzt - w.since, w.until - w.since));
+  if (remaining !== null) {
+    boxEl.appendChild(bar(now - w.since, w.until - w.since));
   }
   if (w.kind === "color") {
-    kasten.appendChild(el("span", {class: "small"}, uebrig === null
+    boxEl.appendChild(el("span", {class: "small"}, remaining === null
       ? "ohne Timeout — wartet, bis die Farbe stimmt"
-      : "Timeout in " + remainingTime(uebrig) + " · danach " + (w.after_value || "—")));
-  } else if (uebrig !== null) {
-    kasten.appendChild(el("span", {class: "small"}, "von " + remainingTime(w.total || 0)));
+      : "Timeout in " + remainingTime(remaining) + " · danach " + (w.after_value || "—")));
+  } else if (remaining !== null) {
+    boxEl.appendChild(el("span", {class: "small"}, "von " + remainingTime(w.total || 0)));
   }
-  return kasten;
+  return boxEl;
 }
 
 function bar(actual, target) {
@@ -1269,47 +1269,47 @@ function bar(actual, target) {
  *
  * „Abgeschlossen" gilt innerhalb des laufenden Zyklus — im naechsten Durchgang
  * sind dieselben Loop-Phasen wieder ausstehend. */
-function phaseStrip(z, beendet) {
-  const jetzige = z.phase_pos;
-  const liste = Array.isArray(z.phases) && z.phases.length
+function phaseStrip(z, finished) {
+  const currentOne = z.phase_pos;
+  const listEl = Array.isArray(z.phases) && z.phases.length
     ? z.phases
     : [{name: z.phase || "—", kind: "loop", repeat: z.repeat || 1}];
-  const pos = jetzige === undefined || jetzige === null || !Array.isArray(z.phases)
-    ? 0 : jetzige;
+  const pos = currentOne === undefined || currentOne === null || !Array.isArray(z.phases)
+    ? 0 : currentOne;
 
-  return el("div", {class: "phase-strip"}, liste.map((p, i) => {
+  return el("div", {class: "phase-strip"}, listEl.map((p, i) => {
     // In der Zusammenfassung laeuft nichts mehr: die Stelle, an der Schluss
     // war, ist markiert, nicht "gerade dran". Sonst behauptete die Leiste einen
     // Lauf, den es nicht mehr gibt.
-    const running = i === pos && !beendet;
-    const kachel = el("div", {
+    const running = i === pos && !finished;
+    const tile = el("div", {
       class: "phase-tile" + (running ? " running" : (i < pos ? " done" : ""))
-             + (beendet && i === pos ? " end-mark" : ""),
+             + (finished && i === pos ? " end-mark" : ""),
       "data-kind": p.kind || "loop",
     }, el("div", {class: "p-name"}, p.name || "—"));
 
     if (running) {
-      kachel.appendChild(el("div", {class: "row"},
+      tile.appendChild(el("div", {class: "row"},
         el("span", {class: "small mono grow"},
            "Durchlauf " + (z.pass_index || 1) + " / " + (z.repeat || 1)),
         el("span", {class: "small mono"},
            "Block " + (z.block || 0) + " / " + (z.blocks || 0))));
-      kachel.appendChild(bar(z.pass_index || 0, z.repeat || 1));
-    } else if (beendet && i === pos) {
+      tile.appendChild(bar(z.pass_index || 0, z.repeat || 1));
+    } else if (finished && i === pos) {
       // Die Phase, in der Schluss war. „ausstehend" waere hier falsch (sie lief
       // ja) und „abgeschlossen" auch (sie kam nicht durch) — ausser der Lauf
       // ist regulaer bis zum Ende gekommen.
-      kachel.appendChild(el("div", {class: "p-position"},
+      tile.appendChild(el("div", {class: "p-position"},
         (z.reason || "").startsWith("alle Zyklen") ? "abgeschlossen" : "hier war Schluss"));
     } else if (i < pos) {
-      kachel.appendChild(el("div", {class: "p-position"}, "abgeschlossen"));
+      tile.appendChild(el("div", {class: "p-position"}, "abgeschlossen"));
     } else {
       // Eine zeitgesteuerte Phase wartet nicht auf ihren Vorgänger, sondern auf
       // die Uhr — das ist der Unterschied zwischen „gleich" und „um 07:00".
-      kachel.appendChild(el("div", {class: "p-position"},
+      tile.appendChild(el("div", {class: "p-position"},
         p.start ? "wartet auf " + p.start : "ausstehend"));
     }
-    return kachel;
+    return tile;
   }));
 }
 
@@ -1321,14 +1321,14 @@ async function renderRun() {
   target.replaceChildren();
   if (!z || !z.active) {
     if (z && z.countdown) {
-      const jetzt = Date.now() / 1000;
+      const now = Date.now() / 1000;
       target.appendChild(el("div", {class: "run-header"},
         el("span", {class: "lamp on"}),
         el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
         el("span", {class: "num"}, "startet in " +
-          remainingTime((z.target_time || jetzt) - jetzt))));
+          remainingTime((z.target_time || now) - now))));
       target.appendChild(el("p", {class: "hint"},
-        "Geplant für " + new Date((z.target_time || jetzt) * 1000).toLocaleString("de-CH") +
+        "Geplant für " + new Date((z.target_time || now) * 1000).toLocaleString("de-CH") +
         ". Der Countdown kann hier oder mit dem Stop-Hotkey abgebrochen werden."));
       target.appendChild(controls(false, z));
       return;
@@ -1349,13 +1349,13 @@ async function renderRun() {
     return;
   }
 
-  const jetzt = Date.now() / 1000;
+  const now = Date.now() / 1000;
   target.appendChild(el("div", {class: "run-header"},
     el("span", {class: "lamp on"}),
     el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
     el("span", {class: "num"},
        "Zyklus " + (z.cycle || 0) + " / " + (z.cycles ? z.cycles : "∞")),
-    el("span", {class: "num"}, "läuft " + duration(jetzt - (z.start || jetzt)))));
+    el("span", {class: "num"}, "läuft " + duration(now - (z.start || now)))));
 
   target.appendChild(phaseStrip(z));
 
@@ -1376,8 +1376,8 @@ async function renderRun() {
         el("div", {class: "card-row"}, z.block_label || ""),
         bar(z.block || 0, z.blocks || 1),
         el("span", {class: "small mono"},
-           "seit " + duration(jetzt - (z.block_since || jetzt))),
-        waitBox(z.waiting, jetzt))),
+           "seit " + duration(now - (z.block_since || now))),
+        waitBox(z.waiting, now))),
     el("div", {class: "tile"},
       [["Klicks", "clicks"], ["Items", "items"], ["Tasten", "keys"],
        ["Timeouts", "timeouts"], ["Übersprungen", "skipped"],
@@ -1433,8 +1433,8 @@ function renderSummary(target, z) {
  * Haltepunkt schaltet sie ihn ein („Ab hier schrittweise"). Das Weiterlaufen
  * heisst am Haltepunkt „Weiter", denn es fragt danach nicht wieder. */
 function manualControls(m) {
-  const button = (text, action, klasse) => el("button", {
-    class: "btn" + (klasse ? " " + klasse : ""),
+  const button = (text, action, cls) => el("button", {
+    class: "btn" + (cls ? " " + cls : ""),
     onclick: () => sendRun("manual_action", {action: action}),
   }, text);
   const halt = !!m.breakpoint;
@@ -1457,8 +1457,8 @@ function manualControls(m) {
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
-  const button = (text, command, klasse) => el("button", {
-    class: "btn" + (klasse ? " " + klasse : ""),
+  const button = (text, command, cls) => el("button", {
+    class: "btn" + (cls ? " " + cls : ""),
     onclick: () => sendRun(command),
   }, text);
   const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
@@ -1475,26 +1475,26 @@ function controls(running, stamp) {
                : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
                  "werden vorher geschrieben"));
   if (!running && !(stamp && stamp.countdown)) {
-    const zeit = el("input", {placeholder: "14:30 oder +30m", autocomplete: "off",
+    const time = el("input", {placeholder: "14:30 oder +30m", autocomplete: "off",
       style: "width:150px"});
     const plan = el("button", {class: "btn", onclick: () => {
-      if (!zeit.value.trim()) {
+      if (!time.value.trim()) {
         setStatus({kind: "warn", text: "Bitte eine Startzeit eingeben."});
         return;
       }
-      sendRun("schedule", {zeit: zeit.value.trim()});
+      sendRun("schedule", {time: time.value.trim()});
     }}, "◷ Start planen");
-    row.append(el("span", {class: "divider"}), zeit, plan);
+    row.append(el("span", {class: "divider"}), time, plan);
   }
   return row;
 }
 
 /* ----------------------------------------------------------------- Inspektor */
 
-function pointList(current, mitLeer) {
+function pointList(current, withEmpty) {
   const values = S.points.map((p) => ({value: p.id, text: "#" + p.id + " " + p.name +
                                                         " (" + p.x + "," + p.y + ")"}));
-  if (mitLeer || current === null || current === undefined) {
+  if (withEmpty || current === null || current === undefined) {
     values.unshift({value: "", text: "(kein Punkt)"});
   }
   return values;
@@ -1568,7 +1568,7 @@ function renderInspector() {
   // Der Haltepunkt gilt für JEDEN Typ — auch ein Screenshot kann die Stelle
   // sein, an der man einmal hinsehen will, bevor es weitergeht.
   target.appendChild(toggle("Haltepunkt — vor diesem Block anhalten", b.breakpoint,
-    (an) => call("block_set", {field: "breakpoint", value: an}),
+    (on) => call("block_set", {field: "breakpoint", value: on}),
     "Der Lauf hält hier an und fragt — im Live-Run als Tafel (weiter, überspringen, "
     + "ab hier schrittweise, stoppen), in der Konsole per Taste. CTRL+ALT+G heisst "
     + "„weiter“. In einer Loop-Phase hält er in jedem Zyklus; ausschalten, wenn er "
@@ -1590,9 +1590,9 @@ function renderInspector() {
   //
   // Haengt trotzdem schon eine Bedingung dran, bleibt der Abschnitt sichtbar —
   // sonst waere sie unerreichbar.
-  const mitTrigger = b.type_key === "click" || b.type_key === "wait_click" ||
+  const withTrigger = b.type_key === "click" || b.type_key === "wait_click" ||
                      b.type_key === "wait" || b.type_key === "key";
-  if (mitTrigger || b.trigger !== "kein") buildTrigger(target, b, mitTrigger);
+  if (withTrigger || b.trigger !== "kein") buildTrigger(target, b, withTrigger);
   buildVerification(target, b);
   buildElse(target, b);
   buildProbe(target, b);
@@ -1612,44 +1612,44 @@ function buildProbe(target, b) {
   // Ein Block hat bis zu drei Stellen — Klick, Prüf-Pixel des Triggers und
   // ELSE-Klick —, und „sitzt das noch?" fragt man bei jeder. Angeboten wird
   // nur, was der Block wirklich hat.
-  const stellen = [];
+  const positions = [];
   if (b.point_id !== null && b.point_id !== undefined)
-    stellen.push(["click", "Stelle", b.point_id]);
+    positions.push(["click", "Stelle", b.point_id]);
   if (b.trigger !== "kein" && b.trigger_point !== null && b.trigger_point !== undefined)
-    stellen.push(["trigger", "Prüf-Pixel", b.trigger_point]);
+    positions.push(["trigger", "Prüf-Pixel", b.trigger_point]);
   if (b.verify !== "kein" && b.verify_point !== null && b.verify_point !== undefined)
-    stellen.push(["verify", "Nachprüf-Pixel", b.verify_point]);
+    positions.push(["verify", "Nachprüf-Pixel", b.verify_point]);
   if (b.else_action === "click" && b.else_point !== null && b.else_point !== undefined)
-    stellen.push(["else", "ELSE-Klick", b.else_point]);
-  const fuss = el("div", {class: "insp-footer"});
-  fuss.appendChild(el("button", {
+    positions.push(["else", "ELSE-Klick", b.else_point]);
+  const footer = el("div", {class: "insp-footer"});
+  footer.appendChild(el("button", {
     class: "btn wide",
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
     onclick: () => call("block_test"),
   }, "▶ Block einmal testen"));
-  for (const [which, text, point] of stellen) {
-    fuss.appendChild(el("button", {
+  for (const [which, text, point] of positions) {
+    footer.appendChild(el("button", {
       class: "btn wide",
       onclick: () => call("point_show", {which: which}),
     }, "◎ " + text + " zeigen (#" + point + ")"));
   }
-  target.appendChild(fuss);
+  target.appendChild(footer);
 }
 
 function renderBulkEditor(count) {
-  const zeitfeld = (beschriftung, feldname, value, gemischt) => {
-    const eingabe = el("input", {
+  const timeField = (caption, fieldName, value, mixed) => {
+    const inputEl = el("input", {
       type: "number", min: "0", step: "0.1",
-      value: gemischt ? "" : (value === null || value === undefined ? 0 : value),
-      placeholder: gemischt ? "verschieden" : "",
+      value: mixed ? "" : (value === null || value === undefined ? 0 : value),
+      placeholder: mixed ? "verschieden" : "",
     });
-    eingabe.addEventListener("change", () => {
-      if (eingabe.value.trim() !== "") {
-        call("selection_set", {field: feldname, value: Number(eingabe.value)});
+    inputEl.addEventListener("change", () => {
+      if (inputEl.value.trim() !== "") {
+        call("selection_set", {field: fieldName, value: Number(inputEl.value)});
       }
     });
-    eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") eingabe.blur(); });
-    return el("label", {class: "field"}, beschriftung, eingabe);
+    inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") inputEl.blur(); });
+    return el("label", {class: "field"}, caption, inputEl);
   };
   return el("div", {},
     el("p", {class: "hint"},
@@ -1659,16 +1659,16 @@ function renderBulkEditor(count) {
       el("button", {class: "btn quiet", onclick: () => call("selection_set",
         {field: "delay_before", value: seconds})}, String(seconds).replace(".", ",") + " s"))),
     el("div", {class: "gitter2"},
-      zeitfeld("Wartezeit (s)", "delay_before", S.selection.delay_before,
+      timeField("Wartezeit (s)", "delay_before", S.selection.delay_before,
                S.selection.delay_before_mixed),
-      zeitfeld("bis (0 = fest)", "delay_max", S.selection.delay_max,
+      timeField("bis (0 = fest)", "delay_max", S.selection.delay_max,
                S.selection.delay_max_mixed)),
     el("p", {class: "hint"},
       "Nur diese Wartefelder werden gemeinsam geändert; Typ, Ziel und Bedingungen bleiben erhalten."));
 }
 
 function buildAction(target, b) {
-  const klickt = b.type_key === "click" || b.type_key === "wait_click";
+  const clicks = b.type_key === "click" || b.type_key === "wait_click";
   const color = b.trigger !== "kein";
 
   // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
@@ -1677,14 +1677,14 @@ function buildAction(target, b) {
   target.appendChild(heading("AKTION",
     "Diese beiden Schalter SIND der Block-Typ: klicken und/oder auf eine Farbe " +
     "warten. Die Kacheln oben zeigen das Ergebnis automatisch an.", "action"));
-  target.appendChild(toggle("klickt an der Stelle", klickt, (an) =>
-    call("block_set_type", {type_key: an ? (color ? "wait_click" : "click") : "wait"})));
-  target.appendChild(toggle("wartet auf eine Farbe", color, (an) => {
+  target.appendChild(toggle("klickt an der Stelle", clicks, (on) =>
+    call("block_set_type", {type_key: on ? (color ? "wait_click" : "click") : "wait"})));
+  target.appendChild(toggle("wartet auf eine Farbe", color, (on) => {
     // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
     // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
     // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
-    if (!klickt) call("block_trigger", {choice: an ? "present" : "kein"});
-    else call("block_set_type", {type_key: an ? "wait_click" : "click"});
+    if (!clicks) call("block_trigger", {choice: on ? "present" : "kein"});
+    else call("block_set_type", {type_key: on ? "wait_click" : "click"});
   }));
 }
 
@@ -1770,11 +1770,11 @@ function setPosition(b, x, y) {
 function buildScan(target, b) {
   const scans = {item_scan: ["ITEM-SCAN", "item_scan"], icon_scan: ["ICON-SCAN", "icon_scan"],
                  boss_scan: ["BOSS-SCAN", "boss_scan"], boss_watcher: ["BOSS-WATCHER", "boss_watcher"]};
-  const eintrag = scans[b.type_key];
-  if (!eintrag) return;
-  const [title, feldname] = eintrag;
+  const entry = scans[b.type_key];
+  if (!entry) return;
+  const [title, fieldName] = entry;
   const existing = (S.scan_names && S.scan_names[b.type_key]) || [];
-  const value = b[feldname];
+  const value = b[fieldName];
   target.appendChild(heading(title));
 
   if (!existing.length && !value) {
@@ -1797,7 +1797,7 @@ function buildScan(target, b) {
     (n) => ({value: n, text: n})));
   if (value && !existing.includes(value)) values.push({value: value, text: value + " — fehlt"});
   target.appendChild(selection("Konfiguration", values, value,
-    (v) => call("block_set", {field: feldname, value: v}),
+    (v) => call("block_set", {field: fieldName, value: v}),
     "Im Item-/Boss-/Icon-Editor angelegt (Hauptprozess, CTRL+ALT+N). " +
     "Ohne Konfiguration wird nicht gespeichert.", "scan"));
   if (b.type_key === "item_scan") {
@@ -1808,12 +1808,12 @@ function buildScan(target, b) {
 
 function buildScreenshot(target, b) {
   target.appendChild(heading("SCREENSHOT"));
-  const hatBereich = !!b.screenshot_region;
-  target.appendChild(toggle("Bereich statt Vollbild", hatBereich,
-    (an) => call("block_area", {values: an ? (b.screenshot_region || [0, 0, 100, 100]) : null})));
-  if (!hatBereich) return;
+  const hasArea = !!b.screenshot_region;
+  target.appendChild(toggle("Bereich statt Vollbild", hasArea,
+    (on) => call("block_area", {values: on ? (b.screenshot_region || [0, 0, 100, 100]) : null})));
+  if (!hasArea) return;
   const r = b.screenshot_region.slice();
-  const setze = (i) => (v) => { r[i] = v; call("block_area", {values: r}); };
+  const setter = (i) => (v) => { r[i] = v; call("block_area", {values: r}); };
 
   // Der eigentliche Weg: die Ecke anfahren statt sie auszurechnen. Vier Zahlen
   // sagen niemandem, wo der Bereich liegt — sie bleiben trotzdem stehen, fuer
@@ -1832,8 +1832,8 @@ function buildScreenshot(target, b) {
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
   target.appendChild(el("div", {class: "gitter2"},
-    numberField("X1", r[0], setze(0)), numberField("Y1", r[1], setze(1)),
-    numberField("X2", r[2], setze(2)), numberField("Y2", r[3], setze(3))));
+    numberField("X1", r[0], setter(0)), numberField("Y1", r[1], setter(1)),
+    numberField("X2", r[2], setter(2)), numberField("Y2", r[3], setter(3))));
   target.appendChild(el("p", {class: "hint"},
     "Grösse: " + Math.abs(r[2] - r[0]) + " × " + Math.abs(r[3] - r[1]) + " Pixel"));
 }
@@ -1844,25 +1844,25 @@ function buildScreenshot(target, b) {
 const DIRECTION_OFF = {value: "kein", text: "kein"};
 const DIRECTIONS = [{value: "present", text: "bis Farbe DA"}, {value: "weg", text: "bis Farbe WEG"}];
 
-function buildTrigger(target, b, mitTrigger) {
+function buildTrigger(target, b, withTrigger) {
   // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
-  const ohneAus = b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait";
+  const withoutOff = b.type_key === "click" || b.type_key === "wait_click" || b.type_key === "wait";
   // Ist der Trigger bei diesen Typen aus, hat der Abschnitt keinen Inhalt: das Ein
   // und Aus macht der Schalter in AKTION, Stelle und „nur prüfen" hängen an einer
   // Bedingung, die es nicht gibt. Eine Überschrift ohne alles darunter sieht aus
   // wie ein Stück Oberfläche, das nicht geladen hat — also gar nichts zeigen.
   // Ausnahme: fehlt dem Block der Punkt, bleibt der Hinweis unten stehen. Der
   // erklärt, warum sich der Trigger nicht einschalten lässt.
-  if (ohneAus && b.trigger === "kein"
+  if (withoutOff && b.trigger === "kein"
       && b.point_id !== null && b.point_id !== undefined) return;
   target.appendChild(heading("FARB-TRIGGER (VOR DEM SCHRITT)",
-    mitTrigger
+    withTrigger
       ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
       : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
         "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
     "trigger-an"));
-  if (!(ohneAus && b.trigger === "kein")) {
-    target.appendChild(segment(ohneAus ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
+  if (!(withoutOff && b.trigger === "kein")) {
+    target.appendChild(segment(withoutOff ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
       b.trigger, (w) => call("block_trigger", {choice: w})));
   }
   if (b.trigger !== "kein") {
@@ -1871,7 +1871,7 @@ function buildTrigger(target, b, mitTrigger) {
       "Farbe und Stelle kommen aus dem Punkt. Soll an derselben Stelle auf eine " +
       "andere Farbe geprüft werden, ist das ein eigener Punkt.", "trigger"));
     target.appendChild(toggle("nur prüfen, nicht warten", b.trigger_check,
-      (an) => call("block_trigger", {choice: b.trigger, pruefen: an})));
+      (on) => call("block_trigger", {choice: b.trigger, check_only: on})));
   } else if (b.point_id === null || b.point_id === undefined) {
     target.appendChild(el("p", {class: "hint"},
       "Ohne Punkt gibt es nichts zu prüfen — erst eine Stelle wählen."));
@@ -1881,11 +1881,11 @@ function buildTrigger(target, b, mitTrigger) {
 function buildVerification(target, b) {
   // Bleibt bei JEDEM Typ: „hat die Aktion gewirkt?" ergibt auch bei einer Taste
   // und bei einem Scan Sinn — anders als der Trigger davor.
-  const richtungen = [DIRECTION_OFF].concat(DIRECTIONS);
+  const directions = [DIRECTION_OFF].concat(DIRECTIONS);
   target.appendChild(heading("NACHPRÜFUNG (NACH DEM SCHRITT)",
     "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
     "wiederholt (verify_retries), danach greift ELSE.", "verify"));
-  target.appendChild(segment(richtungen, b.verify,
+  target.appendChild(segment(directions, b.verify,
     (w) => call("block_trigger", {which: "verify", choice: w})));
   if (b.verify !== "kein") {
     target.appendChild(selection("Geprüfte Stelle", pointList(b.verify_point), b.verify_point,
@@ -1904,8 +1904,8 @@ function withoutElseText() {
   const o = S.without_else || {};
   if (!o.consequence) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
                        "pixel_timeout_action in der config.json.";
-  const zeit = o.seconds > 0 ? o.seconds + " s" : "ohne Timeout";
-  return "Ohne ELSE wartet der Schritt bis zum Timeout (" + zeit + "), danach: " +
+  const time = o.seconds > 0 ? o.seconds + " s" : "ohne Timeout";
+  return "Ohne ELSE wartet der Schritt bis zum Timeout (" + time + "), danach: " +
          o.consequence + " (config.json: pixel_timeout_action)." +
          (o.emergency_stop > 0 ? " Nach " + o.emergency_stop + " Timeouts in Folge greift " +
                             "die Notbremse." : "");
@@ -1932,12 +1932,12 @@ function buildElse(target, b) {
   //
   // Der Rueckweg ist die markierte Kachel selbst — und weil man ein Umschalten
   // nicht sieht, steht es im Hinweis darunter und im Tooltip der Kachel.
-  const auswirkung = b.else_action
+  const effect = b.else_action
     ? ELSE_DESCRIPTIONS[b.else_action]
     : withoutElseText();
   target.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-    "eigene Aktion des Schritts. " + auswirkung +
+    "eigene Aktion des Schritts. " + effect +
     (b.else_action ? " Ein zweiter Klick auf die markierte Kachel hebt ELSE wieder auf." : ""),
     "else"));
   // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen), und
@@ -2005,11 +2005,11 @@ async function proceed(discard) {
   // Sequenz — eine Momentaufnahme als Antwort zerschösse den Editor-Zustand.
   // Steht vorn, weil es weder speichern noch laden will.
   if (open.kind === "seq_loeschen") {
-    const antwort = await ask("sequence_delete", {name: open.target});
-    if (antwort) setStatus({text: antwort.message, kind: antwort.ok ? "ok" : "warn"});
+    const answer = await ask("sequence_delete", {name: open.target});
+    if (answer) setStatus({text: answer.message, kind: answer.ok ? "ok" : "warn"});
     return renderSequenceList();
   }
-  if (open.kind === "save") return call("save", {erzwingen: true});
+  if (open.kind === "save") return call("save", {force: true});
   if (!discard) await call("save");
   if (open.kind === "load") await call("load", {name: open.target, discard: true});
   else await call("new", {discard: true});
@@ -2095,28 +2095,28 @@ const SLOT_COLOR = (() => {
 })();
 
 const SCAN_MODES = [
-  {key: "choice", text: "Auswählen", shortcut: "V", haupt: true,
+  {key: "choice", text: "Auswählen", shortcut: "V", primary: true,
    help: "Slot anklicken — daneben zieht ein Rechteck um mehrere"},
-  {key: "find", text: "Slots finden", shortcut: "G", haupt: true,
+  {key: "find", text: "Slots finden", shortcut: "G", primary: true,
    help: "Bereich aufziehen, dann leeren Slot-Hintergrund anklicken"},
-  {key: "slot", text: "Neuer Slot", shortcut: "S", haupt: true,
+  {key: "slot", text: "Neuer Slot", shortcut: "S", primary: true,
    help: "zwei Ecken anklicken — wenn Finden nicht greift"},
   {key: "measure", text: "Hintergrundfarbe", shortcut: "F", help: "Stelle im Slot anklicken"},
   {key: "click", text: "Klickpunkt", shortcut: "K", help: "wohin geklickt wird"},
   {key: "area", text: "Bereich", shortcut: "B", help: "zwei Ecken um den Teil, der zählt"},
 ];
 
-async function renderScans(frisch) {
+async function renderScans(fresh) {
   // Nach Laden oder Umbenennen einer Sequenz darf die Scan-Aufnahme der zuvor
   // offenen Sequenz nicht weiter im Reiter stehen. Der Name ist ein billiger,
   // eindeutiger Besitzerwechsel und erzwingt dann eine frische Aufnahme.
-  if (SC && S && SC.sequence !== S.name) frisch = true;
-  if (frisch || !SC) {
-    const antwort = await ask("scan_data");
-    if (!antwort || view !== "scans") return;
-    SC = antwort;
+  if (SC && S && SC.sequence !== S.name) fresh = true;
+  if (fresh || !SC) {
+    const answer = await ask("scan_data");
+    if (!answer || view !== "scans") return;
+    SC = answer;
   }
-  const merk = rememberFocus();
+  const memo = rememberFocus();
   await scanMaintainImage();
   scanTools();
   // Erst die Art, dann alles Weitere: sie entscheidet, welche Bloecke der
@@ -2130,14 +2130,14 @@ async function renderScans(frisch) {
   scanShowSelected();
   scanInspector();
   setStatus(SC.status);
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /** Ein Befehl an den Scan-Teil der Brücke. Antwort ist die neue Scan-Aufnahme. */
 async function callScan(name, data_reload) {
-  const antwort = await ask(name, data_reload);
-  if (!antwort) return;
-  SC = antwort;
+  const answer = await ask(name, data_reload);
+  if (!answer) return;
+  SC = answer;
   // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
   // der jemand gerade tippt.
   if (name === "scan_reload" || name === "scan_learn_preview_apply")
@@ -2162,31 +2162,31 @@ async function callScan(name, data_reload) {
   scanScheduleAutosave(name);
 }
 
-function scanScheduleAutosave(ursache) {
+function scanScheduleAutosave(cause) {
   clearTimeout(scanAutoSaveTimer);
-  if (!SC || !SC.dirty || ursache === "scan_save") return;
+  if (!SC || !SC.dirty || cause === "scan_save") return;
   const stamp = $("scan-save-state");
   if (stamp) { stamp.textContent = "Entwurf wird gespeichert …"; stamp.classList.add("open"); }
   scanAutoSaveTimer = setTimeout(async () => {
-    const antwort = await ask("scan_save");
-    if (!antwort) return;
-    SC = antwort;
+    const answer = await ask("scan_save");
+    if (!answer) return;
+    SC = answer;
     await renderScans();
   }, 900);
 }
 
 function scanCanvasTools() {
   const ready = scanConfigOpen();
-  const sicht = $("view-scans");
-  sicht.classList.toggle("guided", scanGuided);
-  sicht.classList.toggle("has-image", photoPresent());
+  const viewName = $("view-scans");
+  viewName.classList.toggle("guided", scanGuided);
+  viewName.classList.toggle("has-image", photoPresent());
   $("scan-free").textContent = scanGuided ? "Alle Werkzeuge" : "Nur Assistent";
   document.querySelectorAll("[data-scan-tool]").forEach((button) => {
     button.classList.toggle("on", SC.mode === button.dataset.scanTool);
     button.disabled = (!ready || !SC.pillow) && button.dataset.scanTool !== "choice";
   });
   const mode = SCAN_MODES.find((m) => m.key === SC.mode);
-  const erk = {region: "Region aufziehen",
+  const det = {region: "Region aufziehen",
                action: scanKind === "item" ? "Bestätigungsklick setzen"
                                           : "Klickpunkt setzen"}[SC.mode];
   $("scan-tool-state").textContent = !ready
@@ -2196,7 +2196,7 @@ function scanCanvasTools() {
                           : "Werkzeug wählen oder rechts ein Feld ändern")
     // Beim Aufziehen steht der STAND dabei, nicht nur der Name des Werkzeugs:
     // ohne ihn sieht man dem Bild nicht an, ob schon eine Ecke gesetzt ist.
-    : "Aktiv: " + (erk || (mode ? mode.text : SC.mode))
+    : "Aktiv: " + (det || (mode ? mode.text : SC.mode))
       + (SC.corner ? " — erste Ecke gesetzt, zweite Ecke anklicken · ESC bricht ab" : "");
   $("scan-tool-state").classList.toggle("kind-warn", !!SC.corner);
   $("scan-pin").classList.toggle("on", !!SC.tool_pinned);
@@ -2233,10 +2233,10 @@ function scanRenderResult() {
 }
 
 function scanResultNext(field) {
-  const namen = (SC.result && SC.result[field]) || [];
-  if (!namen.length) return;
-  const current = namen.indexOf(SC.choice.name);
-  const name = namen[(current + 1) % namen.length];
+  const names = (SC.result && SC.result[field]) || [];
+  if (!names.length) return;
+  const current = names.indexOf(SC.choice.name);
+  const name = names[(current + 1) % names.length];
   callScan("scan_select", {kind: "slot", name: name});
 }
 
@@ -2273,10 +2273,10 @@ async function scanMaintainImage() {
   // Zeitstempel, sonst ihre Groesse. Ohne diese Marke passte entweder gar
   // nichts mehr ein (Zoom vom vorigen Scan) oder bei jedem Neuzeichnen wieder,
   // was jedes Hineinzoomen sofort zuruecksetzte.
-  const marke = photoPresent() ? SC.photo.stamp
+  const badge = photoPresent() ? SC.photo.stamp
                          : -(SC.photo.width * 100000 + SC.photo.height);
-  if (marke !== scanPhotoStamp) {
-    scanPhotoStamp = marke;
+  if (badge !== scanPhotoStamp) {
+    scanPhotoStamp = badge;
     if (photoPresent()) {
       const url = await ask("scan_image");
       if (url) image.src = url;
@@ -2292,13 +2292,13 @@ async function scanMaintainImage() {
 
 function scanFit() {
   if (!SC || !SC.photo) return;
-  const platz = $("scan-stage").clientWidth - 24;
+  const slotNr = $("scan-stage").clientWidth - 24;
   // Ein Bild wird nie vergroessert — jedes Pixel darueber waere erfunden, und
   // gemessen wird ohnehin im Original. Die aus den Slots gerechnete Flaeche hat
   // keine Pixel, die man faelschen koennte: sie darf die Buehne fuellen, sonst
   // haengt ein Inventar von 300 px verloren in einer Ecke.
-  const grenze = photoPresent() ? 1 : 4;
-  scanZoom = Math.max(0.05, Math.min(grenze, platz / SC.photo.width));
+  const limit = photoPresent() ? 1 : 4;
+  scanZoom = Math.max(0.05, Math.min(limit, slotNr / SC.photo.width));
   scanZoomManual = false;
   scanApplyZoom();
 }
@@ -2340,9 +2340,9 @@ function scanTools() {
   const open = SC.scans.find((c) => c.name === SC.open);
   const ready = scanConfigOpen();
   $("scan-stage").classList.toggle("search-active", SC.mode === "find");
-  const namensfeld = $("scan-name");
-  namensfeld.value = open ? open.name : "";
-  namensfeld.disabled = !open;
+  const nameField = $("scan-name");
+  nameField.value = open ? open.name : "";
+  nameField.disabled = !open;
   $("scan-scope").textContent = open
     ? open.slots.length + " Slots · " + open.items.length + " Items"
     : SC.slots.length + " Slots · " + SC.items.length + " Items";
@@ -2350,14 +2350,14 @@ function scanTools() {
   const target = $("scan-modes");
   target.replaceChildren();
   for (const m of SCAN_MODES) {
-    const an = SC.mode === m.key;
+    const on = SC.mode === m.key;
     target.appendChild(el("button", {
-      class: "scan-mode" + (an ? " on" : ""),
+      class: "scan-mode" + (on ? " on" : ""),
       disabled: !ready,
       // Ein Umschalten sieht man einem Bedienelement nicht an — dieselbe Regel
       // wie bei der ELSE-Kachel im Inspektor. Es steht deshalb im Tooltip der
       // markierten Kachel UND im Hinweis unter dem Raster.
-      title: an && m.key !== "choice"
+      title: on && m.key !== "choice"
         ? "Nochmal klicken = zurück zum Auswählen" : "",
       onclick: () => callScan("scan_mode_set", {mode: m.key, kind: scanKind}),
     },
@@ -2383,43 +2383,43 @@ function scanTools() {
   maintainCollapse();
   scanSteps();
   $("scan-photo").disabled = !SC.pillow || !ready;
-  const fensterquelle = !!(SC.window_title || SC.window_id);
-  $("scan-photo").textContent = fensterquelle ? "Fenster aufnehmen"
+  const windowSource = !!(SC.window_title || SC.window_id);
+  $("scan-photo").textContent = windowSource ? "Fenster aufnehmen"
     : (SC.area ? "Bereich aufnehmen" : "Screenshot aufnehmen");
 
   // Der Bereich gilt fuer JEDE weitere Aufnahme dieses Scans — er muss also
   // dastehen, nicht nur in der Statuszeile aufblitzen.
-  const quelleninfo = $("scan-source-info");
-  const quellenname = $("scan-source-name");
+  const sourceInfo = $("scan-source-info");
+  const sourceName = $("scan-source-name");
   const bz = $("scan-area");
-  const groesse = SC.area
+  const size = SC.area
     ? (SC.area[2] - SC.area[0]) + "×" + (SC.area[3] - SC.area[1])
     : "";
-  quellenname.textContent = fensterquelle
+  sourceName.textContent = windowSource
     ? "Fenster „" + (SC.window_title || "gewählt") + "“"
     : (SC.area ? "Eigener Bildschirmausschnitt" : "Ganzer Bildschirm");
-  const quellendetails = [];
-  if (fensterquelle) quellendetails.push("Slots relativ");
-  if (groesse) quellendetails.push(groesse);
-  if (!fensterquelle && SC.area) {
-    quellendetails.push("Position " + SC.area[0] + ", " + SC.area[1]);
+  const sourceDetails = [];
+  if (windowSource) sourceDetails.push("Slots relativ");
+  if (size) sourceDetails.push(size);
+  if (!windowSource && SC.area) {
+    sourceDetails.push("Position " + SC.area[0] + ", " + SC.area[1]);
   }
   if (!SC.window_available && SC.window_title) {
-    quellendetails.push("Fenster nicht geöffnet");
+    sourceDetails.push("Fenster nicht geöffnet");
   }
-  bz.textContent = quellendetails.join(" · ");
-  bz.hidden = !quellendetails.length;
+  bz.textContent = sourceDetails.join(" · ");
+  bz.hidden = !sourceDetails.length;
   // Bei einem gewaehlten Fenster steht dabei, was das bedeutet: es wird direkt
   // abgebildet, also darf das Studio davor liegen.
-  quelleninfo.title = fensterquelle
+  sourceInfo.title = windowSource
     ? "Editor und Live-Scan verwenden dieselbe Aufnahmequelle. Verschieben wird automatisch ausgeglichen; beim Desktop-Fallback muss das Fenster sichtbar sein."
     : (SC.area ? "Ausschnitt vom Bildschirm — hier darf nichts davor liegen." : "");
-  quelleninfo.classList.toggle("on", !!SC.area || fensterquelle);
-  $("scan-fullscreen").disabled = !ready || (!SC.area && !fensterquelle) || !SC.pillow;
+  sourceInfo.classList.toggle("on", !!SC.area || windowSource);
+  $("scan-fullscreen").disabled = !ready || (!SC.area && !windowSource) || !SC.pillow;
   // Aufziehen geht nur auf einem Bild — vorher gibt es nichts anzuklicken.
-  const auf = $("scan-draw-area");
-  auf.disabled = !ready || !photoPresent();
-  auf.classList.toggle("on", SC.mode === "area");
+  const up = $("scan-draw-area");
+  up.disabled = !ready || !photoPresent();
+  up.classList.toggle("on", SC.mode === "area");
   scanMaintainWindows();
 }
 
@@ -2428,9 +2428,9 @@ function collapseDefault(key) { return false; }
 
 function maintainCollapse() {
   for (const [key, id] of [["modes", "sec-modes"]]) {
-    const zu = collapsed[key] === null ? collapseDefault(key)
+    const closed = collapsed[key] === null ? collapseDefault(key)
                                             : collapsed[key];
-    $(id).classList.toggle("closed", zu);
+    $(id).classList.toggle("closed", closed);
   }
 }
 
@@ -2441,10 +2441,10 @@ function scanSteps() {
     scanWizardStep = open ? open.nr : 3;
   }
   for (const s of SC.steps) {
-    const karte = $("scan-wizard-" + s.nr);
+    const cardEl = $("scan-wizard-" + s.nr);
     const open = scanWizardStep === s.nr;
-    karte.classList.toggle("open", open);
-    karte.classList.toggle("done", s.done);
+    cardEl.classList.toggle("open", open);
+    cardEl.classList.toggle("done", s.done);
     $("scan-step-" + s.nr + "-nr").textContent = s.done ? "✓" : String(s.nr);
     $("scan-step-" + s.nr + "-body").hidden = !open;
   }
@@ -2563,13 +2563,13 @@ function cardId(kind, name) { return "maske:" + kind + ":" + name; }
  * der Slot-Liste heraus versperrt, solange ein Slot gewaehlt ist. */
 function scanFollowTab() {
   if (!SC || scanKind !== "item") return;
-  const jetzt = SC.choice.kind + ":" + SC.choice.name;
-  if (jetzt === scanLastChoice) return;
-  const erster = scanLastChoice === null;
-  scanLastChoice = jetzt;
+  const now = SC.choice.kind + ":" + SC.choice.name;
+  if (now === scanLastChoice) return;
+  const first = scanLastChoice === null;
+  scanLastChoice = now;
   // Der Scan hat seinen eigenen Weg (`scanTabAfterOpen`); und beim
   // allerersten Zeichnen gibt es keinen Wechsel, nur einen Anfangszustand.
-  if (erster) return;
+  if (first) return;
   const target = {slot: "slots", item: "items"}[SC.choice.kind];
   if (target && scanActiveList() !== target) scanList = target;
 }
@@ -2580,10 +2580,10 @@ function scanListBlock(tabs, filter, target) {
   // Kopf und Liste werden getrennt gebaut (der Kopf klebt oben, die Liste
   // scrollt) — gerufen wird dieselbe Funktion zweimal, damit die Zuordnung
   // Reiter -> Inhalt an EINER Stelle steht und nicht an zweien auseinanderlaeuft.
-  const an = (wohin, kind) => { if (wohin) wohin.appendChild(kind); };
+  const on = (whereTo, kind) => { if (whereTo) whereTo.appendChild(kind); };
   if (scanKind !== "item") {
     if (scanKind === "icon") {
-      an(tabs, el("button", {class: "tab on"},
+      on(tabs, el("button", {class: "tab on"},
         "Icon-Scans " + SC.icon_scans.length));
       return target ? detListIcons(target) : undefined;
     }
@@ -2593,7 +2593,7 @@ function scanListBlock(tabs, filter, target) {
     for (const [key, text, number] of [["bosses", "Bosse", detBosses().length],
                                      ["bibliothek", "Bibliothek",
                                       SC.global_bosses.length]]) {
-      an(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
+      on(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
         onclick: () => { scanList = key; renderScans(); }}, text + " " + number));
     }
     if (!target) return undefined;
@@ -2603,16 +2603,16 @@ function scanListBlock(tabs, filter, target) {
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
   // Reihenfolge = Rangfolge: der Scan ist das Uebergeordnete, Slots und Items
   // haengen an ihm.
-  const gruppen = [["scans", "Scans", SC.scans.length, SC.scans.length],
+  const groups = [["scans", "Scans", SC.scans.length, SC.scans.length],
                    ["slots", "Slots", scanVisible(SC.slots, false, "slot").length, SC.slots.length],
                    ["items", "Items", scanVisible(SC.items, true, "item").length, SC.items.length]];
-  for (const [key, text, sichtbar, total] of gruppen) {
-    an(tabs, el("button", {
+  for (const [key, text, visible, total] of groups) {
+    on(tabs, el("button", {
       class: "tab" + (open === key ? " on" : ""),
-      title: sichtbar === total ? "" : total + " insgesamt",
+      title: visible === total ? "" : total + " insgesamt",
       onclick: () => { scanList = key;
                        scanOrderForget(); renderScans(); },
-    }, text + " " + sichtbar + (sichtbar === total ? "" : "/" + total)));
+    }, text + " " + visible + (visible === total ? "" : "/" + total)));
   }
   if (filter) scanFilterRow(filter, open);
   if (!target) return undefined;
@@ -2673,11 +2673,11 @@ function scanOrderForget() {
  * inzwischen gewechselt hat, sagt seine Maske (`i.kategorie` steht im
  * Bedienelement) und die Zustandszeile. */
 function scanOrderGroup(kind) {
-  const merk = scanOrder[kind];
-  if (!merk) return null;
-  const gruppen = new Map();
-  for (const e of merk) gruppen.set(e.name, e.group);
-  return (name) => (gruppen.has(name) ? gruppen.get(name) : null);
+  const memo = scanOrder[kind];
+  if (!memo) return null;
+  const groups = new Map();
+  for (const e of memo) groups.set(e.name, e.group);
+  return (name) => (groups.has(name) ? groups.get(name) : null);
 }
 
 /** Umbenennen aendert den Namen, nicht den Rang.
@@ -2692,10 +2692,10 @@ function scanOrderGroup(kind) {
  * seinen Platz; die Raenge verschieben sich dabei gleichmaessig, verglichen
  * werden sie ohnehin nur gegeneinander. */
 function scanOrderRename(kind, alt, neu) {
-  const merk = scanOrder[kind];
-  if (!merk || !neu || alt === neu) return;
-  const i = merk.findIndex((e) => e.name === alt);
-  if (i >= 0) merk.splice(i, 1, {name: neu, group: merk[i].group}, merk[i]);
+  const memo = scanOrder[kind];
+  if (!memo || !neu || alt === neu) return;
+  const i = memo.findIndex((e) => e.name === alt);
+  if (i >= 0) memo.splice(i, 1, {name: neu, group: memo[i].group}, memo[i]);
 }
 
 /** Die gemerkte Vorschau auf den neuen Namen mitnehmen.
@@ -2720,11 +2720,11 @@ function scanPreviewRename(kind, alt, neu) {
 
 /** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
 function scanOrderRank(kind) {
-  const merk = scanOrder[kind];
-  if (!merk) return null;
-  const rang = new Map();
-  merk.forEach((e, i) => rang.set(e.name, i));
-  return (name) => (rang.has(name) ? rang.get(name) : Number.MAX_SAFE_INTEGER);
+  const memo = scanOrder[kind];
+  if (!memo) return null;
+  const rankNr = new Map();
+  memo.forEach((e, i) => rankNr.set(e.name, i));
+  return (name) => (rankNr.has(name) ? rankNr.get(name) : Number.MAX_SAFE_INTEGER);
 }
 
 /** Was die Liste zeigt: gefiltert nach offenem Scan und Kategorie.
@@ -2736,15 +2736,15 @@ function scanOrderRank(kind) {
  *
  * Dazu, was gerade abgewaehlt wurde (s. o.) — sonst nimmt der Filter einem den
  * Rueckweg. */
-function scanVisible(eintraege, mitKategorie, kind) {
-  let liste = eintraege;
-  if (mitKategorie && scanCategory)
-    liste = liste.filter((e) => (e.category || "") === scanCategory);
-  return liste;
+function scanVisible(entries, withCategory, kind) {
+  let listEl = entries;
+  if (withCategory && scanCategory)
+    listEl = listEl.filter((e) => (e.category || "") === scanCategory);
+  return listEl;
 }
 
 /** Ein Namensfeld in einer Maske — mit dem Fokus-Anker fuer das Umbenennen. */
-function cardName(kind, name, title, setze) {
+function cardName(kind, name, title, setter) {
   const field = el("input", {value: name, autocomplete: "off", title: title});
   field.addEventListener("change", () => {
     const neu = field.value.trim();
@@ -2755,7 +2755,7 @@ function cardName(kind, name, title, setze) {
     focusRename(cardId(kind, name), cardId(kind, neu));
     scanOrderRename(kind, name, neu);
     scanPreviewRename(kind, name, neu);
-    setze(field.value);
+    setter(field.value);
   });
   field.addEventListener("keydown", (e) => { if (e.key === "Enter") field.blur(); });
   return field;
@@ -2767,27 +2767,27 @@ function cardName(kind, name, title, setze) {
  * was drinsteht — nicht darin, wie man sie anfasst. Vorher waren es drei
  * Formen an zwei Orten, und ein Slot liess sich nur ueber vier Zahlenfelder
  * bearbeiten, waehrend ein Item eine Maske hatte. */
-function buildCard(kind, name, selected, parts, detail, beimWaehlen) {
-  const maske = el("div", {class: "scan-card" + (selected ? " on" : ""),
+function buildCard(kind, name, selected, parts, detail, onChoose) {
+  const card = el("div", {class: "scan-card" + (selected ? " on" : ""),
                            id: cardId(kind, name)});
-  for (const teil of parts) maske.appendChild(teil);
+  for (const part of parts) card.appendChild(part);
   if (selected && detail) {
-    const kasten = el("div", {class: "scan-card-detail"});
-    detail(kasten);
-    maske.appendChild(kasten);
+    const boxEl = el("div", {class: "scan-card-detail"});
+    detail(boxEl);
+    card.appendChild(boxEl);
   }
   // Ein Klick auf die Maske waehlt sie; ein zweiter klappt ein offenes Item
   // wieder zu. Felder und Knoepfe sind davon ausgenommen, sonst wuerde schon
   // das Bearbeiten den Detailteil unter der Hand schliessen.
-  maske.addEventListener("click", (e) => {
+  card.addEventListener("click", (e) => {
     if (e.target.closest("input, label, button, select, summary, details")) return;
     if (selected && kind === "item") {
       callScan("scan_select", {kind: "item", name: ""});
     } else if (!selected) {
-      beimWaehlen();
+      onChoose();
     }
   });
-  return maske;
+  return card;
 }
 
 function scanListSlots(target) {
@@ -2796,21 +2796,21 @@ function scanListSlots(target) {
   // Deshalb gilt sie auch ueber die Grenze „gehoert zum offenen Scan" hinweg.
   // Alte oder ungueltige IDs landen am Ende und werden dort nach Namen stabil
   // geordnet — die Ansicht erfindet keine Reparatur fuer Bestandsdaten.
-  const rang = scanOrderRank("slot");
-  const liste = scanVisible(SC.slots, false, "slot").slice().sort((a, b) =>
-    rang ? (rang(a.name) - rang(b.name))
+  const rankNr = scanOrderRank("slot");
+  const listEl = scanVisible(SC.slots, false, "slot").slice().sort((a, b) =>
+    rankNr ? (rankNr(a.name) - rankNr(b.name))
          : (((Number(a.id) > 0 ? Number(a.id) : Number.MAX_SAFE_INTEGER)
               - (Number(b.id) > 0 ? Number(b.id) : Number.MAX_SAFE_INTEGER))
              || byName(a.name, b.name)));
-  if (!rang) scanOrder.slot = liste.map((s) => ({name: s.name, group: ""}));
-  if (!liste.length) {
+  if (!rankNr) scanOrder.slot = listEl.map((s) => ({name: s.name, group: ""}));
+  if (!listEl.length) {
     target.appendChild(el("p", {class: "hint"}, SC.slots.length
       ? "Kein Slot gehört zu diesem Scan. Den Filter ausschalten und Häkchen setzen."
       : "Noch keine Slots. Modus „Slots finden“ — oder „Neuer Slot“ und zwei "
         + "Ecken im Bild anklicken."));
     return;
   }
-  for (const s of liste) target.appendChild(scanSlotCard(s));
+  for (const s of listEl) target.appendChild(scanSlotCard(s));
 }
 
 /** Ein Slot als Maske — dieselbe Bauform wie beim Item.
@@ -2820,12 +2820,12 @@ function scanListSlots(target) {
  * Groesse, Klickpunkt und was zuletzt darin erkannt wurde. Die Zahlen dazu
  * klappen im Detailteil auf, wie beim Item die Konfidenz. */
 function scanSlotCard(s) {
-  const setze = (field, value) => callScan("scan_slot_set",
+  const setter = (field, value) => callScan("scan_slot_set",
                                         {name: s.name, field: field, value: value});
   const selected = SC.selection.includes(s.name)
                 || (SC.choice.kind === "slot" && SC.choice.name === s.name);
   const name = cardName("slot", s.name,
-    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
+    "Name — zugleich die Referenz in jedem Scan", (v) => setter("name", v));
   // **Die ID ist eine reine Anzeige-Kachel, kein Knopf.** Sie bleibt gleich,
   // auch wenn der Slot im offenen Scan ab- und wieder angeschaltet wird — DAS
   // ändert nur seine STELLE (er wandert ans Ende der Mitgliederliste), nicht
@@ -2841,20 +2841,20 @@ function scanSlotCard(s) {
   const box = el("input", {type: "checkbox",
     "aria-label": s.name + " ein- oder ausschalten"});
   box.checked = !!s.active;
-  box.addEventListener("change", () => setze("active", box.checked));
-  const anaus = el("label", {class: "on scan-slot-toggle",
+  box.addEventListener("change", () => setter("active", box.checked));
+  const onOff = el("label", {class: "on scan-slot-toggle",
     title: s.active ? "Slot ist aktiv — ausschalten" : "Slot ist aus — einschalten"}, box);
-  const felder = el("div", {class: "scan-card-fields"}, name, scanSlotState(s));
-  const maske = buildCard("slot", s.name, selected,
-    [el("div", {class: "scan-badge"}, anaus, id),
+  const fields = el("div", {class: "scan-card-fields"}, name, scanSlotState(s));
+  const card = buildCard("slot", s.name, selected,
+    [el("div", {class: "scan-badge"}, onOff, id),
      el("span", {class: "dot" + (s.color ? "" : " without"),
                   title: s.color ? "Hintergrund " + s.color : "Hintergrund nicht gemessen",
                   style: s.color ? "background:" + s.color : ""}),
-     felder],
-    (kasten) => scanSlotDetails(kasten, s),
+     fields],
+    (boxEl) => scanSlotDetails(boxEl, s),
     () => callScan("scan_select", {kind: "slot", name: s.name}));
-  maske.classList.toggle("off", !s.active);
-  return maske;
+  card.classList.toggle("off", !s.active);
+  return card;
 }
 
 /** Die Zustandszeile eines Slots: Groesse, Warnung, letzter Treffer. */
@@ -2889,39 +2889,39 @@ function scanListItems(target) {
   // ausschliesslich sie — auch fuer die Gruppen, denn die Kategorie war als
   // erster Schluessel das letzte Feld, das die Zeile noch wegspringen liess.
   // Ohne Merkposten (erster Aufbau, „Sortieren", Neu laden) wird frisch geordnet.
-  const rang = scanOrderRank("item");
+  const rankNr = scanOrderRank("item");
   const group = scanOrderGroup("item");
-  const frisch = (a, b) =>
+  const fresh = (a, b) =>
     (SC.open ? Number(!!b.included) - Number(!!a.included) : 0) ||
     a.priority - b.priority || a.name.localeCompare(b.name, "de");
-  const liste = scanVisible(SC.items, true, "item").slice().sort((a, b) =>
-    rang ? (rang(a.name) - rang(b.name)) || frisch(a, b)
+  const listEl = scanVisible(SC.items, true, "item").slice().sort((a, b) =>
+    rankNr ? (rankNr(a.name) - rankNr(b.name)) || fresh(a, b)
          : ((a.category || "").localeCompare(b.category || "", "de")
-            || frisch(a, b)));
-  if (!rang) {
-    scanOrder.item = liste.map((i) => ({name: i.name, group: i.category || ""}));
+            || fresh(a, b)));
+  if (!rankNr) {
+    scanOrder.item = listEl.map((i) => ({name: i.name, group: i.category || ""}));
   }
-  if (!liste.length) {
+  if (!listEl.length) {
     target.appendChild(el("p", {class: "hint"}, SC.items.length
       ? "Kein Item passt zum Filter. Der Bestand hat " + SC.items.length + " Stück."
       : "Noch keine Items. Einen Slot wählen und „Item lernen“ — oder alle "
         + "Slots auf einmal."));
     return;
   }
-  scanFetchPreviews(liste.map((i) => i.name));
-  let letzteKategorie = null;
-  for (const i of liste) {
+  scanFetchPreviews(listEl.map((i) => i.name));
+  let lastCategory = null;
+  for (const i of listEl) {
     // Die Ueberschrift kommt aus der EINGEFRORENEN Gruppe, nicht aus dem
     // aktuellen Wert: sonst reisst ein gerade geaendertes Item eine zweite
     // Ueberschrift mitten in die Liste. Wo es hinwandert, sagt seine Maske.
-    const gefroren = group ? group(i.name) : null;
-    const category = (gefroren === null ? (i.category || "") : gefroren)
+    const frozen = group ? group(i.name) : null;
+    const category = (frozen === null ? (i.category || "") : frozen)
                       || "Ohne Kategorie";
-    if (category !== letzteKategorie) {
-      target.appendChild(scanCategoryHeader(category, liste));
-      letzteKategorie = category;
+    if (category !== lastCategory) {
+      target.appendChild(scanCategoryHeader(category, listEl));
+      lastCategory = category;
     }
-    target.appendChild(scanItemCard(i, gefroren));
+    target.appendChild(scanItemCard(i, frozen));
   }
 }
 
@@ -2938,10 +2938,10 @@ function scanListItems(target) {
  * bei `change`, nicht bei jedem Tastendruck — sonst zoege jedes Zeichen alle
  * Items mit.
  */
-function scanCategoryHeader(category, liste) {
+function scanCategoryHeader(category, listEl) {
   const empty = category === "Ohne Kategorie";
   const value = empty ? "" : category;
-  const count = liste.filter((i) => (i.category || "") === value).length;
+  const count = listEl.filter((i) => (i.category || "") === value).length;
   const field = el("input", {class: "scan-category-field", value: value,
     placeholder: "ohne Kategorie",
     title: "Umbenennen zieht alle Items dieser Gruppe mit. Leer = Kategorie "
@@ -2963,8 +2963,8 @@ function scanCategoryHeader(category, liste) {
  * Was selten gebraucht wird (Vorlagen, Marker, Konfidenz, Loeschen), klappt
  * darunter auf. Name, Kategorie und Prioritaet stehen NUR hier — dieselbe Sache
  * an zwei Stellen waeren zwei Wahrheiten. */
-function scanItemCard(i, gefroren) {
-  const setze = (field, value) => callScan("scan_item_set",
+function scanItemCard(i, frozen) {
+  const setter = (field, value) => callScan("scan_item_set",
                                         {name: i.name, field: field, value: value});
   const selected = SC.choice.kind === "item" && SC.choice.name === i.name;
   const image = scanPreviews.get(i.name);
@@ -2972,17 +2972,17 @@ function scanItemCard(i, gefroren) {
   const box = el("input", {type: "checkbox",
     "aria-label": i.name + " ein- oder ausschalten"});
   box.checked = !!i.active;
-  box.addEventListener("change", () => setze("active", box.checked));
-  const anaus = el("label", {class: "on scan-slot-toggle",
+  box.addEventListener("change", () => setter("active", box.checked));
+  const onOff = el("label", {class: "on scan-slot-toggle",
     title: i.active ? "Item ist aktiv — ausschalten" : "Item ist aus — einschalten"}, box);
 
   const name = cardName("item", i.name,
-    "Name — zugleich die Referenz in jedem Scan", (v) => setze("name", v));
+    "Name — zugleich die Referenz in jedem Scan", (v) => setter("name", v));
 
   // Vorhandene anklicken, neue tippen — dasselbe Bedienelement wie in der
   // Lern-Vorschau. Ein freies Textfeld allein macht aus „Helme" und „helme"
   // zwei Kategorien, und Items derselben Kategorie konkurrieren miteinander.
-  const kat = categoryChooser(i.category || "", (v) => setze("category", v),
+  const cat = categoryChooser(i.category || "", (v) => setter("category", v),
     {title: "Items derselben Kategorie konkurrieren; die kleinere Priorität gewinnt",
      empty: "— ohne —", key: "item:" + i.name});
 
@@ -2990,42 +2990,42 @@ function scanItemCard(i, gefroren) {
   // Rang mit einem anderen derselben Kategorie, entscheidet die Scan-Reihenfolge
   // — also der Zufall. Das steht am Feld, nicht erst im aufgeklappten Detail:
   // getippt wird hier.
-  const kollision = priorityDuplicate(i);
-  const prio = el("input", {
+  const collision = priorityDuplicate(i);
+  const rank = el("input", {
     type: "number", value: i.priority, min: 0, step: 1,
-    class: kollision.length ? "duplicate" : "",
-    title: kollision.length
-      ? "P" + i.priority + " hat auch: " + kollision.join(", ")
+    class: collision.length ? "duplicate" : "",
+    title: collision.length
+      ? "P" + i.priority + " hat auch: " + collision.join(", ")
         + " — bei gleicher Zahl entscheidet der Zufall"
       : "Priorität — kleiner gewinnt" + (i.category
           ? " (frei in „" + i.category + "“: P"
             + nextFreePriority(i.category, i.name) + ")"
             + "; 0 = ganz nach vorn, die anderen rücken um eins"
           : ", zählt nur innerhalb einer Kategorie")});
-  prio.addEventListener("change", () => {
-    if (prio.value.trim() !== "") setze("priority", Number(prio.value));
+  rank.addEventListener("change", () => {
+    if (rank.value.trim() !== "") setter("priority", Number(rank.value));
   });
-  prio.addEventListener("keydown", (e) => { if (e.key === "Enter") prio.blur(); });
+  rank.addEventListener("keydown", (e) => { if (e.key === "Enter") rank.blur(); });
 
-  const felder = el("div", {class: "scan-card-fields"}, name,
-    el("div", {class: "scan-card-bottom"}, kat, prio), scanItemState(i, gefroren));
+  const fields = el("div", {class: "scan-card-fields"}, name,
+    el("div", {class: "scan-card-bottom"}, cat, rank), scanItemState(i, frozen));
 
-  const maske = buildCard("item", i.name, selected,
-    [el("div", {class: "scan-badge"}, anaus),
+  const card = buildCard("item", i.name, selected,
+    [el("div", {class: "scan-badge"}, onOff),
      image ? el("img", {class: "mini", src: image, alt: ""})
           : el("span", {class: "dot" + (i.marker.length ? "" : " without"),
                         style: i.marker.length ? "background:" + i.marker[0] : ""}),
-     felder],
+     fields],
     // **Das Gewaehlte klappt seine Einstellungen hier auf**, statt sie in eine
     // andere Spalte zu legen: Vorlage, Marker, Konfidenz und Loeschen gehoeren
     // diesem Item, und man sieht beim Arbeiten daran nicht zwischen zwei Orten
     // hin und her. Nur beim gewaehlten — sechzig aufgeklappte Bloecke waeren
     // keine Liste mehr.
-    (kasten) => scanItemDetails(kasten, i),
+    (boxEl) => scanItemDetails(boxEl, i),
     () => callScan("scan_select", {kind: "item", name: i.name}));
-  maske.classList.add("scan-item-card");
-  maske.classList.toggle("off", !i.active);
-  return maske;
+  card.classList.add("scan-item-card");
+  card.classList.toggle("off", !i.active);
+  return card;
 }
 
 /** Die Zustandszeile einer Item-Maske: erkannt, stumm, fehlende Vorlage.
@@ -3035,12 +3035,12 @@ function scanItemCard(i, gefroren) {
  * stand (und das ist die Liste, in der man arbeitet), sah nach dem Klick
  * nichts und hielt ihn fuer wirkungslos. Hier steht jetzt, WO das Item gerade
  * gefunden wurde. */
-function scanItemState(i, gefroren) {
+function scanItemState(i, frozen) {
   const parts = [];
   // Die Kategorie ist gewechselt, die Zeile steht aber noch unter der alten
   // Ueberschrift — das muss dastehen, sonst liest sich die Liste falsch.
-  if (gefroren !== null && gefroren !== undefined
-      && (i.category || "") !== gefroren) {
+  if (frozen !== null && frozen !== undefined
+      && (i.category || "") !== frozen) {
     parts.push(el("span", {style: "color:var(--accent)",
       title: "Beim nächsten „Sortieren“ rutscht das Item in diese Gruppe"},
       "→ " + (i.category || "ohne Kategorie")));
@@ -3061,10 +3061,10 @@ function scanItemState(i, gefroren) {
       title: "Für die Slot-Größen dieses Scans gibt es noch keine Vorlage"},
       "Vorlage fehlt"));
   }
-  const kollision = priorityDuplicate(i);
-  if (kollision.length) {
+  const collision = priorityDuplicate(i);
+  if (collision.length) {
     parts.push(el("span", {style: "color:var(--accent)",
-      title: "Gleiche Priorität wie " + kollision.join(", ")
+      title: "Gleiche Priorität wie " + collision.join(", ")
              + " — welches zuerst geklickt wird, entscheidet der Zufall"},
       "P" + i.priority + " doppelt"));
   }
@@ -3109,7 +3109,7 @@ function scanScanCard(c) {
      el("span", {class: "dot" + (open ? "" : " without"),
                  style: open ? "background:var(--slot-ok)" : ""}),
      el("div", {class: "scan-card-fields"}, name, stamp)],
-    (kasten) => scanScanDetails(kasten, c),
+    (boxEl) => scanScanDetails(boxEl, c),
     // Waehlen und Oeffnen sind hier dasselbe: ein Scan, den man ansieht, ist
     // der, an dem man arbeitet. Der Reiter bleibt dabei stehen — sonst
     // verschwindet die Maske, die sich gerade aufgeklappt hat.
@@ -3118,15 +3118,15 @@ function scanScanCard(c) {
 }
 
 /** Template-Bilder nachholen, die wir noch nicht haben — in EINEM Aufruf. */
-async function scanFetchPreviews(namen) {
-  const missing_items = namen.filter((n) => !scanPreviews.has(n));
+async function scanFetchPreviews(names) {
+  const missing_items = names.filter((n) => !scanPreviews.has(n));
   if (!missing_items.length) return;
   // Vormerken, damit ein zweiter Aufbau nicht nochmal fragt.
   for (const n of missing_items) scanPreviews.set(n, "");
-  const antwort = await ask("scan_preview", {namen: missing_items});
-  if (!antwort) return;
+  const answer = await ask("scan_preview", {names: missing_items});
+  if (!answer) return;
   let neu = false;
-  for (const [name, url] of Object.entries(antwort)) {
+  for (const [name, url] of Object.entries(answer)) {
     if (url) { scanPreviews.set(name, url); neu = true; }
   }
   if (neu && view === "scans") scanInspector();
@@ -3149,14 +3149,14 @@ function scanOverlay() {
   // Was gerade gezogen wird, wird SCHON VERSCHOBEN gezeichnet — sonst zieht man
   // blind und sieht das Ergebnis erst beim Loslassen. Nur eine Zeichnung: die
   // Daten aendert erst der Aufruf beim Loslassen.
-  const zieh = scanDragOffset || [0, 0];
-  const gezogen = zieh[0] || zieh[1]
+  const dragState = scanDragOffset || [0, 0];
+  const dragged = dragState[0] || dragState[1]
     ? new Set(scanSelectedSlots().map((s) => s.name)) : null;
 
   // Slots gehoeren dem Item-Scan. Auf einem Boss-Bild waeren 45 Rechtecke kein
   // Ueberblick, sondern ein Gitter ueber der einen Region, um die es geht.
   for (const s of (scanKind === "item" ? SC.slots : [])) {
-    const v = gezogen && gezogen.has(s.name) ? zieh : [0, 0];
+    const v = dragged && dragged.has(s.name) ? dragState : [0, 0];
     const [x1, y1] = scanToImage(s.region[0] + v[0], s.region[1] + v[1]);
     const [x2, y2] = scanToImage(s.region[2] + v[0], s.region[3] + v[1]);
     // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
@@ -3166,28 +3166,28 @@ function scanOverlay() {
     // Gruen = hier liegt ein Item, das der Scan kennt. Amber = erkannt, aber
     // noch nicht Mitglied dieses Scans — anderer Zustand, andere Farbe, sonst
     // sucht man spaeter, warum der Scan das Gruene nicht findet.
-    const zustand = (s.match
+    const state = (s.match
       ? (s.match.name ? (s.match.foreign ? " foreign-item" : " match") : " empty")
       : "");
-    const aus = s.active ? "" : " off";
+    const off = s.active ? "" : " off";
     // Die Fuellung traegt denselben Zustand wie der Umriss: auf einem bunten
     // Spielbild ist die Flaeche das, was man sieht, der Strich schaerft nur.
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-      class: "scan-fill" + zustand + aus + (selected ? " selected" : "")}));
+      class: "scan-fill" + state + off + (selected ? " selected" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-      class: "scan-slot" + zustand + aus + (selected ? " selected" : "")}));
+      class: "scan-slot" + state + off + (selected ? " selected" : "")}));
     // Name ueber dem Rechteck, Erkennungsergebnis darunter — so ueberdeckt
     // keins von beiden das Bild im Slot.
     //
     // Nur, wenn er hineinpasst: die Schrift steht in SCHIRM-Pixeln (gegen den
     // Zoom gerechnet), der Slot in Bild-Pixeln, und bei 45 Slots waeren es 45
     // Namen uebereinander. Der gewaehlte behaelt seinen immer.
-    const breit = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
-    if (breit >= 34 || selected) {
-      svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-badge" + aus,
+    const wideMode = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
+    if (wideMode >= 34 || selected) {
+      svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-badge" + off,
         "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
     }
-    if (s.match && s.match.name && (breit >= 34 || selected)) {
+    if (s.match && s.match.name && (wideMode >= 34 || selected)) {
       // Dieselbe Quelle wie der Umriss — sonst laeuft die Marke von ihrem
       // eigenen Rechteck farblich weg.
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-badge",
@@ -3196,7 +3196,7 @@ function scanOverlay() {
     }
     const [kx, ky] = scanToImage(s.click_pos[0] + v[0], s.click_pos[1] + v[1]);
     const arm = 4 * px;
-    svg.appendChild(svgEl("path", {class: "scan-cross" + aus,
+    svg.appendChild(svgEl("path", {class: "scan-cross" + off,
       d: `M${kx - arm} ${ky}H${kx + arm}M${kx} ${ky - arm}V${ky + arm}`}));
   }
 
@@ -3248,9 +3248,9 @@ function svgEl(tag, attrs, text) {
  * (was liegt unter dem Zeiger), gerechnet wird weiterhin drueben. */
 function scanSelectedSlots() {
   if (!SC) return [];
-  const namen = SC.selection.length ? SC.selection
+  const names = SC.selection.length ? SC.selection
     : (SC.choice.kind === "slot" && SC.choice.name ? [SC.choice.name] : []);
-  return SC.slots.filter((s) => namen.includes(s.name));
+  return SC.slots.filter((s) => names.includes(s.name));
 }
 
 function scanInSlot(slot, position) {
@@ -3273,26 +3273,26 @@ function scanShowSelected() {
   scanShown = name;
   const slot = SC.slots.find((s) => s.name === name);
   if (!slot) return;
-  const buehne = $("scan-stage");
+  const stage = $("scan-stage");
   const [bx1, by1] = scanToImage(slot.region[0], slot.region[1]);
   const [bx2, by2] = scanToImage(slot.region[2], slot.region[3]);
   // Bild-Pixel -> Pixel auf der Buehne. Der Rand haelt den Slot von der Kante
   // weg: dicht am Rand sieht man ihn zwar, aber nicht, was um ihn herum liegt.
-  const rand = 60;
+  const margin = 60;
   const l = bx1 * scanZoom, o = by1 * scanZoom;
   const r = bx2 * scanZoom, u = by2 * scanZoom;
-  if (l < buehne.scrollLeft + rand || r > buehne.scrollLeft + buehne.clientWidth - rand)
-    buehne.scrollLeft = Math.max(0, (l + r) / 2 - buehne.clientWidth / 2);
-  if (o < buehne.scrollTop + rand || u > buehne.scrollTop + buehne.clientHeight - rand)
-    buehne.scrollTop = Math.max(0, (o + u) / 2 - buehne.clientHeight / 2);
+  if (l < stage.scrollLeft + margin || r > stage.scrollLeft + stage.clientWidth - margin)
+    stage.scrollLeft = Math.max(0, (l + r) / 2 - stage.clientWidth / 2);
+  if (o < stage.scrollTop + margin || u > stage.scrollTop + stage.clientHeight - margin)
+    stage.scrollTop = Math.max(0, (o + u) / 2 - stage.clientHeight / 2);
 }
 
-function scanPositionFromEvent(e, amBildrand = false) {
-  const rand = $("scan-overlay").getBoundingClientRect();
-  if (!rand.width || !rand.height || !SC || !SC.photo) return null;
-  let bx = (e.clientX - rand.left) / rand.width * SC.photo.width;
-  let by = (e.clientY - rand.top) / rand.height * SC.photo.height;
-  if (amBildrand) {
+function scanPositionFromEvent(e, atImageEdge = false) {
+  const margin = $("scan-overlay").getBoundingClientRect();
+  if (!margin.width || !margin.height || !SC || !SC.photo) return null;
+  let bx = (e.clientX - margin.left) / margin.width * SC.photo.width;
+  let by = (e.clientY - margin.top) / margin.height * SC.photo.height;
+  if (atImageEdge) {
     bx = Math.max(0, Math.min(SC.photo.width, bx));
     by = Math.max(0, Math.min(SC.photo.height, by));
   }
@@ -3304,8 +3304,8 @@ function scanPositionFromEvent(e, amBildrand = false) {
  * geklemmt: dort enden die Pixel, in denen OpenCV suchen kann. Seitenleisten,
  * Werkzeugleiste und Ergebnisboxen sind keine Zeichenflaeche. */
 function scanSearchPositionFromStage(e) {
-  const flaeche = $("scan-surface");
-  if (!SC || SC.mode !== "find" || flaeche.contains(e.target)) return null;
+  const surface = $("scan-surface");
+  if (!SC || SC.mode !== "find" || surface.contains(e.target)) return null;
   if (e.target.closest("#scan-canvas-bar, #scan-result, #scan-library")) return null;
   return scanPositionFromEvent(e, true);
 }
@@ -3321,16 +3321,16 @@ function scanSearchPositionFromStage(e) {
  * ging der Fokus verloren, während er beim Tippen einer Priorität stehen blieb.
  * Ein Schutz, an den jeder Aufrufer denken muss, ist einer, den einer vergisst. */
 function scanInspector() {
-  const merk = rememberFocus();
+  const memo = rememberFocus();
   scanBuildInspector();
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 function scanBuildInspector() {
   const target = $("scan-insp");
   target.replaceChildren();
   if (SC.review) return scanReview(target);
-  const kopf = el("div", {class: "section scan-header"},
+  const head = el("div", {class: "section scan-header"},
     el("div", {class: "row"},
       el("span", {class: "heading grow"},
          SC.dirty ? "NICHT GESPEICHERT" : scanColumnTitle()),
@@ -3384,7 +3384,7 @@ function scanBuildInspector() {
   // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
   // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen.
   if (scanKind === "item" && SC.catalog_on) {
-    kopf.appendChild(el("button", {class: "btn wide",
+    head.appendChild(el("button", {class: "btn wide",
       title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
              + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
              + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
@@ -3398,17 +3398,17 @@ function scanBuildInspector() {
   // und genau dann will man einmal ueber alle. Er steht deshalb hier oben,
   // neben dem Katalog-Knopf, mit derselben Bezugsregel (der offene Scan).
   if (scanKind === "item" && SC.llm_on) {
-    const mitVorlage = (SC.items || []).filter((i) => (i.templates || []).length).length;
-    if (mitVorlage) {
-      kopf.appendChild(el("button", {class: "btn wide",
-        title: mitVorlage + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
+    const withTemplate = (SC.items || []).filter((i) => (i.templates || []).length).length;
+    if (withTemplate) {
+      head.appendChild(el("button", {class: "btn wide",
+        title: withTemplate + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
                + (SC.catalog_on
                   ? "Jeder Name wird aus dem Katalog gewählt, danach werden "
                     + "Kategorie und Priorität gesetzt."
                   : "Ohne Katalog rät das Modell frei — die Namen sind dann "
                     + "Vorschläge, keine echten Item-Namen.")
                + " Das dauert; STRG+Z nimmt den ganzen Durchgang zurück.",
-        onclick: () => scanAutonameRun({alle: true})},
+        onclick: () => scanAutonameRun({all_items: true})},
         SC.catalog_on ? "✦ Alle aus Katalog benennen" : "✦ Alle mit LLM benennen"));
     }
   }
@@ -3419,7 +3419,7 @@ function scanBuildInspector() {
   const tabs = el("div", {class: "tabs small wide"});
   const filter = el("div", {class: "scan-filter"});
   scanListBlock(tabs, filter, null);
-  kopf.appendChild(tabs);
+  head.appendChild(tabs);
   if (scanCardsRight()) {
     // **Sortieren ist ein Knopf, kein Nebeneffekt des Tippens.** Sortierte sich
     // die Liste nach jeder Aenderung neu, springt genau die Zeile weg, an der
@@ -3429,45 +3429,45 @@ function scanBuildInspector() {
              + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
       onclick: () => { scanOrderForget(); renderScans(); }}, "↕ Sortieren"));
     const kind = scanList === "slots" ? "slot" : "item";
-    const eintraege = scanList === "slots" ? SC.slots : SC.items;
-    const irgendAn = eintraege.some((e) => !!e.active);
-    filter.appendChild(el("button", {class: "btn quiet", disabled: !eintraege.length,
+    const entries = scanList === "slots" ? SC.slots : SC.items;
+    const anyOn = entries.some((e) => !!e.active);
+    filter.appendChild(el("button", {class: "btn quiet", disabled: !entries.length,
       title: "Schaltet alle " + (kind === "slot" ? "Slots" : "Items")
-             + (irgendAn ? " aus." : " ein."),
+             + (anyOn ? " aus." : " ein."),
       onclick: () => callScan("scan_toggle_all",
-                             {kind: kind, active: !irgendAn})},
-      irgendAn ? "Alle aus" : "Alle ein"));
+                             {kind: kind, active: !anyOn})},
+      anyOn ? "Alle aus" : "Alle ein"));
   }
-  if (filter.childNodes.length) kopf.appendChild(filter);
-  target.appendChild(kopf);
+  if (filter.childNodes.length) head.appendChild(filter);
+  target.appendChild(head);
 
-  const rumpf = el("div", {class: "section growing"});
+  const bodyEl = el("div", {class: "section growing"});
   // **Hier steht die ganze Liste, nicht ein einzelnes Ding.** Was zum
   // GEWAEHLTEN gehoert, klappt in seiner Maske auf statt daneben zu stehen.
   // Eine Mehrfachauswahl meint etwas anderes als eine Maske: sie hat keinen
   // Namen und keine Einzelfelder, nur das, was auf alle wirkt. Deshalb steht
   // sie ueber der Liste und nicht in ihr.
   if (scanCardsRight() && SC.selection.length > 1) {
-    const sammel = el("div", {class: "scan-bulk"});
-    scanInspSelection(sammel);
-    rumpf.appendChild(sammel);
+    const bulk = el("div", {class: "scan-bulk"});
+    scanInspSelection(bulk);
+    bodyEl.appendChild(bulk);
   }
-  const liste = el("div", {class: "column", style: "gap:3px"});
-  scanListBlock(null, null, liste);
-  rumpf.appendChild(liste);
+  const listEl = el("div", {class: "column", style: "gap:3px"});
+  scanListBlock(null, null, listEl);
+  bodyEl.appendChild(listEl);
   // Boss und Icon tragen keine Masken — was zum Gewaehlten gehoert, steht
   // deshalb UNTER der Liste statt in ihr. Abgesetzt, damit man sieht, wo die
   // Liste aufhoert und das eine Ding anfaengt.
   if (!scanCardsRight()) {
     const insp = el("div", {class: "column det-insp"});
     detInspector(insp);
-    if (insp.childNodes.length) rumpf.appendChild(insp);
+    if (insp.childNodes.length) bodyEl.appendChild(insp);
   }
-  if (!rumpf.childNodes.length) {
-    rumpf.appendChild(el("p", {class: "hint"},
+  if (!bodyEl.childNodes.length) {
+    bodyEl.appendChild(el("p", {class: "hint"},
       "Nichts gewählt. Links eine Zeile anklicken — oder im Bild einen Slot."));
   }
-  target.appendChild(rumpf);
+  target.appendChild(bodyEl);
 }
 
 /** Was in der Kopfzeile der rechten Spalte steht: die offene Liste.
@@ -3484,139 +3484,139 @@ function scanColumnTitle() {
 
 function scanReview(target) {
   const itemsId = "review-items";
-  const bekannteNamen = new Set((SC.review.item_names || []).map(String));
-  const kopf = el("div", {class: "section"},
+  const knownNames = new Set((SC.review.item_names || []).map(String));
+  const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "ITEMS VOR DER ÜBERNAHME PRÜFEN"),
     el("p", {class: "hint"},
       "Erkannte Items sind direkt angehakt. Häkchen = gehört zum aktuellen Scan. " +
       "Nimmst du es bei einem bereits enthaltenen Item weg, wird nur diese Zuordnung " +
       "entfernt; das Item und seine Bilder bleiben gelernt."));
   const existing = allPriorities();
-  if (existing) kopf.appendChild(existing);
-  const sammelKategorie = categoryChooser("", scanReviewRefreshCategories, {
+  if (existing) head.appendChild(existing);
+  const bulkCategory = categoryChooser("", scanReviewRefreshCategories, {
     empty: "— Kategorie für alle ausgewählten —",
     placeholder: "Kategorie für alle ausgewählten Items",
     key: "review-sammel",
   });
-  kopf.appendChild(el("div", {class: "scan-review-bulk"}, sammelKategorie,
+  head.appendChild(el("div", {class: "scan-review-bulk"}, bulkCategory,
     el("button", {class: "btn quiet", type: "button",
-      onclick: () => scanReviewCategoryToSelection(sammelKategorie)},
+      onclick: () => scanReviewCategoryToSelection(bulkCategory)},
     "Auf ausgewählte anwenden")));
-  target.appendChild(kopf);
-  const liste = el("div", {class: "section growing scan-review"});
+  target.appendChild(head);
+  const listEl = el("div", {class: "section growing scan-review"});
   for (const z of SC.review.rows) {
-    const haken = el("input", {type: "checkbox", class: "scan-review-check"});
-    const standardAuswahl = !!z.ticked;
-    const vorhandenerName = String(z.existing || "");
+    const checkbox = el("input", {type: "checkbox", class: "scan-review-check"});
+    const defaultChoice = !!z.ticked;
+    const existingName = String(z.existing || "");
     let alsAnderes = false;
-    let vorherigeAuswahl = standardAuswahl;
-    haken.checked = standardAuswahl;
-    haken.title = "Angehakt: im aktuellen Scan verwenden · abgehakt: auslassen oder entfernen";
+    let previousChoice = defaultChoice;
+    checkbox.checked = defaultChoice;
+    checkbox.title = "Angehakt: im aktuellen Scan verwenden · abgehakt: auslassen oder entfernen";
     const name = el("input", {class: "scan-review-name",
       value: z.name, list: itemsId, autocomplete: "off",
       placeholder: "Item-Name", title: "Vorhandenes Item auswählen oder neuen Namen eingeben"});
     // Dasselbe Bedienelement wie in der Item-Maske: waehlen ist der Normalfall,
     // tippen die Ausnahme. Gerade hier entstehen die Kategorien, und gerade
     // hier tippt man sie sonst zwanzigmal — beim einundzwanzigsten Mal anders.
-    const kat = categoryChooser(z.category || "", scanReviewRefreshCategories,
-      {klasse: "scan-review-category", key: "review:" + z.slot});
-    const prio = el("input", {
+    const cat = categoryChooser(z.category || "", scanReviewRefreshCategories,
+      {cls: "scan-review-category", key: "review:" + z.slot});
+    const rank = el("input", {
       class: "scan-review-prio",
       type: "number", value: z.priority ?? 1, min: 0, step: 1,
       title: "Kleinere Zahl gewinnt; 0 setzt das Item in seiner Kategorie nach vorn",
     });
     const status = el("span", {class: "small mono scan-review-status"});
-    const wechsel = vorhandenerName ? el("button", {
+    const switched = existingName ? el("button", {
       class: "btn quiet scan-review-action", type: "button",
       title: "Nur verwenden, wenn die automatische Erkennung falsch war",
     }, "Als anderes Item lernen") : null;
     let row;
-    const synchronisiere = () => {
-      const bestehend = bekannteNamen.has(name.value.trim());
-      const normalerTreffer = !!vorhandenerName && !alsAnderes;
-      name.disabled = normalerTreffer;
+    const sync = () => {
+      const existingOne = knownNames.has(name.value.trim());
+      const normalMatch = !!existingName && !alsAnderes;
+      name.disabled = normalMatch;
       // Kategorie und Priorität des erkannten Profils sind direkt änderbar.
       // Wird ein anderer vorhandener Name gewählt, schützen wir dagegen dessen
       // Werte vor den leeren Standards der Aktion „Als anderes Item lernen“.
-      kat.lock(bestehend && !normalerTreffer);
-      prio.disabled = bestehend && !normalerTreffer;
+      cat.lock(existingOne && !normalMatch);
+      rank.disabled = existingOne && !normalMatch;
       row.dataset.alsAnderes = alsAnderes ? "true" : "false";
-      row.classList.toggle("skip", !haken.checked);
-      if (!haken.checked) {
+      row.classList.toggle("skip", !checkbox.checked);
+      if (!checkbox.checked) {
         status.textContent = z.slot + " · wird nicht gelernt oder geändert";
       } else if (alsAnderes) {
-        status.textContent = z.slot + (bestehend
+        status.textContent = z.slot + (existingOne
           ? " · vorhandenes „" + name.value.trim() + "“ gewählt · Vorlage ergänzen"
           : " · wird als neues Item gelernt");
       } else if (z.variant) {
-        status.textContent = z.slot + " · „" + vorhandenerName +
+        status.textContent = z.slot + " · „" + existingName +
           "“ erkannt · neue Vorlage für diese Slot-Größe";
       } else if (z.duplicate) {
-        status.textContent = z.slot + " · „" + vorhandenerName +
+        status.textContent = z.slot + " · „" + existingName +
           "“ erkannt · bereits in diesem Scan eingerichtet";
       } else {
-        status.textContent = z.slot + (bestehend
+        status.textContent = z.slot + (existingOne
           ? " · neue Vorlage für „" + name.value.trim() + "“" : " · neues Item");
       }
     };
-    name.addEventListener("input", synchronisiere);
+    name.addEventListener("input", sync);
     row = el("div", {class: "scan-review-row" +
         (z.variant ? " variant" : z.duplicate ? " duplicate done" : ""),
-      "data-slot": z.slot, "data-existing": vorhandenerName,
-      "data-als-anderes": "false"}, haken, status,
+      "data-slot": z.slot, "data-existing": existingName,
+      "data-als-anderes": "false"}, checkbox, status,
       z.image ? el("img", {class: "scan-review-image", src: z.image, alt: ""})
              : el("span", {class: "scan-review-image empty"}),
       el("div", {class: "fields"},
-        name, el("div", {class: "scan-review-order"}, kat,
-          el("label", {class: "scan-review-prio"}, el("span", {}, "Priorität"), prio)),
-        wechsel));
-    row._reviewSynchronisieren = synchronisiere;
-    const gleicheAuswahlSetzen = () => {
-      if (!vorhandenerName || alsAnderes) {
-        synchronisiere();
+        name, el("div", {class: "scan-review-order"}, cat,
+          el("label", {class: "scan-review-prio"}, el("span", {}, "Priorität"), rank)),
+        switched));
+    row._reviewSynchronisieren = sync;
+    const setSameChoice = () => {
+      if (!existingName || alsAnderes) {
+        sync();
         return;
       }
       // Dasselbe Item kann in mehreren Slots liegen. Ein Häkchen steht für die
       // Item-Zuordnung, deshalb bewegen sich alle Vorkommen gemeinsam.
-      for (const andere of document.querySelectorAll(".scan-review-row")) {
-        if (andere.dataset.existing !== vorhandenerName ||
-            andere.dataset.alsAnderes === "true") continue;
-        const andererHaken = andere.querySelector('input[type="checkbox"]');
-        if (andererHaken) andererHaken.checked = haken.checked;
-        if (andere._reviewSynchronisieren) andere._reviewSynchronisieren();
+      for (const other of document.querySelectorAll(".scan-review-row")) {
+        if (other.dataset.existing !== existingName ||
+            other.dataset.alsAnderes === "true") continue;
+        const otherCheckbox = other.querySelector('input[type="checkbox"]');
+        if (otherCheckbox) otherCheckbox.checked = checkbox.checked;
+        if (other._reviewSynchronisieren) other._reviewSynchronisieren();
       }
     };
-    haken.addEventListener("change", gleicheAuswahlSetzen);
-    if (wechsel) wechsel.addEventListener("click", () => {
+    checkbox.addEventListener("change", setSameChoice);
+    if (switched) switched.addEventListener("click", () => {
       alsAnderes = !alsAnderes;
       if (alsAnderes) {
-        vorherigeAuswahl = haken.checked;
+        previousChoice = checkbox.checked;
         name.value = z.new_name || "Item";
-        kat.value = "";
-        prio.value = 1;
-        haken.checked = true;
-        wechsel.textContent = "Treffer „" + vorhandenerName + "“ verwenden";
+        cat.value = "";
+        rank.value = 1;
+        checkbox.checked = true;
+        switched.textContent = "Treffer „" + existingName + "“ verwenden";
       } else {
         name.value = z.name;
-        kat.value = z.category || "";
-        prio.value = z.priority ?? 1;
-        haken.checked = vorherigeAuswahl;
-        wechsel.textContent = "Als anderes Item lernen";
+        cat.value = z.category || "";
+        rank.value = z.priority ?? 1;
+        checkbox.checked = previousChoice;
+        switched.textContent = "Als anderes Item lernen";
       }
       row.classList.toggle("other", alsAnderes);
-      synchronisiere();
-      if (!alsAnderes) gleicheAuswahlSetzen();
+      sync();
+      if (!alsAnderes) setSameChoice();
       scanReviewRefreshCategories();
     });
-    synchronisiere();
-    liste.appendChild(row);
+    sync();
+    listEl.appendChild(row);
   }
-  liste.appendChild(el("datalist", {id: itemsId},
-    [...bekannteNamen].map((name) => el("option", {value: name}))));
-  liste.appendChild(el("div", {class: "button-pair", style: "margin-top:8px"},
+  listEl.appendChild(el("datalist", {id: itemsId},
+    [...knownNames].map((name) => el("option", {value: name}))));
+  listEl.appendChild(el("div", {class: "button-pair", style: "margin-top:8px"},
     el("button", {class: "btn", onclick: () => callScan("scan_learn_preview_cancel")}, "Abbrechen"),
     el("button", {class: "btn primary", onclick: scanReviewApply}, "Auswahl anwenden")));
-  target.appendChild(liste);
+  target.appendChild(listEl);
 }
 
 function scanReviewApply() {
@@ -3643,7 +3643,7 @@ function scanReviewApply() {
  * beim Klick-Block im Sequenz-Editor: was dem Ding GEHOERT (seine Identitaet),
  * steht beim Ding; hier bleibt, was man daran EINSTELLT. */
 function scanSlotDetails(target, s) {
-  const setze = (field, value) => callScan("scan_slot_set", {name: s.name, field: field, value: value});
+  const setter = (field, value) => callScan("scan_slot_set", {name: s.name, field: field, value: value});
 
   target.appendChild(el("div", {class: "button-pair"},
     el("button", {class: "btn quiet",
@@ -3656,25 +3656,25 @@ function scanSlotDetails(target, s) {
       onclick: () => callScan("scan_mode_set", {mode: "measure"})},
       "Hintergrund messen")));
 
-  const erweitert = el("details", {class: "scan-advanced"},
+  const advanced = el("details", {class: "scan-advanced"},
     el("summary", {}, "Koordinaten und Hintergrund"));
-  erweitert.appendChild(heading("FLÄCHE",
+  advanced.appendChild(heading("FLÄCHE",
     "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
     "im Bild anklicken — oder den Slot im Bild ziehen.", "flaeche"));
-  erweitert.appendChild(el("div", {class: "gitter2"},
-    numberField("Links", s.region[0], (v) => setze("x1", v)),
-    numberField("Oben", s.region[1], (v) => setze("y1", v)),
-    numberField("Rechts", s.region[2], (v) => setze("x2", v)),
-    numberField("Unten", s.region[3], (v) => setze("y2", v))));
-  erweitert.appendChild(heading("KLICKPUNKT",
+  advanced.appendChild(el("div", {class: "gitter2"},
+    numberField("Links", s.region[0], (v) => setter("x1", v)),
+    numberField("Oben", s.region[1], (v) => setter("y1", v)),
+    numberField("Rechts", s.region[2], (v) => setter("x2", v)),
+    numberField("Unten", s.region[3], (v) => setter("y2", v))));
+  advanced.appendChild(heading("KLICKPUNKT",
     "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
-  erweitert.appendChild(el("div", {class: "gitter2"},
-    numberField("X", s.click_pos[0], (v) => setze("kx", v)),
-    numberField("Y", s.click_pos[1], (v) => setze("ky", v))));
-  erweitert.appendChild(color_swatch("Hintergrund", s.color, (v) => setze("color", v),
+  advanced.appendChild(el("div", {class: "gitter2"},
+    numberField("X", s.click_pos[0], (v) => setter("kx", v)),
+    numberField("Y", s.click_pos[1], (v) => setter("ky", v))));
+  advanced.appendChild(color_swatch("Hintergrund", s.color, (v) => setter("color", v),
     "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
     "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
-  target.appendChild(erweitert);
+  target.appendChild(advanced);
 
   target.appendChild(el("div", {class: "button-pair"},
     el("button", {class: "btn", disabled: !photoPresent(),
@@ -3689,7 +3689,7 @@ function scanSlotDetails(target, s) {
     target.appendChild(el("button", {class: "btn quiet",
       title: SC.open ? "Alle Slots aus „" + SC.open + "“ — nicht der ganze Bestand"
                       : "Alle Slots im Bestand (kein Scan offen)",
-      onclick: () => callScan("scan_learn_preview", {scope: "alle"})},
+      onclick: () => callScan("scan_learn_preview", {scope: "all"})},
       SC.open ? "Items dieses Scans prüfen & lernen" : "alle Items prüfen & lernen"));
   }
   // Der Treffer ist ein Vorschlag, keine Festlegung. Stimmt er nicht, lernt
@@ -3748,7 +3748,7 @@ function scanInspSelection(target) {
  * trägt seine Identität ohnehin schon. Dieselbe Regel wie „was dem Punkt
  * gehört, steht beim Punkt" im Sequenz-Editor. */
 function scanItemDetails(target, i) {
-  const setze = (field, value) => callScan("scan_item_set", {name: i.name, field: field, value: value});
+  const setter = (field, value) => callScan("scan_item_set", {name: i.name, field: field, value: value});
   const image = scanPreviews.get(i.name);
   if (image) target.appendChild(el("img", {class: "scan-large", src: image}));
   if ((i.detected_in || []).length) {
@@ -3756,17 +3756,17 @@ function scanItemDetails(target, i) {
       "Gerade erkannt in: " + i.detected_in.join(", ")));
   }
   target.appendChild(priorityOverview(i.category, i.name));
-  const erweitert = el("details", {class: "scan-advanced"},
+  const advanced = el("details", {class: "scan-advanced"},
     el("summary", {}, "Erweiterte Erkennungseinstellungen"));
-  erweitert.appendChild(numberField("Konfidenz", i.confidence, (v) => setze("confidence", v),
+  advanced.appendChild(numberField("Konfidenz", i.confidence, (v) => setter("confidence", v),
       {min: 0, max: 1, step: "any"},
       "Wie gut das Template passen muss (0–1).", "konf"));
-  erweitert.appendChild(el("p", {class: "hint"},
+  advanced.appendChild(el("p", {class: "hint"},
     (i.template_sizes || []).length
       ? "Gelernte Slot-Größen: " + i.template_sizes.map((g) => g[0] + "×" + g[1]).join(", ")
       : "Keine Bildvorlage — nur Marker-Farben."));
   if ((i.templates || []).length) {
-    erweitert.appendChild(el("div", {class: "column", style: "gap:5px"},
+    advanced.appendChild(el("div", {class: "column", style: "gap:5px"},
       (i.templates || []).map((v) => el("div", {class: "row"},
         el("span", {class: "hint mono grow"}, v),
         el("button", {class: "btn quiet", title: "Nur vom Item lösen; Datei bleibt erhalten",
@@ -3774,19 +3774,19 @@ function scanItemDetails(target, i) {
           "Vorlage entfernen")))));
   }
   if ((i.missing_scan_sizes || []).length) {
-    erweitert.appendChild(el("p", {class: "hint", style: "color:var(--accent)"},
+    advanced.appendChild(el("p", {class: "hint", style: "color:var(--accent)"},
       "Für diesen Scan noch nicht gelernt: " +
       i.missing_scan_sizes.map((g) => g[0] + "×" + g[1]).join(", ") +
       ". Beim Lernen diesen Item-Namen auswählen, um die Vorlage zu ergänzen."));
   }
   if (i.marker.length) {
-    erweitert.appendChild(heading("MARKER-FARBEN",
+    advanced.appendChild(heading("MARKER-FARBEN",
       "Die häufigsten Farben im gelernten Ausschnitt, ohne den Slot-Hintergrund.",
       "marker"));
-    erweitert.appendChild(el("div", {class: "scan-marker"},
+    advanced.appendChild(el("div", {class: "scan-marker"},
       i.marker.map((c) => el("span", {style: "background:" + c, title: c}))));
   }
-  target.appendChild(erweitert);
+  target.appendChild(advanced);
   // Der Knopf hing einmal an `kategorie === "Auto"` — also genau an den Items,
   // die schon einen Namen vom Auto-Lernen haben. Wer 56 Vorlagen von Hand als
   // „item_1“ … angelegt hat, fand ihn deshalb nie, obwohl das der Fall ist, für
@@ -3797,7 +3797,7 @@ function scanItemDetails(target, i) {
         ? "Wählt einen der echten Item-Namen aus dem Katalog und ordnet danach ein."
         : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
           + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
-      onclick: () => scanAutonameRun({namen: [i.name]})},
+      onclick: () => scanAutonameRun({names: [i.name]})},
       SC.catalog_on ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
   }
   target.appendChild(scanItemConfirmation(i));
@@ -3821,41 +3821,41 @@ function scanItemDetails(target, i) {
  * bekannten Punkt wählen, oder die Stelle im Bild anklicken (dasselbe Werkzeug,
  * das Boss und Icon schon benutzen). */
 function scanItemConfirmation(i) {
-  const setze = (field, value) => callScan("scan_item_set",
+  const setter = (field, value) => callScan("scan_item_set",
                                         {name: i.name, field: field, value: value});
-  const kasten = el("div", {class: "column", style: "gap:7px"});
-  kasten.appendChild(heading("BESTÄTIGUNGSKLICK",
+  const boxEl = el("div", {class: "column", style: "gap:7px"});
+  boxEl.appendChild(heading("BESTÄTIGUNGSKLICK",
     "Manche Spiele fragen nach dem Klick nach („wirklich verkaufen?“). Ohne "
     + "die Bestätigung bleibt das Popup stehen, und der Scan kommt nicht mehr "
     + "zum nächsten Slot. Die Stelle steht als Punkt in sequence.json — dieselbe "
     + "Kalibrierung erfasst sie mit.", "confirmation"));
   const choice = selection("Punkt", [{value: "", text: "— keine Bestätigung —"}].concat(
     SC.points.map((p) => ({value: p.id, text: "#" + p.id + " " + p.name}))),
-    i.confirmation ? i.confirmation.point_id : "", (v) => setze("confirmation", v));
-  kasten.appendChild(choice);
+    i.confirmation ? i.confirmation.point_id : "", (v) => setter("confirmation", v));
+  boxEl.appendChild(choice);
   // Ein Punkt, den es nicht mehr gibt, wird GESAGT statt verschwiegen: der
   // Lauf klickt sonst nichts, und man sucht den Fehler bei der Erkennung.
   if (i.confirmation && i.confirmation.missing) {
-    kasten.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
+    boxEl.appendChild(el("p", {class: "hint", style: "color:var(--err)"},
       i.confirmation.text + " — die Bestätigung greift nicht."));
   }
-  kasten.appendChild(el("button", {class: "btn quiet", disabled: !photoPresent(),
+  boxEl.appendChild(el("button", {class: "btn quiet", disabled: !photoPresent(),
     title: "Die Stelle im Bild anklicken — dabei entsteht ein Punkt, oder ein "
            + "vorhandener an derselben Stelle wird wiederverwendet",
     onclick: () => callScan("region_mode", {kind: "item", mode: "action"})},
     "Stelle im Bild anklicken"));
   if (i.confirmation) {
-    kasten.appendChild(numberField("Wartezeit (s)", i.confirmation_delay,
-      (v) => setze("confirmation_delay", v), {min: 0, step: "any"},
+    boxEl.appendChild(numberField("Wartezeit (s)", i.confirmation_delay,
+      (v) => setter("confirmation_delay", v), {min: 0, step: "any"},
       "Zeit zwischen dem Item-Klick und der Bestätigung — das Popup braucht "
       + "einen Moment, bis es da ist.", "bestaetigungszeit"));
   }
-  return kasten;
+  return boxEl;
 }
 
 /** Was zum offenen Item-Scan gehoert — im Detailteil seiner Maske. */
 function scanScanDetails(target, c) {
-  const setze = (field, value) => callScan("scan_set", {name: c.name, field: field, value: value});
+  const setter = (field, value) => callScan("scan_set", {name: c.name, field: field, value: value});
 
   target.appendChild(heading("EINSTELLUNGEN",
     "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
@@ -3863,20 +3863,20 @@ function scanScanDetails(target, c) {
       + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
       + "auf diesen Scan.", "itemscan"));
 
-  target.appendChild(numberField("Farb-Toleranz", c.tolerance, (v) => setze("tolerance", v),
+  target.appendChild(numberField("Farb-Toleranz", c.tolerance, (v) => setter("tolerance", v),
     {min: 0, step: 1},
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
     "tolerance"));
-  target.appendChild(toggle("Unbekanntes lernen", c.learn, (v) => setze("learn", v),
+  target.appendChild(toggle("Unbekanntes lernen", c.learn, (v) => setter("learn", v),
     "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in "
     + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "learn"));
-  target.appendChild(toggle("Slots rückwärts", c.reverse, (v) => setze("reverse", v),
+  target.appendChild(toggle("Slots rückwärts", c.reverse, (v) => setter("reverse", v),
     "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand "
     + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "
     + "besuchten Slots. Die Richtung gehört zum Inventar, deshalb steht sie hier "
     + "und nicht in den Einstellungen.", "reverse"));
   target.appendChild(toggle("Item-Katalog benutzen", c.use_catalog,
-    (v) => setze("use_catalog", v),
+    (v) => setter("use_catalog", v),
     "Mit Katalog kennt der Editor die echten Item-Namen des Spiels: „Aus Katalog "
     + "einordnen“ setzt Kategorie und Priorität, und die LLM-Benennung wählt aus "
     + "den echten Namen statt frei zu raten. Die Kategorie hängt am NAMEN, nicht "
@@ -3948,16 +3948,16 @@ function detScan() {
  * ein Boss erkannt wird, der gar nicht in der Liste steht. */
 function detBosses() {
   const c = detScan();
-  const lokal = c ? c.bosses : [];
-  const namen = new Set(lokal.map((b) => b.name));
-  return lokal.concat(SC.global_bosses.filter((b) => !namen.has(b.name)));
+  const local = c ? c.bosses : [];
+  const names = new Set(local.map((b) => b.name));
+  return local.concat(SC.global_bosses.filter((b) => !names.has(b.name)));
 }
 
 /** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
 function detBoss() {
   if (!SC || scanKind !== "boss" || !SC.boss.choice) return null;
-  const liste = SC.boss.choice_global ? SC.global_bosses : ((detScan() || {}).bosses || []);
-  return liste.find((b) => b.name === SC.boss.choice) || null;
+  const listEl = SC.boss.choice_global ? SC.global_bosses : ((detScan() || {}).bosses || []);
+  return listEl.find((b) => b.name === SC.boss.choice) || null;
 }
 
 /** Steht die Bibliothek statt eines Scans im Vordergrund? */
@@ -3994,9 +3994,9 @@ function scanMaintainKind() {
   // Item-Assistenten sein erster Schritt — und mit ihm der einzige Weg zu
   // einem Screenshot.
   if (item) {
-    const heim = $("scan-steps");
-    const karte = $("scan-wizard-1");
-    if (karte.parentElement !== heim) heim.insertBefore(karte, heim.firstChild);
+    const home = $("scan-steps");
+    const cardEl = $("scan-wizard-1");
+    if (cardEl.parentElement !== home) home.insertBefore(cardEl, home.firstChild);
     return;
   }
   detRenderChoice();
@@ -4013,20 +4013,20 @@ function scanMaintainKind() {
 function detRenderChoice() {
   const target = $("sec-det-choice");
   const boss = scanKind === "boss";
-  const liste = boss ? SC.boss_scans : SC.icon_scans;
+  const listEl = boss ? SC.boss_scans : SC.icon_scans;
   const open = detScan();
-  const kinder = [el("span", {class: "heading"}, boss ? "BOSS-SCAN" : "ICON-SCAN")];
-  kinder.push(selection("", [{value: "", text: liste.length
+  const children = [el("span", {class: "heading"}, boss ? "BOSS-SCAN" : "ICON-SCAN")];
+  children.push(selection("", [{value: "", text: listEl.length
       ? "— keiner gewählt —" : (boss ? "— noch kein Boss-Scan —" : "— noch kein Icon-Scan —")}]
-    .concat(liste.map((c) => ({value: c.name, text: c.name}))),
+    .concat(listEl.map((c) => ({value: c.name, text: c.name}))),
     open ? open.name : "",
     (v) => callScan(detCommand("open"), {name: v})));
   if (open) {
-    kinder.push(field("Name", open.name,
+    children.push(field("Name", open.name,
       (v) => callScan(detCommand("scan_field"),
                      {name: open.name, field: "name", value: v})));
   }
-  kinder.push(el("div", {class: "row"},
+  children.push(el("div", {class: "row"},
     el("button", {class: "btn quiet", onclick: () => {
       scanDetStep = 2;
       callScan(detCommand("new"));
@@ -4034,16 +4034,16 @@ function detRenderChoice() {
     el("span", {class: "grow"}),
     el("span", {class: "small mono"}, open
       ? (boss ? detBosses().length + " Bosse" : detHowText(open.detection))
-      : liste.length + (liste.length === 1 ? " Scan" : " Scans"))));
-  target.replaceChildren(...kinder);
+      : listEl.length + (listEl.length === 1 ? " Scan" : " Scans"))));
+  target.replaceChildren(...children);
 }
 
 /* ------------------------------------------------------------- Assistent */
 
 /** Woran ein Scan erkennt — als Wort, nicht als Schluessel. */
-function detHowText(wie) {
+function detHowText(how) {
   return {template: "per Vorlage", marker: "per Farben",
-          keine: "ohne Erkennung"}[wie] || wie;
+          keine: "ohne Erkennung"}[how] || how;
 }
 
 /** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
@@ -4073,13 +4073,13 @@ function detRenderSteps() {
   // vergessen werden kann. Genau deshalb darf sie erst wandern, wenn nichts
   // mehr schiefgehen kann: bricht der Aufbau vorher ab, haengt sie in einem
   // Baum, den niemand mehr sieht — und mit ihr der einzige Weg zu einem Bild.
-  const weitere = [];
+  const more = [];
   if (c) {
-    weitere.push(detRegionStep(c));
+    more.push(detRegionStep(c));
     if (boss) {
-      weitere.push(detBossesStep(c), detWaysStep(c), detFallbackStep(c));
+      more.push(detBossesStep(c), detWaysStep(c), detFallbackStep(c));
     } else {
-      weitere.push(detDetectionStep(c), detActionStep(c, "icon"));
+      more.push(detDetectionStep(c), detActionStep(c, "icon"));
     }
   }
   const steps = el("div", {class: "scan-wizard"});
@@ -4088,7 +4088,7 @@ function detRenderSteps() {
   recording.classList.toggle("done", photoPresent());
   $("scan-step-1-nr").textContent = photoPresent() && scanDetStep !== 1 ? "✓" : "1";
   $("scan-step-1-body").hidden = scanDetStep !== 1;
-  steps.append(recording, ...weitere);
+  steps.append(recording, ...more);
 
   if (!c) {
     target.replaceChildren(
@@ -4098,19 +4098,19 @@ function detRenderSteps() {
         + "weiteren Schritte hier."));
     return;
   }
-  const kinder = [el("span", {class: "heading"},
+  const children = [el("span", {class: "heading"},
                      boss ? "BOSS-SCAN EINRICHTEN" : "ICON-SCAN EINRICHTEN")];
   // **Fehlende Voraussetzung blendet nichts aus, sondern erklaert sich.** Ohne
   // OpenCV ist die Template-Erkennung aus — Farb-Marker, OCR und LLM gehen
   // trotzdem. Amber, nicht rot: es ist ein Zustand, kein Defekt.
   if (!SC.opencv) {
-    kinder.push(el("div", {class: "foreign-hint"},
+    children.push(el("div", {class: "foreign-hint"},
       el("span", {}, "OpenCV nicht installiert — Template-Erkennung ist aus. "
         + "Farb-Marker, OCR und LLM gehen trotzdem."),
       el("span", {class: "mono small"}, "pip install opencv-python")));
   }
-  kinder.push(steps);
-  target.replaceChildren(...kinder);
+  children.push(steps);
+  target.replaceChildren(...children);
 }
 
 /** Schritt 2: die Region. Aufziehen ODER vier Zahlen — beides bleibt. */
@@ -4118,7 +4118,7 @@ function detRegionStep(c) {
   const r = c.region;
   const placed = (r[2] - r[0]) > 0 && (r[3] - r[1]) > 0
     && !(r[0] === 0 && r[1] === 0 && r[2] === 100 && r[3] === 100);
-  const setze = (i, v) => {
+  const setter = (i, v) => {
     const neu = r.slice();
     neu[i] = Number(v) || 0;
     detField("region", neu);
@@ -4132,10 +4132,10 @@ function detRegionStep(c) {
         + "dass nichts Wechselndes mit hineinfällt."
       : "Eng um das Symbol herum. Was mit im Rechteck liegt, wird mitgelernt."),
     el("div", {class: "gitter2"},
-      numberField("Links", r[0], (v) => setze(0, v), {step: 1}),
-      numberField("Oben", r[1], (v) => setze(1, v), {step: 1}),
-      numberField("Rechts", r[2], (v) => setze(2, v), {step: 1}),
-      numberField("Unten", r[3], (v) => setze(3, v), {step: 1})),
+      numberField("Links", r[0], (v) => setter(0, v), {step: 1}),
+      numberField("Oben", r[1], (v) => setter(1, v), {step: 1}),
+      numberField("Rechts", r[2], (v) => setter(2, v), {step: 1}),
+      numberField("Unten", r[3], (v) => setter(3, v), {step: 1})),
     el("button", {class: "btn primary scan-wizard-main", disabled: !photoPresent(),
       onclick: () => callScan("region_mode", {kind: scanKind, mode: "region"})},
       "Region im Bild aufziehen"),
@@ -4144,11 +4144,11 @@ function detRegionStep(c) {
 
 /** Schritt 3 (Boss): die Bosse dieses Scans. */
 function detBossesStep(c) {
-  const lokal = c.bosses.length;
+  const local = c.bosses.length;
   const global = SC.global_bosses.length;
-  return detCard(3, "Bosse", lokal || global
-    ? lokal + " lokal · " + global + " global"
-    : "Noch kein Boss · die Bibliothek ist leer", lokal > 0 || global > 0, [
+  return detCard(3, "Bosse", local || global
+    ? local + " lokal · " + global + " global"
+    : "Noch kein Boss · die Bibliothek ist leer", local > 0 || global > 0, [
     el("p", {class: "hint"}, "Jeder Boss hat eine eigene Erkennung und eine "
       + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
     el("button", {class: "btn primary scan-wizard-main",
@@ -4162,10 +4162,10 @@ function detBossesStep(c) {
 /** Schritt 4 (Boss): OCR und LLM. */
 function detWaysStep(c) {
   const b = SC.ready;
-  const an = [c.use_ocr ? "OCR" : null, c.use_llm ? "LLM" : null].filter(Boolean);
-  const lampe = !b.llm_state ? "" : (b.llm_state.reachable ? " on" : " off");
-  return detCard(4, "LLM & OCR", an.length ? an.join(" + ") + " aktiv" : "aus",
-    an.length > 0, [
+  const on = [c.use_ocr ? "OCR" : null, c.use_llm ? "LLM" : null].filter(Boolean);
+  const lamp = !b.llm_state ? "" : (b.llm_state.reachable ? " on" : " off");
+  return detCard(4, "LLM & OCR", on.length ? on.join(" + ") + " aktiv" : "aus",
+    on.length > 0, [
     el("span", {class: "heading"}, "OCR TEXTERKENNUNG"),
     toggle("OCR benutzen", c.use_ocr, (v) => detField("use_ocr", v)),
     c.use_ocr ? segment([{value: true, text: "als Fallback"}, {value: false, text: "primär"}],
@@ -4194,7 +4194,7 @@ function detWaysStep(c) {
     c.use_llm ? segment([{value: true, text: "als Fallback"}, {value: false, text: "primär"}],
       c.llm_fallback, (v) => detField("llm_fallback", v)) : null,
     el("div", {class: "row"},
-      el("span", {class: "scan-lamp" + lampe}),
+      el("span", {class: "scan-lamp" + lamp}),
       // Ohne Probe steht hier „noch nicht geprueft", nicht der Endpunkt: ein
       // leeres Feld (die Voreinstellung ist leer) saehe aus wie ein Fehler.
       // Der Endpunkt gehoert in den Tooltip — dort sucht man ihn, wenn die
@@ -4217,11 +4217,11 @@ function detWaysStep(c) {
  * LLM kostet bis `llm_timeout`. Dieselbe Reihenfolge steht in
  * `runtime/boss_detection.py`; hier wird sie nur vorgelesen. */
 function detOrder(c) {
-  const vorn = [], hinten = [];
-  for (const [name, an, fallback] of [["OCR", c.use_ocr, c.ocr_fallback],
+  const front = [], back = [];
+  for (const [name, on, fallback] of [["OCR", c.use_ocr, c.ocr_fallback],
                                       ["LLM", c.use_llm, c.llm_fallback]])
-    if (an) (fallback ? hinten : vorn).push(name);
-  return "Reihenfolge: " + vorn.concat(["Template/Marker"], hinten).join(" → ");
+    if (on) (fallback ? back : front).push(name);
+  return "Reihenfolge: " + front.concat(["Template/Marker"], back).join(" → ");
 }
 
 /** Schritt 5 (Boss): was passiert, wenn KEIN Boss erkannt wird. */
@@ -4247,7 +4247,7 @@ function detDetectionStep(c) {
     ? "Vorlage · min " + c.confidence.toFixed(2)
     : (c.detection === "marker" ? c.marker.length + " Marker · Toleranz " + c.tolerance
                                 : "Noch nichts gesetzt"),
-    c.detection !== "keine", detDetectionFields(c, "icon"));
+    c.detection !== "none", detDetectionFields(c, "icon"));
 }
 
 /** Die Erkennungs-Felder — dieselben fuer Boss und Icon.
@@ -4256,25 +4256,25 @@ function detDetectionStep(c) {
  * dieselben Knoepfe. Zwei Fassungen davon waeren zwei Stellen, an denen ein
  * Griff fehlt — und „Vorlage neu aufnehmen" ist genau der Griff, der heute den
  * ganzen Konsolen-Ablauf kostet. */
-function detDetectionFields(objekt, kind, name) {
-  const ueber = DET_COMMAND[kind].field;
-  const setze = (field, value) => callScan(ueber, Object.assign(
+function detDetectionFields(obj, kind, name) {
+  const over = DET_COMMAND[kind].field;
+  const setter = (field, value) => callScan(over, Object.assign(
     {field: field, value: value}, name ? {name: name} : {}));
-  const template = objekt.detection !== "marker";
+  const template = obj.detection !== "marker";
   return [
     segment([{value: "template", text: "Template"}, {value: "marker", text: "Farb-Marker"}],
-      objekt.detection === "marker" ? "marker" : "template",
+      obj.detection === "marker" ? "marker" : "template",
       // Umschalten heisst hier: das andere loswerden. Beides stehen zu lassen
       // waere `_check_profile_match`s UND — dann muessen BEIDE stimmen, und
       // niemand rechnet damit.
-      (v) => setze(v === "marker" ? "template" : "marker", v === "marker" ? "" : [])),
+      (v) => setter(v === "marker" ? "template" : "marker", v === "marker" ? "" : [])),
     template ? el("div", {class: "row", style: "align-items:flex-start"},
-      objekt.preview
-        ? el("img", {class: "scan-template", src: objekt.preview, alt: ""})
+      obj.preview
+        ? el("img", {class: "scan-template", src: obj.preview, alt: ""})
         : el("div", {class: "scan-template empty"}, "keine Vorlage"),
       el("div", {class: "column grow"},
-        el("span", {class: "small mono"}, objekt.template || "—"),
-        numberField("Min. Konfidenz", objekt.confidence, (v) => setze("confidence", v),
+        el("span", {class: "small mono"}, obj.template || "—"),
+        numberField("Min. Konfidenz", obj.confidence, (v) => setter("confidence", v),
           {min: 0.05, max: 1, step: 0.01},
           "Ab welcher Übereinstimmung ein Treffer zählt. Zu hoch heisst "
           + "„findet nie“, zu tief „findet alles“.", "confidence"))) : null,
@@ -4285,15 +4285,15 @@ function detDetectionFields(objekt, kind, name) {
       onclick: () => callScan("template_capture", Object.assign(
         {kind: kind}, name ? {name: name} : {}))}, "Vorlage neu aufnehmen") : null,
     !template ? el("div", {class: "scan-marker"},
-      objekt.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h,
+      obj.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h,
                                            title: h})),
       el("span", {class: "scan-color-swatch empty", title: "noch Platz"})) : null,
     !template ? el("div", {class: "gitter2"},
-      numberField("Toleranz", objekt.tolerance === undefined ? 30 : objekt.tolerance,
-        (v) => setze("tolerance", v), {min: 0, step: 1},
+      numberField("Toleranz", obj.tolerance === undefined ? 30 : obj.tolerance,
+        (v) => setter("tolerance", v), {min: 0, step: 1},
         "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
       el("div", {class: "field-quiet"}, "measured",
-        el("span", {class: "mono"}, objekt.marker.length + " Farben"))) : null,
+        el("span", {class: "mono"}, obj.marker.length + " Farben"))) : null,
     !template ? el("button", {class: "btn scan-wizard-main", disabled: !photoPresent(),
       onclick: () => callScan("marker_measure", Object.assign(
         {kind: kind}, name ? {name: name} : {}))}, "Marker im Bild neu messen") : null,
@@ -4309,43 +4309,43 @@ function detDetectionFields(objekt, kind, name) {
  * erfindet keine Aktionsnamen. Ein getipptes "skipcycle" waere ein Wert, den
  * `__post_init__` beim Speichern still auf den Standard hebt: der Klick saehe
  * aus, als haette er gewirkt. */
-function detActionTiles(values, current, beim_setzen) {
+function detActionTiles(values, current, onSet) {
   // Dasselbe Raster wie beim Block-Typ im Sequenz-Editor — die Kacheln sollen
   // sich gleich anfuehlen. Auf der Kachel steht das Schlagwort, im Tooltip der
   // Satz: „Zyklus abbrechen" ist auf 9,5 px zweizeilig und unlesbar.
   return el("div", {class: "gitter3"}, values.map((a) =>
     el("button", {class: "type-chip" + (a.value === current ? " on" : ""),
-      title: a.text, onclick: () => beim_setzen(a.value)}, a.short)));
+      title: a.text, onclick: () => onSet(a.value)}, a.short)));
 }
 
 /** Die Felder hinter einer Aktion — Punkt, Taste, Verzoegerung, Item-Scan. */
-function detActionFields(objekt, kind, name) {
-  const ueber = DET_COMMAND[kind].field;
-  const setze = (field, value) => callScan(ueber, Object.assign(
+function detActionFields(obj, kind, name) {
+  const over = DET_COMMAND[kind].field;
+  const setter = (field, value) => callScan(over, Object.assign(
     {field: field, value: value}, name ? {name: name} : {}));
-  const felder = [];
-  if (objekt.action === "item_scan") {
-    felder.push(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
-      SC.item_scan_names.map((n) => ({value: n, text: n}))), objekt.scan || "",
-      (v) => setze("scan", v)));
-    felder.push(selection("Modus", SC.actions.scan_modes.map(
-      (m) => ({value: m.value, text: m.text})), objekt.scan_mode,
-      (v) => setze("scan_mode", v)));
+  const fields = [];
+  if (obj.action === "item_scan") {
+    fields.push(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
+      SC.item_scan_names.map((n) => ({value: n, text: n}))), obj.scan || "",
+      (v) => setter("scan", v)));
+    fields.push(selection("Modus", SC.actions.scan_modes.map(
+      (m) => ({value: m.value, text: m.text})), obj.scan_mode,
+      (v) => setter("scan_mode", v)));
   }
-  if (objekt.action === "click") {
-    felder.push(selection("Punkt", [{value: "", text: "— keiner —"}].concat(
+  if (obj.action === "click") {
+    fields.push(selection("Punkt", [{value: "", text: "— keiner —"}].concat(
       SC.points.map((p) => ({value: p.id, text: "#" + p.id + " " + p.name}))),
-      objekt.point_id === null || objekt.point_id === undefined ? "" : objekt.point_id,
-      (v) => setze("point", v === "" ? null : Number(v))));
-    felder.push(el("button", {class: "btn quiet", disabled: !photoPresent(),
+      obj.point_id === null || obj.point_id === undefined ? "" : obj.point_id,
+      (v) => setter("point", v === "" ? null : Number(v))));
+    fields.push(el("button", {class: "btn quiet", disabled: !photoPresent(),
       onclick: () => callScan("region_mode", {kind: kind, mode: "action"})},
       "Stelle im Bild anklicken"));
   }
-  if (objekt.action === "key")
-    felder.push(field("Taste", objekt.action_key || "", (v) => setze("action_key", v)));
-  felder.push(numberField("Verzögerung vor Aktion (s)", objekt.delay,
-    (v) => setze("delay", v), {min: 0, step: 0.1}));
-  return felder;
+  if (obj.action === "key")
+    fields.push(field("Taste", obj.action_key || "", (v) => setter("action_key", v)));
+  fields.push(numberField("Verzögerung vor Aktion (s)", obj.delay,
+    (v) => setter("delay", v), {min: 0, step: 0.1}));
+  return fields;
 }
 
 /** Schritt 4 (Icon): die Aktion bei Fund. */
@@ -4414,21 +4414,21 @@ function detListBosses(target) {
       + "Bosse und Fallback."));
     return;
   }
-  const lokal = c.bosses;
-  if (!lokal.length && !SC.global_bosses.length) {
+  const local = c.bosses;
+  if (!local.length && !SC.global_bosses.length) {
     target.appendChild(el("p", {class: "hint"},
       "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
       + "Aktion dahinter."));
   }
-  for (const b of lokal) target.appendChild(detBossRow(b, false));
+  for (const b of local) target.appendChild(detBossRow(b, false));
   if (SC.global_bosses.length) {
     target.appendChild(el("div", {class: "scan-category-header"},
       "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
-    const namen = new Set(lokal.map((x) => x.name));
+    const names = new Set(local.map((x) => x.name));
     for (const b of SC.global_bosses) {
       // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
       // hier blass, statt so zu tun, als wuerde er benutzt.
-      target.appendChild(detBossRow(b, true, namen.has(b.name)));
+      target.appendChild(detBossRow(b, true, names.has(b.name)));
     }
   }
   target.appendChild(el("button", {class: "empty-zone",
@@ -4436,20 +4436,20 @@ function detListBosses(target) {
     "Boss-Bibliothek (global) · " + SC.global_bosses.length));
 }
 
-function detBossRow(b, global, verdeckt) {
+function detBossRow(b, global, covered) {
   const test = SC.boss.tests[b.name];
   const selected = SC.boss.choice === b.name && SC.boss.choice_global === !!global;
   return el("button", {
     class: "scan-row" + (selected ? " on" : ""),
-    style: verdeckt ? "opacity:.5" : null,
-    title: verdeckt ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
+    style: covered ? "opacity:.5" : null,
+    title: covered ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
     onclick: () => callScan("boss_select", {name: b.name, global: !!global}),
   },
     b.preview ? el("img", {class: "mini", src: b.preview})
                : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
                              style: b.marker.length ? "background:" + b.marker[0] : ""}),
     el("span", {class: "name"}, b.name),
-    b.detection === "keine"
+    b.detection === "none"
       ? el("span", {class: "small", style: "color:var(--accent)",
                     title: "Weder Vorlage noch Marker — nur OCR/LLM können ihn finden"},
            "⚠ keine Vorlage")
@@ -4476,7 +4476,7 @@ function detListIcons(target) {
                  : el("span", {class: "dot" + (c.marker.length ? "" : " without"),
                                style: c.marker.length ? "background:" + c.marker[0] : ""}),
       el("span", {class: "name"}, c.name),
-      c.detection === "keine"
+      c.detection === "none"
         ? el("span", {class: "small", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
         : (test ? el("span", {class: "small",
                               style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
@@ -4526,8 +4526,8 @@ function detLibraryCard(b) {
   // Ein vom LLM entdeckter Boss wird als `skip` angelegt: er ist erkannt, aber
   // es ist noch nicht entschieden, was mit ihm passieren soll. Das ist keine
   // Warnung, sondern eine offene Aufgabe — deshalb Amber und ein Hauptknopf.
-  const open = b.action === "skip" && b.detection === "keine";
-  const karte = el("div", {class: "seq-card" + (open ? " new-from-llm" : "")},
+  const open = b.action === "skip" && b.detection === "none";
+  const cardEl = el("div", {class: "seq-card" + (open ? " new-from-llm" : "")},
     el("div", {class: "scan-card-header"},
       b.preview ? el("img", {class: "mini", src: b.preview})
                  : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
@@ -4535,29 +4535,29 @@ function detLibraryCard(b) {
       el("b", {class: "grow"}, b.name),
       el("span", {class: "num"}, open ? "neu vom LLM" : b.detection)));
   if (b.marker.length) {
-    karte.appendChild(el("div", {class: "scan-marker"},
+    cardEl.appendChild(el("div", {class: "scan-marker"},
       b.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h}))));
   }
   if (open) {
-    karte.appendChild(el("p", {class: "hint"},
+    cardEl.appendChild(el("p", {class: "hint"},
       "Seine Aktion ist noch „Schritt überspringen“ — er wird erkannt, aber es "
       + "passiert nichts."));
   } else {
-    karte.appendChild(el("div", {class: "scan-card-numbers"},
+    cardEl.appendChild(el("div", {class: "scan-card-numbers"},
       el("span", {class: "num"}, "konf " + b.confidence.toFixed(2)),
       el("span", {class: "num"}, (SC.actions.boss.find((a) => a.value === b.action)
         || {}).text || b.action),
       b.scan ? el("span", {class: "num"}, "scan → " + b.scan) : null,
       b.delay ? el("span", {class: "num"}, "delay " + b.delay + " s") : null));
   }
-  karte.appendChild(el("div", {class: "button-pair"},
+  cardEl.appendChild(el("div", {class: "button-pair"},
     el("button", {class: open ? "btn primary" : "btn quiet",
       onclick: () => { scanList = "bosses";
                        callScan("boss_select", {name: b.name, global: true}); }},
       open ? "Aktion zuweisen" : "bearbeiten"),
     el("button", {class: "btn quiet",
       onclick: () => callScan("boss_delete", {name: b.name, global: true})}, "löschen")));
-  return karte;
+  return cardEl;
 }
 
 /* ------------------------------------------------------- Rechte Spalte */
@@ -4631,15 +4631,15 @@ function detInspBoss(target, c, b) {
   }
   target.appendChild(heading("ERKENNUNG", "Template ODER Farb-Marker. Beides "
     + "gesetzt heisst: beides muss stimmen.", "bosserkennung"));
-  for (const teil of detDetectionFields(b, "boss", b.name))
-    if (teil) target.appendChild(teil);
+  for (const part of detDetectionFields(b, "boss", b.name))
+    if (part) target.appendChild(part);
   target.appendChild(heading("AKTION BEI TREFFER",
     "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
   target.appendChild(detActionTiles(SC.actions.boss, b.action,
     (v) => callScan("boss_set", {name: b.name, global: b.global,
                                    field: "action", value: v})));
-  for (const teil of detActionFields(b, "boss", b.name))
-    if (teil) target.appendChild(teil);
+  for (const part of detActionFields(b, "boss", b.name))
+    if (part) target.appendChild(part);
   target.appendChild(el("button", {class: "btn quiet", style: "margin-top:14px",
     title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
     onclick: () => callScan("boss_move_global", {name: b.name, global: b.global})},
@@ -4668,8 +4668,8 @@ function detInspIcon(target, c) {
     "Was passiert, wenn das Symbol da ist.", "iconaktion"));
   target.appendChild(detActionTiles(SC.actions.icon, c.action,
     (v) => detField("action", v)));
-  for (const teil of detActionFields(c, "icon"))
-    if (teil) target.appendChild(teil);
+  for (const part of detActionFields(c, "icon"))
+    if (part) target.appendChild(part);
   // **Das ELSE gehoert dem Block, nicht dem Scan.** `IconScanConfig` hat kein
   // else-Feld, und eins hier einzufuehren hiesse, dieselbe Sache an zwei
   // Stellen zu haben: der Sequenz-Editor setzt sie am Block, wo sie auch fuer
@@ -4708,27 +4708,27 @@ function detOverlay(svg, px) {
   const c = detScan();
   if (!c) return;
   const t = scanKind === "boss" ? SC.boss.test : SC.icon.test;
-  const zustand = !t ? "" : (t.ok ? " ok" : " miss");
+  const state = !t ? "" : (t.ok ? " ok" : " miss");
   const [x1, y1] = scanToImage(c.region[0], c.region[1]);
   const [x2, y2] = scanToImage(c.region[2], c.region[3]);
   svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-    class: "scan-region-f" + zustand}));
+    class: "scan-region-f" + state}));
   svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
-    class: "scan-region" + zustand}));
-  const marke = (t && t.ok && t.confidence !== null && t.method === "Template")
+    class: "scan-region" + state}));
+  const badge = (t && t.ok && t.confidence !== null && t.method === "Template")
     ? t.name + " · " + t.confidence.toFixed(2)
     : (t ? (t.ok ? t.name + " erkannt" : "nicht erkannt")
          : "Region · " + (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1]));
   svg.appendChild(svgEl("text", {x: x1, y: y2 + 13 * px, class: "scan-badge",
     "font-size": 11 * px, "stroke-width": 3 * px,
-    fill: !t ? null : (t.ok ? SLOT_COLOR.match : "#EF4444")}, marke));
+    fill: !t ? null : (t.ok ? SLOT_COLOR.match : "#EF4444")}, badge));
 
   // Der Klickpunkt der Aktion: gestrichelt und in Amber — er ist ein
   // Handlungsort, keine Erkennung.
-  const objekt = scanKind === "boss" ? detBoss() : c;
-  const point = objekt && objekt.point_id !== null && objekt.point_id !== undefined
-    ? SC.points.find((p) => p.id === objekt.point_id) : null;
-  if (!point || objekt.action !== "click") return;
+  const obj = scanKind === "boss" ? detBoss() : c;
+  const point = obj && obj.point_id !== null && obj.point_id !== undefined
+    ? SC.points.find((p) => p.id === obj.point_id) : null;
+  if (!point || obj.action !== "click") return;
   const [ax, ay] = scanToImage(point.x, point.y);
   const arm = 9 * px;
   svg.appendChild(svgEl("rect", {class: "scan-action", x: ax - arm, y: ay - arm,
@@ -4748,61 +4748,61 @@ let shareImport = {};    // welche Teile eingelesen werden
 let shareMode = "auto";
 let shareMerge = true;
 
-async function renderShare(frisch) {
-  const antwort = await ask("share_data");
-  if (!antwort || view !== "teilen") return;
-  T = antwort;
+async function renderShare(fresh) {
+  const answer = await ask("share_data");
+  if (!answer || view !== "teilen") return;
+  T = answer;
   for (const t of T.parts) {
     if (shareExport[t.key] === undefined) shareExport[t.key] = true;
     if (shareImport[t.key] === undefined) shareImport[t.key] = true;
   }
-  const merk = rememberFocus();
+  const memo = rememberFocus();
   shareRenderExport();
   shareRenderMiddle();
   shareRenderImport();
   setStatus(T.status);
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /** Ein Befehl an den Teilen-Teil. Antwort ist die neue Teilen-Aufnahme. */
 async function callShare(name, data_reload) {
-  const antwort = await ask(name, data_reload);
-  if (!antwort) return;
-  T = antwort;
+  const answer = await ask(name, data_reload);
+  if (!answer) return;
+  T = answer;
   await renderShare();
 }
 
-function shareCheckbox(target, selection, zahlen) {
+function shareCheckbox(target, selection, numbers) {
   for (const t of T.parts) {
     const row = el("label", {class: "share-row on"});
     const box = el("input", {type: "checkbox"});
     box.checked = !!selection[t.key];
     box.addEventListener("change", () => { selection[t.key] = box.checked; renderShare(); });
     row.append(box, el("span", {}, t.text),
-      el("span", {class: "num"}, String(zahlen[t.key] ?? 0)));
+      el("span", {class: "num"}, String(numbers[t.key] ?? 0)));
     target.appendChild(row);
   }
 }
 
 function shareRenderExport() {
   const target = $("share-export");
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     heading("EXPORTIEREN",
       "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
   if (T.open) {
-    kopf.appendChild(el("div", {class: "foreign-hint"},
+    head.appendChild(el("div", {class: "foreign-hint"},
       "Im Fenster gibt es ungespeicherte Änderungen — die kommen nicht mit. "
       + "Erst speichern, dann exportieren."));
   }
-  target.replaceChildren(kopf);
+  target.replaceChildren(head);
 
-  const rumpf = el("div", {class: "section growing"});
-  shareCheckbox(rumpf, shareExport, T.inventory);
-  rumpf.appendChild(field("Dateiname (leer = mit Zeitstempel)", "",
+  const bodyEl = el("div", {class: "section growing"});
+  shareCheckbox(bodyEl, shareExport, T.inventory);
+  bodyEl.appendChild(field("Dateiname (leer = mit Zeitstempel)", "",
     () => {}, {id: "share-name"}));
   // **Die Referenzpunkte kommen aus dem Spielfenster.** Ist es offen, rechnet
   // der Empfänger die Koordinaten selbst um; sonst setzt er zwei Punkte von Hand.
-  rumpf.appendChild(el("p", {class: "hint"}, T.window && T.window.found
+  bodyEl.appendChild(el("p", {class: "hint"}, T.window && T.window.found
     ? "Spielfenster „" + T.window.title + "“: " + T.window.width + "×"
       + T.window.height + " px. Der Empfänger rechnet damit automatisch um."
     : (T.window
@@ -4810,32 +4810,32 @@ function shareRenderExport() {
           + "setzt beim Import zwei Punkte von Hand."
         : "Kein Fenstertitel eingestellt (window_focus_title) — der Empfänger "
           + "setzt beim Import zwei Punkte von Hand.")));
-  rumpf.appendChild(el("button", {class: "btn primary",
+  bodyEl.appendChild(el("button", {class: "btn primary",
     onclick: () => callShare("export_start",
       {parts: shareExport, name: ($("share-name") || {}).value || ""})},
     "Bündel schreiben"));
-  target.appendChild(rumpf);
+  target.appendChild(bodyEl);
 }
 
 function shareRenderMiddle() {
   const target = $("share-middle");
   target.replaceChildren();
-  const karte = el("div", {class: "share-card"}, el("h3", {}, "Vorhandene Bündel"));
+  const cardEl = el("div", {class: "share-card"}, el("h3", {}, "Vorhandene Bündel"));
   if (!T.exports.length) {
-    karte.appendChild(el("p", {class: "hint"},
+    cardEl.appendChild(el("p", {class: "hint"},
       "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
   }
-  const liste = el("div", {class: "share-list"});
+  const listEl = el("div", {class: "share-list"});
   for (const e of T.exports) {
-    liste.appendChild(el("div", {class: "share-row"},
+    listEl.appendChild(el("div", {class: "share-row"},
       el("span", {class: "mono"}, e.name),
       el("span", {class: "num mono"}, e.kb + " KB"),
       el("button", {class: "btn quiet",
         onclick: () => callShare("import_check", {path: "exports/" + e.name})},
         "einlesen")));
   }
-  karte.appendChild(liste);
-  target.appendChild(karte);
+  cardEl.appendChild(listEl);
+  target.appendChild(cardEl);
 
   target.appendChild(el("div", {class: "share-card"},
     el("h3", {}, "Weitergeben"),
@@ -4848,51 +4848,51 @@ function shareRenderMiddle() {
 function shareRenderImport() {
   const target = $("share-import");
   const i = T.import;
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     heading("IMPORTIEREN",
       "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
     // EIN Knopf ueber die volle Breite heisst `btn breit` — `wachse` in einer
-    // `reihe` war dasselbe mit einer zweiten Schreibweise.
+    // `series` war dasselbe mit einer zweiten Schreibweise.
     el("button", {class: "btn wide", onclick: () => callShare("file_choose")},
       "Datei wählen …"),
     field("oder Pfad", i ? i.path : "",
       (v) => callShare("import_check", {path: v})));
-  target.replaceChildren(kopf);
+  target.replaceChildren(head);
 
-  const rumpf = el("div", {class: "section growing"});
+  const bodyEl = el("div", {class: "section growing"});
   if (!i) {
-    rumpf.appendChild(el("p", {class: "hint"},
+    bodyEl.appendChild(el("p", {class: "hint"},
       "Noch keine Datei gewählt. Ein Bündel ist ein ZIP mit manifest.json."));
-    target.appendChild(rumpf);
+    target.appendChild(bodyEl);
     return;
   }
-  rumpf.appendChild(el("div", {class: "field-quiet"}, i.file,
+  bodyEl.appendChild(el("div", {class: "field-quiet"}, i.file,
     el("span", {class: "mono"}, i.created || "")));
-  shareCheckbox(rumpf, shareImport, i.content);
+  shareCheckbox(bodyEl, shareImport, i.content);
 
-  rumpf.appendChild(heading("KOORDINATEN",
+  bodyEl.appendChild(heading("KOORDINATEN",
     "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "importkoord"));
   // Ohne beidseitig bekanntes Fenster gibt es nichts zu wählen — eine Kachel,
   // die nichts tut, ist schlechter als keine.
-  const modi = (i.auto ? [{value: "auto", text: "aus Fenstergrösse"}] : [])
+  const modesList = (i.auto ? [{value: "auto", text: "aus Fenstergrösse"}] : [])
     .concat([{value: "identity", text: "1:1 übernehmen"}]);
-  rumpf.appendChild(segment(modi, i.auto ? shareMode : "identity",
+  bodyEl.appendChild(segment(modesList, i.auto ? shareMode : "identity",
     (v) => { shareMode = v; renderShare(); }));
-  rumpf.appendChild(el("p", {class: "hint"}, i.auto
+  bodyEl.appendChild(el("p", {class: "hint"}, i.auto
     ? "Beide Seiten kennen ihr Spielfenster — die Umrechnung geht automatisch."
     : "Ohne beidseitig bekanntes Spielfenster geht nur 1:1. Für ein echtes "
       + "Umrechnen zwei Punkte setzen: CTRL+ALT+I im Hauptprozess."));
 
-  rumpf.appendChild(toggle("Vorhandenes behalten und ergänzen", shareMerge,
+  bodyEl.appendChild(toggle("Vorhandenes behalten und ergänzen", shareMerge,
     (v) => { shareMerge = v; renderShare(); }));
-  rumpf.appendChild(el("p", {class: "hint"}, shareMerge
+  bodyEl.appendChild(el("p", {class: "hint"}, shareMerge
     ? "Gleiche Namen werden übersprungen."
     : "Achtung: gleiche Namen werden überschrieben."));
-  rumpf.appendChild(el("button", {class: "btn primary",
+  bodyEl.appendChild(el("button", {class: "btn primary",
     onclick: () => callShare("import_start",
       {parts: shareImport, mode: shareMode, merge: shareMerge})},
     "Bündel einlesen"));
-  target.appendChild(rumpf);
+  target.appendChild(bodyEl);
 }
 
 /* ------------------------------------------------------------ Ansicht: Bericht
@@ -4910,28 +4910,28 @@ function shareRenderImport() {
 let B = null;
 
 async function renderReport(data_reload) {
-  const antwort = await ask("report_data", data_reload === undefined ? null : data_reload);
-  if (!antwort || view !== "bericht") return;
-  B = antwort;
-  const merk = rememberFocus();
+  const answer = await ask("report_data", data_reload === undefined ? null : data_reload);
+  if (!answer || view !== "bericht") return;
+  B = answer;
+  const memo = rememberFocus();
   reportRenderLeft();
   reportRenderMiddle();
   reportRenderRight();
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /** Sekunden als h:mm:ss — dieselbe Form wie in `tools/log_report.py`. */
-function repDuration(sek) {
-  const ganz = Math.max(0, Math.round(sek || 0));
-  const h = Math.floor(ganz / 3600), m = Math.floor((ganz % 3600) / 60), s = ganz % 60;
-  const zwei = (n) => String(n).padStart(2, "0");
-  return h ? h + ":" + zwei(m) + ":" + zwei(s) : m + ":" + zwei(s);
+function repDuration(sec) {
+  const whole = Math.max(0, Math.round(sec || 0));
+  const h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60), s = whole % 60;
+  const two = (n) => String(n).padStart(2, "0");
+  return h ? h + ":" + two(m) + ":" + two(s) : m + ":" + two(s);
 }
 
 /** Grosse Zahlen mit Tausenderpunkten. Gold geht in die Millionen, und
  *  „143920771" liest niemand. */
-function repNumber(n, stellen) {
-  return (n || 0).toLocaleString("de-DE", {maximumFractionDigits: stellen || 0});
+function repNumber(n, positions) {
+  return (n || 0).toLocaleString("de-DE", {maximumFractionDigits: positions || 0});
 }
 
 /* Eine Rangzeile: Name links, Anzahl rechts, darunter ein Balken im Verhaeltnis
@@ -4949,52 +4949,52 @@ function repRank(name, value, share_pct, zusatz, kind) {
   return row;
 }
 
-function repList(title, help, key, eintraege) {
-  const kasten = el("div", {class: "share-card"},
+function repList(title, help, key, entries) {
+  const boxEl = el("div", {class: "share-card"},
     heading(title, help, key));
-  const hoechst = eintraege.reduce((m, e) => Math.max(m, e.value), 0) || 1;
-  for (const e of eintraege)
-    kasten.appendChild(repRank(e.name, repNumber(e.value), e.value / hoechst,
-      e.zusatz, e.kind));
-  return kasten;
+  const highest = entries.reduce((m, e) => Math.max(m, e.value), 0) || 1;
+  for (const e of entries)
+    boxEl.appendChild(repRank(e.name, repNumber(e.value), e.value / highest,
+      e.extra, e.kind));
+  return boxEl;
 }
 
 /* ------------------------------------------------------------------- links */
 
 function reportRenderLeft() {
   const target = $("rep-left");
-  const kopf = el("div", {class: "section sticky"},
+  const head = el("div", {class: "section sticky"},
     heading("SITZUNGEN",
       "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
       + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
       + "nicht ueber eine einzelne Datei.", "ber-sitzungen"));
   if (!B.active) {
-    kopf.appendChild(el("p", {class: "hint warning"},
+    head.appendChild(el("p", {class: "hint warning"},
       "session_log_enabled ist aus — neue Laeufe schreiben nichts mit."));
   }
-  target.replaceChildren(kopf);
+  target.replaceChildren(head);
 
-  const rumpf = el("div", {class: "section growing"});
+  const bodyEl = el("div", {class: "section growing"});
   if (!B.available) {
-    rumpf.appendChild(el("p", {class: "hint"}, B.error));
-    target.appendChild(rumpf);
+    bodyEl.appendChild(el("p", {class: "hint"}, B.error));
+    target.appendChild(bodyEl);
     return;
   }
   if (!B.sessions.length) {
-    rumpf.appendChild(el("p", {class: "hint"}, B.folder
+    bodyEl.appendChild(el("p", {class: "hint"}, B.folder
       ? "Keine Logs in " + B.folder + "."
       : "Noch kein Log-Ordner. Er entsteht beim ersten Lauf mit "
         + "session_log_enabled."));
-    target.appendChild(rumpf);
+    target.appendChild(bodyEl);
     return;
   }
 
-  rumpf.appendChild(repSession({
+  bodyEl.appendChild(repSession({
     file: "", title: "Alle zusammen",
     bottom: B.sessions.length + " Sitzung(en)",
   }));
   for (const s of B.sessions) {
-    rumpf.appendChild(repSession({
+    bodyEl.appendChild(repSession({
       file: s.file,
       title: s.begin || s.file,
       bottom: repDuration(s.duration) + " · " + repNumber(s.clicks) + " Klicks",
@@ -5002,17 +5002,17 @@ function reportRenderLeft() {
     }));
   }
   if (B.skipped_files) {
-    rumpf.appendChild(el("p", {class: "hint"},
+    bodyEl.appendChild(el("p", {class: "hint"},
       B.skipped_files + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
       + "neuesten 50."));
   }
-  target.appendChild(rumpf);
+  target.appendChild(bodyEl);
 }
 
 function repSession(s) {
-  const an = (B.selected || "") === s.file;
+  const on = (B.selected || "") === s.file;
   const row = el("button", {
-    class: "rep-session" + (an ? " on" : ""),
+    class: "rep-session" + (on ? " on" : ""),
     onclick: () => renderReport({file: s.file}),
   },
     el("span", {class: "rep-session-title"}, s.title),
@@ -5061,9 +5061,9 @@ function reportRenderMiddle() {
     target.appendChild(repList("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
       "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
       + "Spiel braucht laenger als verify_timeout.", "ber-verify",
-      b.verify_miss.map(([name, n, gut]) => ({
+      b.verify_miss.map(([name, n, good]) => ({
         name: name, value: n, kind: "error",
-        zusatz: "bestätigt " + gut + "/" + (gut + n),
+        extra: "bestätigt " + good + "/" + (good + n),
       }))));
   }
 
@@ -5098,55 +5098,55 @@ function reportRenderMiddle() {
 
 function reportRenderRight() {
   const target = $("rep-right");
-  const kopf = el("div", {class: "section sticky"},
+  const head = el("div", {class: "section sticky"},
     heading("ERTRAG",
       "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
       + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
       + "Marktanalyse selbst laeuft getrennt.", "ber-ertrag"));
-  target.replaceChildren(kopf);
+  target.replaceChildren(head);
 
-  const rumpf = el("div", {class: "section growing"});
+  const bodyEl = el("div", {class: "section growing"});
   const e = B.yield_value;
   if (!e) {
-    rumpf.appendChild(el("p", {class: "hint"},
+    bodyEl.appendChild(el("p", {class: "hint"},
       "Keine Bewertung: scan_market_value_file ist leer oder es wurden keine "
       + "Items gefunden. Mit eingetragener marktwert.json steht hier, was der "
       + "Lauf eingebracht hat."));
-    target.appendChild(rumpf);
+    target.appendChild(bodyEl);
     return;
   }
   if (!e.readable) {
-    rumpf.appendChild(el("p", {class: "hint warning"},
+    bodyEl.appendChild(el("p", {class: "hint warning"},
       "Marktwert-Datei nicht lesbar: " + e.file));
-    target.appendChild(rumpf);
+    target.appendChild(bodyEl);
     return;
   }
 
-  rumpf.appendChild(el("div", {class: "wz-metrics"},
+  bodyEl.appendChild(el("div", {class: "wz-metrics"},
     wzMetric(repNumber(e.gold), "Gold gesamt", "neutral"),
     wzMetric(e.per_hour === null ? "—" : repNumber(e.per_hour), "Gold/h",
       "neutral")));
   // **Obergrenze, keine Abrechnung.** `item_found` heisst „erkannt", nicht
   // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
   // liest, muss es lesen, ohne danach zu fragen.
-  rumpf.appendChild(el("p", {class: "hint warning"},
+  bodyEl.appendChild(el("p", {class: "hint warning"},
     "Obergrenze: gezaehlt wird, was der Scan ERKANNT hat — nicht, was "
     + "eingesammelt und verkauft wurde."));
 
-  const hoechst = e.rows.reduce((m, z) => Math.max(m, z[3]), 0) || 1;
-  const liste = el("div", {class: "share-card"});
-  for (const [name, count, value, summe] of e.rows) {
-    liste.appendChild(repRank(name, repNumber(summe), summe / hoechst,
+  const highest = e.rows.reduce((m, z) => Math.max(m, z[3]), 0) || 1;
+  const listEl = el("div", {class: "share-card"});
+  for (const [name, count, value, totalSum] of e.rows) {
+    listEl.appendChild(repRank(name, repNumber(totalSum), totalSum / highest,
       count + "× à " + repNumber(value)));
   }
-  rumpf.appendChild(liste);
+  bodyEl.appendChild(listEl);
 
   if (e.without_value.length) {
-    rumpf.appendChild(el("p", {class: "hint"},
+    bodyEl.appendChild(el("p", {class: "hint"},
       e.without_value.length + " Item(s) ohne Marktwert: "
       + e.without_value.map(([name, n]) => name + " (" + n + "×)").join(", ")));
   }
-  target.appendChild(rumpf);
+  target.appendChild(bodyEl);
 }
 
 /* ----------------------------------------------------- Ansicht: Einstellungen */
@@ -5226,28 +5226,28 @@ let workEsc = null;
 
 /** Blendet ein, worauf gerade gewartet wird — mit Countdown bis zum Zeitablauf. */
 function showWait(name) {
-  const [what, drucke] = WAIT_ACTIONS[name] || ["Stelle setzen", 1];
-  const grenze = (S && S.wait_timeout) || (W && W.wait_timeout) || 60;
-  let rest = Math.round(grenze);
-  const number = el("span", {class: "wait-remaining"}, rest + " s");
-  const kasten = el("div", {class: "wait-box"},
+  const [what, press] = WAIT_ACTIONS[name] || ["Stelle setzen", 1];
+  const limit = (S && S.wait_timeout) || (W && W.wait_timeout) || 60;
+  let remainder = Math.round(limit);
+  const number = el("span", {class: "wait-remaining"}, remainder + " s");
+  const boxEl = el("div", {class: "wait-box"},
     el("div", {class: "wait-title"}, what),
     el("div", {class: "wait-text"},
       "Fahre mit der Maus an die Stelle im Spiel und drücke ",
       el("b", {}, "ENTER"),
-      drucke > 1 ? " — " + drucke + "× nacheinander, eine Ecke je Druck." : "."),
+      press > 1 ? " — " + press + "× nacheinander, eine Ecke je Druck." : "."),
     el("div", {class: "wait-footer"},
       el("span", {}, "ESC bricht ab"), number));
   hideWait();
   document.body.appendChild(
-    el("div", {class: "wait-shell", id: "wait-shell"}, kasten));
+    el("div", {class: "wait-shell", id: "wait-shell"}, boxEl));
   // Der Countdown ist die zweite Haelfte der Auskunft: DASS gewartet wird, sagt
   // der Kasten — wie lange noch, nur die Zahl. Laeuft sie ab, endet der Aufruf
   // von selbst, und die Bruecke meldet „Nichts gedrueckt".
   waitCounter = setInterval(() => {
-    rest -= 1;
-    number.textContent = Math.max(0, rest) + " s";
-    if (rest <= 0) clearInterval(waitCounter);
+    remainder -= 1;
+    number.textContent = Math.max(0, remainder) + " s";
+    if (remainder <= 0) clearInterval(waitCounter);
   }, 1000);
 }
 
@@ -5271,27 +5271,27 @@ function hideWait() {
  * die hochzaehlende Uhr sagt nur, dass es weitergeht, und genau das ist die
  * Frage bei sechsundfuenfzig Modell-Aufrufen hintereinander.
  */
-function showWork(title, text, abbruch) {
+function showWork(title, text, cancel) {
   const number = el("span", {class: "wait-remaining"}, "0 s");
   const row = el("div", {class: "wait-text"}, text);
-  let sek = 0;
-  const kasten = el("div", {class: "wait-box"},
+  let sec = 0;
+  const boxEl = el("div", {class: "wait-box"},
     el("div", {class: "wait-title"}, title), row,
     // **Ein Abbruch nur da, wo es einen gibt.** Ein Knopf, der einen
     // einzelnen HTTP-Aufruf nicht stoppen kann, waere ein Bedienelement, das
     // nichts tut — dieselbe Regel wie bei den Kacheln im Teilen-Reiter.
-    abbruch ? el("button", {class: "btn quiet wide", style: "margin-top:10px",
+    cancel ? el("button", {class: "btn quiet wide", style: "margin-top:10px",
                             id: "work-cancel",
-                            onclick: () => cancelWork(abbruch)}, "Abbrechen") : null,
+                            onclick: () => cancelWork(cancel)}, "Abbrechen") : null,
     el("div", {class: "wait-footer"},
-      el("span", {}, abbruch ? "ESC bricht ab" : "läuft …"), number));
+      el("span", {}, cancel ? "ESC bricht ab" : "läuft …"), number));
   hideWait();
   document.body.appendChild(
-    el("div", {class: "wait-shell", id: "wait-shell"}, kasten));
+    el("div", {class: "wait-shell", id: "wait-shell"}, boxEl));
   workLine = row;
-  workClock = setInterval(() => { sek += 1; number.textContent = sek + " s"; }, 1000);
-  if (abbruch) {
-    workEsc = (e) => { if (e.key === "Escape") cancelWork(abbruch); };
+  workClock = setInterval(() => { sec += 1; number.textContent = sec + " s"; }, 1000);
+  if (cancel) {
+    workEsc = (e) => { if (e.key === "Escape") cancelWork(cancel); };
     document.addEventListener("keydown", workEsc);
   }
 }
@@ -5305,8 +5305,8 @@ function showWork(title, text, abbruch) {
  * nicht abkuerzen (die Antwort ist schon unterwegs), die Auskunft darueber
  * sehr wohl.
  */
-function cancelWork(abbruch) {
-  abbruch();
+function cancelWork(cancel) {
+  cancel();
   const button = $("work-cancel");
   if (button) {
     button.disabled = true;
@@ -5354,7 +5354,7 @@ async function scanAutonameRun(data_reload) {
     }
   } finally {
     hideWait();
-    await callScan("scan_autoname_end", {abgebrochen: autonameCancel});
+    await callScan("scan_autoname_end", {cancelled: autonameCancel});
   }
 }
 
@@ -5392,28 +5392,28 @@ async function withWait(kind, name, data_reload) {
 }
 
 const WZ_TOOLS = [
-  {key: "recording", name: "Sequenz aufnehmen", command: "rec", bezug: "neu",
+  {key: "recording", name: "Sequenz aufnehmen", command: "rec", scopeKind: "neu",
    short: "Echtes Spielen als neue Sequenz aufzeichnen"},
-  {key: "check", name: "Bestand prüfen", command: "check", bezug: "inventory",
+  {key: "check", name: "Bestand prüfen", command: "check", scopeKind: "inventory",
    short: "Fehler und unvollständige Verknüpfungen finden"},
-  {key: "points", name: "Punkte verwalten", command: "points", bezug: "sequence",
+  {key: "points", name: "Punkte verwalten", command: "points", scopeKind: "sequence",
    short: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
   // `nichts` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
   // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
   // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
   // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
-  {key: "colors", name: "Farben analysieren", command: "color", bezug: "nichts",
+  {key: "colors", name: "Farben analysieren", command: "color", scopeKind: "nichts",
    short: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
-  {key: "calibrate", name: "Kalibrieren", command: "fix", bezug: "inventory",
+  {key: "calibrate", name: "Kalibrieren", command: "fix", scopeKind: "inventory",
    short: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
-  {key: "reclick", name: "Punkte nachklicken", command: "klick", bezug: "sequence",
+  {key: "reclick", name: "Punkte nachklicken", command: "klick", scopeKind: "sequence",
    short: "Alle Klickstellen geführt im Spiel kontrollieren"},
 ];
 
 /** Kleine, lokale Linien-Icons. Keine Schriftzeichen und keine externe Datei:
  *  dadurch bleiben Strichstärke und Ausrichtung in jedem System identisch. */
 function wzIcon(kind) {
-  const pfade = {
+  const paths = {
     recording: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
     check: ["M9 11l2 2 4-5", "M12 3a9 9 0 1 0 9 9", "M16 4l5-1-1 5"],
     calibrate: ["M12 2v4M12 18v4M2 12h4M18 12h4", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
@@ -5429,7 +5429,7 @@ function wzIcon(kind) {
   const svg = svgEl("svg", {class: "wz-symbol", viewBox: "0 0 24 24",
     fill: "none", stroke: "currentColor", "stroke-width": "1.8",
     "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true"});
-  for (const d of pfade[kind] || pfade.info) svg.appendChild(svgEl("path", {d}));
+  for (const d of paths[kind] || paths.info) svg.appendChild(svgEl("path", {d}));
   return svg;
 }
 
@@ -5474,60 +5474,60 @@ function wzInfo(title, text) {
  *  Werkzeug gleich aussieht und keines sie vergessen kann. */
 function wzScope(key) {
   const w = WZ_TOOLS.find(x => x.key === key);
-  const kasten = el("div", {class: "wz-scope"});
-  if (w && w.bezug === "neu") {
-    kasten.classList.add("single");
-    kasten.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+  const boxEl = el("div", {class: "wz-scope"});
+  if (w && w.scopeKind === "neu") {
+    boxEl.classList.add("single");
+    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "eine neue Sequenz — die offene Sequenz "),
       el("b", {}, W ? W.sequence : "—"),
       el("span", {}, " bleibt unverändert"));
-    return kasten;
+    return boxEl;
   }
-  if (w && w.bezug === "nichts") {
-    kasten.classList.add("single");
-    kasten.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+  if (w && w.scopeKind === "nichts") {
+    boxEl.classList.add("single");
+    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "nichts — es misst nur den Bildschirm und ändert keine Datei"));
-    return kasten;
+    return boxEl;
   }
-  if (!w || w.bezug === "inventory") {
-    kasten.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+  if (!w || w.scopeKind === "inventory") {
+    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
       el("span", {}, "der gesamte gespeicherte Bestand — alle Sequenzen, Punkte, "
         + "Slots und Scans, nicht nur die offene Sequenz"));
-    return kasten;
+    return boxEl;
   }
-  kasten.classList.add("single");
-  kasten.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+  boxEl.classList.add("single");
+  boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
     el("span", {}, "die offene Sequenz "),
     el("b", {}, W ? W.sequence : "—"),
     el("span", {class: "hint"}, W ? " (" + W.file + ")" : ""));
   if (W && W.open)
-    kasten.append(el("span", {class: "kind-warn"}, " — ungespeichert"));
-  return kasten;
+    boxEl.append(el("span", {class: "kind-warn"}, " — ungespeichert"));
+  return boxEl;
 }
 
-async function renderTools(frisch) {
-  const antwort = await ask("tool_data");
-  if (!antwort || view !== "werkzeuge") return;
-  W = antwort;
+async function renderTools(fresh) {
+  const answer = await ask("tool_data");
+  if (!answer || view !== "werkzeuge") return;
+  W = answer;
   for (const u of W.scope)
     if (wzScopeState[u.key] === undefined) wzScopeState[u.key] = u.default_value;
-  if (frisch) { wzReport = null; wzColorQuestion = null; }
-  const merk = rememberFocus();
+  if (fresh) { wzReport = null; wzColorQuestion = null; }
+  const memo = rememberFocus();
   wzRenderLeft();
   wzRenderMiddle();
   wzRenderRight();
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
  *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
 async function callTool(name, data_reload) {
-  const antwort = await ask(name, data_reload);
-  if (!antwort) return null;
-  if (antwort.message)
-    setStatus({text: antwort.message, kind: antwort.ok ? "ok" : "err"});
+  const answer = await ask(name, data_reload);
+  if (!answer) return null;
+  if (answer.message)
+    setStatus({text: answer.message, kind: answer.ok ? "ok" : "err"});
   await renderTools();
-  return antwort;
+  return answer;
 }
 
 function wzRenderLeft() {
@@ -5540,9 +5540,9 @@ function wzRenderLeft() {
   // hier, und in der Bezugszeile des Werkzeugs. Von den dreien ist die
   // Bezugszeile die genaueste — sie sagt nicht nur WELCHE Sequenz offen ist,
   // sondern ob das Werkzeug sie überhaupt meint.
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "WERKZEUGE"));
-  const liste = el("div", {class: "section growing", style: "gap:6px"});
+  const listEl = el("div", {class: "section growing", style: "gap:6px"});
   for (const w of WZ_TOOLS) {
     const button = el("button", {
       class: "wz-nav " + w.key + (wzOpenTool === w.key ? " on" : ""),
@@ -5556,11 +5556,11 @@ function wzRenderLeft() {
            el("span", {class: "wz-command"}, w.command)),
          el("span", {class: "wz-nav-short"}, w.short)),
        el("span", {class: "wz-nav-arrow"}, "›"));
-    liste.appendChild(button);
+    listEl.appendChild(button);
   }
-  liste.appendChild(wzInfo("Slots exakt reparieren",
+  listEl.appendChild(wzInfo("Slots exakt reparieren",
     "CTRL+ALT+N → Slots → repair misst die Flächen pixelgenau neu."));
-  target.replaceChildren(kopf, liste);
+  target.replaceChildren(head, listEl);
   applyHelps(target);
 }
 
@@ -5592,28 +5592,28 @@ function wzRenderMiddle() {
 /* ------------------------------------------------------------------ Prüfen */
 
 function wzBuildCheck() {
-  const raus = [wzHeader("check", "Setup prüfen",
+  const out = [wzHeader("check", "Setup prüfen",
     "Ein vollständiger Gesundheitscheck für die gespeicherten Sequenzen und Scans.")];
-  raus.push(wzScope("check"));
-  raus.push(wzInfo("Was wird geprüft?",
+  out.push(wzScope("check"));
+  out.push(wzInfo("Was wird geprüft?",
     "Templates, Erkennungsmethoden, Punkt- und Scan-Verweise sowie Stellen "
     + "ausserhalb der angeschlossenen Monitore. Es zählt der zuletzt gespeicherte Stand."));
-  raus.push(el("div", {class: "wz-action row"},
+  out.push(el("div", {class: "wz-action row"},
     el("button", {class: "btn primary wz-main-action", onclick: wzCheck},
       wzIcon("check"), el("span", {}, "Jetzt prüfen"))));
 
-  if (!wzReport) return raus;
+  if (!wzReport) return out;
   if (!wzReport.ok) {
-    raus.push(el("p", {class: "kind-err"}, wzReport.message || "Prüfung fehlgeschlagen."));
-    return raus;
+    out.push(el("p", {class: "kind-err"}, wzReport.message || "Prüfung fehlgeschlagen."));
+    return out;
   }
   if (!wzReport.findings.length) {
-    raus.push(el("div", {class: "wz-success"}, wzIcon("ok"),
+    out.push(el("div", {class: "wz-success"}, wzIcon("ok"),
       el("div", {}, el("b", {}, "Alles in Ordnung"),
         el("span", {}, wzReport.checked.length + " Bereiche ohne Befund geprüft."))));
-    return raus;
+    return out;
   }
-  raus.push(el("div", {class: "wz-metrics"},
+  out.push(el("div", {class: "wz-metrics"},
     wzMetric(String(wzReport.errors || 0), "Fehler", "error"),
     wzMetric(String(wzReport.hints || 0), "Hinweise", "hint"),
     wzMetric(String(wzReport.checked.length), "Bereiche", "neutral")));
@@ -5621,48 +5621,48 @@ function wzBuildCheck() {
   for (const level of ["error", "hint"]) {
     const match = wzReport.findings.filter(b => b.level === level);
     if (!match.length) continue;
-    raus.push(el("h3", {style: "margin-top:16px"},
+    out.push(el("h3", {style: "margin-top:16px"},
       level === "error" ? "Fehler (" + match.length + ")"
                          : "Hinweise (" + match.length + ")"));
-    for (const b of match) raus.push(wzFinding(b, level));
+    for (const b of match) out.push(wzFinding(b, level));
   }
-  return raus;
+  return out;
 }
 
 /* ------------------------------------------------------ Punkte verwalten */
 
 function wzBuildPoints() {
-  const raus = [wzHeader("points", "Punkte verwalten",
+  const out = [wzHeader("points", "Punkte verwalten",
     "Klickstellen sind eigenständige Objekte — jede Änderung zieht alle verwendenden Blöcke mit.")];
-  raus.push(wzScope("points"));
+  out.push(wzScope("points"));
   const points = (W && W.points) || [];
   if (!points.some(p => p.id === wzPointId)) wzPointId = points.length ? points[0].id : null;
   const point = points.find(p => p.id === wzPointId);
-  const neuName = el("input", {placeholder: "Name des neuen Punkts", value: "Neuer Punkt",
+  const newName = el("input", {placeholder: "Name des neuen Punkts", value: "Neuer Punkt",
     autocomplete: "off"});
-  raus.push(el("div", {class: "wz-action gitter2"}, neuName,
+  out.push(el("div", {class: "wz-action gitter2"}, newName,
     el("button", {class: "btn primary", onclick: async () => {
       setStatus({kind: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
       const a = await withWait("tool", "tool_point_capture",
-                                {name: neuName.value});
+                                {name: newName.value});
       if (a && a.ok) wzPointId = a.point_id;
     }}, "＋ Neuen Punkt aufnehmen")));
   if (!point) {
-    raus.push(el("p", {class: "empty"}, "Noch keine Punkte in dieser Sequenz."));
-    return raus;
+    out.push(el("p", {class: "empty"}, "Noch keine Punkte in dieser Sequenz."));
+    return out;
   }
-  raus.push(selection("Punkt", points.map(p => ({value: p.id,
+  out.push(selection("Punkt", points.map(p => ({value: p.id,
     text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), point.id,
     (v) => { wzPointId = Number(v); wzRenderMiddle(); wzRenderRight(); }));
-  const setze = (field, value) => callTool("tool_point_set",
+  const setter = (field, value) => callTool("tool_point_set",
     {point_id: point.id, field: field, value: value});
-  raus.push(field("Name", point.name, (v) => setze("name", v)));
-  raus.push(el("div", {class: "gitter2"},
-    numberField("X", point.x, (v) => setze("x", v), {step: "1"}),
-    numberField("Y", point.y, (v) => setze("y", v), {step: "1"})));
-  raus.push(color_swatch("Gespeicherte Farbe", point.color ? hexColor(point.color) : "",
-    (v) => setze("color", v)));
-  raus.push(el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
+  out.push(field("Name", point.name, (v) => setter("name", v)));
+  out.push(el("div", {class: "gitter2"},
+    numberField("X", point.x, (v) => setter("x", v), {step: "1"}),
+    numberField("Y", point.y, (v) => setter("y", v), {step: "1"})));
+  out.push(color_swatch("Gespeicherte Farbe", point.color ? hexColor(point.color) : "",
+    (v) => setter("color", v)));
+  out.push(el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
     el("button", {class: "btn", onclick: () => callTool("tool_point_show",
       {point_id: point.id})}, "◎ Zeigen & Farbe prüfen"),
     el("button", {class: "btn", onclick: () => withWait("tool",
@@ -5673,45 +5673,45 @@ function wzBuildPoints() {
       title: point.usages.length ? "Erst die aufgeführten Verwendungen entfernen" : "",
       onclick: () => callTool("tool_point_delete", {point_id: point.id})},
       "Löschen")));
-  if (point.usages.length) raus.push(el("p", {class: "hint"},
+  if (point.usages.length) out.push(el("p", {class: "hint"},
     "Löschen ist gesperrt: Dieser Punkt wird noch " + point.usages.length + "× verwendet."));
-  return raus;
+  return out;
 }
 
 /* ------------------------------------------------------ Farben analysieren */
 
 function wzBuildColors() {
-  const raus = [wzHeader("colors", "Farben analysieren",
+  const out = [wzHeader("colors", "Farben analysieren",
     "Liest einen Pixel oder gruppiert die häufigsten Farben eines Bildschirmbereichs.")];
   // Fuenf Werkzeuge trugen ihre Bezugszeile, dieses nicht — obwohl „jedes
   // Werkzeug sagt, WORAUF es wirkt" die Regel des Reiters ist. Gerade hier ist
   // die Antwort die beruhigende: es fasst nichts an.
-  raus.push(wzScope("colors"));
-  raus.push(wzInfo("Aufnahme ohne Studio im Bild",
+  out.push(wzScope("colors"));
+  out.push(wzInfo("Aufnahme ohne Studio im Bild",
     "Nach dem Klick ins Spiel wechseln. Punkt und Vollbild starten mit ENTER; bei einer Region " +
     "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
-  const starten = async (kind) => {
+  const startBtn = async (kind) => {
     setStatus({kind: "info", text: "Ins Spiel wechseln und mit ENTER bestätigen …"});
     wzColorAnalysis = await withWait("tool", "tool_colors", {kind: kind});
     wzRenderMiddle(); wzRenderRight();
   };
-  raus.push(el("div", {class: "gitter3 wz-action"},
-    el("button", {class: "btn primary", onclick: () => starten("point")}, "Pixel unter Maus"),
-    el("button", {class: "btn", onclick: () => starten("region")}, "Bereich analysieren"),
-    el("button", {class: "btn", onclick: () => starten("fullscreen")}, "Vollbild analysieren")));
+  out.push(el("div", {class: "gitter3 wz-action"},
+    el("button", {class: "btn primary", onclick: () => startBtn("point")}, "Pixel unter Maus"),
+    el("button", {class: "btn", onclick: () => startBtn("region")}, "Bereich analysieren"),
+    el("button", {class: "btn", onclick: () => startBtn("fullscreen")}, "Vollbild analysieren")));
   if (wzColorAnalysis && !wzColorAnalysis.ok)
-    raus.push(el("p", {class: "kind-err"}, wzColorAnalysis.message || "Analyse fehlgeschlagen."));
+    out.push(el("p", {class: "kind-err"}, wzColorAnalysis.message || "Analyse fehlgeschlagen."));
   if (wzColorAnalysis && wzColorAnalysis.ok) {
-    const liste = el("div", {class: "wz-color-list"});
-    for (const f of wzColorAnalysis.colors || []) liste.appendChild(el("div", {class: "wz-color-row"},
+    const listEl = el("div", {class: "wz-color-list"});
+    for (const f of wzColorAnalysis.colors || []) listEl.appendChild(el("div", {class: "wz-color-row"},
       el("span", {class: "wz-color-sample", style: "background:" + f.hex}),
       el("b", {class: "mono"}, f.hex),
       el("span", {}, "RGB " + f.rgb.join(", ")),
       el("span", {class: "grow hint"}, f.name || ""),
       el("span", {class: "mono"}, f.share_pct + "%")));
-    raus.push(liste);
+    out.push(listEl);
   }
-  return raus;
+  return out;
 }
 
 /* --------------------------------------------------------------- Aufnehmen */
@@ -5723,25 +5723,25 @@ function wzNewRecordingName() {
 
 function wzBuildRecording() {
   if (!wzRecordingName) wzRecordingName = wzNewRecordingName();
-  const raus = [wzHeader("recording", "Sequenz aufnehmen",
+  const out = [wzHeader("recording", "Sequenz aufnehmen",
     "Spiele den Ablauf einmal vor — jeder Klick, Tastendruck und Marker wird direkt zu Blöcken.")];
-  raus.push(wzScope("recording"));
+  out.push(wzScope("recording"));
 
-  const formular = el("div", {class: "wz-recording-form"});
+  const form = el("div", {class: "wz-recording-form"});
   const name = el("input", {value: wzRecordingName, autocomplete: "off",
     disabled: wzRecordingStarted});
   name.addEventListener("input", () => { wzRecordingName = name.value; });
   const cycles = el("input", {type: "number", min: "0", step: "1",
     value: String(wzRecordingCycles), disabled: wzRecordingStarted});
   cycles.addEventListener("input", () => { wzRecordingCycles = Math.max(0, Number(cycles.value) || 0); });
-  const notiz = el("textarea", {rows: "3", disabled: wzRecordingStarted,
+  const note = el("textarea", {rows: "3", disabled: wzRecordingStarted,
     placeholder: "optional — wofür ist diese Sequenz?"}, wzRecordingDescription);
-  notiz.addEventListener("input", () => { wzRecordingDescription = notiz.value; });
-  formular.append(
+  note.addEventListener("input", () => { wzRecordingDescription = note.value; });
+  form.append(
     el("label", {class: "field"}, "Name", name),
     el("label", {class: "field"}, "Zyklen · 0 = endlos", cycles),
-    el("label", {class: "field wz-recording-note"}, "Notiz", notiz));
-  raus.push(formular);
+    el("label", {class: "field wz-recording-note"}, "Notiz", note));
+  out.push(form);
 
   const stamp = el("div", {class: "wz-recording-state" +
     (wzRecordingStarted ? " running" : "")},
@@ -5755,18 +5755,18 @@ function wzBuildRecording() {
     onclick: wzRecordingStarted ? wzStopRecording : wzStartRecording,
   }, wzRecordingStarted ? "■ Aufnahme stoppen" : "● Aufnahme starten");
   stamp.appendChild(action);
-  raus.push(stamp);
+  out.push(stamp);
 
-  const ausgabe = el("div", {class: "wz-recording-output", id: "wz-recording-output"});
-  raus.push(ausgabe);
-  wzFillRecordingOutput(ausgabe);
+  const output = el("div", {class: "wz-recording-output", id: "wz-recording-output"});
+  out.push(output);
+  wzFillRecordingOutput(output);
 
-  raus.push(el("div", {class: "wz-subheader"}, "HOTKEYS WÄHREND DER AUFNAHME"));
-  raus.push(wzKeyTable((W && W.recording_keys) || []));
-  raus.push(wzInfo("TUI bleibt verfügbar",
+  out.push(el("div", {class: "wz-subheader"}, "HOTKEYS WÄHREND DER AUFNAHME"));
+  out.push(wzKeyTable((W && W.recording_keys) || []));
+  out.push(wzInfo("TUI bleibt verfügbar",
     "CTRL+ALT+J kann die Aufnahme weiterhin ganz ohne Studio starten. Dann werden "
     + "Name, Zyklen und Notiz wie bisher beim Beenden in der Konsole abgefragt."));
-  return raus;
+  return out;
 }
 
 async function wzStartRecording() {
@@ -5775,12 +5775,12 @@ async function wzStartRecording() {
     setStatus({text: "Bitte zuerst einen Namen eingeben.", kind: "err"});
     return;
   }
-  const antwort = await ask("recording_start", {
+  const answer = await ask("recording_start", {
     name: name, cycles: wzRecordingCycles, description: wzRecordingDescription});
-  if (!antwort) return;
-  setStatus({text: antwort.message || "", kind: antwort.ok ? "ok" : "err"});
-  if (!antwort.ok) return;
-  wzRecordingName = antwort.name || name;
+  if (!answer) return;
+  setStatus({text: answer.message || "", kind: answer.ok ? "ok" : "err"});
+  if (!answer.ok) return;
+  wzRecordingName = answer.name || name;
   wzRecordingStarted = true;
   wzRecordingLive = {active: true, paused: false, count: 0, events: []};
   wzWatchRecording();
@@ -5794,9 +5794,9 @@ function wzFillRecordingOutput(target) {
   if (!target) return;
   const data_reload = wzRecordingLive || {};
   const events = Array.isArray(data_reload.events) ? data_reload.events.slice(-3) : [];
-  const kopftext = data_reload.paused ? "PAUSIERT" : wzRecordingStarted ? "LIVE" : "LETZTE EREIGNISSE";
+  const headText = data_reload.paused ? "PAUSIERT" : wzRecordingStarted ? "LIVE" : "LETZTE EREIGNISSE";
   target.replaceChildren(el("div", {class: "wz-output-header"},
-    el("span", {}, kopftext),
+    el("span", {}, headText),
     el("span", {class: "wz-output-counter"}, String(data_reload.count || 0) + " Ereignisse")));
   const rows = el("div", {class: "wz-output-rows"});
   if (!events.length) {
@@ -5811,7 +5811,7 @@ function wzFillRecordingOutput(target) {
           (i === events.length - 1 ? " new" : "")},
         el("span", {class: "wz-output-nr"}, String(e.number || "")),
         el("span", {class: "wz-output-text"}, e.text || "—"),
-        el("span", {class: "wz-output-time"}, e.zeit || ""),
+        el("span", {class: "wz-output-time"}, e.time || ""),
         el("span", {class: "wz-output-color-text"}, color, e.color_text || "")));
     });
   }
@@ -5820,23 +5820,23 @@ function wzFillRecordingOutput(target) {
 
 function wzStartRecordingLive() {
   const number = ++wzRecordingLivePoll;
-  const lesen = async () => {
+  const read = async () => {
     if (number !== wzRecordingLivePoll || !wzRecordingStarted) return;
     const status = await ask("recording_status");
     if (status) {
       wzRecordingLive = status;
       wzFillRecordingOutput($("wz-recording-output"));
     }
-    setTimeout(lesen, 300);
+    setTimeout(read, 300);
   };
-  setTimeout(lesen, 150);
+  setTimeout(read, 150);
 }
 
 async function wzStopRecording() {
-  const antwort = await ask("recording_stop");
-  if (!antwort) return;
-  setStatus({text: antwort.message || "", kind: antwort.ok ? "ok" : "err"});
-  if (antwort.ok) wzWatchRecording(true);
+  const answer = await ask("recording_stop");
+  if (!answer) return;
+  setStatus({text: answer.message || "", kind: answer.ok ? "ok" : "err"});
+  if (answer.ok) wzWatchRecording(true);
 }
 
 /** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke.
@@ -5853,22 +5853,22 @@ async function wzStopRecording() {
  * Die Wartezeit selbst bleibt unbegrenzt: eine Stunde aufzunehmen ist erlaubt.
  * Begrenzt wird nur der Fall, in dem die Aufnahme NIE anlaeuft — dann hoert
  * niemand zu, und das ist eine Meldung wert statt eines stillen Dauerlaufs. */
-function wzWatchRecording(schnell = false) {
+function wzWatchRecording(quick = false) {
   const number = ++wzRecordingPoll;
-  let versuche = 0;
+  let attempts = 0;
   const pruefen = async () => {
     if (number !== wzRecordingPoll || !wzRecordingStarted) return;
-    if (!schnell) {
+    if (!quick) {
       // Laeuft sie noch, gibt es nichts zu holen: billig warten statt fragen.
       if (wzRecordingLive && wzRecordingLive.active) {
-        versuche = 0;
+        attempts = 0;
         return void setTimeout(pruefen, 1000);
       }
       // Der Zaehler steht nur still, solange die Aufnahme laeuft (oben auf 0
       // gesetzt). Eine Minute Suchen ohne laufende Aufnahme heisst also
       // entweder „nie angelaufen" oder „gestoppt, aber nichts geschrieben" —
       // beides gehoert gesagt statt still weitergedreht.
-      if (versuche >= 60) {
+      if (attempts >= 60) {
         wzRecordingStarted = false;
         ++wzRecordingLivePoll;
         wzRenderMiddle();
@@ -5877,8 +5877,8 @@ function wzWatchRecording(schnell = false) {
         return;
       }
     }
-    const liste = (await ask("sequence_list")) || [];
-    if (liste.some(s => s.name === wzRecordingName)) {
+    const listEl = (await ask("sequence_list")) || [];
+    if (listEl.some(s => s.name === wzRecordingName)) {
       wzRecordingStarted = false;
       ++wzRecordingLivePoll;
       await call("load", {name: wzRecordingName});
@@ -5886,17 +5886,17 @@ function wzWatchRecording(schnell = false) {
       setStatus({text: "Aufnahme gespeichert — die erzeugten Blöcke sind geöffnet.", kind: "ok"});
       return;
     }
-    versuche += 1;
-    if (schnell && versuche >= 12) {
+    attempts += 1;
+    if (quick && attempts >= 12) {
       wzRecordingStarted = false;
       ++wzRecordingLivePoll;
       wzRenderMiddle();
       setStatus({text: "Keine gespeicherte Aufnahme gefunden — wurde etwas aufgezeichnet?", kind: "warn"});
       return;
     }
-    setTimeout(pruefen, schnell ? 350 : 1000);
+    setTimeout(pruefen, quick ? 350 : 1000);
   };
-  setTimeout(pruefen, schnell ? 350 : 1000);
+  setTimeout(pruefen, quick ? 350 : 1000);
 }
 
 function wzMetric(value, label, kind) {
@@ -5905,27 +5905,27 @@ function wzMetric(value, label, kind) {
 }
 
 function wzFinding(b, level) {
-  const kasten = el("div", {class: "wz-finding " + level});
-  kasten.appendChild(el("div", {class: "wz-finding-icon"}, wzIcon(level)));
+  const boxEl = el("div", {class: "wz-finding " + level});
+  boxEl.appendChild(el("div", {class: "wz-finding-icon"}, wzIcon(level)));
   const copy = el("div", {class: "wz-finding-copy"},
     el("div", {class: "wz-area"}, b.area), el("div", {}, b.text));
   if (b.tip) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tip));
-  kasten.appendChild(copy);
-  return kasten;
+  boxEl.appendChild(copy);
+  return boxEl;
 }
 
 function wzBuildChecked() {
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "GEPRÜFT"));
-  const liste = el("div", {class: "section growing", style: "gap:4px"});
+  const listEl = el("div", {class: "section growing", style: "gap:4px"});
   if (!wzReport || !wzReport.ok) {
-    liste.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+    listEl.appendChild(el("div", {class: "hint", style: "white-space:normal"},
       "Noch nichts geprüft."));
   } else {
     for (const b of wzReport.checked)
-      liste.appendChild(el("div", {class: "wz-checked"}, wzIcon("ok"), el("span", {}, b)));
+      listEl.appendChild(el("div", {class: "wz-checked"}, wzIcon("ok"), el("span", {}, b)));
   }
-  return [kopf, liste];
+  return [head, listEl];
 }
 
 async function wzCheck() {
@@ -5954,31 +5954,31 @@ async function wzCheck() {
 
 function wzBuildCalib() {
   const K = (W && W.calibration) || {};
-  const raus = [wzHeader("calibrate", "Koordinaten kalibrieren",
+  const out = [wzHeader("calibrate", "Koordinaten kalibrieren",
     "Einen bekannten Punkt neu messen und alle gespeicherten Stellen präzise mitziehen.")];
-  raus.push(wzScope("calibrate"));
-  raus.push(wzInfo("Wann brauche ich das?",
+  out.push(wzScope("calibrate"));
+  out.push(wzInfo("Wann brauche ich das?",
     "Wenn Windows Monitore verschoben oder die Auflösung geändert hat. Der erste "
     + "Referenzpunkt bestimmt die Verschiebung, ein zweiter optional die Skalierung."));
 
   if (!W || !W.points.length) {
-    raus.push(el("p", {class: "kind-err"}, "Keine Punkte vorhanden — es gibt nichts zu kalibrieren."));
-    return raus;
+    out.push(el("p", {class: "kind-err"}, "Keine Punkte vorhanden — es gibt nichts zu kalibrieren."));
+    return out;
   }
 
-  raus.push(wzRefRow(1, K.ref1));
+  out.push(wzRefRow(1, K.ref1));
   // Der zweite Punkt erst anbieten, wenn der erste steht: ohne Verschiebung
   // gibt es keine Skalierung, und zwei leere Felder nebeneinander sehen aus,
   // als muesste man beide ausfuellen.
   if (K.ref1) {
-    raus.push(wzInfo("Zweiter Referenzpunkt",
+    out.push(wzInfo("Zweiter Referenzpunkt",
       "Nur wenn sich auch die Auflösung geändert hat: Dann einen zweiten Punkt "
       + "möglichst weit vom ersten entfernt anfahren."));
-    raus.push(wzRefRow(2, K.ref2));
+    out.push(wzRefRow(2, K.ref2));
   }
 
   if (K.ref1) {
-    raus.push(el("div", {class: "wz-subheader"}, "BERECHNETER TRANSFORM"));
+    out.push(el("div", {class: "wz-subheader"}, "BERECHNETER TRANSFORM"));
     const v = K.offset || {x: 0, y: 0};
     const values = el("div", {class: "wz-metrics"},
       wzMetric(wzSign(v.x), "X-Versatz", "neutral"),
@@ -5986,26 +5986,26 @@ function wzBuildCalib() {
     if (K.scaling && (K.scaling.x !== 1 || K.scaling.y !== 1))
       values.appendChild(wzMetric(K.scaling.x + "×" + K.scaling.y,
         "Skalierung X/Y", "hint"));
-    raus.push(values);
-    raus.push(wzOffsetFields(v));
+    out.push(values);
+    out.push(wzOffsetFields(v));
     if (K.identity)
-      raus.push(el("p", {class: "kind-warn"},
+      out.push(el("p", {class: "kind-warn"},
         "Der Transform ändert nichts — der Punkt sitzt schon richtig."));
-    raus.push(wzScopeBox());
-    const leiste = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
-    leiste.appendChild(el("button", {
+    out.push(wzScopeBox());
+    const strip = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
+    strip.appendChild(el("button", {
       class: "btn primary", disabled: !!K.identity,
       onclick: () => callTool("calib_apply", {...wzScopeState}),
     }, "Umrechnen und speichern"));
-    leiste.appendChild(el("button", {
+    strip.appendChild(el("button", {
       class: "btn", onclick: () => callTool("calib_cancel"),
     }, "Verwerfen"));
-    raus.push(leiste);
-    raus.push(wzInfo("Sicherung und laufende Sequenz",
+    out.push(strip);
+    out.push(wzInfo("Sicherung und laufende Sequenz",
       "Vorher entsteht ein vollständiges Export-ZIP als Sicherung. Läuft eine "
       + "Sequenz, wird nicht umgerechnet — sie klickt sonst mitten im Umbau."));
   }
-  return raus;
+  return out;
 }
 
 function wzSign(n) { return (n > 0 ? "+" : "") + n; }
@@ -6020,16 +6020,16 @@ function wzColor(rgb) {
  *  die neue Farbe ist die richtige. Es soll nur nicht aus Versehen gehen. */
 function wzBuildColorQuestion() {
   const f = wzColorQuestion;
-  const kasten = el("div", {class: "wz-color-question"});
-  kasten.appendChild(el("div", {class: "kind-warn"}, f.message));
-  const reihe = el("div", {class: "wz-color-series"});
-  reihe.append(el("span", {class: "hint"}, "saved"), wzColor(f.expected),
+  const boxEl = el("div", {class: "wz-color-question"});
+  boxEl.appendChild(el("div", {class: "kind-warn"}, f.message));
+  const series = el("div", {class: "wz-color-series"});
+  series.append(el("span", {class: "hint"}, "saved"), wzColor(f.expected),
                el("span", {class: "hint"}, "dort gemessen"), wzColor(f.measured),
                el("span", {class: "hint"},
                   "(" + f.position[0] + ", " + f.position[1] + ")"));
-  kasten.appendChild(reihe);
-  const leiste = el("div", {style: "display:flex;gap:8px"});
-  leiste.appendChild(el("button", {
+  boxEl.appendChild(series);
+  const strip = el("div", {style: "display:flex;gap:8px"});
+  strip.appendChild(el("button", {
     class: "btn", onclick: async () => {
       const n = f.number, id = f.point_id;
       wzColorQuestion = null;
@@ -6040,19 +6040,19 @@ function wzBuildColorQuestion() {
                       {number: n, point_id: id, confirmed: true});
     },
   }, "Trotzdem setzen"));
-  leiste.appendChild(el("button", {
+  strip.appendChild(el("button", {
     class: "btn primary", onclick: () => {
       wzColorQuestion = null;
       setStatus({text: "Verworfen — nichts gesetzt.", kind: "info"});
       renderTools();
     },
   }, "Nochmal anfahren"));
-  kasten.appendChild(leiste);
-  kasten.appendChild(el("div", {class: "hint", style: "white-space:normal"},
+  boxEl.appendChild(strip);
+  boxEl.appendChild(el("div", {class: "hint", style: "white-space:normal"},
     "\u201eTrotzdem setzen\u201c ist richtig, wenn sich das Spiel geändert hat. Sonst "
     + "erst nachsehen: ein danebenliegender Referenzpunkt verschiebt nicht sich "
     + "selbst, sondern jede gespeicherte Stelle."));
-  return kasten;
+  return boxEl;
 }
 
 /** Der Punkt mit dem groessten Abstand zum ersten Referenzpunkt.
@@ -6061,19 +6061,19 @@ function wzBuildColorQuestion() {
  * Messfehler der Maus (ein paar Pixel) verteilt sich dann auf eine kurze
  * Strecke und wird zum Faktor hochgerechnet. */
 function wzFarthestPoint(ref1) {
-  let beste = W.points[0], weit = -1;
+  let best = W.points[0], wide = -1;
   for (const p of W.points) {
     if (ref1 && p.id === ref1.point_id) continue;
     const d = Math.hypot(p.x - (ref1 ? ref1.alt[0] : 0), p.y - (ref1 ? ref1.alt[1] : 0));
-    if (d > weit) { weit = d; beste = p; }
+    if (d > wide) { wide = d; best = p; }
   }
-  return beste.id;
+  return best.id;
 }
 
 /** Eine Referenzpunkt-Zeile: welchen Punkt, und der Knopf zum Anfahren. */
 function wzRefRow(number, placed) {
-  const kasten = el("div", {class: "wz-ref"});
-  kasten.appendChild(el("div", {class: "wz-area"},
+  const boxEl = el("div", {class: "wz-ref"});
+  boxEl.appendChild(el("div", {class: "wz-area"},
     number === 1 ? "1. Referenzpunkt (Verschiebung)"
                  : "2. Referenzpunkt (Skalierung, optional)"));
   const choice = el("select");
@@ -6086,54 +6086,54 @@ function wzRefRow(number, placed) {
   // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
   // Fehlermeldung ergibt, ist schlimmer als gar keiner.
   else if (number === 2) choice.value = String(wzFarthestPoint(W.calibration.ref1));
-  kasten.appendChild(choice);
-  kasten.appendChild(el("button", {
+  boxEl.appendChild(choice);
+  boxEl.appendChild(el("button", {
     class: "btn",
     onclick: async () => {
       setStatus({text: "Maus auf die Stelle, dann ENTER (ESC bricht ab)…", kind: "info"});
-      const antwort = await withWait("ask", "calib_reference",
+      const answer = await withWait("ask", "calib_reference",
         {number, point_id: Number(choice.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
-      if (antwort && antwort.confirm) { wzColorQuestion = {...antwort, number}; }
-      else if (antwort && antwort.message)
-        setStatus({text: antwort.message, kind: antwort.ok ? "ok" : "err"});
+      if (answer && answer.confirm) { wzColorQuestion = {...answer, number}; }
+      else if (answer && answer.message)
+        setStatus({text: answer.message, kind: answer.ok ? "ok" : "err"});
       await renderTools();
     },
   }, placed ? "Neu anfahren" : "Stelle anfahren"));
   if (wzColorQuestion && wzColorQuestion.number === number)
-    kasten.appendChild(wzBuildColorQuestion());
+    boxEl.appendChild(wzBuildColorQuestion());
   if (placed)
-    kasten.appendChild(el("div", {class: "hint"},
+    boxEl.appendChild(el("div", {class: "hint"},
       "(" + placed.alt[0] + ", " + placed.alt[1] + ") → ("
       + placed.neu[0] + ", " + placed.neu[1] + ")"));
-  return kasten;
+  return boxEl;
 }
 
 /** Versatz von Hand nachziehen — mit der Maus trifft man den Pixel nicht genau. */
 function wzOffsetFields(v) {
-  const kasten = el("div", {class: "wz-ref"});
-  kasten.appendChild(el("div", {class: "wz-area"}, "Versatz von Hand"));
-  const felder = {};
-  for (const achse of ["x", "y"]) {
-    const field = el("input", {type: "number", step: "1", value: String(v[achse]),
+  const boxEl = el("div", {class: "wz-ref"});
+  boxEl.appendChild(el("div", {class: "wz-area"}, "Versatz von Hand"));
+  const fields = {};
+  for (const axis of ["x", "y"]) {
+    const field = el("input", {type: "number", step: "1", value: String(v[axis]),
                               style: "width:90px"});
-    felder[achse] = field;
-    kasten.append(el("span", {}, achse.toUpperCase()), field);
+    fields[axis] = field;
+    boxEl.append(el("span", {}, axis.toUpperCase()), field);
   }
-  kasten.appendChild(el("button", {
+  boxEl.appendChild(el("button", {
     class: "btn", onclick: () => callTool("calib_offset",
-      {x: felder.x.value, y: felder.y.value}),
+      {x: fields.x.value, y: fields.y.value}),
   }, "Übernehmen"));
-  kasten.appendChild(wzInfo("Versatz von Hand",
+  boxEl.appendChild(wzInfo("Versatz von Hand",
     "Weisst du, dass eine Achse stimmt, ist eine getippte 0 genauer als jede Messung."));
-  return kasten;
+  return boxEl;
 }
 
 function wzScopeBox() {
-  const kasten = el("div", {class: "wz-ref", style: "flex-direction:column;align-items:stretch"});
-  kasten.appendChild(el("div", {class: "wz-area"}, "Was mitgerechnet wird"));
-  kasten.appendChild(wzInfo("Punkte",
+  const boxEl = el("div", {class: "wz-ref", style: "flex-direction:column;align-items:stretch"});
+  boxEl.appendChild(el("div", {class: "wz-area"}, "Was mitgerechnet wird"));
+  boxEl.appendChild(wzInfo("Punkte",
     "Punkte werden immer mitgerechnet — daran hängt alles andere."));
   for (const u of W.scope) {
     const row = el("label", {class: "share-row on"});
@@ -6141,12 +6141,12 @@ function wzScopeBox() {
     box.checked = !!wzScopeState[u.key];
     box.addEventListener("change", () => { wzScopeState[u.key] = box.checked; });
     row.append(box, el("span", {}, u.text));
-    kasten.appendChild(row);
+    boxEl.appendChild(row);
   }
-  kasten.appendChild(wzInfo("Warum Slots standardmässig aus sind",
+  boxEl.appendChild(wzInfo("Warum Slots standardmässig aus sind",
     "Slots stehen getrennt und sind aus: nach einem repair dürfen sie kein "
     + "zweites Mal wandern."));
-  return kasten;
+  return boxEl;
 }
 
 /* --------------------------------------------------------- Punkte nachklicken */
@@ -6174,13 +6174,13 @@ const WZ_STEPS = [
 ];
 
 function wzKeyTable(keys = WZ_KEYS) {
-  const rumpf = el("tbody");
-  for (const [combo, what, warum] of keys)
-    rumpf.appendChild(el("tr", {},
+  const bodyEl = el("tbody");
+  for (const [combo, what, why] of keys)
+    bodyEl.appendChild(el("tr", {},
       el("td", {}, el("span", {class: "wz-key"}, combo)),
       el("td", {class: "wz-what"}, what),
-      el("td", {class: "wz-why"}, warum)));
-  return el("table", {class: "wz-keys"}, rumpf);
+      el("td", {class: "wz-why"}, why)));
+  return el("table", {class: "wz-keys"}, bodyEl);
 }
 
 /* Was ein erledigter Punkt geworden ist. Vier Ausgaenge, weil die Runde vier
@@ -6188,7 +6188,7 @@ function wzKeyTable(keys = WZ_KEYS) {
  * Grund fuer `reclick_history`: beide aendern nichts, aber nur einer heisst
  * „ich habe hingesehen". */
 const WZ_RECLICK_KIND = {
-  passt: ["✓", "rc-fits", "bestätigt — bleibt, wo er ist"],
+  fits: ["✓", "rc-fits", "bestätigt — bleibt, wo er ist"],
   placed: ["→", "rc-set", "neu gesetzt"],
   skipped: ["↷", "rc-skip", "übersprungen"],
   missing: ["✕", "rc-missing", "Punkt gibt es nicht mehr"],
@@ -6204,10 +6204,10 @@ function wzFillReclickOutput(target) {
 
   // Der Kopf beantwortet die erste Frage („laeuft das ueberhaupt noch?"), und
   // ein verwaister Stand sagt es, statt eine tote Runde als lebend zu zeigen.
-  const kopftext = d.orphaned ? "KEIN HAUPTPROZESS"
+  const headText = d.orphaned ? "KEIN HAUPTPROZESS"
     : d.paused ? "PAUSIERT" : running ? "LÄUFT" : total ? "BEENDET" : "NICHT GESTARTET";
   target.replaceChildren(el("div", {class: "wz-output-header"},
-    el("span", {}, kopftext),
+    el("span", {}, headText),
     el("span", {class: "wz-output-counter"},
       total ? done + " von " + total + " Punkt(en)" : "—")));
 
@@ -6253,9 +6253,9 @@ function wzFillReclickOutput(target) {
       "Noch kein Punkt erledigt."));
   } else {
     for (const v of history) {
-      const [zeichen, klasse, what] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
+      const [glyph, cls, what] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
       rows.appendChild(el("div", {class: "rc-row"},
-        el("span", {class: "rc-kind " + klasse, title: what}, zeichen),
+        el("span", {class: "rc-kind " + cls, title: what}, glyph),
         el("span", {class: "num"}, "#" + v.id),
         el("span", {class: "rc-name"}, v.name || ""),
         el("span", {class: "rc-target"}, v.alt && v.neu
@@ -6273,56 +6273,56 @@ function wzFillReclickOutput(target) {
 /* Gepollt wird, solange der Reiter offen ist — nicht nur nach dem eigenen
  * Startknopf. Die Runde kann aus dem Punkte-Menue gestartet worden sein, und
  * dann ist dieses Fenster trotzdem der bequemere Platz, um ihr zuzusehen.
- * Nach dem Ende laeuft der Poll aus (`ruhig`), damit ein offener Reiter nicht
+ * Nach dem Ende laeuft der Poll aus (`quiet`), damit ein offener Reiter nicht
  * dauerhaft alle 400 ms eine Datei liest. */
 function wzStartReclickLive() {
   const number = ++wzReclickPoll;
-  let ruhig = 0;
-  const lesen = async () => {
+  let quiet = 0;
+  const read = async () => {
     if (number !== wzReclickPoll || wzOpenTool !== "reclick") return;
     const stamp = await ask("reclick_status");
     if (number !== wzReclickPoll || wzOpenTool !== "reclick") return;
     if (stamp) {
-      const lief = wzReclickLive.active;
+      const wasRunning = wzReclickLive.active;
       wzReclickLive = stamp;
       wzFillReclickOutput($("wz-reclick-output"));
       // Endet die Runde, sagt es die Statuszeile — sonst merkt man es nur,
       // wenn man gerade hinsieht.
-      if (lief && !stamp.active)
+      if (wasRunning && !stamp.active)
         setStatus({text: "Klick-Runde beendet — " + (stamp.changed || 0)
                      + " Stelle(n) geändert.", kind: "ok"});
-      ruhig = stamp.active ? 0 : ruhig + 1;
+      quiet = stamp.active ? 0 : quiet + 1;
     } else {
-      ruhig += 1;
+      quiet += 1;
     }
-    if (ruhig > 12) return;
-    setTimeout(lesen, wzReclickLive.active ? 400 : 1000);
+    if (quiet > 12) return;
+    setTimeout(read, wzReclickLive.active ? 400 : 1000);
   };
-  setTimeout(lesen, 100);
+  setTimeout(read, 100);
 }
 
 function wzBuildReclick() {
-  const raus = [wzHeader("reclick", "Punkte nachklicken",
+  const out = [wzHeader("reclick", "Punkte nachklicken",
     "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
-  raus.push(wzScope("reclick"));
+  out.push(wzScope("reclick"));
 
   const steps = el("div", {class: "wz-steps"});
   WZ_STEPS.forEach(([title, text], i) => {
     steps.append(el("div", {class: "wz-number"}, String(i + 1)),
       el("div", {class: "wz-step-text"}, el("b", {}, title + ": "), text));
   });
-  raus.push(steps);
+  out.push(steps);
 
   // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
-  raus.push(el("div", {class: "wz-rule"},
+  out.push(el("div", {class: "wz-rule"},
     el("span", {}, "⚠"),
     el("span", {}, el("b", {}, "Nichts wird geschrieben, bis du übernimmst. "),
       "Fenster zu, Programm aus oder „Verwerfen“ = die Runde ist weg und "
       + "sequence.json bleibt, wie sie war. Geändert wird ohnehin nur die "
       + "Stelle: Wartezeiten, Bedingungen, ELSE und Scans bleiben unangetastet.")));
 
-  const leiste = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
-  leiste.appendChild(el("button", {
+  const strip = el("div", {style: "display:flex;gap:8px;margin-top:4px"});
+  strip.appendChild(el("button", {
     class: "btn primary",
     // Wie beim Start einer Sequenz: der Befehl geht in den Briefkasten, und ob
     // ihn jemand abholt, sieht man erst daran, dass er verschwindet.
@@ -6335,30 +6335,30 @@ function wzBuildReclick() {
   // falsch. Ob gerade eine Runde laeuft, weiss dieses Fenster nicht (der Zustand
   // liegt drueben) - die Knoepfe stehen deshalb immer da, und der Hauptprozess
   // sagt, was er vorgefunden hat.
-  leiste.appendChild(el("button", {
+  strip.appendChild(el("button", {
     class: "btn", onclick: () => callTool("reclick_end"),
     title: "Schreibt die gesetzten Stellen nach sequence.json (= CTRL+ALT+J)",
   }, "Übernehmen"));
-  leiste.appendChild(el("button", {
+  strip.appendChild(el("button", {
     class: "btn", onclick: () => callTool("reclick_end", {discard: true}),
     title: "Beendet die Runde, ohne etwas zu schreiben",
   }, "Verwerfen"));
-  raus.push(leiste);
+  out.push(strip);
 
   // Der Live-Stand steht ZWISCHEN Knoepfen und Tastentabelle: was das
   // Programm gerade macht, sucht man dort, wo man es gerade gestartet hat.
-  const ausgabe = el("div", {class: "wz-output", id: "wz-reclick-output"});
-  raus.push(ausgabe);
-  wzFillReclickOutput(ausgabe);
+  const output = el("div", {class: "wz-output", id: "wz-reclick-output"});
+  out.push(output);
+  wzFillReclickOutput(output);
 
   wzStartReclickLive();
-  raus.push(wzKeyTable());
-  raus.push(wzInfo("Bedienung im Spiel",
+  out.push(wzKeyTable());
+  out.push(wzInfo("Bedienung im Spiel",
     "Die Runde läuft wegen des systemweiten Maus-Hooks im Hauptprozess. Die "
     + "Tasten wirken überall — auch mit dem Spiel im Vordergrund. Gezählt "
     + "wird nur, was im Spielfenster geklickt wird (window_focus_title); ein "
     + "Klick woanders verbraucht keinen Punkt."));
-  return raus;
+  return out;
 }
 
 /* ------------------------------------------------------------------- rechts */
@@ -6378,15 +6378,15 @@ function wzRenderRight() {
         el("b", {}, "3 · Stoppen"), el("span", {}, "Die Sequenz wird gespeichert und automatisch im Editor geöffnet."))));
   if (wzOpenTool === "points") {
     const point = W && W.points.find(p => p.id === wzPointId);
-    const kopf = el("div", {class: "section"},
+    const head = el("div", {class: "section"},
       el("span", {class: "heading"}, "VERWENDUNGEN"),
       el("span", {class: "hint"}, point ? "Punkt #" + point.id : "kein Punkt gewählt"));
-    const liste = el("div", {class: "section growing", style: "gap:5px"});
+    const listEl = el("div", {class: "section growing", style: "gap:5px"});
     if (!point || !point.usages.length)
-      liste.appendChild(el("p", {class: "hint"}, "Dieser Punkt wird nirgends verwendet und kann sicher gelöscht werden."));
+      listEl.appendChild(el("p", {class: "hint"}, "Dieser Punkt wird nirgends verwendet und kann sicher gelöscht werden."));
     else for (const v of point.usages)
-      liste.appendChild(el("div", {class: "wz-checked"}, wzIcon("points"), el("span", {}, v)));
-    return target.replaceChildren(kopf, liste);
+      listEl.appendChild(el("div", {class: "wz-checked"}, wzIcon("points"), el("span", {}, v)));
+    return target.replaceChildren(head, listEl);
   }
   if (wzOpenTool === "colors")
     return target.replaceChildren(el("div", {class: "section"},
@@ -6412,19 +6412,19 @@ function wzRenderRight() {
         "Sobald der erste Referenzpunkt steht, steht hier, was sich ändern würde.")));
 
   const rows = W.calibration.preview || [];
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "VORSCHAU"),
     el("div", {class: "hint"}, rows.length + " Stelle(n), Auszug"));
-  const liste = el("div", {class: "section growing", style: "gap:4px"});
+  const listEl = el("div", {class: "section growing", style: "gap:4px"});
   for (const z of rows) {
-    liste.appendChild(el("div", {class: "wz-preview"},
+    listEl.appendChild(el("div", {class: "wz-preview"},
       el("div", {}, z.what),
       el("div", {class: "hint"},
         "(" + z.before.join(", ") + ") → (" + z.after.join(", ") + ")")));
   }
   if (!rows.length)
-    liste.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
-  target.replaceChildren(kopf, liste);
+    listEl.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
+  target.replaceChildren(head, listEl);
 }
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
@@ -6439,21 +6439,21 @@ let cfgSection = 0;
 let cfgSearch = "";
 let cfgCorrections = [];
 
-async function renderSettings(frisch) {
-  if (frisch || !C) {
-    const antwort = await ask("config_read");
+async function renderSettings(fresh) {
+  if (fresh || !C) {
+    const answer = await ask("config_read");
     // Zwischen Frage und Antwort kann umgeschaltet worden sein.
-    if (!antwort || view !== "einstellungen") return;
-    C = antwort;
+    if (!answer || view !== "einstellungen") return;
+    C = answer;
     // Was inzwischen von aussen genauso gesetzt wurde, ist keine Aenderung mehr.
     for (const k of Object.keys(cfgChanged))
       if (cfgEqual(cfgChanged[k], C.values[k])) delete cfgChanged[k];
   }
-  const merk = rememberFocus();
+  const memo = rememberFocus();
   renderCfgList();
   renderCfgFields();
   renderCfgRight();
-  restoreFocus(merk);
+  restoreFocus(memo);
 }
 
 /** Gleicher Wert? Arrays über ihre Darstellung, alles andere strikt. */
@@ -6485,8 +6485,8 @@ function cfgActive(key) {
 }
 
 function cfgWhy(m) {
-  const anderes = m.dep || m.dep_not || m.dep_min;
-  const name = (C.meta[anderes] && C.meta[anderes].label) || anderes;
+  const otherKind = m.dep || m.dep_not || m.dep_min;
+  const name = (C.meta[otherKind] && C.meta[otherKind].label) || otherKind;
   if (m.dep) return "Wirkt nur, wenn „" + name + "“ an ist.";
   if (m.dep_not) return "Wirkt nur, wenn „" + name + "“ aus ist.";
   return "Wirkt nur, wenn „" + name + "“ grösser als 0 ist.";
@@ -6541,14 +6541,14 @@ function renderCfgFields() {
   }
   // Bei einer Suche werden ALLE Abschnitte mit Treffern gezeigt, nicht nur der
   // gewaehlte: wer sucht, weiss ja gerade nicht, wo der Wert steht.
-  const gruppen = cfgSearch
+  const groups = cfgSearch
     ? C.sections.filter((a) => a.keys.some(cfgMatches))
     : [C.sections[cfgSection]].filter(Boolean);
-  if (!gruppen.length) {
+  if (!groups.length) {
     target.appendChild(el("p", {class: "empty"}, "Kein Feld passt zu „" + cfgSearch + "“."));
     return;
   }
-  for (const a of gruppen) {
+  for (const a of groups) {
     target.appendChild(el("div", {class: "cfg-group"}, a.title));
     for (const key of a.keys) if (cfgMatches(key)) target.appendChild(cfgRow(key));
   }
@@ -6563,11 +6563,11 @@ function cfgRow(key) {
     m.help ? el("p", {class: "hint", style: "margin-top:5px"}, m.help) : null,
     active ? null : el("p", {class: "hint", style: "margin-top:5px;color:var(--accent)"},
                       cfgWhy(m)));
-  const rechts = el("div", {class: "cfg-rights"},
+  const right = el("div", {class: "cfg-rights"},
     cfgControl(key, m), cfgEmpty(key, m), cfgDefault(key, m),
     cfgAction(key, m));
   return el("div", {class: "cfg-row" + (key in cfgChanged ? " changed" : "") +
-                           (active ? "" : " blass")}, left, rechts);
+                           (active ? "" : " blass")}, left, right);
 }
 
 /** Der Knopf UNTER einem Feld, wenn die Meta-Tabelle einen anmeldet.
@@ -6593,36 +6593,36 @@ function cfgAction(key, m) {
 async function cfgCallAction(key, m) {
   // Ein Netzabruf dauert, und der Reiter zeichnet sich danach neu: ohne den
   // Kasten saehe das Fenster in der Zwischenzeit tot aus.
-  const antwort = await withWork("ask", m.action.command, null,
+  const answer = await withWork("ask", m.action.command, null,
     m.action.text, "Das kann ein paar Sekunden dauern.");
-  if (!antwort) return;
+  if (!answer) return;
   // Geklappt, aber mit Vorbehalt (ein Konstrukt in der Antwort, das das
   // Werkzeug nicht kannte): dann sagt die Bruecke die Art selbst.
-  setStatus({text: antwort.message || "Fertig.",
-               kind: antwort.kind || (antwort.ok ? "ok" : "err")});
+  setStatus({text: answer.message || "Fertig.",
+               kind: answer.kind || (answer.ok ? "ok" : "err")});
   // Der Wert im Feld kann sich dabei geaendert haben (der Pfad wird
   // eingetragen) — frisch lesen statt den alten Stand stehen zu lassen.
-  if (antwort.ok) renderSettings(true);
+  if (answer.ok) renderSettings(true);
 }
 
 function cfgControl(key, m) {
   const value = cfgValue(key);
-  const setze = (v) => cfgSet(key, v);
-  if (m.kind === "bool") return toggle(value ? "an" : "aus", value, setze);
+  const setter = (v) => cfgSet(key, v);
+  if (m.kind === "bool") return toggle(value ? "an" : "aus", value, setter);
   if (m.kind === "enum") return cfgTiles(key, m, value);
   if (m.kind === "xy") return cfgPosition(key, m, value);
   if (m.kind === "area") {
     const field = el("textarea", {});
     field.value = value === null || value === undefined ? "" : String(value);
-    field.addEventListener("change", () => setze(field.value.trim() || null));
+    field.addEventListener("change", () => setter(field.value.trim() || null));
     return field;
   }
   if (m.kind === "text") {
     const field = el("input", {autocomplete: "off",
                               value: value === null || value === undefined ? "" : String(value)});
     field.addEventListener("change", () => {
-      const roh = field.value.trim();
-      setze(roh === "" && (C.optional || []).includes(key) ? null : roh);
+      const raw = field.value.trim();
+      setter(raw === "" && (C.optional || []).includes(key) ? null : raw);
     });
     field.addEventListener("keydown", (e) => { if (e.key === "Enter") field.blur(); });
     return field;
@@ -6636,12 +6636,12 @@ function cfgNumber(key, m, value) {
                             value: value === null || value === undefined ? "" : value});
   if (m.kind === "ratio") { field.setAttribute("min", "0"); field.setAttribute("max", "1"); }
   field.addEventListener("change", () => {
-    const roh = field.value.trim();
+    const raw = field.value.trim();
     // Leer heisst `null`, wo die Dataclass das erlaubt, und sonst 0. Der
     // Unterschied ist nicht kosmetisch: click_max_total = 0 waere „nach null
     // Klicks stoppen", null dagegen „unbegrenzt".
-    if (roh === "") return cfgSet(key, optional ? null : 0);
-    let z = Number(roh);
+    if (raw === "") return cfgSet(key, optional ? null : 0);
+    let z = Number(raw);
     // Fehleingabe wiederholen statt uebernehmen — dieselbe Regel wie in den
     // Konsolen-Editoren. Der Neuaufbau stellt den alten Wert wieder her.
     if (!isFinite(z)) return renderSettings();
@@ -6667,37 +6667,37 @@ function cfgTiles(key, m, value) {
 
 /** `scan_park_mouse`: aus (`false`) oder eine Stelle (`[x, y]`). */
 function cfgPosition(key, m, value) {
-  const an = Array.isArray(value);
-  const xy = an ? value : [0, 0];
-  const setzeXY = (i, v) => {
+  const on = Array.isArray(value);
+  const xy = on ? value : [0, 0];
+  const setXY = (i, v) => {
     const neu = [Number(xy[0]) || 0, Number(xy[1]) || 0];
     neu[i] = Math.round(Number(v) || 0);
     cfgSet(key, neu);
   };
   const number = (i) => {
-    const f = el("input", {type: "number", step: "1", value: xy[i], disabled: !an});
-    f.addEventListener("change", () => setzeXY(i, f.value));
+    const f = el("input", {type: "number", step: "1", value: xy[i], disabled: !on});
+    f.addEventListener("change", () => setXY(i, f.value));
     return f;
   };
   return el("div", {class: "column", style: "gap:6px"},
-    toggle(an ? "parken" : "aus", an, (v) => cfgSet(key, v ? [xy[0], xy[1]] : false)),
-    an ? el("div", {class: "gitter2"}, number(0), number(1)) : null,
+    toggle(on ? "parken" : "aus", on, (v) => cfgSet(key, v ? [xy[0], xy[1]] : false)),
+    on ? el("div", {class: "gitter2"}, number(0), number(1)) : null,
     // Eine Stelle faehrt man an, statt sie zu tippen — derselbe Weg wie beim
     // Klick-Block. Messen kann das nur ein Prozess auf demselben Rechner, und
     // das ist dieser hier.
-    an ? el("button", {class: "btn quiet", onclick: () => cfgCapturePosition(key)},
+    on ? el("button", {class: "btn quiet", onclick: () => cfgCapturePosition(key)},
             "✛ mit der Maus setzen") : null,
-    an ? el("p", {class: "hint"}, "Maus im Spiel an die Stelle, dann ENTER.") : null);
+    on ? el("p", {class: "hint"}, "Maus im Spiel an die Stelle, dann ENTER.") : null);
 }
 
 async function cfgCapturePosition(key) {
   setStatus({text: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab).",
                kind: "warn"});
-  const antwort = await withWait("ask", "mouse_position");
-  if (!antwort) return;
-  if (!antwort.ok) return setStatus({text: antwort.message || "Abgebrochen.", kind: "warn"});
-  cfgSet(key, [antwort.x, antwort.y]);
-  setStatus({text: "Parkposition: (" + antwort.x + ", " + antwort.y + ")", kind: "ok"});
+  const answer = await withWait("ask", "mouse_position");
+  if (!answer) return;
+  if (!answer.ok) return setStatus({text: answer.message || "Abgebrochen.", kind: "warn"});
+  cfgSet(key, [answer.x, answer.y]);
+  setStatus({text: "Parkposition: (" + answer.x + ", " + answer.y + ")", kind: "ok"});
 }
 
 /** Was ein leeres Feld bzw. eine 0 hier bedeutet — nur dann, wenn es so steht.
@@ -6726,14 +6726,14 @@ function cfgDefault(key, m) {
   // stand hier als Beschriftung: der Knopf war breiter als seine Spalte und
   // lief rechts aus dem Fenster. Der Satz steht ohnehin schon eine Zeile
   // höher an `cfgEmpty()` — hier gehört hin, worauf zurückgesetzt wird.
-  const roh = (std === null || std === undefined || std === "")
+  const raw = (std === null || std === undefined || std === "")
     ? "(leer)" : cfgText(std, m);
-  const short = roh.length > STD_MAX;
+  const short = raw.length > STD_MAX;
   return el("button", {class: "btn quiet cfg-default",
                        title: "auf den Standardwert zurücksetzen"
-                              + (short ? ": " + roh : ""),
+                              + (short ? ": " + raw : ""),
                        onclick: () => cfgSet(key, std)},
-            "↺ Standard" + (short ? "" : ": " + roh));
+            "↺ Standard" + (short ? "" : ": " + raw));
 }
 
 function renderCfgRight() {
@@ -6741,7 +6741,7 @@ function renderCfgRight() {
   const keys = Object.keys(cfgChanged);
   target.replaceChildren();
 
-  const kopf = el("div", {class: "section"},
+  const head = el("div", {class: "section"},
     el("div", {class: "row"},
       el("span", {class: "heading grow"}, "ÄNDERUNGEN"),
       keys.length ? el("span", {class: "num"}, keys.length) : null),
@@ -6750,16 +6750,16 @@ function renderCfgRight() {
     keys.length ? el("button", {class: "btn", onclick: () => {
       cfgChanged = {}; cfgCorrections = []; renderSettings();
     }}, "Änderungen verwerfen") : null);
-  target.appendChild(kopf);
+  target.appendChild(head);
 
-  const liste = el("div", {class: "section growing"});
+  const listEl = el("div", {class: "section growing"});
   if (!keys.length && !cfgCorrections.length) {
-    liste.appendChild(el("p", {class: "hint"},
+    listEl.appendChild(el("p", {class: "hint"},
       "Nichts geändert. Ein Wert gilt erst, wenn er geschrieben ist."));
   }
   for (const key of keys) {
     const m = C.meta[key] || {};
-    liste.appendChild(el("div", {class: "cfg-card"},
+    listEl.appendChild(el("div", {class: "cfg-card"},
       el("div", {class: "row"},
         el("span", {class: "grow", style: "font-size:12px"}, m.label || key),
         el("button", {class: "btn quiet", title: "diese Änderung zurücknehmen",
@@ -6774,14 +6774,14 @@ function renderCfgRight() {
   // passieren.
   for (const k of cfgCorrections) {
     const m = C.meta[k.key] || {};
-    liste.appendChild(el("div", {class: "cfg-card warn"},
+    listEl.appendChild(el("div", {class: "cfg-card warn"},
       el("div", {style: "font-size:12px;color:var(--accent)"}, "korrigiert beim Speichern"),
       el("div", {class: "cfg-key"}, k.key),
       el("div", {class: "row small"},
         el("span", {class: "cfg-old"}, cfgText(k.sent, m)), "→",
         el("span", {class: "cfg-new"}, cfgText(k.became, m)))));
   }
-  target.appendChild(liste);
+  target.appendChild(listEl);
 
   target.appendChild(el("div", {class: "section"},
     el("p", {class: "hint"},
@@ -6796,13 +6796,13 @@ async function cfgSave() {
   const values = Object.assign({}, cfgChanged);
   const count = Object.keys(values).length;
   if (!count) return;
-  const antwort = await ask("config_write", {values: values});
-  if (!antwort) return;
-  if (!antwort.ok)
-    return setStatus({text: antwort.message || "Nicht gespeichert.", kind: "err"});
-  C.values = antwort.values;
+  const answer = await ask("config_write", {values: values});
+  if (!answer) return;
+  if (!answer.ok)
+    return setStatus({text: answer.message || "Nicht gespeichert.", kind: "err"});
+  C.values = answer.values;
   cfgChanged = {};
-  cfgCorrections = antwort.corrections || [];
+  cfgCorrections = answer.corrections || [];
   setStatus({
     text: count + (count === 1 ? " Einstellung" : " Einstellungen") + " gespeichert." +
           (cfgCorrections.length ? "  " + cfgCorrections.length + " davon korrigiert." : ""),
@@ -6826,9 +6826,9 @@ async function cfgSave() {
  */
 async function switchSequence(command, data_reload) {
   if (SC && SC.dirty) {
-    const antwort = await ask("scan_save");
-    if (antwort) {
-      SC = antwort;
+    const answer = await ask("scan_save");
+    if (answer) {
+      SC = answer;
       if (SC.dirty) {                       // nicht geschrieben — Grund steht drin
         await renderScans();
         return;
@@ -6907,13 +6907,13 @@ function wire() {
     callScan("scan_mode_set", {mode: "slot", kind: scanKind}));
   $("scan-test").addEventListener("click", () => callScan("scan_recognize"));
   $("scan-learn").addEventListener("click", () =>
-    callScan("scan_learn_preview", {scope: "alle"}));
+    callScan("scan_learn_preview", {scope: "all"}));
   document.querySelectorAll("[data-scan-tool]").forEach((button) =>
     button.addEventListener("click", () =>
       callScan("scan_mode_set", {mode: button.dataset.scanTool, kind: scanKind})));
   $("scan-pin").addEventListener("click", () =>
     callScan("scan_mode_set", {mode: SC.mode, kind: scanKind,
-                                   fixiert: !SC.tool_pinned}));
+                                   pinned: !SC.tool_pinned}));
   $("scan-photo").addEventListener("click", () => callScan("scan_screenshot", {kind: scanKind}));
   $("scan-fullscreen").addEventListener("click", () =>
     callScan("scan_area_set", {kind: scanKind}));
@@ -6937,9 +6937,9 @@ function wire() {
     scanZoomManual = true;
     scanApplyZoom();
   });
-  for (const kopf of document.querySelectorAll(".collapse-header")) {
-    kopf.addEventListener("click", () => {
-      const s = kopf.dataset.klapp;
+  for (const head of document.querySelectorAll(".collapse-header")) {
+    head.addEventListener("click", () => {
+      const s = head.dataset.klapp;
       // Beim ersten Griff die Vorgabe uebernehmen und umdrehen — sonst taete der
       // erste Klick auf einen automatisch zugeklappten Abschnitt nichts.
       collapsed[s] = !(collapsed[s] === null ? collapseDefault(s) : collapsed[s]);
@@ -6947,9 +6947,9 @@ function wire() {
     });
   }
 
-  const flaeche = $("scan-overlay");
-  const buehne = $("scan-stage");
-  flaeche.addEventListener("click", (e) => {
+  const surface = $("scan-overlay");
+  const stage = $("scan-stage");
+  surface.addEventListener("click", (e) => {
     // Ein Klick, der ein Ziehen beendet hat, ist kein Klick. Ohne das waehlte
     // das Loslassen den Slot gleich noch einmal neu aus.
     if (scanDragDone) { scanDragDone = false; return; }
@@ -6962,16 +6962,16 @@ function wire() {
     // STRG nimmt einen einzelnen Slot zur Auswahl dazu oder heraus — dieselbe
     // Geste wie im Sequenz-Editor.
     callScan("scan_click", {x: position[0], y: position[1], kind: scanKind,
-                           zusatz: e.ctrlKey || e.metaKey});
+                           additive: e.ctrlKey || e.metaKey});
   });
   // Beim automatischen Finden darf eine Ecke auch im freien Teil der MITTLEREN
   // Buehne liegen. Der Helfer klemmt sie an den Bildrand; die Seitenleisten
   // liegen ausserhalb dieses Elements und koennen die Geste nie ausloesen.
-  buehne.addEventListener("click", (e) => {
+  stage.addEventListener("click", (e) => {
     const position = scanSearchPositionFromStage(e);
     if (position) callScan("scan_click", {x: position[0], y: position[1], kind: scanKind});
   });
-  flaeche.addEventListener("dblclick", (e) => {
+  surface.addEventListener("dblclick", (e) => {
     const position = scanPositionFromEvent(e);
     if (position) callScan("scan_direct",
       {x: position[0], y: position[1], what: "click", kind: scanKind});
@@ -6981,14 +6981,14 @@ function wire() {
   // wird nur, was schon gewaehlt IST — damit braucht die Seite keine eigene
   // Trefferregel (die liegt in `_slot_under()` in Python und soll dort bleiben),
   // und die Geste liest sich wie ueberall sonst: erst auswaehlen, dann ziehen.
-  flaeche.addEventListener("mousedown", (e) => {
+  surface.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || !SC || SC.mode !== "choice" || SC.corner) return;
     const position = scanPositionFromEvent(e);
     if (!position || !scanSelectedSlots().some((s) => scanInSlot(s, position))) return;
     scanDragStart = position;
     scanDragOffset = [0, 0];
   });
-  flaeche.addEventListener("mousemove", (e) => {
+  surface.addEventListener("mousemove", (e) => {
     if (scanDragStart) {
       const position = scanPositionFromEvent(e);
       if (!position) return;
@@ -7009,7 +7009,7 @@ function wire() {
     scanPointer = scanPositionFromEvent(e);
     scanOverlay();
   });
-  buehne.addEventListener("mousemove", (e) => {
+  stage.addEventListener("mousemove", (e) => {
     if (!SC || !SC.corner || SC.mode !== "find") return;
     const position = scanSearchPositionFromStage(e);
     if (!position) return;
@@ -7040,13 +7040,13 @@ function wire() {
   // wer gross aufnimmt und klein zieht, musste scrollen. Beides ist derselbe
   // fehlende Handgriff. Ein von Hand gesetzter Zoom bleibt stehen — der ist eine
   // Ansage, die Fenstergroesse nicht.
-  let scanRahmen = 0;
+  let scanFrame = 0;
   window.addEventListener("resize", () => {
     if (view !== "scans" || !SC || !SC.photo || scanZoomManual) return;
     // Gebuendelt: waehrend des Ziehens am Fensterrand feuert das im Dutzend,
     // und jeder Aufruf baut das Overlay neu.
-    clearTimeout(scanRahmen);
-    scanRahmen = setTimeout(scanFit, 120);
+    clearTimeout(scanFrame);
+    scanFrame = setTimeout(scanFit, 120);
   });
 
   $("dialog-cancel").addEventListener("click", closeQuestion);
@@ -7105,18 +7105,18 @@ function keyboard(e) {
     // **Pfeiltasten schieben die Auswahl.** Ein Slot, der drei Pixel daneben
     // liegt, war vorher nur ueber vier Zahlenfelder zu retten — und dreissig
     // gar nicht.
-    const schub = {ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    const nudge = {ArrowLeft: [-1, 0], ArrowRight: [1, 0],
                    ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
-    if (schub && SC && (SC.selection.length || SC.choice.kind === "slot")) {
+    if (nudge && SC && (SC.selection.length || SC.choice.kind === "slot")) {
       e.preventDefault();
-      const weit = e.shiftKey ? 10 : 1;
+      const wide = e.shiftKey ? 10 : 1;
       // Eine GEHALTENE Taste ist ein Verschieben, nicht dreissig: nur der erste
       // Schritt einer Serie kommt auf den Rueckgaengig-Stapel.
-      const jetzt = Date.now();
-      const serie = jetzt - scanNudgeTime < 900;
-      scanNudgeTime = jetzt;
+      const now = Date.now();
+      const serie = now - scanNudgeTime < 900;
+      scanNudgeTime = now;
       return callScan("scan_move",
-                     {dx: schub[0] * weit, dy: schub[1] * weit, counts: !serie});
+                     {dx: nudge[0] * wide, dy: nudge[1] * wide, counts: !serie});
     }
     // **Ein Buchstabe ist erst ohne Modifikator ein Werkzeug.** Die Kacheln
     // liegen auf V/G/S/F/K/B, die Erkennungs-Werkzeuge auf R/K/T — und geprueft
@@ -7143,10 +7143,10 @@ function keyboard(e) {
     // Dieselbe Idee eine Ebene weiter: R und K sind die beiden Werkzeuge der
     // Erkennungs-Scans, T testet. Testen liegt auf einer Taste, weil man beim
     // Einstellen einer Toleranz zehnmal hintereinander testet.
-    const werkzeug = {r: "region", k: "action"}[e.key.toLowerCase()];
-    if (werkzeug) {
+    const tool = {r: "region", k: "action"}[e.key.toLowerCase()];
+    if (tool) {
       e.preventDefault();
-      return callScan("region_mode", {kind: scanKind, mode: werkzeug});
+      return callScan("region_mode", {kind: scanKind, mode: tool});
     }
     if (e.key.toLowerCase() === "t" && SC && detScan()) {
       e.preventDefault();

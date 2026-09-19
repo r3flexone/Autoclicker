@@ -751,7 +751,7 @@ class ScanStateMixin:
         Seite merkt sie sich und fragt nur nach, was sie noch nicht hat.
         """
         self._scan_load()
-        names = (data or {}).get("namen") or []
+        names = (data or {}).get("names") or []
         result = {}
         for name in names:
             item = self.items.get(name)

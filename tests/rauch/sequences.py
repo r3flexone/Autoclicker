@@ -141,25 +141,25 @@ def lauf():
         # daran haette ein zu schmaler Inhalt nichts geaendert, und der Test
         # waere gruen geblieben, ohne die Kante zu sehen, um die es geht.
         raster = f.seite.eval_on_selector(".phase-header.loop", """e => {
-          const kasten = (s) => [...e.querySelectorAll(s)]
+          const boxEl = (s) => [...e.querySelectorAll(s)]
             .map(n => n.getBoundingClientRect());
           const spanne = (r) => [Math.round(r[0].left),
                                  Math.round(r[r.length - 1].right)];
-          const zellen = kasten('.phase-tool > *');
-          const knoepfe = kasten('.phase-all > .btn');
+          const zellen = boxEl('.phase-tool > *');
+          const knoepfe = boxEl('.phase-all > .btn');
           return {eig: spanne(zellen), akt: spanne(knoepfe),
                   zellbreiten: zellen.map(r => Math.round(r.width)),
-                  felder: kasten('.phase-tool input').map(r => Math.round(r.width)),
+                  fields: boxEl('.phase-tool input').map(r => Math.round(r.width)),
                   knoepfe: knoepfe.map(r => Math.round(r.width)),
                   knopfoben: knoepfe.map(r => Math.round(r.top))};
         }""")
         pruefe(raster["eig"] == raster["akt"],
                f"Eigenschaften und Sammel-Aktionen haben verschiedene Kanten: {raster}")
-        pruefe(len(set(raster["felder"])) == 1,
+        pruefe(len(set(raster["fields"])) == 1,
                f"die beiden Felder sind verschieden breit: {raster}")
         # Ein Feld ist so breit wie ein Knopf — dasselbe Raster, nicht nur
         # zufaellig dieselbe Aussenkante.
-        pruefe(set(raster["felder"]) == set(raster["knoepfe"]),
+        pruefe(set(raster["fields"]) == set(raster["knoepfe"]),
                f"Felder und Knoepfe liegen nicht auf demselben Raster: {raster}")
         pruefe(len(raster["knoepfe"]) == 2 and len(set(raster["knoepfe"])) == 1,
                f"zwei gleich breite Sammel-Knoepfe erwartet: {raster}")
