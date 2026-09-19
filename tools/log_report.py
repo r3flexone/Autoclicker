@@ -7,7 +7,7 @@ genau die Frage, die man nach einem langen Lauf hat und heute nur raten kann:
 
     python tools/log_report.py              # alle Logs im logs/-Ordner
     python tools/log_report.py <datei.csv>  # eine bestimmte Session
-    python tools/log_report.py --letzte     # nur die neueste Session
+    python tools/log_report.py --last     # nur die neueste Session
 
 Laeuft ohne Windows und ohne Abhaengigkeiten (nur csv/pathlib aus der Standardbibliothek):
 die Auswertung soll auch dort gehen, wo der Autoclicker gar nicht startet.
@@ -219,7 +219,7 @@ def report(paths: list[Path]) -> None:
 
 def main() -> int:
     args = [a for a in sys.argv[1:] if a]
-    if args and args[0] not in ("--letzte", "--last"):
+    if args and args[0] not in ("--last", "--last"):
         paths = [Path(a) for a in args]
         missing = [p for p in paths if not p.exists()]
         if missing:

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from ._bild import inventar, stelle_bildschirm
-from ._bruecke import Fenster, main, sandkasten
+from ._image import inventar, stelle_bildschirm
+from ._bridge import Fenster, main, sandkasten
 
 
 def aufbau():
@@ -15,7 +15,7 @@ def aufbau():
     stelle_bildschirm(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
-                     Path("sequences/rauch/sequence.json"), "sequences")
+                     Path("sequences/smoke/sequence.json"), "sequences")
     b.scan_new({"name": "Inventar"})
     b.scan_screenshot()
     for sx, sy in corners:

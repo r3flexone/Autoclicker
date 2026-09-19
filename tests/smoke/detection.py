@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from ._bild import flaeche_mit_marke, stelle_bildschirm
-from ._bruecke import Fenster, main, sandkasten
+from ._image import flaeche_mit_marke, stelle_bildschirm
+from ._bridge import Fenster, main, sandkasten
 
 
 def aufbau():
@@ -15,7 +15,7 @@ def aufbau():
     stelle_bildschirm(image)
 
     b = StudioBridge(Sequence(name="Rauch"),
-                     Path("sequences/rauch/sequence.json"), "sequences")
+                     Path("sequences/smoke/sequence.json"), "sequences")
     # **Erst der Scan, dann das Bild.** Die Aufnahme braucht ein eindeutiges
     # Speicherziel (`_scan_requirement`) — ohne offenen Scan der jeweiligen
     # Art gibt es kein Foto, und alles, was eines braucht (Marker messen,

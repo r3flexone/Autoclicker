@@ -2,12 +2,12 @@
 """Misst die LLM-Benennung gegen den eigenen Bestand — Variante gegen Variante.
 
     python tools/llm_bench.py                      # Standard: Vorlagen, einstufig
-    python tools/llm_bench.py --modell qwen/qwen3.8-27b
-    python tools/llm_bench.py --bild slot          # Ausschnitt statt Vorlage
-    python tools/llm_bench.py --zweistufig         # erst die Art, dann der Name
-    python tools/llm_bench.py --stimmen 3          # dreimal fragen, Mehrheit
+    python tools/llm_bench.py --model qwen/qwen3.8-27b
+    python tools/llm_bench.py --image slot          # Ausschnitt statt Vorlage
+    python tools/llm_bench.py --two-stage         # erst die Art, dann der Name
+    python tools/llm_bench.py --votes 3          # dreimal fragen, Mehrheit
     python tools/llm_bench.py --reasoning
-    python tools/llm_bench.py --alle-modelle       # jedes geladene Modell nacheinander
+    python tools/llm_bench.py --all-models       # jedes geladene Modell nacheinander
     python tools/llm_bench.py --scan sequences/x/item_scans/y.json --limit 10
 
 **Warum es das gibt.** Ob eine Aenderung am Prompt, am Bild oder am Modell
@@ -29,7 +29,7 @@ bereits fest und muessen nicht noch einmal geprueft werden:
 die Item-Namen, die im Katalog stehen: das sind echte Namen des Spiels, also
 pruefbar. Ob sie am RICHTIGEN Item stehen, weiss dieses Werkzeug nicht — wer
 seinen Bestand vom Modell benennen liess und nie nachgesehen hat, misst gegen
-dessen eigene Fehler. Mit `--bild slot` ist der Bezug ein anderer und
+dessen eigene Fehler. Mit `--image slot` ist der Bezug ein anderer und
 belastbarer: dort ordnet die Template-Erkennung zu, also das, was der Nutzer
 selbst gelernt hat.
 
@@ -172,7 +172,7 @@ def proben_aus_slots(scan: dict, catalog, config, limit: int) -> list:
     photo = lade_foto(scan["image"])
     if photo is None:
         raise SystemExit(f"Kein gemerktes Bild ({scan['image']}) — "
-                         "im Scans-Reiter einmal aufnehmen, oder --bild vorlage.")
+                         "im Scans-Reiter einmal aufnehmen, oder --image vorlage.")
     image, left, top = photo
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
     stellvertreter = NurConfig(config)
@@ -203,15 +203,15 @@ def proben_aus_slots(scan: dict, catalog, config, limit: int) -> list:
 
 # ---------------------------------------------------------------- Fragen
 
-def frage_einstufig(image, candidates: list, config, modell: str) -> tuple:
+def frage_einstufig(image, candidates: list, config, model: str) -> tuple:
     """Ein Aufruf mit der ganzen Namensliste — der Weg, den das Studio geht."""
     return suggest_item_name_with_reason(
         image, provider=config.llm_provider, endpoint=config.llm_endpoint,
-        model=modell, timeout=max(config.llm_timeout, 120),
+        model=model, timeout=max(config.llm_timeout, 120),
         candidates=candidates)
 
 
-def frage_zweistufig(image, catalog, config, modell: str) -> tuple:
+def frage_zweistufig(image, catalog, config, model: str) -> tuple:
     """Erst die Art, dann der Name aus NUR dieser Art.
 
     Gegen den Fehler, der uebrig bleibt: die Art trifft das Modell zuverlaessig
@@ -227,7 +227,7 @@ def frage_zweistufig(image, catalog, config, modell: str) -> tuple:
               + "\n".join(categories))
     ok, antwort, _ms = analyze_image(
         img=image, provider=config.llm_provider, endpoint=config.llm_endpoint,
-        model=modell, prompt="Which category is this item?",
+        model=model, prompt="Which category is this item?",
         system_prompt=system, timeout=max(config.llm_timeout, 120),
         max_tokens=16)
     if not ok:
@@ -239,10 +239,10 @@ def frage_zweistufig(image, catalog, config, modell: str) -> tuple:
         # gar keine Kandidaten. Lieber sagen, woran es lag.
         return None, f"unbekannte Art '{kind}'"
     eng = [n for n in catalog.names() if catalog.category(n) == passend]
-    return frage_einstufig(image, eng, config, modell)
+    return frage_einstufig(image, eng, config, model)
 
 
-def mit_stimmen(frage, stimmen: int) -> tuple:
+def mit_stimmen(frage, votes: int) -> tuple:
     """Mehrfach fragen und die Mehrheit nehmen.
 
     Bei `temperature 0` kommt zwar immer dasselbe heraus — die Bildkodierung
@@ -251,7 +251,7 @@ def mit_stimmen(frage, stimmen: int) -> tuple:
     Genau das misst dieser Schalter.
     """
     names, gruende = [], []
-    for _ in range(stimmen):
+    for _ in range(votes):
         name, reason = frage()
         if name:
             names.append(name)
@@ -264,29 +264,29 @@ def mit_stimmen(frage, stimmen: int) -> tuple:
 
 # ---------------------------------------------------------------- Lauf
 
-def aufwaermen(image, config, modell: str) -> float:
+def aufwaermen(image, config, model: str) -> float:
     """Ein Aufruf vor der Messung — er misst das Laden, nicht die Frage."""
     start = time.time()
     suggest_item_name_with_reason(image, provider=config.llm_provider,
-                            endpoint=config.llm_endpoint, model=modell,
+                            endpoint=config.llm_endpoint, model=model,
                             timeout=300, candidates=["Godlike Bow"])
     return time.time() - start
 
 
-def lauf(proben: list, catalog, config, args, modell: str) -> dict:
+def lauf(proben: list, catalog, config, args, model: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
     candidates = catalog.names()
     match, remaining, zeiten, fehler = 0, 0, [], []
     for wahrheit, image in proben:
         start = time.time()
-        if args.zweistufig:
+        if args.two_stage:
             def einmal():
-                return frage_zweistufig(image, catalog, config, modell)
+                return frage_zweistufig(image, catalog, config, model)
         else:
             def einmal():
-                return frage_einstufig(image, candidates, config, modell)
-        if args.stimmen > 1:
-            name, reason = mit_stimmen(einmal, args.stimmen)
+                return frage_einstufig(image, candidates, config, model)
+        if args.votes > 1:
+            name, reason = mit_stimmen(einmal, args.votes)
         else:
             name, reason = einmal()
         duration = time.time() - start
@@ -307,7 +307,7 @@ def lauf(proben: list, catalog, config, args, modell: str) -> dict:
 
 
 def geladene_modelle(config) -> list:
-    """Was der Server gerade anbietet — fuer `--alle-modelle`."""
+    """Was der Server gerade anbietet — fuer `--all-models`."""
     import json as _json
     import urllib.request
     target = config.llm_endpoint or test_endpoint_for(config.llm_provider)
@@ -329,18 +329,18 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Misst die LLM-Benennung gegen den eigenen Bestand.")
     p.add_argument("--scan", default="", help="Scan-Datei (Standard: die zuletzt bearbeitete)")
-    p.add_argument("--bild", choices=BILDQUELLEN, default="vorlage",
+    p.add_argument("--image", choices=BILDQUELLEN, default="vorlage",
                    help="vorlage = gelerntes Template, grund = ohne Alpha, "
                         "slot = Ausschnitt aus dem gemerkten Bild")
-    p.add_argument("--modell", default="", help="Modellname (Standard: aus config.json)")
-    p.add_argument("--alle-modelle", action="store_true",
+    p.add_argument("--model", default="", help="Modellname (Standard: aus config.json)")
+    p.add_argument("--all-models", action="store_true",
                    help="jedes Modell des Servers nacheinander")
-    p.add_argument("--zweistufig", action="store_true",
+    p.add_argument("--two-stage", action="store_true",
                    help="erst die Art fragen, dann nur deren Namen anbieten")
-    p.add_argument("--stimmen", type=int, default=1, help="mehrfach fragen, Mehrheit nehmen")
+    p.add_argument("--votes", type=int, default=1, help="mehrfach fragen, Mehrheit nehmen")
     p.add_argument("--reasoning", action="store_true", help="Denkschritte zulassen")
     p.add_argument("--limit", type=int, default=14, help="wie viele Proben (Standard: 14)")
-    p.add_argument("--ohne-aufwaermen", action="store_true",
+    p.add_argument("--no-warmup", action="store_true",
                    help="nicht vorheizen — dann misst die erste Zahl das Modell-Laden")
     args = p.parse_args(argv)
 
@@ -363,34 +363,34 @@ def main(argv=None) -> int:
             "Katalog. Erst benennen (Studio → Scans → „Alle … benennen“).")
 
     print(f"Scan '{scan['name']}' · {len(proben)} Proben · Bild: {args.image}"
-          + (" · zweistufig" if args.zweistufig else "")
-          + (f" · {args.stimmen} Stimmen" if args.stimmen > 1 else "")
+          + (" · zweistufig" if args.two_stage else "")
+          + (f" · {args.votes} Stimmen" if args.votes > 1 else "")
           + (" · Reasoning" if args.reasoning else ""))
     if args.image != "slot":
         print("  \033[90mDer Goldstandard sind die gespeicherten Namen — sie "
               "beweisen nur, dass sie ECHTE Namen sind, nicht dass sie am "
-              "richtigen Item stehen. --bild slot misst gegen die "
+              "richtigen Item stehen. --image slot misst gegen die "
               "Template-Erkennung.\033[0m")
 
-    modelle = geladene_modelle(config) if args.alle_modelle else [
-        args.modell or config.llm_model]
+    modelle = geladene_modelle(config) if args.all_models else [
+        args.model or config.llm_model]
     ergebnisse = {}
-    for modell in modelle:
-        print(f"\n=== {modell} ===")
-        if not args.ohne_aufwaermen:
-            print(f"  \033[90maufwaermen … {aufwaermen(proben[0][1], config, modell):.0f}s"
+    for model in modelle:
+        print(f"\n=== {model} ===")
+        if not args.no_warmup:
+            print(f"  \033[90maufwaermen … {aufwaermen(proben[0][1], config, model):.0f}s"
                   "\033[0m")
-        ergebnisse[modell] = lauf(proben, catalog, config, args, modell)
-        e = ergebnisse[modell]
+        ergebnisse[model] = lauf(proben, catalog, config, args, model)
+        e = ergebnisse[model]
         print(f"  {e['match']}/{e['total']} richtig, "
               f"{e['seconds']:.1f}s je Item"
               + (f", {e['without']} ohne Antwort" if e["without"] else ""))
 
     if len(ergebnisse) > 1:
         print("\nZUSAMMENFASSUNG")
-        for modell, e in sorted(ergebnisse.items(),
+        for model, e in sorted(ergebnisse.items(),
                                 key=lambda kv: -kv[1]["match"]):
-            print(f"  {e['match']:>3}/{e['total']}  {e['seconds']:>6.1f}s  {modell}")
+            print(f"  {e['match']:>3}/{e['total']}  {e['seconds']:>6.1f}s  {model}")
     return 0
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EIN Kommando für alle Tests: `python tests/alle_tests.py`.
+"""EIN Kommando für alle Tests: `python tests/all_tests.py`.
 
 **Warum es das gibt.** Es waren zwei Kommandos, und das stand als Warnung in
 CLAUDE.md, weil genau diese Lücke schon einmal einen roten CI-Lauf gekostet hat:
@@ -18,14 +18,14 @@ Drei Schichten, von innen nach aussen:
 | Wurzelmodule (`tests/wurzel/`) | Import/Export, Plattformvertrag, Studio-UX | Pillow (sonst übersprungen) |
 | Rauchtests (`tests/rauch/`) | die echte Seite im Browser vor der echten Brücke | Playwright + Chromium |
 
-Jede Schicht ist einzeln aufrufbar (`--nur vertrag|wurzel|rauch`) — beim
+Jede Schicht ist einzeln aufrufbar (`--only vertrag|wurzel|rauch`) — beim
 Arbeiten an einer Sache will man nicht auf die anderen warten. Der Volllauf ist
 der vor dem Commit.
 
 Was fehlt, wird ÜBERSPRUNGEN und gesagt, nicht als Fehler gemeldet: ein roter
 Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen.
 Im Browser-CI macht --rauch-pflicht diese Schicht verbindlich.
---mutationen ergänzt gezielte Gegenproben in getrennten Prozessen.
+--mutations ergänzt gezielte Gegenproben in getrennten Prozessen.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ for _strom in (sys.stdout, sys.stderr):
 RAUCHTESTS = ("items", "detection", "sequences", "share", "tools",
               "report", "sequence_delete", "catalog")
 
-SCHICHTEN = ("vertrag", "wurzel", "rauch")
+SCHICHTEN = ("contract", "root", "smoke")
 
 
 class Ergebnis:
@@ -97,7 +97,7 @@ def _lauf(command: list[str], umgebung: dict | None = None) -> tuple[int, str]:
     return done.returncode, done.stdout + done.stderr
 
 
-def vertrag() -> Ergebnis:
+def contract() -> Ergebnis:
     e = Ergebnis("Vertragssuite")
     start = time.monotonic()
     code, text = _lauf([sys.executable, str(WURZEL / "tests" / "test_logic.py")])
@@ -122,9 +122,9 @@ def root_dir(vertrag_separat: bool = False) -> Ergebnis:
     """
     e = Ergebnis("Wurzelmodule")
     start = time.monotonic()
-    command = [sys.executable, "-m", "tests.wurzeltests"]
+    command = [sys.executable, "-m", "tests.root_tests"]
     if vertrag_separat:
-        command.append("--ohne-vertrag")
+        command.append("--without-contract")
     code, text = _lauf(command)
     e.duration = time.monotonic() - start
     e.ok = code == 0
@@ -135,10 +135,10 @@ def root_dir(vertrag_separat: bool = False) -> Ergebnis:
     return e
 
 
-def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
+def smoke(only: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
     e = Ergebnis("Rauchtests")
     sys.path.insert(0, str(WURZEL))
-    from tests.rauch._bruecke import playwright_da
+    from tests.smoke._bridge import playwright_da
 
     da, reason = playwright_da()
     if not da:
@@ -151,44 +151,44 @@ def rauch(nur: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Ergebnis:
 
     start = time.monotonic()
     fehlgeschlagen = []
-    for name in nur:
-        code, _ = _lauf([sys.executable, "-m", f"tests.rauch.{name}"])
+    for name in only:
+        code, _ = _lauf([sys.executable, "-m", f"tests.smoke.{name}"])
         if code != 0:
             fehlgeschlagen.append(name)
     e.duration = time.monotonic() - start
     e.ok = not fehlgeschlagen
-    e.zusammenfassung = (f"{len(nur)} Ansichten"
+    e.zusammenfassung = (f"{len(only)} Ansichten"
                          + (f", rot: {', '.join(fehlgeschlagen)}" if fehlgeschlagen else ""))
     return e
 
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--nur", choices=SCHICHTEN, action="append",
+    p.add_argument("--only", choices=SCHICHTEN, action="append",
                    help="nur diese Schicht (mehrfach erlaubt)")
-    p.add_argument("--rauchtest", action="append", choices=RAUCHTESTS,
+    p.add_argument("--smoke-test", action="append", choices=RAUCHTESTS,
                    help="nur diesen Rauchtest")
-    p.add_argument("--rauch-pflicht", action="store_true",
+    p.add_argument("--smoke-required", action="store_true",
                    help="fehlenden Browser als Fehler melden (Browser-CI)")
-    p.add_argument("--mutationen", action="store_true",
+    p.add_argument("--mutations", action="store_true",
                    help="zusätzlich gezielte Fehler einschleusen und ihre Erkennung prüfen")
     args = p.parse_args(argv[1:])
-    schichten = tuple(args.nur) if args.nur else SCHICHTEN
-    if args.rauch_pflicht and "rauch" not in schichten:
+    schichten = tuple(args.only) if args.only else SCHICHTEN
+    if args.smoke_required and "smoke" not in schichten:
         p.error("--rauch-pflicht braucht die Schicht rauch")
 
     results_list = []
-    if "vertrag" in schichten:
-        results_list.append(vertrag())
-    if "wurzel" in schichten:
-        results_list.append(root_dir(vertrag_separat="vertrag" in schichten))
-    if "rauch" in schichten:
-        results_list.append(rauch(tuple(args.rauchtest) if args.rauchtest else RAUCHTESTS,
-                                 pflicht=args.rauch_pflicht))
-    if args.mutationen:
+    if "contract" in schichten:
+        results_list.append(contract())
+    if "root" in schichten:
+        results_list.append(root_dir(vertrag_separat="contract" in schichten))
+    if "smoke" in schichten:
+        results_list.append(smoke(tuple(args.smoke_test) if args.smoke_test else RAUCHTESTS,
+                                 pflicht=args.smoke_required))
+    if args.mutations:
         e = Ergebnis("Gegenproben")
         start = time.monotonic()
-        code, _ = _lauf([sys.executable, str(WURZEL / "tests" / "mutationspruefung.py")])
+        code, _ = _lauf([sys.executable, str(WURZEL / "tests" / "mutation_check.py")])
         e.ok = code == 0
         e.duration = time.monotonic() - start
         e.zusammenfassung = "gezielte Mutationsprüfung"

@@ -763,16 +763,16 @@ check("und links bleibt gar nichts mehr stehen",
       and "scanListeZeichnen" not in _html18)
 check("der Hinweis, wohin der Inhalt umgezogen ist, entfaellt damit",
       "Die Item-Masken stehen rechts" not in _html18
-      and "nur-reiter" not in _html18)
+      and "only-reiter" not in _html18)
 
 # Beide Item-Darstellungen bestehen optisch aus dem, was wirklich da ist. Die
 # Lernvorschau setzt den Status ueber Bild und Felder; nach der Uebernahme gibt
 # es keine leere ehemalige Haken-Spalte mehr.
 check("die Lernvorschau ist als symmetrisches Raster gebaut",
-      'grid-template-areas:". status status" "haken bild felder"' in _html18
+      'grid-template-areas:". status status" "check image fields"' in _html18
       and 'class: "small mono scan-review-status"' in _html18
       and 'class: "scan-review-image"' in _html18
-      and ".scan-review-image{grid-area:bild;width:82px;height:82px" in _html18)
+      and ".scan-review-image{grid-area:image;width:82px;height:82px" in _html18)
 check("gelernte Items haben nur Bild und Felder als Spalten",
       'card.classList.add("scan-item-card")' in _html18
       and ".scan-card.scan-item-card{grid-template-columns:34px 56px minmax(0,1fr)}"

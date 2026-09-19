@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ._bruecke import Fenster, main, sandkasten
+from ._bridge import Fenster, main, sandkasten
 
 
 def aufbau():

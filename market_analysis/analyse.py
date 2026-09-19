@@ -1704,7 +1704,7 @@ if __name__ == "__main__":
     # Die Meldungen tragen ⚠ und ℹ — in einer Windows-Konsole mit cp1252 (oder
     # hinter einer Pipe) riss genau das den Lauf NACH der ganzen Rechnung mit
     # einem UnicodeEncodeError ab. Ein unbekanntes Zeichen ist ein
-    # Darstellungsproblem, kein Ergebnis; dieselbe Regel wie in tests/alle_tests.py.
+    # Darstellungsproblem, kein Ergebnis; dieselbe Regel wie in tests/all_tests.py.
     import sys
     for _strom in (sys.stdout, sys.stderr):
         if hasattr(_strom, "reconfigure"):

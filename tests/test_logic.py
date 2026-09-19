@@ -57,8 +57,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # ausgelagerte Modul fuer sich, und die Schlusszeile saehe nur den letzten Stand.
 # Die Stubs oben stehen trotzdem in dieser Datei: sie muessen VOR dem ersten
 # autoclicker-Import sitzen, und der kommt gleich.
-import tests.vertrag._harness as _H     # noqa: E402
-from tests.vertrag._harness import check, section     # noqa: E402
+import tests.contract._harness as _H     # noqa: E402
+from tests.contract._harness import check, section     # noqa: E402
 
 # ---------------------------------------------------------------- Serializer
 section("Serializer-Round-Trip (Scan-Configs: save-dict -> load_file)")
@@ -6471,18 +6471,18 @@ if _tote10:
 # stehen (sie war mit ueber 7.000 Zeilen die groesste des Repos). Neue Sektionen
 # kommen als eigenes Modul unter `tests/vertrag/`, holen ihr Geruest aus
 # `_harness.py` und werden hier importiert - Import = ausfuehren.
-import tests.vertrag.studio_scans          # noqa: F401,E402
-import tests.vertrag.studio_erkennung     # noqa: F401,E402
-import tests.vertrag.studio_werkzeuge     # noqa: F401,E402
-import tests.vertrag.konsolen_editoren     # noqa: F401,E402
-import tests.vertrag.persistenz_basis      # noqa: F401,E402
-import tests.vertrag.reclick            # noqa: F401,E402
-import tests.vertrag.studio_teilen        # noqa: F401,E402
-import tests.vertrag.report              # noqa: F401,E402
-import tests.vertrag.points               # noqa: F401,E402
-import tests.vertrag.sequence_delete     # noqa: F401,E402
-import tests.vertrag.catalog               # noqa: F401,E402
-import tests.vertrag.breakpoint            # noqa: F401,E402
+import tests.contract.studio_scans          # noqa: F401,E402
+import tests.contract.studio_detection     # noqa: F401,E402
+import tests.contract.studio_tools     # noqa: F401,E402
+import tests.contract.console_editors     # noqa: F401,E402
+import tests.contract.persistence_base      # noqa: F401,E402
+import tests.contract.reclick            # noqa: F401,E402
+import tests.contract.studio_share        # noqa: F401,E402
+import tests.contract.report              # noqa: F401,E402
+import tests.contract.points               # noqa: F401,E402
+import tests.contract.sequence_delete     # noqa: F401,E402
+import tests.contract.catalog               # noqa: F401,E402
+import tests.contract.breakpoint            # noqa: F401,E402
 
 
 import shutil as _shD

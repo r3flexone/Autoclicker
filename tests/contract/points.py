@@ -41,7 +41,7 @@ try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import list_available_sequences, save_data
 
-    def _bruecke(steps, points):
+    def _bridge(steps, points):
         st = _ST()
         seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=steps)],
                    points=points)
@@ -61,7 +61,7 @@ try:
         return b.board.lanes[1].steps
 
     # --- der Fall, der es ausgeloest hat -----------------------------------
-    _b = _bruecke([_STEP(point_id=1)],
+    _b = _bridge([_STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200, name="Bank", color=(10, 20, 30))])
     _waehle(_b, 0)
     _z = _b.selection_duplicate()
@@ -84,7 +84,7 @@ try:
     # --- Gegenprobe: der Punkt selbst zieht weiterhin ALLE mit -------------
     # Das ist keine Ausnahme, sondern der Normalfall. Zwei Bloecke auf einem
     # Knopf muessen zusammen umziehen, sonst waere jede Kalibrierung eine halbe.
-    _b = _bruecke([_STEP(point_id=1), _STEP(point_id=1)],
+    _b = _bridge([_STEP(point_id=1), _STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200)])
     _waehle(_b, 0)
     _b.point_set({"point": 1, "field": "x", "value": 777})
@@ -94,7 +94,7 @@ try:
           all(s.x == 777 for s in _steps(_b)))
 
     # --- FARBE+KLICK: die Kopie wartet auf DIE Stelle, die sie klickt -------
-    _b = _bruecke([_STEP(point_id=1, wait_condition=_WAIT(point_id=1))],
+    _b = _bridge([_STEP(point_id=1, wait_condition=_WAIT(point_id=1))],
                   [_CP(id=1, x=100, y=200)])
     _waehle(_b, 0)
     _b.selection_duplicate()
@@ -104,7 +104,7 @@ try:
     check("es entsteht dafuer nur EIN Punkt", len(_b.points) == 2)
 
     # Nachpruefung und ELSE ebenso — vier Stellen, eine Abbildung.
-    _b = _bruecke([_STEP(point_id=1, verify_condition=_WAIT(point_id=2),
+    _b = _bridge([_STEP(point_id=1, verify_condition=_WAIT(point_id=2),
                          else_config=_ELSE(action="click", point_id=1))],
                   [_CP(id=1, x=10, y=20), _CP(id=2, x=30, y=40)])
     _waehle(_b, 0)
@@ -119,7 +119,7 @@ try:
     # --- Mehrfachauswahl: die Beziehung UNTEREINANDER bleibt --------------
     # Zwei Gewaehlte auf einem Knopf ergeben zwei Kopien auf EINEM neuen Knopf,
     # nicht auf zweien - sonst laegen drei Punkte auf derselben Stelle.
-    _b = _bruecke([_STEP(point_id=1), _STEP(point_id=1)],
+    _b = _bridge([_STEP(point_id=1), _STEP(point_id=1)],
                   [_CP(id=1, x=100, y=200)])
     _waehle(_b, 0, 1)
     _b.selection_duplicate()
@@ -131,7 +131,7 @@ try:
           _a.point_id == 1 and _bb.point_id == 1)
 
     # --- Bloecke ohne Punkt legen keinen an -------------------------------
-    _b = _bruecke([_STEP(key_press="a"), _STEP(item_scan="Inventar")], [])
+    _b = _bridge([_STEP(key_press="a"), _STEP(item_scan="Inventar")], [])
     _waehle(_b, 0, 1)
     _b.selection_duplicate()
     check("ein Tasten- oder Scan-Block bekommt keinen Punkt geschenkt",
@@ -140,7 +140,7 @@ try:
     # --- Eine tote Referenz wird nicht wiederbelebt ------------------------
     # Zeigt ein Schritt ins Leere, ist das ein Fehler, den man sehen soll —
     # eine erfundene Kopie machte daraus stillschweigend einen Klick auf (0,0).
-    _b = _bruecke([_STEP(point_id=99)], [_CP(id=1, x=10, y=20)])
+    _b = _bridge([_STEP(point_id=99)], [_CP(id=1, x=10, y=20)])
     _waehle(_b, 0)
     _b.selection_duplicate()
     check("eine Referenz ins Leere bleibt eine Referenz ins Leere",
@@ -155,7 +155,7 @@ try:
     # Platte: ein Rest aus der Zeit der globalen `points.json`, in der genau das
     # richtig war. Seit die Punkte im Feld `points` IHRER `sequence.json`
     # stehen, sind es fremde Punkte.
-    _b = _bruecke([_STEP(point_id=1), _STEP(point_id=2)],
+    _b = _bridge([_STEP(point_id=1), _STEP(point_id=2)],
                   [_CP(id=1, x=100, y=200, name="Bank"),
                    _CP(id=2, x=300, y=400, name="Truhe")])
     check("die Ausgangssequenz hat ihre zwei Punkte", len(_b.points) == 2)
@@ -188,7 +188,7 @@ try:
     #
     # Gemessen wird an der Datei und ueber den echten Editor — er braucht nur
     # `safe_input`, laesst sich also mit einer Tastenfolge fuettern (dasselbe
-    # Muster wie in `konsolen_editoren.py`). Der Durchlauf aendert NICHTS:
+    # Muster wie in `console_editors.py`). Der Durchlauf aendert NICHTS:
     # bestehende Sequenz oeffnen, jede Phase mit „done" verlassen, speichern.
     # Genau dabei verschwanden die Punkte.
     import contextlib as _cl

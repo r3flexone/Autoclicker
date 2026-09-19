@@ -10,7 +10,7 @@ sofort auffallen (der Reiter bleibt leer) und im Test gar nicht.
 import csv
 from pathlib import Path
 
-from ._bruecke import Fenster, main, sandkasten
+from ._bridge import Fenster, main, sandkasten
 
 SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 

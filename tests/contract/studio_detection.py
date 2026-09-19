@@ -212,19 +212,19 @@ try:
     else:
         section("Erkennungs-Scans auf einem gestellten Bild")
         # Ein grauer Schirm mit einem roten Ausrufezeichen-Fleck bei (300,200).
-        _bild = _PILImage.new("RGB", (800, 600), (24, 28, 36))
+        _image = _PILImage.new("RGB", (800, 600), (24, 28, 36))
         for _x in range(300, 340):
             for _y in range(200, 240):
-                _bild.putpixel((_x, _y), (60, 64, 78))
+                _image.putpixel((_x, _y), (60, 64, 78))
         for _x in range(312, 328):
             for _y in range(206, 234):
-                _bild.putpixel((_x, _y), (220, 50, 60))
+                _image.putpixel((_x, _y), (220, 50, 60))
 
         import autoclicker.imaging as _img
         import autoclicker.winapi as _win
         _echt_shot, _echt_org = _img.take_screenshot, _win.get_virtual_origin
         _img.take_screenshot = lambda region=None: (
-            _bild.copy() if not region else _bild.crop(tuple(region)))
+            _image.copy() if not region else _image.crop(tuple(region)))
         _win.get_virtual_origin = lambda: (0, 0)
         try:
             _z = _b.scan_screenshot()

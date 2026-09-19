@@ -16,41 +16,41 @@ auf Englisch" bei den Konventionen).
 ## Run / Lint / Test
 
 ```bash
-python tests/alle_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
-python tests/alle_tests.py --nur vertrag     # nur die Vertragssuite (schnell)
-python tests/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
-python tests/alle_tests.py --mutationen      # dazu die Gegenproben (so ruft CI es auf)
-python tests/alle_tests.py --nur rauch --rauch-pflicht  # fehlender Browser = rot
+python tests/all_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
+python tests/all_tests.py --only vertrag     # nur die Vertragssuite (schnell)
+python tests/all_tests.py --only rauch --smoke-test werkzeuge   # eine Ansicht
+python tests/all_tests.py --mutations      # dazu die Gegenproben (so ruft CI es auf)
+python tests/all_tests.py --only rauch --rauch-pflicht  # fehlender Browser = rot
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
 
 # Die Schichten einzeln, falls man sie direkt braucht:
 python tests/test_logic.py      # Vertragssuite — ohne GUI, ohne Windows, ohne Netz
-python -m tests.wurzeltests     # Wurzelmodule (--ohne-vertrag laesst den Wrapper weg)
+python -m tests.root_tests      # Wurzelmodule (--without-contract laesst den Wrapper weg)
 python -m tests.rauch.werkzeuge   # ein Rauchtest im Browser
-python tests/mutationspruefung.py      # Gegenproben einzeln (--fall NAME)
+python tests/mutation_check.py         # Gegenproben einzeln (--case NAME)
 python tools/catalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
-                                # (--zeige = nur anzeigen, --ziel = anderer Pfad)
+                                # (--show = nur anzeigen, --target = anderer Pfad)
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
-                                    # (--bild slot|grund, --modell X, --alle-modelle,
-                                    #  --zweistufig, --stimmen 3, --reasoning)
+                                    # (--image slot|grund, --model X, --all-models,
+                                    #  --two-stage, --votes 3, --reasoning)
 python tools/migrate.py         # Hebt alle JSON-Dateien aufs aktuelle Format (--write zum Schreiben)
                                 # Nur fuer Sonderfaelle — die App macht das bei jedem Start selbst
 python tools/slot_tester.py     # Debug-Tool für Slot-Erkennung
 python tools/log_report.py      # Wertet die Session-Logs aus (welcher Schritt haengt?)
-                                # --letzte = nur die neueste Session
+                                # --last = nur die neueste Session
 python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
                                 # (fuer Verknuepfungen; das Fenstersymbol setzt die App selbst)
 python tools/rename.py alt=neu  # Benennt einen Bezeichner im ganzen Repo um — token-basiert,
                                 # Kommentare bleiben Prosa (--dry-run, --strings, s. Konventionen)
 ```
 
-**Ein Kommando, drei Schichten: `python tests/alle_tests.py`.**
+**Ein Kommando, drei Schichten: `python tests/all_tests.py`.**
 
 | Schicht | was sie prüft | braucht |
 |---|---|---|
@@ -67,7 +67,7 @@ Programm nie aufmacht.
 
 | liegt jetzt | war vorher |
 |---|---|
-| `tests/alle_tests.py`, `tests/mutationspruefung.py`, `tests/wurzeltests.py` | `tools/` |
+| `tests/all_tests.py`, `tests/mutation_check.py`, `tests/root_tests.py` | `tools/` |
 | `tests/test_logic.py` + `tests/vertrag/` | `tools/test_logic.py` + `tools/tests/` |
 | `tests/wurzel/` | die `test_*.py` im Wurzelverzeichnis |
 | `tests/rauch/` | `tools/rauchtests/` |
@@ -83,7 +83,7 @@ Zwei Dinge, die dabei auffallen sollen:
 - **`tests/wurzel/` ist ein flacher Ordner ohne `__init__.py`**, und das ist
   Absicht: `unittest.discover()` legt sein Startverzeichnis selbst in
   `sys.path`, also findet jedes Modul sein `test_support` weiterhin als
-  schlichten Nachbarn. Das Repo-Wurzelverzeichnis legt `wurzeltests.py`
+  schlichten Nachbarn. Das Repo-Wurzelverzeichnis legt `root_tests.py`
   zusätzlich dazu (`autoclicker`, `main`, `market_analysis`) — ohne das liefe
   nur der Aufruf über `-m`, nicht der ausgeschriebene.
 
@@ -109,7 +109,7 @@ Zustand, der einen Neuaufbau nicht überlebt — nichts davon fällt dort auf, u
 Fenster sofort (der Reiter bleibt leer). Deshalb steht dort ein Chromium mit der
 echten `index.html` davor und der echten `StudioBridge` dahinter; `window.pywebview.api`
 ist ein Proxy, der jeden Aufruf nach Python weiterreicht. Kein Nachbau — dieselben
-zwei Seiten wie im Fenster, nur ohne pywebview dazwischen (`rauchtests/_bruecke.py`).
+zwei Seiten wie im Fenster, nur ohne pywebview dazwischen (`rauchtests/_bridge.py`).
 
 Ein neuer Reiter bekommt dort eine Datei; das Gerüst (`Fenster`, `sandkasten`,
 `stelle_bildschirm`) nimmt einem den Aufbau ab. Sie laufen in CI in einem eigenen
@@ -164,13 +164,13 @@ Screenshots und Farbmessung gehen, Template-Vergleich aber nicht — und wer nur
 `ohne` und `mit` prüft, sieht genau die Zweige nie, die das eine haben und das
 andere nicht.
 
-**Ein grüner Exitcode ist kein grüner Lauf.** `vertrag()` verlangt zusätzlich die
+**Ein grüner Exitcode ist kein grüner Lauf.** `contract()` verlangt zusätzlich die
 Schlusszeile im Muster `N PASS / 0 FAIL` mit N > 0: eine Suite, die vor ihrem
 Abschluss stirbt, meldete sonst Erfolg, weil niemand mehr etwas gedruckt hat.
 Dasselbe Muster in der Gegenrichtung ist `--rauch-pflicht` — lokal darf ein
 fehlender Browser überspringen, im Browser-Job ist genau das ein Fehler.
 
-**`--mutationen` prüft die Tests, nicht den Code** (`tests/mutationspruefung.py`).
+**`--mutations` prüft die Tests, nicht den Code** (`tests/mutation_check.py`).
 Jeder Fall entfernt in einem frischen Prozess **eine** Sicherung im Arbeits\-
 speicher und erwartet, dass ein bestimmter Test darüber rot wird. Das ist die
 Gegenprobe, die CLAUDE.md an anderer Stelle von Hand verlangt („Fix entschärfen,
@@ -182,7 +182,7 @@ Importfehler, ein übersprungener Test oder ein Timeout beweist nichts.
 die Fälle stehen als Liste in `FAELLE` und wachsen mit den Fehlern, die auffallen,
 nicht mit dem Code.
 
-`tests/wurzeltests.py` gibt es, weil `unittest discover` die Vertragssuite über
+`tests/root_tests.py` gibt es, weil `unittest discover` die Vertragssuite über
 ihren Wrapper ein zweites Mal mitzog: im Gesamtlauf lief sie damit doppelt (und
 die Zähler standen zweimal da). `--ohne-vertrag` lässt genau diesen Wrapper weg;
 einzeln aufgerufen bleibt er drin, sonst fehlte er dort ganz.
@@ -238,7 +238,7 @@ Automatisiert geprüft werden beide Plattformverträge. Manuell bleiben die echt
 Desktop-Grenzen: globale Hotkeys, Eingabesimulation, Fensterfokus und Screenshots
 in einer Windows- bzw. X11-Sitzung.
 
-**`tests/alle_tests.py` stellt seinen eigenen stdout auf UTF-8** (`reconfigure`,
+**`tests/all_tests.py` stellt seinen eigenen stdout auf UTF-8** (`reconfigure`,
 `errors="replace"`) und braucht deshalb kein `PYTHONIOENCODING` mehr. Vorher riss
 ein einziges Kaestchen aus einem Fortschrittsbalken den ganzen Lauf mit
 `UnicodeEncodeError` ab — und zwar *nachdem* die Vertragssuite grün durch war:
@@ -2721,7 +2721,7 @@ Fünf Regeln, an denen er hängt:
 Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: jeder
 `data-view`-Knopf braucht seine Umschalt-Zeile in `setView()` (und keine
 Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/rauch/` muss in
-`RAUCHTESTS` (`tests/alle_tests.py`) stehen — eine getippte Liste ist genau die
+`RAUCHTESTS` (`tests/all_tests.py`) stehen — eine getippte Liste ist genau die
 Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
@@ -3735,7 +3735,7 @@ Name mit Unterstrich (`point_set` ist nie ein deutsches Wort). Strings
 folgen derselben Regel; `--strings` nimmt zusätzlich die Strings, die den Namen
 als Ganzes oder als Pfad-Glied tragen (`"laden"`, `"autoclicker.befehl"`) — das
 sind die Brücken-Aufrufe der Seite, die Dispatch-Tabellen und die Gegenproben
-in `tests/mutationspruefung.py`, die per Namensstring monkeypatchen. Vorher
+in `tests/mutation_check.py`, die per Namensstring monkeypatchen. Vorher
 prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
 zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
 findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.

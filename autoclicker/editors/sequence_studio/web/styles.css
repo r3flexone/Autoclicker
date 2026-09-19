@@ -586,18 +586,18 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   border-radius:10px;background:var(--bg)}
 .scan-review{display:flex;flex-direction:column;gap:8px}
 .scan-review-row{display:grid;grid-template-columns:24px 82px minmax(0,1fr);
-  grid-template-areas:". status status" "haken bild felder";gap:5px 7px;
+  grid-template-areas:". status status" "check image fields";gap:5px 7px;
   align-items:start;padding:7px;border:1px solid var(--line);border-radius:6px;
   background:var(--bg)}
 /* Der Stand gehoert zur ganzen Lernzeile, nicht nur zu den Eingaben. Darunter
    sind Vorschau und die beiden Feldzeilen gleich hoch: kein kleines Bild mehr,
    das in einer fast doppelt so hohen Karte zu schweben scheint. */
-.scan-review-check{grid-area:haken;align-self:center;justify-self:center}
+.scan-review-check{grid-area:check;align-self:center;justify-self:center}
 .scan-review-status{grid-area:status;min-width:0}
-.scan-review-image{grid-area:bild;width:82px;height:82px;object-fit:contain;
+.scan-review-image{grid-area:image;width:82px;height:82px;object-fit:contain;
   border:1px solid var(--line);border-radius:4px;background:#080A0E}
 .scan-review-image.empty{border-style:dashed;background:none}
-.scan-review-row .fields{grid-area:felder;display:flex;flex-direction:column;
+.scan-review-row .fields{grid-area:fields;display:flex;flex-direction:column;
   gap:5px;min-width:0}
 .scan-review-row input{width:100%}
 .scan-review-order{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}

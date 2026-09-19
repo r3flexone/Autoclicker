@@ -16,14 +16,14 @@ if str(WURZEL) not in sys.path:
 
 # `discover()` legt das Startverzeichnis selbst in `sys.path` — deshalb findet
 # ein Wurzelmodul sein `test_support` als schlichten Nachbarn, ohne Paketpfad.
-MODULE = Path(__file__).resolve().parent / "wurzel"
+MODULE = Path(__file__).resolve().parent / "root"
 
 
-def sammeln(root_dir: Path, ohne_vertrag: bool = False) -> unittest.TestSuite:
+def sammeln(root_dir: Path, without_contract: bool = False) -> unittest.TestSuite:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     for file in sorted(root_dir.glob("test_*.py")):
-        if ohne_vertrag and file.name == "test_regression.py":
+        if without_contract and file.name == "test_regression.py":
             continue
         suite.addTests(loader.discover(str(root_dir), pattern=file.name))
     return suite
@@ -31,9 +31,9 @@ def sammeln(root_dir: Path, ohne_vertrag: bool = False) -> unittest.TestSuite:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ohne-vertrag", action="store_true")
+    parser.add_argument("--without-contract", action="store_true")
     args = parser.parse_args()
-    suite = sammeln(MODULE, args.ohne_vertrag)
+    suite = sammeln(MODULE, args.without_contract)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

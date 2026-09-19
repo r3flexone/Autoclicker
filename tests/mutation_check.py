@@ -1,4 +1,4 @@
-"""Gezielte Gegenproben: python tests/mutationspruefung.py [--fall NAME].
+"""Gezielte Gegenproben: python tests/mutationspruefung.py [--case NAME].
 
 Jeder Fall läuft zuerst unverändert, danach mit einer entfernten Sicherung in
 einem frischen Prozess. Nur Assertion-Fehler erkennen einen Mutanten; Import-
@@ -23,10 +23,10 @@ RUNTIME = "test_runtime_hardening.RuntimeHardeningTest."
 STUDIO = "test_studio_close.StudioCloseTest."
 FAELLE = {
     "browser-pflicht": (
-        "tests.alle_tests", "rauch", "e.ok = False", "e.ok = True",
+        "tests.all_tests", "smoke", "e.ok = False", "e.ok = True",
         "test_test_runner.TestRunnerTest.test_browser_lokal_optional_aber_als_pflicht_rot"),
     "doppelter-vertragslauf": (
-        "tests.wurzeltests", "sammeln", "continue", "pass",
+        "tests.root_tests", "sammeln", "continue", "pass",
         "test_test_runner.TestRunnerTest.test_discovery_entfernt_nur_den_vertragswrapper"),
     "pause-nach-fokus": (
         "autoclicker.runtime.actions", "_input_allowed",
@@ -61,7 +61,7 @@ FAELLE = {
 def pruefen(name: str, mutiert: bool) -> int:
     # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
     # `tests/wurzel` fuer die Testmodule, die `FAELLE` beim Namen nennt.
-    for _path in (WURZEL, WURZEL / "tests" / "wurzel"):
+    for _path in (WURZEL, WURZEL / "tests" / "root"):
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))
     module_name, path, old, new, test = FAELLE[name]
@@ -102,18 +102,18 @@ def main() -> int:
         if hasattr(strom, "reconfigure"):
             strom.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--fall", choices=FAELLE, action="append")
+    parser.add_argument("--case", choices=FAELLE, action="append")
     parser.add_argument("--kind", choices=("basis", "mutiert"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.kind:
-        return pruefen(args.fall[0], args.kind == "mutiert")
+        return pruefen(args.case[0], args.kind == "mutiert")
     error = 0
     umgebung = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
-    for name in args.fall or FAELLE:
+    for name in args.case or FAELLE:
         for mode in ("basis", "mutiert"):
             try:
                 run = subprocess.run(
-                    [sys.executable, str(Path(__file__).resolve()), "--fall", name, "--kind", mode],
+                    [sys.executable, str(Path(__file__).resolve()), "--case", name, "--kind", mode],
                     cwd=WURZEL, env=umgebung, capture_output=True, text=True,
                     encoding="utf-8", errors="replace", timeout=60)
             except subprocess.TimeoutExpired:

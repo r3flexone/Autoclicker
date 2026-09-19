@@ -88,11 +88,11 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
                 if seq:
                     return seq, path
     else:
-        letzte = last_edited()
-        if letzte is not None:
-            seq = load_sequence_file(letzte)
+        last = last_edited()
+        if last is not None:
+            seq = load_sequence_file(last)
             if seq:
-                return seq, letzte
+                return seq, last
 
     base = name or f"Sequenz_{int(time.time())}"
     path = sequence_file(base)

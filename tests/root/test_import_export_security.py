@@ -169,7 +169,7 @@ class ImportExportSecurityTest(unittest.TestCase):
     def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
         from autoclicker.import_export import _safe_bundle_path
         for name in ("sequences/farm/..\\..\\fremd.txt",
-                     "sequences/farm/C:\\fremd.txt", "sequences/farm/bild.png:strom",
+                     "sequences/farm/C:\\fremd.txt", "sequences/farm/image.png:strom",
                      "sequences/farm/../../fremd.txt"):
             with self.subTest(name=name):
                 self.assertIsNone(_safe_bundle_path(name))

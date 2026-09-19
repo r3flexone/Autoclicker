@@ -5,7 +5,7 @@ Scrollposition. Ein `subgrid`, das der Browser nicht kann, und ein `sticky`, das
 an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 """
 
-from ._bruecke import Fenster, main, sandkasten
+from ._bridge import Fenster, main, sandkasten
 
 
 def _sequenz(name: str, notiz: str, phases: int, steps_list: int):

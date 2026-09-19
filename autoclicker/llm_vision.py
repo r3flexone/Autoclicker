@@ -675,7 +675,7 @@ def suggest_item_name_with_reason(
     return name[:40].strip(), ""
 
 
-def _model_known(modell: str, modelle: list) -> bool:
+def _model_known(model: str, modelle: list) -> bool:
     """Kennt der Server dieses Modell?
 
     Ollama haengt an seine Namen ein Tag (`gemma3n:e4b` gegen `gemma3n`), und
@@ -683,9 +683,9 @@ def _model_known(modell: str, modelle: list) -> bool:
     deshalb der Stamm — aber nur in DIESE Richtung: ein eingetragenes
     `gemma3n:e4b` passt nicht auf ein geladenes `gemma3n:e2b`, das sind zwei.
     """
-    if not modell:
+    if not model:
         return True
-    target = modell.casefold()
+    target = model.casefold()
     for existing in modelle:
         da = str(existing or "").casefold()
         if da == target or da.split(":", 1)[0] == target:

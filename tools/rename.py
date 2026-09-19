@@ -76,7 +76,7 @@ class Renamer:
         self.strings = strings
         self.keys = keys
         # `--keys --no-py-idents`: ein JSON-Schluessel heisst in Python oft auch
-        # als Lokale so (`treffer`, `ziel`) — die gehoeren zu ihrer eigenen Phase.
+        # als Lokale so (`treffer`, `target`) — die gehoeren zu ihrer eigenen Phase.
         self.py_idents = py_idents
         # Drei Sorten Eintrag: `.karte=.card` ist eine Klasse OHNE Bindestrich
         # (nur in Selektoren und Klassenlisten, denn `karte` ist auch ein Wort),
@@ -421,8 +421,8 @@ class Renamer:
 
 def files(root: Path, python_only: bool = False, js_only: bool = False):
     suffixes = {".py"} if python_only else {".js", ".html"} if js_only else TEXT_SUFFIXES
-    for wurzel in ROOTS:
-        p = root / wurzel
+    for top in ROOTS:
+        p = root / top
         if p.is_file() and p.suffix.lower() in suffixes:
             yield p
         elif p.is_dir():
@@ -614,7 +614,7 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    # Dieselbe Regel wie in tests/alle_tests.py: ein Gedankenstrich in der
+    # Dieselbe Regel wie in tests/all_tests.py: ein Gedankenstrich in der
     # Meldung darf den Lauf nicht mit UnicodeEncodeError abbrechen.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

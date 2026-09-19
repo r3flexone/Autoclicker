@@ -644,10 +644,10 @@ Goldstandard, und jede Variante bekommt dieselben Proben.
 
 ```bash
 python tools/llm_bench.py                        # Standard: gelernte Vorlagen
-python tools/llm_bench.py --bild slot            # Ausschnitt aus dem gemerkten Bild
-python tools/llm_bench.py --alle-modelle         # jedes Modell des Servers
-python tools/llm_bench.py --zweistufig           # erst die Art, dann der Name
-python tools/llm_bench.py --stimmen 3            # dreimal fragen, Mehrheit
+python tools/llm_bench.py --image slot            # Ausschnitt aus dem gemerkten Bild
+python tools/llm_bench.py --all-models         # jedes Modell des Servers
+python tools/llm_bench.py --two-stage           # erst die Art, dann der Name
+python tools/llm_bench.py --votes 3            # dreimal fragen, Mehrheit
 ```
 
 Vor der Messung wird aufgewärmt — der erste Aufruf an einen kalten Server lädt
@@ -1358,13 +1358,13 @@ Autoclicker-Idleclans/
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
 │   └── YYYY-MM-DD/            # Pro Tag ein Unterordner
 ├── tests/                  # ALLE Tests — drei Schichten und ihre Läufer
-│   ├── alle_tests.py       # EIN Aufruf für alles — das vor einem Commit
+│   ├── all_tests.py       # EIN Aufruf für alles — das vor einem Commit
 │   ├── test_logic.py       # Vertragssuite (ohne GUI, Windows, Netz)
 │   ├── vertrag/            # weitere Sektionen der Vertragssuite
 │   ├── wurzel/             # Wurzelmodule (unittest): Import/Export, Plattform, Studio
 │   ├── rauch/              # die echte Seite im Browser vor der echten Brücke
-│   ├── wurzeltests.py      # Discovery der Wurzelmodule ohne doppelten Vertragslauf
-│   └── mutationspruefung.py # Gegenproben: entfernte Sicherung muss auffallen
+│   ├── root_tests.py       # Discovery der Wurzelmodule ohne doppelten Vertragslauf
+│   └── mutation_check.py   # Gegenproben: entfernte Sicherung muss auffallen
 └── tools/                  # Hilfswerkzeuge — hier steht kein Test mehr
     ├── catalog.py          # Item-/Gegner-Katalog aus der Spiel-API holen
     ├── migrate.py          # JSON-Dateien aufs aktuelle Format heben (macht die App beim Start selbst)
@@ -1479,15 +1479,15 @@ main.py                      Einstiegspunkt, Event-Loop
 
 ## Tools
 
-### Tests (`tests/alle_tests.py`)
+### Tests (`tests/all_tests.py`)
 
 **Ein Kommando, drei Schichten** — das vor einem Commit:
 
 ```bash
-python tests/alle_tests.py                      # alles
-python tests/alle_tests.py --nur vertrag        # nur die Vertragssuite (schnell)
-python tests/alle_tests.py --nur rauch --rauchtest werkzeuge   # eine Ansicht
-python tests/alle_tests.py --mutationen         # zusätzlich gezielte Gegenproben
+python tests/all_tests.py                      # alles
+python tests/all_tests.py --only vertrag        # nur die Vertragssuite (schnell)
+python tests/all_tests.py --only rauch --smoke-test werkzeuge   # eine Ansicht
+python tests/all_tests.py --mutations         # zusätzlich gezielte Gegenproben
 python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
 ```
 
@@ -1507,15 +1507,15 @@ pip install playwright && python -m playwright install chromium
 ```
 
 Im Browser-CI gilt `--rauch-pflicht`: Ein fehlender Browser macht diesen Job rot.
-Im Gesamtlauf läuft die Vertragssuite genau einmal; `--nur wurzel` und normale
+Im Gesamtlauf läuft die Vertragssuite genau einmal; `--only wurzel` und normale
 Unittest-Discovery behalten den Vertragswrapper. Die PASS-Zahl der Vertragssuite
 zählt einzelne Zusicherungen, nicht unabhängige Testszenarien.
 
-Die CI führt auch `--mutationen` aus: Zehn gezielt entfernte Sicherungen müssen
+Die CI führt auch `--mutations` aus: Zehn gezielt entfernte Sicherungen müssen
 durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
 Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
 Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
-`python tests/mutationspruefung.py --fall pause-nach-fokus` wiederholen. Das ist
+`python tests/mutation_check.py --case pause-nach-fokus` wiederholen. Das ist
 eine begrenzte Auswahl kritischer Regressionen, keine vollständige Mutationsabdeckung.
 
 Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie
@@ -1556,8 +1556,8 @@ Schreibt das Programm-Symbol als PNG und als `.ico`.
 
 ```bash
 python tools/symbol.py                      # legt symbol/ an: PNGs + autoclicker.ico
-python tools/symbol.py --ziel C:\Bilder     # woanders hin
-python tools/symbol.py --groessen 256,512   # nur diese Kantenlängen
+python tools/symbol.py --target C:\Bilder     # woanders hin
+python tools/symbol.py --sizes 256,512   # nur diese Kantenlängen
 ```
 
 **Für das Fenster brauchst du das nicht** — Titelleiste, ALT+TAB und Taskleiste

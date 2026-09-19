@@ -28,7 +28,7 @@ class StudioCloseTest(unittest.TestCase):
         os.chdir(self._cwd)
         self._temp.cleanup()
 
-    def _bruecke(self):
+    def _bridge(self):
         seq = Sequence("test", init_steps=[SequenceStep(point_id=7)],
                        points=[ClickPoint(10, 20, "Ziel", 7)])
         path = Path("sequences/test/sequence.json")
@@ -36,7 +36,7 @@ class StudioCloseTest(unittest.TestCase):
         return StudioBridge(seq, path, "sequences")
 
     def test_rettung_ist_am_gemeldeten_pfad_vollstaendig_ladbar(self):
-        bridge = self._bruecke()
+        bridge = self._bridge()
         original = bridge.filepath.read_bytes()
         bridge.points[0].x = 123
         bridge._dirty = True
@@ -50,7 +50,7 @@ class StudioCloseTest(unittest.TestCase):
         self.assertEqual(bridge.filepath.read_bytes(), original)
 
     def test_umbenennen_prueft_fremdaenderung_vor_dem_verschieben(self):
-        bridge = self._bruecke()
+        bridge = self._bridge()
         data = json.loads(bridge.filepath.read_text(encoding="utf-8"))
         data["points"][0]["x"] = 999
         bridge.filepath.write_text(json.dumps(data), encoding="utf-8")
@@ -64,7 +64,7 @@ class StudioCloseTest(unittest.TestCase):
         self.assertEqual(load_sequence_file(bridge.filepath).points[0].x, 999)
 
     def test_scan_schreibfehler_bleibt_ungespeichert_und_ist_wiederholbar(self):
-        bridge = self._bruecke()
+        bridge = self._bridge()
         bridge._scan_load()
         bridge.scans["Inventar"] = ItemScanConfig(name="Inventar", owner_sequence="test")
         bridge._scan_dirty = True

@@ -10,8 +10,8 @@ Genau der Fehler, der im Fenster sofort auffaellt und in keinem Logik-Test.
 import json
 from pathlib import Path
 
-from ._bild import inventar, stelle_bildschirm
-from ._bruecke import Fenster, main, sandkasten
+from ._image import inventar, stelle_bildschirm
+from ._bridge import Fenster, main, sandkasten
 
 # Namen aus dem echten Katalog. Zwei Helme (damit die Rangfolge etwas zu
 # entscheiden hat) und ein Name, den der Katalog NICHT kennt.
@@ -64,14 +64,14 @@ def aufbau():
         encoding="utf-8")
 
     b = StudioBridge(Sequence(name="Rauch"),
-                     Path("sequences/rauch/sequence.json"), "sequences")
+                     Path("sequences/smoke/sequence.json"), "sequences")
     b.scan_new({"name": "Inventar"})
     b.scan_open({"name": "Inventar"})
     # Die Vorlagen stehen HIER und nicht spaeter im Lauf: `SC` wird beim
     # Reiterwechsel nicht neu von der Bruecke geholt (das ist Absicht — der
     # Scans-Reiter haelt seinen eigenen Zustand), also saehe die Seite eine
     # Aenderung, die erst danach passiert, ueberhaupt nicht.
-    templates_list = Path("sequences/rauch/templates")
+    templates_list = Path("sequences/smoke/templates")
     templates_list.mkdir(parents=True, exist_ok=True)
     for i, name in enumerate(BEKANNT + [FREMD]):
         mini_png(templates_list / f"t{i}.png")

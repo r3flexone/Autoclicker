@@ -265,7 +265,7 @@ class Fenster:
 def main_part(name: str, run) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
     # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
-    # `tests/alle_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
+    # `tests/all_tests.py` stellt seinen stdout laengst auf UTF-8 um; wer einen
     # Rauchtest einzeln aufruft, hatte das nicht — und eine Fehlermeldung mit
     # einem „↺" darin riss den Lauf dann mit einem `UnicodeEncodeError` ab,
     # statt zu sagen, was schiefging. Ausgerechnet im roten Fall.

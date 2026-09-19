@@ -2,8 +2,8 @@
 """Schreibt den Item-/Gegner-Katalog aus der offiziellen Idle-Clans-API.
 
     python tools/catalog.py            # schreibt katalog.json
-    python tools/catalog.py --ziel X   # anderer Pfad
-    python tools/catalog.py --zeige    # nur anzeigen, nichts schreiben
+    python tools/catalog.py --target X   # anderer Pfad
+    python tools/catalog.py --show    # nur anzeigen, nichts schreiben
 
 Der Katalog beantwortet zwei Fragen, die der Autoclicker sonst raten muss:
 **wie heisst das Item wirklich** und **womit konkurriert es**. Beides steht in
@@ -269,9 +269,9 @@ def _zusammenfassung(catalog: dict) -> str:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Item-/Gegner-Katalog aus der Idle-Clans-API.")
-    p.add_argument("--ziel", default=STANDARD_ZIEL,
+    p.add_argument("--target", default=STANDARD_ZIEL,
                    help=f"Zieldatei (Standard: {STANDARD_ZIEL})")
-    p.add_argument("--zeige", action="store_true",
+    p.add_argument("--show", action="store_true",
                    help="nur anzeigen, nichts schreiben")
     args = p.parse_args(argv)
 
@@ -293,7 +293,7 @@ def main(argv=None) -> int:
 
     catalog = baue_katalog(spieldaten)
     print(_zusammenfassung(catalog))
-    if args.zeige:
+    if args.show:
         return 0
 
     with open(args.target, "w", encoding="utf-8") as f:
