@@ -3868,8 +3868,9 @@ function scanScanDetails(target, c) {
     "Wie weit eine Marker-Farbe abweichen darf, damit sie noch als gefunden gilt.",
     "tolerance"));
   target.appendChild(toggle("Unbekanntes lernen", c.learn, (v) => setter("learn", v),
-    "Neue Slot-Inhalte werden als Items in die globale Liste gelernt — nie in "
-    + "diesen Scan, damit sie nicht ungeprüft geklickt werden.", "learn"));
+    "Neue Slot-Inhalte werden als Items dieses Scans gelernt (Kategorie 'Auto') "
+    + "und ausgeschaltet geparkt — geklickt wird erst, wenn du sie hier einschaltest.",
+    "learn"));
   target.appendChild(toggle("Slots rückwärts", c.reverse, (v) => setter("reverse", v),
     "Von hinten nach vorn (4, 3, 2, 1). Sinnvoll, wenn das Spiel den Bestand "
     + "nach vorn aufrückt: dann verschiebt ein Klick nicht die noch nicht "

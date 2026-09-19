@@ -483,8 +483,13 @@ def optional_fields() -> list:
     return [f.name for f in fields(AppConfig) if type(None) in get_args(f.type)]
 
 
-def save_config(config: AppConfig) -> None:
-    """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
+def save_config(config: AppConfig) -> bool:
+    """Speichert Konfiguration in config.json — gruppiert nach Sektionen.
+
+    Sagt, ob geschrieben wurde — wie jeder andere Saver. Ein Aufrufer, der
+    danach „gespeichert" meldet, prüft das; sonst steht die Meldung über einer
+    Datei, die es nicht gibt (im Studio genau so passiert).
+    """
     data = config.to_dict()
 
     entries = []
@@ -506,8 +511,10 @@ def save_config(config: AppConfig) -> None:
 
     try:
         atomic_write(CONFIG_FILE, "".join(lines))
+        return True
     except (IOError, OSError) as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 # Konfiguration laden (wird beim Import ausgeführt)

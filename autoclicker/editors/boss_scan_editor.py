@@ -76,11 +76,13 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
             edit_global_bosses(state)
         elif choice == 2:
             state.config.boss_learn_global = not state.config.boss_learn_global
-            save_config(state.config)
+            saved = save_config(state.config)
             if state.config.boss_learn_global:
                 print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
             else:
                 print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
+            if not saved:
+                print(warn("Nicht in config.json geschrieben — gilt nur bis zum Neustart."))
         elif num_fixed <= choice < len(menu_options):
             edit_boss_scan(state, loaded_scans[choice - num_fixed])
 

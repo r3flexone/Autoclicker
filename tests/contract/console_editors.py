@@ -273,3 +273,68 @@ try:
                       category="Helme", cancellable=True) is _IF.CANCELLED)
 finally:
     _IF.shift_category_priorities = _old_shift
+
+
+# =============================================================================
+section("Item-Editor: `template <Nr>` haelt den Lock nicht waehrend der Eingabe")
+# =============================================================================
+
+# `state.lock` ist ein `threading.Lock`, kein RLock. `handle_template_command`
+# hielt ihn ueber den GANZEN Dialog — samt `safe_input()` — und `capture` rief
+# darunter `_capture_template_for_item()`, das den Lock ein zweites Mal nimmt.
+# Der Main-Thread stand damit auf sich selbst, und mit ihm jeder Hotkey.
+#
+# Gemessen wird die Eigenschaft, nicht der Weg: der Befehl laeuft in einem
+# Nebenthread, der Helfer dahinter nimmt den Lock (wie das Original), und der
+# Thread muss in kurzer Zeit fertig sein. Mit dem alten Code haengt er ewig.
+import threading as _thr_t
+import autoclicker.editors.item_editor.commands as _CMD
+from autoclicker.models import AutoClickerState as _ST_t, ItemProfile as _IP_t
+
+_st_t = _ST_t()
+_st_t.global_items["Bogen"] = _IP_t(name="Bogen")
+_captured = []
+
+
+def _capture_taking_lock(state, item):
+    with state.lock:          # dasselbe wie das Original
+        _captured.append(item.name)
+
+
+_old_capture, _old_input = _CMD._capture_template_for_item, _CMD.safe_input
+_old_dir = _CMD.active_templates_dir
+_CMD._capture_template_for_item = _capture_taking_lock
+_CMD.safe_input = lambda _p="": "capture"
+_CMD.active_templates_dir = lambda st: Path(tempfile.gettempdir()) / "gibtsnicht_templates"
+try:
+    _worker = _thr_t.Thread(
+        target=lambda: _CMD.handle_template_command(_st_t, "template 1"), daemon=True)
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _worker.start()
+        _worker.join(timeout=3.0)
+    check("`template 1` -> `capture` kommt zurueck statt sich selbst zu blockieren",
+          not _worker.is_alive())
+    check("und der Capture-Helfer wurde mit dem Item gerufen", _captured == ["Bogen"])
+    check("der Lock ist danach frei",
+          _st_t.lock.acquire(blocking=False) and (_st_t.lock.release() or True))
+finally:
+    _CMD._capture_template_for_item = _old_capture
+    _CMD.safe_input = _old_input
+    _CMD.active_templates_dir = _old_dir
+
+# Die Nebenwege: `remove` und eine ungueltige Nummer, jeweils ohne haengen.
+# Frischer State: mit dem alten Code hielte der blockierte Thread oben den Lock
+# noch — und dieser Teil hinge dann mit, statt oben sauber rot zu werden.
+_st_t2 = _ST_t()
+_st_t2.global_items["Bogen"] = _IP_t(name="Bogen", template="bogen.png")
+_CMD.safe_input = lambda _p="": "remove"
+_CMD.active_templates_dir = lambda st: Path(tempfile.gettempdir()) / "gibtsnicht_templates"
+try:
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _CMD.handle_template_command(_st_t2, "template 1")
+        _CMD.handle_template_command(_st_t2, "template 9")
+        _CMD.handle_template_command(_st_t2, "template x")
+    check("`remove` leert die Vorlagen", _st_t2.global_items["Bogen"].template is None)
+finally:
+    _CMD.safe_input = _old_input
+    _CMD.active_templates_dir = _old_dir

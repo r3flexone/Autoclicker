@@ -701,8 +701,13 @@ def slot_repair(state: AutoClickerState) -> bool:
             slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
-    save_global_slots(state)
-    print(f"  {ok(f'{len(pairs)} Slot(s) neu vermessen.')}")
+    if save_global_slots(state):
+        print(f"  {ok(f'{len(pairs)} Slot(s) neu vermessen.')}")
+    else:
+        # Die Slots sind im Speicher umgezogen, die Datei nicht — beim Kalibrieren
+        # gleich darunter darf das nicht wie „erledigt" aussehen.
+        print(f"  {err(f'{len(pairs)} Slot(s) neu vermessen, aber NICHT gespeichert')} "
+              f"{hint('(done im Slot-Editor versucht es erneut)')}")
 
     # Der hier gemessene Versatz ist pixelgenau — deutlich besser als eine
     # Maus-Position. Deshalb anbieten, ihn gleich auf den Rest anzuwenden.

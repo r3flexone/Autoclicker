@@ -1697,9 +1697,9 @@ def _immediate_run(items, slots, match):
         fits = match.get(state_value["slot"]) == profile.name
         return (fits, 1.0 if fits else 0.0) if return_score else fits
     _IS._check_profile_match = _prof
-    def _exec(state, name, mode="all", slots_override=None):
+    def _exec(state, name, mode="all", slots_override=None, **kw):
         state_value["slot"] = slots_override[0].name if slots_override else None
-        return _orig_exec(state, name, mode, slots_override)
+        return _orig_exec(state, name, mode, slots_override, **kw)
     _IS.execute_item_scan = _exec
     _RS.execute_item_scan = _exec
     try:
@@ -1745,7 +1745,7 @@ try:
     _besucht = []
     _IS._check_profile_match = lambda *a, **k: False
     _orig_learn = _IS._learn_unknown_slot_item
-    _IS._learn_unknown_slot_item = lambda st, slot, img, dbg: _besucht.append(slot.name)
+    _IS._learn_unknown_slot_item = lambda st, slot, img, dbg, cfg=None: _besucht.append(slot.name)
     try:
         _RS.execute_step(_st_learn, _SS(x=0, y=0, delay_before=0, name="L",
                                        item_scan="lern"), 1, 1, "T")
@@ -6274,6 +6274,33 @@ try:
           not _answer17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
     check("und der Leser meldet sie statt Standardwerte zu behaupten",
           bool(_b17.config_read()["error"]))
+
+    # **Ein gescheitertes Schreiben ist kein Erfolg.** `save_config()` gab
+    # `None` zurueck, und die Bruecke meldete `ok: True` ueber einer Datei, die
+    # nicht geschrieben wurde — dazu wanderte der Wert in den eigenen Prozess
+    # und der Briefkasten-Befehl ging raus, waehrend der Hauptprozess die alte
+    # DATEI las: zwei Prozesse, zwei Staende. Genau der Fall aus CLAUDE.md
+    # („Ein Saver sagt, ob er gespeichert hat").
+    _sc17(_AC17(click_per_point=1))
+    _bf17.discard_command()
+    import autoclicker.config as _cfgmod17
+    _old_write17 = _cfgmod17.atomic_write
+
+    def _broken17(*a, **k):
+        raise OSError("Platte voll")
+    _cfgmod17.atomic_write = _broken17
+    try:
+        with _ctx.redirect_stdout(_io.StringIO()):
+            _answer17 = _b17.config_write({"values": {"click_per_point": 5}})
+    finally:
+        _cfgmod17.atomic_write = _old_write17
+    check("ein Schreibfehler meldet ok: False",
+          _answer17["ok"] is False and "nicht geschrieben" in _answer17["message"])
+    check("die Datei ist unveraendert",
+          json.loads(Path("config.json").read_text(encoding="utf-8"))["click_per_point"] == 1)
+    check("der eigene Prozess uebernimmt den Wert nicht",
+          _cfgmod17.CONFIG.click_per_point != 5)
+    check("und der Hauptprozess bekommt keinen Befehl", _bf17.fetch_command() is None)
 finally:
     _os.chdir(_cwd17)
 

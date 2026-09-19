@@ -411,27 +411,38 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
     # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
     # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
+    # **Geschrieben wird hier, nicht im Hook.** Ein Low-Level-Maus-Hook muss
+    # schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
+    # Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
+    # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
+    #
+    # **Ob es geklappt hat, steht in der Meldung UND im Stand fuer das Studio.**
+    # `save_sequence_file` meldet seinen Fehler selbst — aber darunter stand
+    # trotzdem „gespeichert", und `.reclick.json` sagte `applied: True` ueber
+    # einer Datei, die nicht geschrieben wurde. Im Speicher sind die Punkte
+    # dann gesetzt, auf der Platte nicht; der naechste Start klickt daneben.
+    saved = False
+    if placed and apply_config:
+        from ..persistence import save_sequence_file, sequence_file
+        if target_sequence is not None:
+            saved = save_sequence_file(target_sequence, sequence_file(target_sequence.name))
+
     if summary is not None:
         summary.update({"active": False, "paused": False, "point": {},
-                          "reason": reason, "applied": bool(apply_config),
+                          "reason": reason,
+                          "applied": bool(apply_config and (saved or not placed)),
                           "stamp": time.time()})
         try:
             atomic_write(_STATUS_PATH, compact_json(summary))
         except (OSError, TypeError, ValueError):
             pass
 
-    # **Geschrieben wird hier, nicht im Hook.** Ein Low-Level-Maus-Hook muss
-    # schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
-    # Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
-    # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
-    if placed and apply_config:
-        from ..persistence import save_sequence_file, sequence_file
-        if target_sequence is not None:
-            save_sequence_file(target_sequence, sequence_file(target_sequence.name))
-
     print(f"\n{col('[NACHKLICK]', 'cyan')} {reason}.")
     if not placed:
         print("  Nichts geändert.")
+    elif apply_config and not saved:
+        print(f"  {err(f'{len(placed)} Punkt(e) neu gesetzt, aber NICHT gespeichert')} "
+              f"{hint('— im Speicher gesetzt; CTRL+ALT+E → done schreibt die Sequenz erneut.')}")
     elif apply_config:
         print(f"  {ok(f'{len(placed)} Punkt(e) neu gesetzt und gespeichert.')}")
         for point_id, old_pos, new, _f in placed[:12]:

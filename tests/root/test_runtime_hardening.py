@@ -37,7 +37,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         state = AutoClickerState()
         state.active_sequence = Sequence("farm")
         item = ItemProfile(name="Bogen", template="bogen.png")
-        state.global_items[item.name] = item
+        config = ItemScanConfig(name="Beutel", items=[item], owner_sequence="farm")
         image = Mock(size=(10, 10))
         slot = ItemSlot("Slot", (0, 0, 10, 10), (5, 5))
         with tempfile.TemporaryDirectory() as temp:
@@ -50,12 +50,12 @@ class RuntimeHardeningTest(unittest.TestCase):
                           return_value="Bogen") as search, \
                     patch("autoclicker.editors.item_editor.markers._item_has_compatible_template",
                           return_value=True) as size:
-                item_scan._learn_unknown_slot_item(state, slot, image, False)
+                item_scan._learn_unknown_slot_item(state, slot, image, False, config)
             search.assert_called_once_with(image, [("Bogen", item)],
                                           state.config.scan_min_confidence, folder)
             size.assert_called_once_with(item, image, folder)
             image.save.assert_not_called()
-            self.assertEqual(list(state.global_items), ["Bogen"])
+            self.assertEqual([it.name for it in config.items], ["Bogen"])
 
     def test_neuer_befehl_bleibt_waehrend_des_lesens_erhalten(self):
         from autoclicker import mailbox
@@ -192,6 +192,37 @@ class RuntimeHardeningTest(unittest.TestCase):
         protokoll.close.assert_called_once()
         self.assertIn("Fehler", end.call_args.args[1])
 
+    def test_zyklen_vor_einem_neustart_zaehlen_in_der_zusammenfassung_mit(self):
+        """Neustart faengt bei Zyklus 1 an — die Statistik vergisst die davor nicht.
+
+        `_run_main_loop` setzte `cycle_count` bei jedem Anlauf auf 0 und gab am
+        Ende nur den letzten Stand zurueck: nach einem Neustart im zweiten
+        Zyklus stand in der Zusammenfassung „Zyklen: 2", gelaufen waren vier.
+        Die Grenze `total_cycles` gilt weiter je Anlauf (das ist der Neustart).
+        """
+        from autoclicker.models import LoopPhase
+        state = AutoClickerState()
+        seq = Sequence("Test", loop_phases=[LoopPhase(name="A", steps=[
+            SequenceStep(wait_only=True, delay_before=0)])], total_cycles=2)
+        calls = []
+
+        def step_fn(st, step, num, total, phase):
+            calls.append(phase)
+            if len(calls) == 2:          # im zweiten Zyklus: Neustart
+                st.restart_event.set()
+                return False
+            return True
+
+        with patch.object(worker, "execute_step", step_fn), \
+                patch.object(worker, "set_console_title"), \
+                patch.object(worker.status, "write_status"):
+            cycles = worker._run_main_loop(state, seq, {}, threading.Lock(), False)
+
+        # Anlauf 1: Zyklus 1 ok, Zyklus 2 -> Neustart. Anlauf 2: Zyklus 1 und 2.
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(state.restarts, 1)
+        self.assertEqual(cycles, 4, "beide Anlaeufe zaehlen")
+
     def test_block_skip_during_delay_prevents_the_action(self):
         """Ein Live-Block-Skip darf nach der Wartezeit nicht doch noch klicken."""
         state = AutoClickerState()
@@ -291,6 +322,80 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertIsNot(english_1, german)
         self.assertEqual([entry[0] for entry in created], [("en",), ("de",)])
 
+    def test_immediate_modus_nimmt_das_fenster_nur_nach_einem_klick_neu_auf(self):
+        """Ein Durchgang, viele Slots, EINE Aufnahme — bis geklickt wird.
+
+        Der Immediate-Modus ruft `execute_item_scan` je Slot; ohne die Session
+        hiess das bei 45 Slots 45 `PrintWindow`-Aufnahmen und 45-mal Maus parken.
+        Frisch sein muss das Bild nur NACH einem Klick (das Spiel rueckt auf,
+        die Maus steht auf dem Item) — davor sind es dieselben Pixel.
+        """
+        state = AutoClickerState()
+        state.config.scan_click_immediate = True
+        state.config.scan_slot_delay = 0
+        state.config.scan_park_mouse = True
+        rect = (100, 100, 400, 400)
+        slots = [ItemSlot(f"S{i}", (110 + i * 10, 110, 118 + i * 10, 118), (5, 5))
+                 for i in range(1, 5)]
+        item = ItemProfile(name="Kohle", marker_colors=[(1, 2, 3)])
+        state.item_scans["inv"] = ItemScanConfig(
+            name="inv", slots=slots, items=[item], capture_window_title="Spiel",
+            capture_window_rect=rect, owner_sequence="farm")
+        captures, parked, clicked = [], [], []
+
+        def capture(_hwnd):
+            captures.append(1)
+            return Mock(size=(300, 300)), rect, ""
+
+        def crop(_image, region, _origin):
+            return {"region": region}
+
+        def match(profile, img, *args, return_score=False, **kwargs):
+            # Slot 2 traegt das Item — die anderen sind leer.
+            fits = img["region"][0] == slots[1].scan_region[0]
+            return (fits, 1.0 if fits else 0.0) if return_score else fits
+
+        step = SequenceStep(x=0, y=0, delay_before=0, name="S", item_scan="inv")
+        with patch.object(item_scan, "resolve_window", return_value=("Spiel", rect, 42)), \
+                patch.object(item_scan, "take_consistent_window_screenshot", capture), \
+                patch.object(item_scan, "crop_screen_region", crop), \
+                patch.object(item_scan, "_park_mouse_for_scan",
+                             lambda pos: parked.append(pos)), \
+                patch.object(item_scan, "_check_profile_match", match), \
+                patch.object(steps, "check_failsafe", return_value=False), \
+                patch.object(steps, "_click_scan_result",
+                             lambda st, pos, it, prio, dbg: clicked.append(it.name) or True):
+            self.assertTrue(steps.execute_step(state, step, 1, 1, "T"))
+
+        self.assertEqual(clicked, ["Kohle"])
+        # Slot 1 und 2 auf der ersten Aufnahme, nach dem Klick eine zweite fuer 3 und 4.
+        self.assertEqual(len(captures), 2, "einmal vor dem Klick, einmal danach")
+        self.assertEqual(len(parked), 2, "geparkt wird beim Start und nach dem Klick")
+
+    def test_ohne_session_nimmt_jeder_aufruf_selbst_auf(self):
+        """Der normale Pfad (ein Aufruf fuer alle Slots) bleibt, wie er war."""
+        state = AutoClickerState()
+        state.config.scan_slot_delay = 0
+        rect = (100, 100, 400, 400)
+        slots = [ItemSlot(f"S{i}", (110, 110, 118, 118), (5, 5)) for i in range(3)]
+        state.item_scans["inv"] = ItemScanConfig(
+            name="inv", slots=slots, items=[ItemProfile(name="K", marker_colors=[(1, 2, 3)])],
+            capture_window_title="Spiel", capture_window_rect=rect, owner_sequence="farm")
+        captures = []
+
+        def capture(_hwnd):
+            captures.append(1)
+            return Mock(size=(300, 300)), rect, ""
+
+        with patch.object(item_scan, "resolve_window", return_value=("Spiel", rect, 42)), \
+                patch.object(item_scan, "take_consistent_window_screenshot", capture), \
+                patch.object(item_scan, "crop_screen_region", return_value=object()), \
+                patch.object(item_scan, "_park_mouse_for_scan"), \
+                patch.object(item_scan, "_check_profile_match", return_value=(False, 0.0)):
+            item_scan.execute_item_scan(state, "inv", SCAN_MODE_EVERY)
+            item_scan.execute_item_scan(state, "inv", SCAN_MODE_EVERY)
+        self.assertEqual(len(captures), 2, "je Aufruf eine Aufnahme, drei Slots teilen sie")
+
     def test_item_scan_chooses_highest_quality_match(self):
         state = AutoClickerState()
         state.config.scan_slot_delay = 0
@@ -314,13 +419,14 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_auto_learn_publishes_only_complete_item(self):
         state = AutoClickerState()
         slot = ItemSlot("Slot", (0, 0, 10, 10), (5, 5))
+        config = ItemScanConfig(name="Beutel", owner_sequence="farm")
 
         class LearningImage:
             size = (10, 10)
 
             def save(self, _path):
                 with state.lock:
-                    published = list(state.global_items.values())
+                    published = list(config.items)
                     self.assert_complete = bool(
                         published and published[0].template)
 
@@ -334,11 +440,103 @@ class RuntimeHardeningTest(unittest.TestCase):
                       return_value=None), \
                 patch("autoclicker.persistence.active_templates_dir",
                       return_value=Path(directory)), \
-                patch("autoclicker.persistence.save_global_items"):
-            item_scan._learn_unknown_slot_item(state, slot, object(), False)
+                patch("autoclicker.persistence.save_item_scan"):
+            item_scan._learn_unknown_slot_item(state, slot, object(), False, config)
 
         self.assertTrue(image.assert_complete)
-        self.assertEqual(state.global_items["Auto Slot"].template, "auto_slot.png")
+        self.assertEqual(config.items[0].name, "Auto Slot")
+        self.assertEqual(config.items[0].template, "auto_slot.png")
+
+    def test_auto_lernen_schreibt_in_den_laufenden_scan_nicht_in_die_arbeitsansicht(self):
+        """Zwei Item-Scans in einer Sequenz: gelernt wird in dem, der LAEUFT.
+
+        `state.global_items` ist nur die Konsolen-Ansicht auf `active_item_scan`
+        (hier: Scan A). Laeuft Scan B mit `learn_unknown`, landete das Item vorher
+        in A — und wurde gegen die Items von A dedupliziert. Dazu gehoert: das
+        gelernte Item ist GEPARKT (enabled=False), also wird es im naechsten
+        Zyklus nicht geklickt, und gespeichert wird der laufende Scan.
+        """
+        from autoclicker.persistence.item_scans import bind_item_scan_context
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        scan_a = ItemScanConfig(name="A", items=[ItemProfile(name="Bogen", template="b.png")],
+                                owner_sequence="farm")
+        scan_b = ItemScanConfig(name="B", owner_sequence="farm")
+        state.item_scans = {"A": scan_a, "B": scan_b}
+        bind_item_scan_context(state, "A")
+        slot = ItemSlot("Slot 3", (0, 0, 10, 10), (5, 5))
+        image = Mock(size=(10, 10))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                      return_value=(image, [(1, 2, 3)], False)), \
+                patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                      return_value=None) as search, \
+                patch("autoclicker.persistence.active_templates_dir",
+                      return_value=Path(directory)), \
+                patch("autoclicker.persistence.save_item_scan") as save:
+            item_scan._learn_unknown_slot_item(state, slot, image, False, scan_b)
+
+        # Dedup gegen die Items des LAUFENDEN Scans (B ist leer), nicht gegen A.
+        self.assertEqual(search.call_args[0][1], [])
+        self.assertEqual([it.name for it in scan_a.items], ["Bogen"])
+        self.assertEqual([it.name for it in scan_b.items], ["Auto Slot 3"])
+        self.assertFalse(scan_b.items[0].enabled, "gelernt heisst geparkt, nicht geklickt")
+        self.assertEqual(scan_b.items[0].category, "Auto")
+        save.assert_called_once_with(scan_b)
+        # Die Konsolen-Ansicht zeigt weiter auf A und bleibt unberuehrt.
+        self.assertEqual(list(state.global_items), ["Bogen"])
+
+    def test_auto_lernen_haelt_die_arbeitsansicht_desselben_scans_aktuell(self):
+        """Zeigt die Konsolen-Ansicht auf den laufenden Scan, sieht sie das Item.
+
+        Sonst schriebe ihr naechstes `done` (flush_item_scan_context ersetzt
+        cfg.items durch die Ansicht) die Liste OHNE das gelernte Item zurueck.
+        """
+        from autoclicker.persistence.item_scans import (
+            bind_item_scan_context, flush_item_scan_context)
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        scan = ItemScanConfig(name="A", owner_sequence="farm")
+        state.item_scans = {"A": scan}
+        bind_item_scan_context(state, "A")
+        slot = ItemSlot("Slot 1", (0, 0, 10, 10), (5, 5))
+        image = Mock(size=(10, 10))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                      return_value=(image, [], False)), \
+                patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                      return_value=None), \
+                patch("autoclicker.persistence.active_templates_dir",
+                      return_value=Path(directory)), \
+                patch("autoclicker.persistence.save_item_scan"):
+            item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
+
+        self.assertIn("Auto Slot 1", state.global_items)
+        flush_item_scan_context(state)
+        self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
+
+    def test_geparkte_items_werden_im_scan_nicht_geklickt_aber_dedupliziert(self):
+        """Der Scan sieht nur eingeschaltete Items; die Dedup-Liste alle."""
+        state = AutoClickerState()
+        state.config.scan_slot_delay = 0
+        slot = ItemSlot("Slot", (0, 0, 10, 10), (5, 5))
+        parked = ItemProfile(name="Auto Slot", template="auto_slot.png", enabled=False)
+        config = ItemScanConfig(name="Test", slots=[slot], items=[parked],
+                                learn_unknown=True, owner_sequence="farm")
+        state.item_scans["Test"] = config
+        seen = []
+        with patch.object(item_scan, "take_screenshot", return_value=object()), \
+                patch.object(item_scan, "_park_mouse_for_scan"), \
+                patch.object(item_scan, "_check_profile_match",
+                             side_effect=lambda profile, *a, **k: seen.append(profile.name) or (False, 0.0)), \
+                patch.object(item_scan, "_learn_unknown_slot_item") as learn:
+            result = item_scan.execute_item_scan(state, "Test", SCAN_MODE_EVERY)
+        self.assertEqual(result, [])
+        self.assertEqual(seen, [], "ein geparktes Item wird nicht verglichen")
+        learn.assert_called_once()
+        self.assertIs(learn.call_args[0][4], config, "gelernt wird in den laufenden Scan")
 
     def test_async_boss_failure_is_always_logged(self):
         state = AutoClickerState()

@@ -532,8 +532,9 @@ class ItemScanConfig:
     slots: list[ItemSlot] = field(default_factory=list)
     items: list[ItemProfile] = field(default_factory=list)
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
-    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
-    # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
+    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue Items
+    # DIESES Scans lernen (Kategorie 'Auto', geparkt mit enabled=False — geklickt
+    # wird erst, wenn jemand sie einschaltet).
     learn_unknown: bool = False
     # Slots von hinten nach vorn abarbeiten. Sinnvoll, wenn das Spiel den Bestand
     # nach vorn aufrueckt. Gehoert zum Scan, nicht in die Config: sonst gaelte die

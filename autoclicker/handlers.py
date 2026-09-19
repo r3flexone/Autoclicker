@@ -332,9 +332,11 @@ def handle_debug_toggle(state: AutoClickerState, level: str) -> None:
         log_on, detail_on = state.config.debug_log, state.config.debug_detail
         snapshot = state.config
 
-    save_config(snapshot)
+    saved = save_config(snapshot)
     state_value = col('AN', 'green') if active else col('AUS', 'cyan')
     print(f"\n{col('[DEBUG]', 'cyan')} {name}: {state_value}")
+    if not saved:
+        print(warn("         Nicht in config.json geschrieben — gilt nur bis zum Neustart."))
     print(f"         Jetzt aktiv: Stufe 1 {'an' if log_on else 'aus'}, "
           f"Stufe 2 {'an' if detail_on else 'aus'}")
     if detail_on and not log_on:

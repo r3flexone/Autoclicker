@@ -649,3 +649,59 @@ try:
 finally:
     _os.chdir(_cwd_zk)
     shutil.rmtree(_sandbox_zk, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: ein gescheitertes Speichern heisst nicht „gespeichert“")
+
+# `save_sequence_file` meldet seinen Fehler selbst — aber darunter stand
+# trotzdem „N Punkt(e) neu gesetzt und gespeichert", und `.reclick.json` sagte
+# dem Studio `applied: True` ueber einer Datei, die nie geschrieben wurde. Im
+# Speicher sind die Punkte dann gesetzt, auf der Platte nicht: der naechste
+# Start klickt daneben, und niemand hat es gesagt.
+import json as _json_sv
+import io as _io_sv
+import contextlib as _cl_sv
+import autoclicker.persistence.sequences as _pseq
+
+_sandbox_sv = tempfile.mkdtemp(prefix="nachklick_speichern_")
+_cwd_sv = _os.getcwd()
+_os.chdir(_sandbox_sv)
+try:
+    Path("sequences").mkdir()
+
+    def _round(save_ok: bool):
+        st = _ST()
+        _active(st, _SEQ(name="Platte", loop_phases=[_PHASE(name="A", steps=[
+            _STEP(point_id=1), _STEP(point_id=2)])]),
+               [_point(1, 100, 100), _point(2, 200, 200)])
+        _ruesten(st)
+        _click(st, 640, 480, None)
+        old_write = _pseq.atomic_write
+        if not save_ok:
+            def _broken(*a, **k):
+                raise OSError("Platte voll")
+            _pseq.atomic_write = _broken
+        buffer = _io_sv.StringIO()
+        try:
+            with _cl_sv.redirect_stdout(buffer):
+                _stop(st, "übernommen")
+        finally:
+            _pseq.atomic_write = old_write
+        with open(_nk.RECLICK_STATUS_FILE, "r", encoding="utf-8") as f:
+            status = _json_sv.load(f)
+        return buffer.getvalue(), status
+
+    _txt_ok, _st_ok = _round(True)
+    check("geglueckt: die Meldung sagt gespeichert", "gespeichert." in _txt_ok)
+    check("und der Stand fuer das Studio sagt applied",
+          _st_ok["active"] is False and _st_ok["applied"] is True)
+
+    _txt_bad, _st_bad = _round(False)
+    check("gescheitert: die Meldung sagt NICHT gespeichert",
+          "NICHT gespeichert" in _txt_bad and "und gespeichert." not in _txt_bad)
+    check("und nennt den Weg, es nachzuholen", "CTRL+ALT+E" in _txt_bad)
+    check("der Stand fuer das Studio sagt applied: False",
+          _st_bad["active"] is False and _st_bad["applied"] is False)
+finally:
+    _os.chdir(_cwd_sv)

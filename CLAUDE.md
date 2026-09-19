@@ -1268,6 +1268,14 @@ es die Marker-Farben.
   über einer Datei, die nicht geschrieben wurde. Wer speichert, prüft den Rückgabewert
   und sammelt die Fehlschläge (`_detection_save()` macht es vor). Ein `try/except`
   allein reicht nicht: die Ausnahme wird eine Ebene tiefer schon gefangen.
+
+  Das gilt seit dem Audit für **alle** Saver, auch `save_config()`, `save_data()`
+  und `save_points()` — die gaben `None` zurück, und genau dort stand es wieder:
+  `config_write()` im Studio meldete `ok: True`, übernahm den Wert in den eigenen
+  Prozess und schickte den Briefkasten-Befehl, während `config.json` unverändert
+  war. Ein Aufrufer, der nach dem Speichern „gespeichert" sagt, prüft; wer nur
+  zwischendurch sichert (Item-Editor vor `done`), darf die Meldung des Savers
+  reichen lassen.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 
@@ -3509,7 +3517,11 @@ Unbekannte Bosse (OCR/LLM erkennt einen Namen der nicht in der Liste ist) werden
 
 **Globale Boss-Bibliothek**: `state.global_bosses` (Editor: Boss-Scan-Menü → "Boss-Bibliothek verwalten") gilt zusätzlich in jedem Boss-Scan. `execute_boss_scan()` merged lokal + global im Lock-Snapshot; lokale Bosse gewinnen bei Namensgleichheit. Mit `boss_learn_global=true` (Config, umschaltbar im Boss-Scan-Menü) landen neu entdeckte Bosse in der Bibliothek statt im Scan.
 
-**Item-Auto-Lernen** (opt-in pro Scan, `ItemScanConfig.learn_unknown`): `execute_item_scan()` lernt unbekannte, nicht-leere Slot-Inhalte als neue globale Items (Kategorie 'Auto', Template + Marker) — nur nach `state.global_items`, nie in die Scan-Config, damit sie nicht ungeprüft geklickt werden. Dedup per Template-Match gegen alle globalen Items. Die Items heissen erst 'Auto <Slot>'; **die LLM-Benennung läuft bewusst NICHT im Scan** (würde den Worker pro Item bis `llm_timeout` blockieren), sondern manuell über den Item-Editor-Befehl `autoname` (`editors/item_editor/commands.py::handle_autoname_command`), der `llm_vision.suggest_item_name()` aus den gespeicherten Templates aufruft.
+**Item-Auto-Lernen** (opt-in pro Scan, `ItemScanConfig.learn_unknown`): `execute_item_scan()` lernt unbekannte, nicht-leere Slot-Inhalte als neue Items **des Scans, der gerade läuft** (`config.items`, Kategorie 'Auto', Template + Marker) — **geparkt** mit `enabled=False`, damit sie nicht ungeprüft geklickt werden; das Studio zeigt sie mit ihrem Schalter. Dedup per Template-Match gegen alle Items dieses Scans, auch die geparkten.
+
+Hier stand einmal „nur nach `state.global_items`, nie in die Scan-Config" — aus der Zeit des globalen Bestands. Seit der Scan seine Items besitzt, ist `state.global_items` nur noch die Konsolen-Ansicht auf `state.active_item_scan`, also den Scan, den der Item-Editor zuletzt offen hatte: mit zwei Item-Scans in einer Sequenz landete ein aus Scan B gelerntes Item in Scan A (und wurde gegen dessen Items dedupliziert), ohne offenen Scan meldete jeder Zyklus „Kein Item-Scan zum Speichern gewählt". Zeigt die Ansicht zufällig auf den laufenden Scan, wird sie mitgezogen — sonst schriebe ihr nächstes `done` die Liste ohne das Item zurück (`flush_item_scan_context` ersetzt `cfg.items`).
+
+Die Items heissen erst 'Auto <Slot>'; **die LLM-Benennung läuft bewusst NICHT im Scan** (würde den Worker pro Item bis `llm_timeout` blockieren), sondern manuell über den Item-Editor-Befehl `autoname` (`editors/item_editor/commands.py::handle_autoname_command`), der `llm_vision.suggest_item_name()` aus den gespeicherten Templates aufruft.
 
 ### Koordinaten nach einem Bildschirm-Umbau
 

@@ -172,7 +172,12 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         state.active_sequence = new_sequence
         state.points = new_sequence.points
 
-    save_data(state)
+    if not save_data(state):
+        # Der Saver hat den Fehler genannt; „[ERFOLG] gespeichert!" darunter
+        # waere die Zeile, die man liest. Im Speicher ist die Sequenz aktiv.
+        print(err(f"Sequenz '{seq_name}' ist geladen, aber NICHT auf Platte — "
+                  "'done' im Editor versucht es erneut."))
+        return
 
     _print_post_save_summary(seq_name, init_steps, loop_phases, end_steps, total_cycles)
 

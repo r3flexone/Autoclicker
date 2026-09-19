@@ -246,7 +246,11 @@ def edit_icon_scan(state: AutoClickerState, existing: Optional[IconScanConfig]) 
     with state.lock:
         state.icon_scans[scan_name] = config
 
-    save_icon_scan(config)
+    # Dieselbe Regel wie im Boss-Editor: der Saver meldet den Fehler, und darunter
+    # darf kein „gespeichert!" stehen.
+    if not save_icon_scan(config):
+        print(err("Icon-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
+        return
 
     save_msg = ok(f"Icon-Scan '{scan_name}' gespeichert!")
     print(f"\n{save_msg}")

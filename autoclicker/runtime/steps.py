@@ -41,7 +41,8 @@ from .boss_detection import (
     _should_run_async, _warn_llm_config_inconsistencies, _spawn_boss_async,
 )
 from .item_scan import (
-    execute_item_scan, _click_scan_result, execute_icon_scan, runnable_scan_config,
+    ScanSession, execute_item_scan, _click_scan_result, execute_icon_scan,
+    runnable_scan_config,
 )
 
 
@@ -111,18 +112,26 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
     # wurde" — genau die Baseline, die hier vorher aus einem Snapshot plus zwei
     # Merge-Schleifen nachgebaut wurde. Nachgerechnet: identisches Ergebnis, und das
     # Zurueckschreiben des Snapshots verwarf sogar Klicks des Async-Boss-Threads.
+    #
+    # Die Session traegt Parkstand und Fensteraufnahme ueber die Slots hinweg:
+    # ohne sie parkte jeder Slot die Maus neu und nahm das ganze Fenster neu auf.
+    # Frisch muss es nur nach einem KLICK sein — dann rueckt das Spiel auf und die
+    # Maus steht auf dem Item; genau dafuer `invalidate()`.
+    session = ScanSession()
     total_clicked = 0
     for slot in slots:
         if state.stop_event.is_set():
             return False
 
-        results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot])
+        results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot],
+                                    session=session)
         for pos, item, priority in results:
             if state.stop_event.is_set():
                 return False
             if not _click_scan_result(state, pos, item, priority, debug):
                 return False
             total_clicked += 1
+            session.invalidate()
 
     if total_clicked > 0:
         _step_status(debug, phase, step_num, total_steps,
@@ -399,7 +408,9 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
-            return False
+            # Hier stand `return False` — der Aufrufer vergleicht mit den drei
+            # Gates, und `False != GATE_RUN` lief zufaellig als Stopp durch.
+            return GATE_STOP
 
     # Zeiger auf den Prüf-Pixel. Detail-Stufe und manueller Modus haben ihn schon
     # dorthin gesetzt - ein zweiter Sprung wäre nur eine weitere Wartezeit.

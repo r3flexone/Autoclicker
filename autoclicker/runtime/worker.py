@@ -65,8 +65,11 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
                         scheduled_pending[idx] = True
                         print(col(f"\n[TIMER] {lp.name}: Startzeit {lp.scheduled_start} erreicht! (wird bei nächster Position ausgeführt)", "green"), flush=True)
 
-        # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit).
-        # shutdown_event beendet die Wartezeit sofort beim Sequenz-Ende.
+        # Alle 10 Sekunden prüfen (reicht für Minuten-Genauigkeit). Gewartet
+        # wird auf stop_event — das setzt `sequence_worker` in seinem `finally`
+        # direkt nach shutdown_event, also endet auch die Wartezeit dort sofort.
+        # shutdown_event allein weckt NICHT; es fängt nur den Fall, dass der
+        # Lauf regulär endet, ohne dass jemand Stop gedrückt hat.
         if stop_event.wait(10.0):
             break
         if shutdown_event.is_set():
@@ -332,17 +335,23 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                    schedule_lock: threading.Lock, debug: bool) -> int:
     """Führt INIT- + LOOP-Phasen aus, behandelt Restart/Skip-Cycle/Quit.
 
-    Returns: Anzahl gelaufener Zyklen.
+    Returns: Anzahl gelaufener Zyklen — über ALLE Anläufe. Ein Neustart
+    (`restart_event`) fängt bei INIT und Zyklus 1 wieder an, denn die Grenze
+    `total_cycles` meint den Durchgang ab dort; die Zusammenfassung nennt
+    aber, was insgesamt gelaufen ist. Vorher stand dort nur der letzte Anlauf,
+    und die Zyklen vor dem Neustart waren aus der Statistik verschwunden.
     """
     has_init = len(sequence.init_steps) > 0
     has_loops = len(sequence.loop_phases) > 0
     total_cycles = sequence.total_cycles
 
     cycle_count = 0
+    cycles_before_restart = 0
     do_restart = True  # Erster Durchlauf startet immer
 
     while do_restart and not state.stop_event.is_set() and not state.quit_event.is_set():
         do_restart = False
+        cycles_before_restart += cycle_count
 
         # INIT-Phase
         if has_init and not state.stop_event.is_set():
@@ -420,7 +429,7 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 print(f"\n{ok('Sanfter Abbruch: Zyklus abgeschlossen.')}")
                 break
 
-    return cycle_count
+    return cycles_before_restart + cycle_count
 
 
 def _phase_overview(sequence) -> list[dict]:

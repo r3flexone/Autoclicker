@@ -520,7 +520,13 @@ class BridgeServicesMixin:
         corrections = [{"key": k, "sent": v, "became": done.get(k)}
                        for k, v in values.items()
                        if k in done and not _same_value(v, done[k])]
-        save_config(new)
+        if not save_config(new):
+            # Nichts anwenden, nichts melden: der Hauptprozess liest die DATEI,
+            # und die ist unveraendert — ein Prozess mit neuem Stand im Speicher
+            # neben einem mit altem waere genau die zweite Wahrheit.
+            return {"ok": False,
+                    "message": "config.json konnte nicht geschrieben werden — "
+                               "nichts geändert (Konsole des Hauptprozesses zeigt den Fehler)."}
         # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
         # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
         # `command_config()`; DIESER Prozess hat die Datei geschrieben und blieb

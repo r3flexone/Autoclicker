@@ -199,8 +199,14 @@ def list_available_sequences() -> list[tuple[str, Path]]:
 # SAMMEL-SAVE (Punkte + alle Sequenzen)
 # =============================================================================
 
-def save_data(state: AutoClickerState) -> None:
-    """Speichert alle Sequenzen einschließlich ihrer Punkte."""
+def save_data(state: AutoClickerState) -> bool:
+    """Speichert alle Sequenzen einschließlich ihrer Punkte.
+
+    True nur, wenn JEDE Datei geschrieben wurde. Vorher stand „Daten
+    gespeichert" auch dann da, wenn `save_sequence_file` gerade einen Fehler
+    gemeldet hatte — zwei Zeilen, die sich widersprechen, und die zweite
+    liest man.
+    """
     ensure_sequences_dir()
 
     # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
@@ -208,25 +214,33 @@ def save_data(state: AutoClickerState) -> None:
         sequences_snapshot = list(state.sequences.items())
 
     # Sequenzen speichern
-    for name, seq in sequences_snapshot:
-        save_sequence_file(seq, sequence_file(name))
+    failed = [name for name, seq in sequences_snapshot
+              if not save_sequence_file(seq, sequence_file(name))]
 
+    if failed:
+        print(err(f"{len(failed)} von {len(sequences_snapshot)} Sequenz(en) NICHT "
+                  f"gespeichert: {', '.join(failed)}"))
+        return False
     print(save_tag(f"Daten gespeichert in '{SEQUENCES_DIR}/'"))
+    return True
 
 
 # =============================================================================
 # PUNKTE
 # =============================================================================
 
-def save_points(state: AutoClickerState) -> None:
-    """Speichert die aktive Sequenz einschließlich ihres Punkt-Pools."""
+def save_points(state: AutoClickerState) -> bool:
+    """Speichert die aktive Sequenz einschließlich ihres Punkt-Pools.
+
+    Ohne aktive Sequenz gibt es nichts zu schreiben — das ist kein Fehler.
+    """
     with state.lock:
         seq = state.active_sequence
         if seq is None:
-            return
+            return True
         seq.points = state.points
         name = seq.name
-    save_sequence_file(seq, sequence_file(name))
+    return save_sequence_file(seq, sequence_file(name))
 
 
 def load_points(state: AutoClickerState) -> None:

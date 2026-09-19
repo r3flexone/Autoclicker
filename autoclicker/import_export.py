@@ -315,15 +315,20 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
         icon_scans = list(state.icon_scans.values()) if with_scans else []
         item_scans = list(state.item_scans.values()) if with_scans else []
 
-    save_points(state)
+    # Jeder Saver meldet seinen Fehler selbst — dieselbe Zeile wie bei den
+    # Sequenzdateien unten, damit ein Fehlschlag im Log neben der Bilanz steht.
+    # Vor dem Durchgang liegt ohnehin ein Export-ZIP (backup_before_calibration).
+    if not save_points(state):
+        logger.warning("Kalibrierung: Punkte der aktiven Sequenz nicht geschrieben")
     if with_scans:
-        save_global_bosses(state)
-        for cfg in item_scans:
-            save_item_scan(cfg)
-        for cfg in boss_scans:
-            save_boss_scan(cfg)
-        for cfg in icon_scans:
-            save_icon_scan(cfg)
+        if not save_global_bosses(state):
+            logger.warning("Kalibrierung: Boss-Bibliothek nicht geschrieben")
+        for kind, saver, configs in (("Item-Scan", save_item_scan, item_scans),
+                                     ("Boss-Scan", save_boss_scan, boss_scans),
+                                     ("Icon-Scan", save_icon_scan, icon_scans)):
+            for cfg in configs:
+                if not saver(cfg):
+                    logger.warning("Kalibrierung: %s '%s' nicht geschrieben", kind, cfg.name)
 
     # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
     if with_sequences:
