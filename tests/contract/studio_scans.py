@@ -349,15 +349,15 @@ try:
             # (Ausserdem: eine gleichfoermige Flaeche hat keine Varianz, also
             # auch keine Korrelation. Echte Item-Symbole haben beides.)
             import random as _rnd18
-            _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
+            _grid18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
             def _cell18(ox, oy, seed):
                 for _px18 in range(60):
                     for _py18 in range(60):
-                        _gitter18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
+                        _grid18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
                 r = _rnd18.Random(seed)
                 for _px18 in range(20, 40):
                     for _py18 in range(20, 40):
-                        _gitter18.putpixel((ox + _px18, oy + _py18),
+                        _grid18.putpixel((ox + _px18, oy + _py18),
                                            (r.randrange(120, 256), r.randrange(120, 256),
                                             r.randrange(120, 256)))
             for _gy18 in range(2):
@@ -367,7 +367,7 @@ try:
             _slots_before18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18._sync_objects()
-            _b18._photo = _gitter18
+            _b18._photo = _grid18
             _b18._display_image(0, 0, 1.0)
 
             # Der erste Klick ist keine Farbe mehr, sondern eine Ecke.

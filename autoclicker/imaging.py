@@ -187,7 +187,7 @@ def _load_template(template_path: str):
 
     if len(_template_cache) >= _TEMPLATE_CACHE_MAX:
         _template_cache.clear()
-    _template_cache[template_path] = {"stamp": stamp, "image": image, "skaliert": {}}
+    _template_cache[template_path] = {"stamp": stamp, "image": image, "scaled": {}}
     return image
 
 
@@ -252,12 +252,12 @@ def _template_at_size(template_path: str, image, width: int, height: int):
     entry = _template_cache.get(template_path)
     key_name = (width, height)
     if entry is not None:
-        done = entry["skaliert"].get(key_name)
+        done = entry["scaled"].get(key_name)
         if done is not None:
             return done
     scaled = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
     if entry is not None:
-        entry["skaliert"][key_name] = scaled
+        entry["scaled"][key_name] = scaled
     return scaled
 
 
