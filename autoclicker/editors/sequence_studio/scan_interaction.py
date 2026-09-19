@@ -286,7 +286,7 @@ class ScanInteractionMixin:
         if not self.items:
             return ""
         try:
-            found, checked, _, foreign, total = self._detect_run()
+            found, checked, _, total = self._detect_run()
         except Exception:            # OpenCV/NumPy-Innenleben — nie den Fund verlieren
             return ""
         if not checked:
@@ -295,8 +295,6 @@ class ScanInteractionMixin:
         text = f" · davon {found} mit bekanntem Item"
         if remaining:
             text += f", {remaining} noch unbekannt"
-        if foreign:
-            text += f" ({foreign} gehören noch nicht zu diesem Scan)"
         return text
 
     def _search_corner(self, x: int, y: int) -> dict:

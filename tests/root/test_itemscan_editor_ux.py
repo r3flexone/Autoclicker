@@ -217,13 +217,15 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("nichts gelernt", state["status"]["text"])
 
     def test_result_summary_has_no_foreign_membership(self):
+        """Das Ergebnis kennt kein „fremd" mehr — der Scan besitzt seine Items."""
         self.bridge.items["Bekannt"] = ItemProfile(name="Bekannt")
         self.bridge._sync_objects()
         self.bridge._matches = {
-            "Slot 1": {"name": "Bekannt", "foreign": False},
+            "Slot 1": {"name": "Bekannt"},
         }
         result = self.bridge.scan_data()["result"]
-        self.assertEqual(result["foreign"], 0)
+        self.assertNotIn("foreign", result)
+        self.assertEqual(result["detected"], 1)
         self.assertEqual(result["total"], 1)
         self.assertIn("Bekannt", self.bridge.scans["Inventar"].item_names)
 

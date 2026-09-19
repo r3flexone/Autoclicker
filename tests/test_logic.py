@@ -4779,7 +4779,8 @@ _out11 = _b2s11(_b11.board).loop_phases[0].steps[0]
 check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
       _out11.scroll == -3 and _out11 is _step11)
 check("die Karte verschweigt es trotzdem nicht",
-      any("Rad -3" in z for z in _b11.snapshot()["phases"][1]["blocks"][0]["rows"]))
+      any(z["label"] == "RAD" and z["text"] == "-3"
+          for z in _b11.snapshot()["phases"][1]["blocks"][0]["rows"]))
 
 # --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
 _state11 = _b11.block_set({"field": "gibtsnicht", "value": 1})
@@ -5985,7 +5986,9 @@ else:
 # Scans-Sektionen, die jetzt in `tests/contract/studio_scans.py` stehen. Was eine
 # Datei liest, liest sie besser selbst, als sie ueber tausend Zeilen zu erben.
 _html18 = _H.studio_web_source()
-_states18 = ("match", "foreign-item", "empty")
+# Zwei Zustaende, nicht drei: „erkannt, aber nicht in diesem Scan" ist mit
+# dem globalen Bestand verschwunden - der Scan besitzt seine Items.
+_states18 = ("match", "empty")
 _missing18 = [f"{k}.{z}" for z in _states18
               for k in ("scan-slot", "scan-fill")
               if f".{k}.{z}{{" not in _html18.replace(" ", "")]

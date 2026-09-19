@@ -21,6 +21,7 @@ from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
+    ink_color,
     sequence_to_board,
 )
 
@@ -230,6 +231,7 @@ class BridgeServicesMixin:
         type_value = state_value.get("block_set_type")
         if type_value in BLOCK_COLORS:
             state_value["block_color"] = _hex(BLOCK_COLORS[type_value])
+            state_value["block_ink"] = ink_color(BLOCK_COLORS[type_value])
             state_value["block_badge"] = BLOCK_LABELS[type_value]
         return state_value
 

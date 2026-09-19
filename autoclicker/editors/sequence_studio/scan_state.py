@@ -565,13 +565,12 @@ class ScanStateMixin:
         slots = self._scan_slots()
         slot_name_set = {s.name for s in slots}
         match = {n: t for n, t in self._matches.items() if n in slot_name_set}
-        detected = [n for n, t in match.items() if t.get("name") and not t.get("foreign")]
-        foreign = [n for n, t in match.items() if t.get("name") and t.get("foreign")]
+        detected = [n for n, t in match.items() if t.get("name")]
         unknown = [n for n, t in match.items() if not t.get("name")]
         return {
-            "total": len(slots), "detected": len(detected), "foreign": len(foreign),
+            "total": len(slots), "detected": len(detected),
             "unknown": len(unknown), "detected_slots": detected,
-            "foreign_slots": foreign, "unknown_slots": unknown,
+            "unknown_slots": unknown,
         }
 
     def _review_json(self) -> Optional[dict]:

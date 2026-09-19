@@ -35,6 +35,36 @@ function el(tag, attrs, ...children) {
   return n;
 }
 
+/* Die Symbole als Inline-SVG auf einem 16er-Raster, nicht als Unicode-Glyphen:
+ * „▶", „●", „↶" kommen aus der Systemschrift und stehen je nach Fenster
+ * verschieden gross und hoch — das ⓘ ist aus demselben Grund laengst ein SVG.
+ * `currentColor`, damit sie die Schriftfarbe des Knopfs erben, in dem sie
+ * stehen. Wer ein neues braucht, traegt es hier ein, nicht als Zeichen. */
+const ICONS = {
+  play: '<path d="M4 2.5v11l9-5.5z" fill="currentColor" stroke="none"/>',
+  stop: '<rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none"/>',
+  pause: '<path d="M5.5 3v10M10.5 3v10"/>',
+  record: '<circle cx="8" cy="8" r="4.5" fill="currentColor" stroke="none"/>',
+  save: '<path d="M3 2.5h8l2.5 2.5v8.5H3z"/><path d="M5 2.5v4h5v-4"/><path d="M5.5 13.5v-4h5v4"/>',
+  undo: '<path d="M3.5 6.5h5.5a3.5 3.5 0 0 1 0 7H6"/><path d="M6 4L3.5 6.5 6 9"/>',
+  refresh: '<path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3.3h-3.3"/>',
+  reset: '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.5v3.3h3.3"/>',
+  sort: '<path d="M5 3v10M3 11l2 2 2-2"/><path d="M11 13V3M9 5l2-2 2 2"/>',
+  check: '<path d="M3 8.5l3.5 3.5L13 4.5"/>',
+  warn: '<path d="M8 2.5l6 11H2z"/><path d="M8 7v3"/><circle cx="8" cy="12.2" r=".5" fill="currentColor"/>',
+  cross: '<path d="M4 4l8 8M12 4l-8 8"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.5v4"/><circle cx="8" cy="5" r=".5" fill="currentColor"/>',
+};
+
+function icon(name, size) {
+  const n = svgEl("svg", {viewBox: "0 0 16 16", width: size || 12, height: size || 12,
+    fill: "none", stroke: "currentColor", "stroke-width": 1.8,
+    "stroke-linecap": "round", "stroke-linejoin": "round",
+    class: "icon icon-" + name, "aria-hidden": "true"});
+  n.innerHTML = ICONS[name] || "";
+  return n;
+}
+
 /** Zahlenfeld, das seinen Wert erst beim Verlassen meldet.
  *
  * `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein Neuaufbau
@@ -625,14 +655,30 @@ function render() {
  * Warnung darf keine frische Meldung begraben. */
 let statusStamp = 0;
 
+/* Was die Kachel vor der Meldung sagt: Symbol und Wort je Art. „info" hat
+ * keine — ein Hinweis braucht keine Einordnung, nur eine Warnung und ein
+ * Fehler muessen sich vom Normalfall abheben. */
+const STATUS_KIND = {
+  ok: ["check", "OK"], warn: ["warn", "Achtung"], err: ["cross", "Fehler"],
+};
+
 function setStatus(status) {
   statusStamp += 1;
   const n = $("status");
-  n.textContent = (status && status.text) || "";
+  const text = (status && status.text) || "";
+  n.textContent = text;
   // Mit Praefix: „info" allein ist die Klasse des ⓘ-Knopfes (13px, rund), und ein
   // Status mit dieser Art bekam dessen Gestalt — ein leerer Kreis neben dem
   // Start-Knopf, den niemand zuordnen konnte.
-  n.className = "status kind-" + ((status && status.kind) || "info");
+  const kind = (status && status.kind) || "info";
+  n.className = "status kind-" + kind;
+  const pill = $("status-kind");
+  const mark = STATUS_KIND[kind];
+  pill.hidden = !(mark && text);
+  if (mark) {
+    pill.className = "status-kind kind-" + kind;
+    pill.replaceChildren(icon(mark[0], 11), mark[1]);
+  }
 }
 
 function renderHeader() {
@@ -864,15 +910,22 @@ function renderCard(phase, block) {
   // Block, der einen Punkt hat, nicht nur an der Farb-Bedingung. Beim
   // Überfliegen unterscheidet man Karten an der Farbe des Knopfs, nicht an
   // vierstelligen Koordinaten.
-  const body = el("div", {class: "card-body"},
-    block.rows.map((z, i) => (i === 0 && block.point_color)
+  // **Jede Zeile hat ein Etikett** (STELLE, WARTE, …) in einer eigenen Spalte:
+  // der Koerper ist ein zweispaltiges Raster, damit die Etiketten aller Zeilen
+  // einer Karte buendig stehen. Bedingung und ELSE reihen sich darin ein.
+  const body = el("div", {class: "card-body"});
+  block.rows.forEach((z, i) => {
+    body.appendChild(el("span", {class: "card-label"}, z.label));
+    body.appendChild((i === 0 && block.point_color)
       ? el("div", {class: "card-row with-color"},
           el("span", {class: "swatch", style: "background:" + block.point_color,
                       title: "Farbe des Punkts " + block.point_color}),
-          z)
-      : el("div", {class: "card-row"}, z)));
+          z.text)
+      : el("div", {class: "card-row"}, z.text));
+  });
 
   if (block.color_swatch) {
+    body.appendChild(el("span", {class: "card-label"}, "FARBE"));
     body.appendChild(el("div", {class: "card-color"},
       el("span", {class: "swatch", style: "background:" + block.color_swatch}),
       block.color_text));
@@ -880,6 +933,8 @@ function renderCard(phase, block) {
   if (block.else_text) {
     // Ein ELSE ohne Bedingung feuert nie — auf der Karte stuende es sonst als
     // Zusage da („sonst: Schritt überspringen"), die nichts einloest.
+    body.appendChild(el("span", {class: "card-label else" + (block.else_applies ? "" : " dead")},
+                        "ELSE"));
     body.appendChild(el("div", {class: "card-else" + (block.else_applies ? "" : " dead")},
       block.else_text + (block.else_applies ? "" : " · greift nie")));
   }
@@ -920,7 +975,10 @@ function renderCard(phase, block) {
       drop(e, phase.index, block.row + (e.clientY > r.top + r.height / 2 ? 1 : 0));
     },
   },
-    el("div", {class: "card-header", style: "background:" + block.color},
+    // Die Schriftfarbe kommt mit der Typfarbe aus der Bruecke (`ink`): fest
+    // dunkel fiel sie auf den dunklen Typfarben durch (Boss-Watcher 2,2:1).
+    el("div", {class: "card-header",
+               style: "background:" + block.color + ";color:" + block.ink},
       el("span", {class: "card-type"}, block.label),
       block.title ? el("span", {class: "card-title"}, block.title) : null,
       block.checks ? el("span", {class: "badge-small", title: "prüft nach der Aktion nach"},
@@ -929,7 +987,7 @@ function renderCard(phase, block) {
       // es an" ist die Frage, die man beim Überfliegen von fünfzig Karten hat.
       block.breakpoint ? el("span", {class: "badge-small breakpoint",
                                      title: "Haltepunkt — der Lauf hält vor diesem Block an"},
-                            "⏸ halt") : null,
+                            icon("pause", 10), "halt") : null,
       block.warning ? el("span", {class: "badge-small warn"}, block.warning) : null,
       el("span", {class: "card-nr"}, String(block.row + 1).padStart(2, "0"))),
     body);
@@ -1109,8 +1167,10 @@ function runEdge(active) {
   if (active && !runWasRunning && view !== "run") setView("run");
   runWasRunning = active;
   const button = $("btn-run");
-  button.textContent = active ? "■ Stoppen" : "▶ Starten";
+  button.replaceChildren(icon(active ? "stop" : "play"), active ? "Stoppen" : "Starten");
   button.classList.toggle("danger", active);
+  // Die Lampe am Reiter: dass etwas laeuft, sieht man auch aus dem Editor.
+  $("tab-run-lamp").classList.toggle("on", active);
 }
 
 /** Einen Lauf-Befehl abschicken, nachfassen — und melden, wenn niemand zuhört. */
@@ -1367,7 +1427,7 @@ async function renderRun() {
     el("div", {class: "panel with-header"},
       el("div", {class: "card-header",
                  style: "background:" + (z.block_color || "#2A3245") +
-                        (z.block_color ? "" : ";color:var(--text)")},
+                        ";color:" + (z.block_ink || "var(--text)")},
         el("span", {class: "card-type"}, z.block_badge || "AKTUELLER BLOCK"),
         el("span", {class: "card-title"}, z.block_title || "(ohne Namen)"),
         el("span", {class: "card-nr"},
@@ -1433,20 +1493,20 @@ function renderSummary(target, z) {
  * Haltepunkt schaltet sie ihn ein („Ab hier schrittweise"). Das Weiterlaufen
  * heisst am Haltepunkt „Weiter", denn es fragt danach nicht wieder. */
 function manualControls(m) {
-  const button = (text, action, cls) => el("button", {
+  const button = (text, action, cls, sym) => el("button", {
     class: "btn" + (cls ? " " + cls : ""),
     onclick: () => sendRun("manual_action", {action: action}),
-  }, text);
+  }, sym ? icon(sym) : null, text);
   const atBreakpoint = !!m.breakpoint;
   return el("section", {class: "panel manual-panel"},
-    el("span", {class: "heading"}, atBreakpoint ? "⏸ HALTEPUNKT" : "MANUELLER SCHRITTMODUS"),
+    el("span", {class: "heading"}, atBreakpoint ? "HALTEPUNKT" : "MANUELLER SCHRITTMODUS"),
     el("b", {}, m.title || "Aktueller Block"),
     el("p", {class: "hint"}, m.action || ""),
     el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-      button(atBreakpoint ? "▶ Weiter" : "▶ Ausführen", "run", "primary"),
-      button("↷ Überspringen", "skip"),
+      button(atBreakpoint ? "Weiter" : "Ausführen", "run", "primary", "play"),
+      button("Überspringen", "skip"),
       atBreakpoint ? button("Ab hier schrittweise", "step") : button("Normal weiter", "continue"),
-      button("■ Stoppen", "stop", "danger")));
+      button("Stoppen", "stop", "danger", "stop")));
 }
 
 /** Start/Pause/Stopp.
@@ -1457,19 +1517,19 @@ function manualControls(m) {
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
-  const button = (text, command, cls) => el("button", {
+  const button = (text, command, cls, sym) => el("button", {
     class: "btn" + (cls ? " " + cls : ""),
     onclick: () => sendRun(command),
-  }, text);
+  }, sym ? icon(sym) : null, text);
   const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-    !running && !(stamp && stamp.countdown) ? button("▶ Starten", "start", "primary") : null,
-    !running && !(stamp && stamp.countdown) ? button("▶ Schrittweise", "start_manual") : null,
-    running ? button("⏸ Pause", "pause") : null,
-    running ? button("↷ Warten überspringen", "skip") : null,
-    running ? button("⏭ Block überspringen", "skip_step") : null,
-    running ? button("✓ Zyklus abschliessen", "finish") : null,
-    running ? button("■ Stoppen", "stop", "danger") : null,
-    !running && stamp && stamp.countdown ? button("■ Zeitplan abbrechen", "stop", "danger") : null,
+    !running && !(stamp && stamp.countdown) ? button("Starten", "start", "primary", "play") : null,
+    !running && !(stamp && stamp.countdown) ? button("Schrittweise", "start_manual", "", "play") : null,
+    running ? button("Pause", "pause", "", "pause") : null,
+    running ? button("Warten überspringen", "skip") : null,
+    running ? button("Block überspringen", "skip_step") : null,
+    running ? button("Zyklus abschliessen", "finish", "", "check") : null,
+    running ? button("Stoppen", "stop", "danger", "stop") : null,
+    !running && stamp && stamp.countdown ? button("Zeitplan abbrechen", "stop", "danger", "stop") : null,
     el("span", {class: "small"},
        running ? "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess"
                : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
@@ -1537,7 +1597,7 @@ function renderInspector() {
       class: "type-chip",
       style: "border-color:" + t.color +
              (t.key === b.type
-               ? ";background:" + t.color + ";color:#0C0F14;font-weight:600"
+               ? ";background:" + t.color + ";color:" + t.ink + ";font-weight:600"
                : ""),
       onclick: () => call("block_set_type", {type: t.key}),
     }, t.label))));
@@ -1626,7 +1686,7 @@ function buildProbe(target, b) {
     class: "btn wide",
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
     onclick: () => call("block_test"),
-  }, "▶ Block einmal testen"));
+  }, icon("play"), "Block einmal testen"));
   for (const [which, text, point] of positions) {
     footer.appendChild(el("button", {
       class: "btn wide",
@@ -1992,6 +2052,10 @@ function showQuestion(ask) {
 function closeQuestion() {
   openQuestion = null;
   $("veil").hidden = true;
+  // Die Auswahl im Kopf laedt direkt — wer die Rueckfrage abbricht, hat die
+  // Liste schon auf dem anderen Namen stehen, waehrend die alte Sequenz offen
+  // bleibt. Zurueck auf das, was wirklich offen ist.
+  if (S) renderHeader();
 }
 
 /* Die lokale Variable hiess `ask` und verdeckte damit den gleichnamigen
@@ -2090,7 +2154,6 @@ let scanNudgeTime = 0;
 const SLOT_COLOR = (() => {
   const s = getComputedStyle(document.documentElement);
   return {match: s.getPropertyValue("--slot-ok").trim(),
-          "foreign-item": s.getPropertyValue("--slot-foreign").trim(),
           empty: s.getPropertyValue("--slot-empty").trim()};
 })();
 
@@ -2203,9 +2266,10 @@ function scanCanvasTools() {
   $("scan-pin").hidden = SC.mode === "choice";
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.tool_pinned));
   $("scan-pin-long").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
-  $("scan-pin-short").textContent = SC.tool_pinned ? "Pin ✓" : "Pin";
+  $("scan-pin-short").textContent = "Pin";
   const stamp = $("scan-save-state");
-  stamp.textContent = SC.dirty ? "Wird gespeichert …" : "✓ Gespeichert";
+  stamp.replaceChildren(SC.dirty ? "Wird gespeichert …" : icon("check"),
+                        SC.dirty ? null : "Gespeichert");
   stamp.classList.toggle("open", !!SC.dirty);
 }
 
@@ -2248,6 +2312,23 @@ function scanConfigOpen() {
   return !!(SC && SC.recording_ready && SC.recording_ready[scanKind]);
 }
 
+/* Das Bild der leeren Buehne: ein gestricheltes Raster mit Zeiger, in den
+ * Panelfarben. Ein Bild sagt „hier kommt ein Screenshot hin" schneller als
+ * der Satz darunter — und die Buehne ist die groesste leere Flaeche der Seite. */
+function emptyStageArt() {
+  const art = svgEl("svg", {viewBox: "0 0 72 56", width: 72, height: 56, fill: "none",
+    stroke: "var(--dim)", "stroke-width": 1.5, "stroke-linecap": "round",
+    "stroke-linejoin": "round", "aria-hidden": "true"});
+  art.appendChild(svgEl("rect", {x: 4, y: 4, width: 64, height: 44, rx: 4,
+                                 "stroke-dasharray": "4 3"}));
+  for (const [x, y, hot] of [[14, 14, true], [30, 14], [46, 14], [14, 30], [30, 30]])
+    art.appendChild(svgEl("rect", {x: x, y: y, width: 12, height: 12, rx: 2,
+                                   stroke: hot ? "var(--accent)" : null}));
+  art.appendChild(svgEl("path", {d: "M52 34l6 14 2.5-5.5L66 40z",
+                                 fill: "var(--accent)", stroke: "var(--accent)"}));
+  return art;
+}
+
 /** Holt das Bild nur, wenn es ein neues gibt — es ist der grosse Brocken. */
 async function scanMaintainImage() {
   const image = $("scan-image");
@@ -2256,11 +2337,25 @@ async function scanMaintainImage() {
     $("scan-surface").hidden = true;
     $("scan-no-image").hidden = true;
     empty.hidden = false;
-    empty.textContent = !scanConfigOpen()
-      ? "Zuerst oben einen Scan anlegen oder auswählen. Danach kann ein Screenshot aufgenommen werden."
-      : SC.pillow
-      ? "Noch kein Bild. „Screenshot aufnehmen“ friert den Bildschirm ein — darauf werden die Slots aufgezogen."
-      : "Ohne Pillow gibt es kein Bild (pip install pillow). Slots lassen sich dann nur über die Zahlenfelder rechts setzen.";
+    // **Die Aktion steht dort, wo die Luecke ist.** Vorher nannte der Text
+    // einen Knopf, der 400 px weiter links in Schritt 1 des Assistenten
+    // liegt. Der Knopf hier ist DERSELBE Befehl (`scan_screenshot`), kein
+    // zweiter Zustand — und er steht nur da, wenn er auch druecken kann.
+    const canShoot = scanConfigOpen() && SC.pillow;
+    empty.replaceChildren(
+      el("svg", {}),                       // Platzhalter, gleich ersetzt
+      el("b", {}, !scanConfigOpen() ? "Noch kein Scan"
+                  : SC.pillow ? "Noch kein Bild" : "Kein Bild ohne Pillow"),
+      el("span", {}, !scanConfigOpen()
+        ? "Zuerst links einen Scan anlegen oder auswählen. Danach kann ein Screenshot aufgenommen werden."
+        : SC.pillow
+        ? "Ein Screenshot friert den Bildschirm ein — darauf werden die Slots aufgezogen."
+        : "pip install pillow — bis dahin lassen sich Slots nur über die Zahlenfelder rechts setzen."),
+      canShoot ? el("button", {class: "btn primary",
+                               onclick: () => callScan("scan_screenshot", {kind: scanKind})},
+                    "Screenshot aufnehmen") : null,
+      canShoot ? el("small", {}, "oder links in Schritt 1 ein Fenster wählen") : null);
+    empty.replaceChild(emptyStageArt(), empty.firstChild);
     return;
   }
   $("scan-surface").hidden = false;
@@ -2445,7 +2540,7 @@ function scanSteps() {
     const open = scanWizardStep === s.nr;
     cardEl.classList.toggle("open", open);
     cardEl.classList.toggle("done", s.done);
-    $("scan-step-" + s.nr + "-nr").textContent = s.done ? "✓" : String(s.nr);
+    $("scan-step-" + s.nr + "-nr").replaceChildren(s.done ? icon("check", 11) : String(s.nr));
     $("scan-step-" + s.nr + "-body").hidden = !open;
   }
   const scan = SC.scans.find((c) => c.name === SC.open);
@@ -2869,12 +2964,9 @@ function scanSlotState(s) {
   // ihn auszuwaehlen und zu loeschen.
   if (s.tiny) {
     parts.push(el("span", {class: "small", style: "color:var(--err)",
-      title: "Zu klein zum Erkennen — hier auswählen und löschen"}, "⚠ zu klein"));
+      title: "Zu klein zum Erkennen — hier auswählen und löschen"}, icon("warn"), " zu klein"));
   } else if (s.match && s.match.name) {
-    parts.push(el("span", {class: "small",
-      style: "color:var(" + (s.match.foreign ? "--slot-foreign" : "--slot-ok") + ")",
-      title: s.match.foreign
-        ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.match.name));
+    parts.push(el("span", {class: "small", style: "color:var(--slot-ok)"}, s.match.name));
   } else if (s.match) {
     // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
     // Rechteck im Bild, damit Liste und Bild zusammengehen.
@@ -3163,12 +3255,10 @@ function scanOverlay() {
     // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
     const selected = SC.selection.includes(s.name)
       || (SC.choice.kind === "slot" && SC.choice.name === s.name);
-    // Gruen = hier liegt ein Item, das der Scan kennt. Amber = erkannt, aber
-    // noch nicht Mitglied dieses Scans — anderer Zustand, andere Farbe, sonst
-    // sucht man spaeter, warum der Scan das Gruene nicht findet.
-    const state = (s.match
-      ? (s.match.name ? (s.match.foreign ? " foreign-item" : " match") : " empty")
-      : "");
+    // Gruen = hier liegt ein Item, das der Scan kennt; Rot = nichts erkannt,
+    // hier ist zu tun. Ein drittes („erkannt, aber nicht in diesem Scan") gibt
+    // es nicht mehr: der Scan besitzt seine Items, fremde sieht er nicht an.
+    const state = s.match ? (s.match.name ? " match" : " empty") : "";
     const off = s.active ? "" : " off";
     // Die Fuellung traegt denselben Zustand wie der Umriss: auf einem bunten
     // Spielbild ist die Flaeche das, was man sieht, der Strich schaerft nur.
@@ -3192,7 +3282,7 @@ function scanOverlay() {
       // eigenen Rechteck farblich weg.
       svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-badge",
         "font-size": 10 * px, "stroke-width": 3 * px,
-        fill: SLOT_COLOR[s.match.foreign ? "foreign-item" : "match"]}, s.match.name));
+        fill: SLOT_COLOR.match}, s.match.name));
     }
     const [kx, ky] = scanToImage(s.click_pos[0] + v[0], s.click_pos[1] + v[1]);
     const arm = 4 * px;
@@ -3378,7 +3468,7 @@ function scanBuildInspector() {
                       ? "STRG+Z — nimmt zurück: " + SC.undo.what
                         + " (" + SC.undo.depth + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
-                    onclick: () => callScan("scan_undo")}, "↶ Zurück")));
+                    onclick: () => callScan("scan_undo")}, icon("undo"), "Zurück")));
   // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
   // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
   // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
@@ -3427,7 +3517,7 @@ function scanBuildInspector() {
     filter.appendChild(el("button", {class: "btn quiet",
       title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
              + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
-      onclick: () => { scanOrderForget(); renderScans(); }}, "↕ Sortieren"));
+      onclick: () => { scanOrderForget(); renderScans(); }}, icon("sort"), "Sortieren"));
     const kind = scanList === "slots" ? "slot" : "item";
     const entries = scanList === "slots" ? SC.slots : SC.items;
     const anyOn = entries.some((e) => !!e.active);
@@ -4058,7 +4148,7 @@ function detCard(nr, title, stamp, done, content) {
       scanDetStep = open ? null : nr;
       renderScans();
     }},
-      el("span", {class: "nr"}, done && !open ? "✓" : String(nr)),
+      el("span", {class: "nr"}, done && !open ? icon("check", 11) : String(nr)),
       el("span", {class: "grow"}, el("b", {}, title), el("small", {}, stamp)),
       el("span", {class: "arrow"}, "›")),
     el("div", {class: "scan-wizard-body", hidden: !open}, content));
@@ -4087,7 +4177,7 @@ function detRenderSteps() {
   const recording = $("scan-wizard-1");
   recording.classList.toggle("open", scanDetStep === 1);
   recording.classList.toggle("done", photoPresent());
-  $("scan-step-1-nr").textContent = photoPresent() && scanDetStep !== 1 ? "✓" : "1";
+  $("scan-step-1-nr").replaceChildren(photoPresent() && scanDetStep !== 1 ? icon("check", 11) : "1");
   $("scan-step-1-body").hidden = scanDetStep !== 1;
   steps.append(recording, ...more);
 
@@ -4453,7 +4543,7 @@ function detBossRow(b, global, covered) {
     b.detection === "none"
       ? el("span", {class: "small", style: "color:var(--accent)",
                     title: "Weder Vorlage noch Marker — nur OCR/LLM können ihn finden"},
-           "⚠ keine Vorlage")
+           icon("warn"), " keine Vorlage")
       : (test
           ? el("span", {class: "small", style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
                test.ok ? "erkannt" : "nein")
@@ -4478,7 +4568,7 @@ function detListIcons(target) {
                                style: c.marker.length ? "background:" + c.marker[0] : ""}),
       el("span", {class: "name"}, c.name),
       c.detection === "none"
-        ? el("span", {class: "small", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
+        ? el("span", {class: "small", style: "color:var(--accent)"}, icon("warn"), " ohne Erkennung")
         : (test ? el("span", {class: "small",
                               style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
                      test.ok ? "erkannt" : "nein")
@@ -4511,7 +4601,11 @@ function detRenderLibrary() {
   target.hidden = !show;
   $("scan-surface").hidden = show || !SC.photo;
   $("scan-empty").hidden = show || !!SC.photo;
-  $("scan-no-image").hidden = show || photoPresent();
+  // Der Hinweis „kein Bild gemerkt" gilt nur fuer eine Ersatzflaeche (Slots
+  // ohne Bild) — ohne jede Flaeche steht die leere Buehne da, und der Hinweis
+  // darueber sagte dasselbe ein zweites Mal, nur falsch („die Slots stehen an
+  // ihrer Stelle", wo es keine gibt).
+  $("scan-no-image").hidden = show || !SC.photo || photoPresent();
   if (!show) return;
   target.replaceChildren();
   if (!SC.global_bosses.length) {
@@ -5754,7 +5848,8 @@ function wzBuildRecording() {
   const action = el("button", {
     class: "btn " + (wzRecordingStarted ? "danger" : "primary") + " wz-recording-button",
     onclick: wzRecordingStarted ? wzStopRecording : wzStartRecording,
-  }, wzRecordingStarted ? "■ Aufnahme stoppen" : "● Aufnahme starten");
+  }, icon(wzRecordingStarted ? "stop" : "record"),
+     wzRecordingStarted ? "Aufnahme stoppen" : "Aufnahme starten");
   stamp.appendChild(action);
   out.push(stamp);
 
@@ -6189,10 +6284,10 @@ function wzKeyTable(keys = WZ_KEYS) {
  * Grund fuer `reclick_history`: beide aendern nichts, aber nur einer heisst
  * „ich habe hingesehen". */
 const WZ_RECLICK_KIND = {
-  fits: ["✓", "rc-fits", "bestätigt — bleibt, wo er ist"],
+  fits: ["check", "rc-fits", "bestätigt — bleibt, wo er ist"],
   placed: ["→", "rc-set", "neu gesetzt"],
   skipped: ["↷", "rc-skip", "übersprungen"],
-  missing: ["✕", "rc-missing", "Punkt gibt es nicht mehr"],
+  missing: ["cross", "rc-missing", "Punkt gibt es nicht mehr"],
 };
 
 /** Der Live-Stand der Runde: wo sie steht, was dran ist, was war. */
@@ -6256,7 +6351,7 @@ function wzFillReclickOutput(target) {
     for (const v of history) {
       const [glyph, cls, what] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
       rows.appendChild(el("div", {class: "rc-row"},
-        el("span", {class: "rc-kind " + cls, title: what}, glyph),
+        el("span", {class: "rc-kind " + cls, title: what}, ICONS[glyph] ? icon(glyph) : glyph),
         el("span", {class: "num"}, "#" + v.id),
         el("span", {class: "rc-name"}, v.name || ""),
         el("span", {class: "rc-target"}, v.old && v.new
@@ -6316,7 +6411,7 @@ function wzBuildReclick() {
 
   // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
   out.push(el("div", {class: "wz-rule"},
-    el("span", {}, "⚠"),
+    el("span", {}, icon("warn", 14)),
     el("span", {}, el("b", {}, "Nichts wird geschrieben, bis du übernimmst. "),
       "Fenster zu, Programm aus oder „Verwerfen“ = die Runde ist weg und "
       + "sequence.json bleibt, wie sie war. Geändert wird ohnehin nur die "
@@ -6734,7 +6829,7 @@ function cfgDefault(key, m) {
                        title: "auf den Standardwert zurücksetzen"
                               + (short ? ": " + raw : ""),
                        onclick: () => cfgSet(key, std)},
-            "↺ Standard" + (short ? "" : ": " + raw));
+            icon("reset"), "Standard" + (short ? "" : ": " + raw));
 }
 
 function renderCfgRight() {
@@ -6845,13 +6940,18 @@ function wire() {
   for (const t of document.querySelectorAll(".tab"))
     t.addEventListener("click", () => setView(t.dataset.view));
 
-  $("btn-load").addEventListener("click",
-    () => switchSequence("load", {name: $("seq-select").value}));
-  $("seq-select").addEventListener("dblclick",
+  // Die Auswahl laedt — es gibt keinen Laden-Knopf mehr, der nur bestaetigt,
+  // was die Auswahl schon gesagt hat. Die Rueckfrage bei ungespeicherten
+  // Aenderungen kommt wie bisher aus der Bruecke (`S.question`).
+  $("seq-select").addEventListener("change",
     () => switchSequence("load", {name: $("seq-select").value}));
   $("btn-new").addEventListener("click", () => switchSequence("new"));
   $("btn-save").addEventListener("click", saveSequence);
+  $("btn-save").prepend(icon("save"));
+  $("btn-run").prepend(icon("play"));
   $("btn-recording").addEventListener("click", () => wzOpen("recording"));
+  $("btn-recording").prepend(icon("record"));
+  $("scan-window-capture").prepend(icon("refresh"));
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-run").addEventListener("click", () => sendRun(runWasRunning ? "stop" : "start"));

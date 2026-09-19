@@ -329,7 +329,14 @@ _cards = _br_pf.snapshot()["phases"][1]["blocks"]
 check("ein Klick-Block traegt die Farbe seines Punkts",
       _cards[0]["point_color"] == "#20876F")
 check("und die Stelle steht in seiner ersten Zeile",
-      _cards[0]["rows"][0].startswith("#1 "))
+      _cards[0]["rows"][0]["text"].startswith("#1 "))
+# **Jede Zeile traegt ein Etikett.** Bei fuenfzig Karten untereinander findet
+# das Auge „WARTE" schneller als „1.5s" - und ohne Etikett musste man das
+# Vorzeichen als Wartezeit erkennen.
+check("jede Zeile hat ein Etikett und einen Wert",
+      all(set(z) == {"label", "text"} and z["label"] for c in _cards for z in c["rows"]))
+check("die erste Zeile eines Klicks heisst STELLE, die Taste TASTE",
+      _cards[0]["rows"][0]["label"] == "STELLE" and _cards[2]["rows"][0]["label"] == "TASTE")
 check("ohne gemessene Farbe kein Feldchen", _cards[1]["point_color"] is None)
 check("ein Block ohne Punkt hat keins", _cards[2]["point_color"] is None)
 check("FARBE+KLICK traegt beides: Punktfarbe und Bedingung",
@@ -340,6 +347,47 @@ check("die Ansicht haengt das Feldchen an die erste Zeile",
       "block.point_color" in _web_pf and "card-row with-color" in _web_pf)
 check("und zeichnet es wie das an der Bedingung",
       ".card-row .swatch,\n.card-color .swatch{" in _web_pf)
+
+# ----------------------------------------------------------------------
+section("Die Schrift auf der Typfarbe ist lesbar")
+
+# Die Kopfzeile traegt die Typfarbe ueber die volle Breite, und die Schrift
+# darauf war fest dunkel (#0C0F14) - auf Boss-Watcher (140, 40, 45) sind das
+# 2,2:1, auf Boss-Scan 3,9, auf Klick/Warten/Screenshot rund 4,2. Die Farbe
+# folgt deshalb der Leuchtdichte der Flaeche, und die Bruecke liefert sie mit.
+from autoclicker.editors.sequence_studio.model import (
+    BLOCK_COLORS as _BC_INK, INK_DARK as _DARK, INK_LIGHT as _LIGHT, ink_color as _ink,
+)
+
+
+def _lum(rgb):
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast(a, b):
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+_ink_lum = {_DARK: _lum((12, 15, 20)), _LIGHT: _lum((255, 255, 255))}
+_weak = {name: round(_contrast(_lum(rgb), _ink_lum[_ink(rgb)]), 2)
+         for name, rgb in _BC_INK.items()
+         if _contrast(_lum(rgb), _ink_lum[_ink(rgb)]) < 4.5}
+check(f"auf jeder Typfarbe erreicht die Schrift 4,5:1 ({_weak or 'alle'})", not _weak)
+check("dunkle Flaechen bekommen helle Schrift, helle dunkle",
+      _ink((140, 40, 45)) == _LIGHT and _ink((215, 185, 60)) == _DARK)
+check("Unbrauchbares ergibt die Grundfarbe statt eines Fehlers",
+      _ink(None) == _DARK and _ink("x") == _DARK)
+check("jede Karte und jede Typ-Kachel bringt ihre Schriftfarbe mit",
+      all(c["ink"] in (_DARK, _LIGHT) for c in _cards)
+      and all(t["ink"] in (_DARK, _LIGHT) for t in _br_pf.snapshot()["types"]))
+check("und die Ansicht benutzt sie statt einer festen Farbe",
+      '";color:" + block.ink' in _web_pf and '";color:" + t.ink' in _web_pf
+      and "#0C0F14" not in _web_pf.split(".card-type{")[1].split(".card-body{")[0])
 
 # ----------------------------------------------------------------------
 section("Ein geteilter Punkt sagt, dass er geteilt ist")

@@ -46,6 +46,7 @@ from .model import (
     LANE_LOOP,
     Lane,
     PalettePoint,
+    ink_color,
 )
 
 
@@ -79,7 +80,8 @@ class BridgeViewMixin:
             "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_names": self._scan_names(),
             "types": [{"key": t, "label": BLOCK_LABELS[t],
-                       "color": _hex(BLOCK_COLORS[t])} for t in TYPE_ORDER],
+                       "color": _hex(BLOCK_COLORS[t]),
+                       "ink": ink_color(BLOCK_COLORS[t])} for t in TYPE_ORDER],
             "scan_modes": SCAN_MODES,
             "else_actions": ELSE_ACTIONS,
             "without_else": self._without_else(),
@@ -200,6 +202,9 @@ class BridgeViewMixin:
             "type": type_value,
             "label": BLOCK_LABELS[type_value],
             "color": _hex(BLOCK_COLORS[type_value]),
+            # Die Schriftfarbe der Kopfzeile folgt der Typfarbe — fest dunkel
+            # fiel sie auf Boss-Watcher (2,2:1) und vier weiteren Typen durch.
+            "ink": ink_color(BLOCK_COLORS[type_value]),
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
             "title": step.name or "",
@@ -227,35 +232,42 @@ class BridgeViewMixin:
         }
         return block
 
-    def _lines(self, step: SequenceStep, type_value: str) -> list[str]:
-        """Ein bis drei knappe Zeilen im Kartenkörper.
+    def _lines(self, step: SequenceStep, type_value: str) -> list[dict]:
+        """Ein bis drei knappe Zeilen im Kartenkörper, je `{label, text}`.
 
         Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
         zweiten Block ist Rauschen, und in der Liste zählt, dass 50 Karten
         untereinander lesbar bleiben.
 
+        **Jede Zeile trägt ein Etikett** (STELLE, WARTE, …). Bei fünfzig Karten
+        untereinander findet das Auge das Etikett schneller als den Wert — und
+        „+1.5s" ohne Etikett musste man erst als Wartezeit erkennen.
+
         Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
         hängt die Ansicht das Farbfeldchen des Punkts (`point_color`).
         """
+        def row(label: str, text: str) -> dict:
+            return {"label": label, "text": text}
+
         if type_value == BLOCK_SCREENSHOT:
             r = step.screenshot_region
-            return [f"Bereich {r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild"]
+            return [row("BEREICH", f"{r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild")]
         if type_value in SCAN_FIELD:
             name = (getattr(step, SCAN_FIELD[type_value]) or "").strip() or "(kein Name)"
             mode = f" · {step.item_scan_mode}" if type_value == BLOCK_ITEM_SCAN else ""
-            lines = [f"{name}{mode}"]
+            lines = [row("SCAN", f"{name}{mode}")]
         elif type_value == BLOCK_KEY:
-            lines = [f"Taste „{step.key_press}“"]
+            lines = [row("TASTE", f"„{step.key_press}“")]
         elif type_value == BLOCK_WAIT:
             lines = []
         else:
-            lines = [_position(step)]
+            lines = [row("STELLE", _position(step))]
         if step.scroll:
             # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
             # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
-            lines.append(f"Rad {step.scroll:+d}")
+            lines.append(row("RAD", f"{step.scroll:+d}"))
         if step.delay_before or step.delay_max or not lines:
-            lines.append(_wait_text(step))
+            lines.append(row("WARTE", _wait_text(step)))
         return lines
 
     def _trigger_text(self, wc: WaitCondition) -> str:

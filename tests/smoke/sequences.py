@@ -181,11 +181,11 @@ def run():
                        "share", "tools", "settings"):
             f.tab(tab)
             visible = f.page.eval_on_selector_all(
-                "#seq-select, #btn-load, #btn-new",
+                "#seq-select, #btn-new",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
-            expect(visible == 3,
+            expect(visible == 2,
                    f"im Reiter '{tab}' fehlt die Sequenz-Auswahl "
-                   f"({visible}/3 sichtbar)")
+                   f"({visible}/2 sichtbar)")
         # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
         f.tab("scans")
@@ -201,8 +201,9 @@ def run():
         f.click_text("#wz-left button", "Punkte nachklicken")
         expect("Alpha" in f.text("#wz-middle"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
+        # Die Auswahl laedt selbst - einen Laden-Knopf gibt es nicht mehr.
         f.page.select_option("#seq-select", "Beta")
-        f.click("#btn-load")
+        f.settle()
         expect(f.page.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
         expect("Beta" in f.text("#wz-middle"),

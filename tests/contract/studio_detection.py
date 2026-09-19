@@ -394,11 +394,10 @@ section("Slot-Farben, ELSE und die Werkzeugleiste")
 
 # **Amber gehoert der Auswahl.** „Nichts erkannt" stand auf #FF9500 und war
 # damit kaum vom Akzent #F59E0B zu unterscheiden — „hier ist zu tun" und
-# „gewaehlt" sahen gleich aus. Und --slot-ok/--slot-foreign lagen als
-# #00FF9C/#2DD4BF so dicht beieinander, dass man sie im Bild nicht trennen
-# konnte. Die drei Familien stehen hier fest, damit sie nicht zurueckwandern.
-_expected_colors = {"--slot-ok": "#00E58A", "--slot-foreign": "#22D3EE",
-                "--slot-empty": "#F43F5E"}
+# „gewaehlt" sahen gleich aus. Die beiden Familien stehen hier fest, damit sie
+# nicht zurueckwandern. Ein drittes Paar (--slot-foreign, „erkannt, aber nicht
+# in diesem Scan") hatte keinen Ausloeser mehr und ist ersatzlos geloescht.
+_expected_colors = {"--slot-ok": "#00E58A", "--slot-empty": "#F43F5E"}
 for _var, _value in _expected_colors.items():
     _matches = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
     check(f"{_var} ist {_value}",
@@ -408,6 +407,21 @@ for _var, _value in _expected_colors.items():
           _f is not None and _f.group(1)[:7].upper() == _value)
 check("der Akzent gehoert weiterhin der Auswahl — keine Slot-Farbe liegt darauf",
       "#F59E0B" not in _expected_colors.values())
+check("--slot-foreign ist samt Klasse und SLOT_COLOR-Eintrag weg",
+      "var(--slot-foreign" not in _web and "--slot-foreign:" not in _web
+      and "foreign-item" not in _web)
+
+# **Eine Farbe, eine Bedeutung.** --init war Byte fuer Byte dasselbe wie --ok:
+# im Live-Run stand die INIT-Kachel damit neben einem gruenen ok-Zaehler und
+# sah aus wie ein Zustand. Die drei Phasenfarben muessen sich voneinander UND
+# von den drei Zustandsfarben unterscheiden.
+_roles = {k: re.search(re.escape(k) + r":\s*(#[0-9A-Fa-f]{6})", _web).group(1).upper()
+          for k in ("--ok", "--accent", "--err", "--init", "--loop", "--end")}
+check("keine Phasenfarbe ist eine Zustandsfarbe",
+      not ({_roles["--init"], _roles["--loop"], _roles["--end"]}
+           & {_roles["--ok"], _roles["--accent"], _roles["--err"]}))
+check("und die Phasenfarben sind drei verschiedene",
+      len({_roles["--init"], _roles["--loop"], _roles["--end"]}) == 3)
 
 # **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** Zwei Tabellen fuer
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen

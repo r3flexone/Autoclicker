@@ -1725,16 +1725,14 @@ Sechs Regeln, an denen der Reiter hängt:
   hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
 - **Die Slot-Zustände liegen auf einem SPIELBILD, nicht auf dem Panel.** Deshalb
   haben sie eine eigene, grellere Farbfamilie (`--slot-ok` `#00E58A` =
-  erkannt und im Scan, `--slot-foreign` `#22D3EE` = erkannt, aber nicht in diesem
-  Scan, `--slot-empty` `#F43F5E` = nichts erkannt, hier ist zu tun) und
-  **jeweils eine Füllung** dazu (Suffix `-f`).
+  erkannt und im Scan, `--slot-empty` `#F43F5E` = nichts erkannt, hier ist zu
+  tun) und **jeweils eine Füllung** dazu (Suffix `-f`).
 
-  Die drei Werte sind gemessen, nicht geraten, und stehen in einem Test fest.
+  Die Werte sind gemessen, nicht geraten, und stehen in einem Test fest.
   `--slot-empty` war `#FF9500` und damit fast der Akzent `#F59E0B`: „zu tun" und
   „gewählt" sahen gleich aus — **Amber gehört der Auswahl**, sonst markiert die
-  Markierung nichts. `--slot-ok`/`--slot-foreign` lagen als `#00FF9C`/`#2DD4BF` zu
-  dicht beieinander, um sie im Bild zu trennen. Die Klassenlogik
-  (`.scan-slot.match` / `.foreign-item` / `.empty`, `SLOT_COLOR` in `app.js`)
+  Markierung nichts. Die Klassenlogik
+  (`.scan-slot.match` / `.empty`, `SLOT_COLOR` in `app.js`)
   blieb dabei unverändert — nur die Variablen. Ein 1,5-px-Umriss in `var(--dim)` verschwindet
   zwischen bunten Item-Symbolen restlos — genau das war „nichts erkannt" vorher,
   also ausgerechnet der Zustand, den man sucht. Die Fläche trägt die Aussage,
@@ -1745,14 +1743,14 @@ Sechs Regeln, an denen der Reiter hängt:
   wiederholen. Drei Tests halten das zusammen: jeder Zustand braucht Umriss
   *und* Füllung, jede benutzte `--slot-*`-Variable muss definiert sein, und
   `SLOT_COLOR` muss genau die Zustände abdecken.
-- **Erkannt ist nicht dasselbe wie im Scan** (`match.foreign`, türkis statt
-  grün) — ein Zustand aus der Zeit des globalen Bestands: bei einem Scan ohne
-  Items prüfte `_candidates()` alle Items aller Spiele, und ein Treffer aus dem
-  *anderen* Spiel durfte nicht grün werden, denn dieser Scan sah das Item gar
-  nicht an. Seit der Scan seine Items selbst besitzt, gibt es nichts mehr, was
-  erkannt und trotzdem fremd wäre: `_detect_run()` meldet `foreign` immer als
-  `False`. Farbe (`--slot-foreign`) und Klasse (`.foreign-item`) stehen noch in
-  Stylesheet und `SLOT_COLOR`, haben aber keinen Auslöser mehr.
+- **Es gab einmal einen dritten Zustand, „erkannt, aber nicht in diesem
+  Scan"** (`match.foreign`, türkis) — aus der Zeit des globalen Bestands: bei
+  einem Scan ohne Items prüfte `_candidates()` alle Items aller Spiele, und ein
+  Treffer aus dem *anderen* Spiel durfte nicht grün werden. Seit der Scan seine
+  Items selbst besitzt, gibt es nichts, was erkannt und trotzdem fremd wäre;
+  `_detect_run()` meldete `foreign` deshalb immer als `False`, und Farbe,
+  Klasse, `SLOT_COLOR`-Eintrag und das Feld selbst sind **ersatzlos gelöscht**.
+  Ein Test hält fest, dass nichts davon zurückkommt.
 
 - **Scan, Slot und Item sind Masken — dieselbe Bauform** (`buildCard()`, dazu
   `scanScanCard` / `scanSlotCard` / `scanItemCard`). Sie unterscheiden sich
@@ -3224,9 +3222,60 @@ Regeln beim Erweitern:
   vorher aus wie der eine, der gerade dran ist; eine Markierung, die immer an ist,
   markiert nichts. Die Phasenfarben (`--init`/`--loop`/`--end`) gelten überall
   gleich: Board, Live-Run-Kacheln, Phasenbalken der Übersicht.
+
+  **Und keine Phasenfarbe ist eine Zustandsfarbe.** `--init` war Byte für Byte
+  dasselbe wie `--ok` (`#3ED07A`): im Live-Run stand die INIT-Kachel damit
+  neben einem grünen ok-Zähler, und Grün hatte drei Bedeutungen (in Ordnung ·
+  INIT · erkannter Slot). INIT ist jetzt Pink (`#F472B6`) — die einzige Hue,
+  die sonst nirgends im Studio vorkommt; die Phasen sind damit eine kühle
+  Dreiergruppe (Pink · Violett · Himmelblau). Ein Test hält die drei
+  Phasenfarben gegen die drei Zustandsfarben.
+- **Die Schrift auf der Typfarbe folgt der Typfarbe** (`ink_color()` in
+  `model.py`, Feld `ink` an Karte, Typ-Kachel und Laufstatus). Die Kopfzeile
+  einer Karte trägt die Typfarbe über die volle Breite, und die Schrift darauf
+  war fest dunkel — auf Boss-Watcher (140, 40, 45) sind das 2,2:1, auf
+  Boss-Scan 3,9, auf Klick/Warten/Screenshot rund 4,2. Die Schwelle liegt bei
+  einer relativen Leuchtdichte von 0,2: darunter helle Schrift, darüber dunkle;
+  Grau und Blau sind dafür ein paar Stufen dunkler geworden, weil beide
+  Schriftfarben auf dem alten Wert bei 4,4 lagen. Ein Test rechnet den Kontrast
+  für jede der neun Typfarben nach — Mindestmass 4,5:1. Der Typ sitzt dabei als
+  umrandete **Marke** in der Kopfzeile, nicht als Wort im Fluss.
+- **Jede Kartenzeile trägt ein Etikett** (`_lines()` liefert `{label, text}`:
+  STELLE, WARTE, TASTE, SCAN, RAD, BEREICH, FARBE, ELSE), und der Kartenkörper
+  ist ein zweispaltiges Raster, damit die Etiketten bündig stehen. Bei fünfzig
+  Karten untereinander findet das Auge „WARTE" schneller als „1.5s" — und ohne
+  Etikett musste man das Vorzeichen als Wartezeit erkennen (das `+` ist
+  deshalb weg).
+- **Symbole sind Inline-SVG** (`ICONS` / `icon()` in `app.js`), keine
+  Unicode-Glyphen: „▶", „●", „↶", „↻" kommen aus der Systemschrift und stehen
+  je nach Fenster verschieden gross und hoch — das ⓘ war aus demselben Grund
+  längst ein SVG. Sie erben `currentColor`; `.btn` ist dafür `inline-flex`.
+  Wer ein neues braucht, trägt es in `ICONS` ein, nicht als Zeichen in den
+  Text.
+- **Die Reiter stehen in drei Gruppen** (Bauen · Beobachten · Verwalten, durch
+  `.tab-gap` getrennt), der Live-Run-Reiter trägt die Lampe des laufenden Laufs
+  (`#tab-run-lamp`). Die **Sequenz ist EIN Bedienelement** (`.seq-chip`:
+  Kürzel, Auswahl, Ungespeichert-Punkt, „Neu"); einen Laden-Knopf gibt es
+  nicht mehr — die Auswahl lädt, mit derselben Rückfrage wie vorher, und
+  `closeQuestion()` stellt sie beim Abbrechen auf das zurück, was wirklich
+  offen ist. Starten ist grün umrandet (`.btn.launch`, **nicht** `.run` — das
+  ist die Live-Run-Ansicht, und der Knopf erbte deren Polster). Der Kopf muss
+  bei 1300 px in eine Zeile passen; umbrechen darf er, nur nicht bei jeder
+  gewöhnlichen Fensterbreite.
+- **Der Tastaturfokus ist sichtbar — überall** (`:focus-visible`-Ring in
+  Akzentfarbe auf Knöpfen, Kacheln, Feldern). Eingabefelder wechselten nur die
+  Rahmenfarbe, Knöpfe gar nichts: wer mit TAB durch den Inspektor ging, sah
+  nicht, wo er steht.
+- **Die leere Bühne trägt ihre Aktion selbst** (`emptyStageArt()` plus ein
+  Knopf, der denselben Befehl schickt wie Schritt 1 des Assistenten). Vorher
+  nannte der Text einen Knopf, der 400 px weiter links lag.
 - **Der Status steht unten, nicht im Kopf.** Oben nahm er den Platz weg, den die
   Bedienelemente brauchen; unten hat er die volle Breite und liegt da, wo sonst
-  nichts passiert. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
+  nichts passiert. **Die Art steht als Kachel VOR dem Text** (`#status-kind`,
+  `STATUS_KIND` in `app.js`: Symbol + Wort für ok/warn/err, nichts für info),
+  der Text selbst in Grundfarbe und mit zwei Zeilen Platz statt „…" — die eine
+  Meldung, die man lesen MUSS, ist die lange. `#status` bleibt reiner Text,
+  damit `f.status()` in den Rauchtests weiter nur die Meldung liest. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
   lange Meldung im Kopf war immer abgeschnitten.
 - **Zustandsklassen bekommen ein Präfix** (`kind-ok`, `kind-warn`, `kind-info`).
   Ohne das hiess die Statusklasse für „Hinweis" schlicht `info` — und `.info` ist
