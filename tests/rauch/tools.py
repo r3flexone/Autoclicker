@@ -62,7 +62,7 @@ def run():
             error.append(text)
 
     with Fenster(b) as f:
-        f.reiter("werkzeuge")
+        f.reiter("tools")
         # **Gegen die Tabelle in der Seite gemessen, nicht gegen eine getippte
         # Zahl.** Hier stand `== 4`, als es vier Werkzeuge gab; mit dem fuenften
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas

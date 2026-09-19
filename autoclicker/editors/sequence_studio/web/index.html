@@ -32,12 +32,12 @@
     <div class="tabs">
       <button class="tab on" data-view="editor">Editor</button>
       <button class="tab" data-view="sequences">Sequenzen</button>
-      <button class="tab" data-view="lauf">Live-Run</button>
+      <button class="tab" data-view="run">Live-Run</button>
       <button class="tab" data-view="scans">Scans</button>
-      <button class="tab" data-view="teilen">Teilen</button>
-      <button class="tab" data-view="werkzeuge">Werkzeuge</button>
-      <button class="tab" data-view="bericht">Bericht</button>
-      <button class="tab" data-view="einstellungen">Einstellungen</button>
+      <button class="tab" data-view="share">Teilen</button>
+      <button class="tab" data-view="tools">Werkzeuge</button>
+      <button class="tab" data-view="report">Bericht</button>
+      <button class="tab" data-view="settings">Einstellungen</button>
     </div>
     <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
          Auswahl ueberall, ohne Ausnahme. Sie war frueher mit dem Rest
@@ -136,7 +136,7 @@
        behaelt so seinen DOM (und mit ihm Scrollstand und Tippfokus), waehrend
        man drueben nachsieht, was gerade laeuft. -->
   <div class="cards" id="view-sequences" hidden></div>
-  <div class="lauf" id="view-run" hidden></div>
+  <div class="run" id="view-run" hidden></div>
 
   <!-- Scans: links die Werkzeuge und die Listen, in der Mitte der eingefrorene
        Screenshot als Arbeitsflaeche, rechts die Eigenschaften. Ein Slot wird
@@ -335,7 +335,7 @@
   <!-- Teilen: links was ins Bündel kommt, in der Mitte die vorhandenen Bündel,
        rechts das Einlesen. Beide Seiten arbeiten auf dem GESPEICHERTEN Stand —
        was im Fenster offen ist, liegt nicht auf Platte. -->
-  <div class="teilen" id="view-share" hidden>
+  <div class="share" id="view-share" hidden>
     <aside class="page left" id="share-export"></aside>
     <main class="cfg-middle" id="share-middle"></main>
     <aside class="page right" id="share-import"></aside>

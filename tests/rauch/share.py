@@ -42,7 +42,7 @@ def run():
     pruefe(z["status"]["kind"] == "ok", f"Export: {z['status']}")
 
     with Fenster(b) as f:
-        f.reiter("teilen")
+        f.reiter("share")
         # **Gegen die Tabelle gemessen, nicht gegen eine getippte Zahl.** Hier
         # stand einmal `>= 6` — aus der Zeit, als Punkte, Slots, Items und die
         # drei Scan-Arten je eine eigene Kachel hatten. Seit sie im
@@ -53,7 +53,7 @@ def run():
         pruefe(haken == len(PARTS),
                f"{len(PARTS)} Haken erwartet (je einer pro TEILE), da: {haken}")
         pruefe("probe.zip" in f.text("#share-middle"), "das Buendel fehlt in der Liste")
-        f.image("teilen")
+        f.image("share")
         f.click_value("#share-middle button")
         pruefe("gelesen" in f.status(), f"Einlesen: {f.status()!r}")
         pruefe(bool(f.text("#share-import").strip()), "rechts steht nichts zum Import")

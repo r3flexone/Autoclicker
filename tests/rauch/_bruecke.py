@@ -137,7 +137,7 @@ def sandkasten(prefix: str) -> str:
 class Fenster:
     """Die Seite im Browser, mit der echten Bruecke dahinter.
 
-    Als Kontextmanager: `with Fenster(bruecke) as f: f.reiter("werkzeuge")`.
+    Als Kontextmanager: `with Fenster(bruecke) as f: f.reiter("tools")`.
     Sammelt nebenbei jeden Seitenfehler ein — ein `pageerror` ist im Fenster ein
     Reiter, der leer bleibt, und genau danach wird hier gesucht.
     """

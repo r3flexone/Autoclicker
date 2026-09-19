@@ -72,7 +72,7 @@ def run():
             error.append(text)
 
     with Fenster(b) as f:
-        f.reiter("bericht")
+        f.reiter("report")
 
         left = f.text("#rep-left")
         pruefe("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
@@ -97,7 +97,7 @@ def run():
         pruefe("200" in right, f"die Goldsumme fehlt: {right[:200]!r}")
         pruefe("Obergrenze" in right,
                "der Vorbehalt fehlt — die Zahl waere sonst eine Behauptung")
-        f.image("bericht")
+        f.image("report")
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist
         # die neueste Sitzung: eine Klick, ein Timeout weniger.

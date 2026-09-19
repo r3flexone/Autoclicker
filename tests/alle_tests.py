@@ -55,8 +55,8 @@ for _strom in (sys.stdout, sys.stderr):
 
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
-RAUCHTESTS = ("items", "erkennung", "sequences", "teilen", "werkzeuge",
-              "bericht", "sequenzen_loeschen", "catalog")
+RAUCHTESTS = ("items", "detection", "sequences", "share", "tools",
+              "report", "sequence_delete", "catalog")
 
 SCHICHTEN = ("vertrag", "wurzel", "rauch")
 

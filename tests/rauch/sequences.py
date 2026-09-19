@@ -177,8 +177,8 @@ def run():
         # mit dem Speichern-Knopf zusammen ausgeblendet — und damit musste man
         # fuer einen Wechsel erst in den Editor zurueck, ausgerechnet aus den
         # Reitern, die am staerksten an der Sequenz haengen.
-        for reiter in ("editor", "sequences", "lauf", "scans",
-                       "teilen", "werkzeuge", "einstellungen"):
+        for reiter in ("editor", "sequences", "run", "scans",
+                       "share", "tools", "settings"):
             f.reiter(reiter)
             sichtbar = f.seite.eval_on_selector_all(
                 "#seq-select, #btn-load, #btn-new",
@@ -197,7 +197,7 @@ def run():
         # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den
         # `render()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
-        f.reiter("werkzeuge")
+        f.reiter("tools")
         f.klick_text("#wz-left button", "Punkte nachklicken")
         pruefe("Alpha" in f.text("#wz-middle"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")

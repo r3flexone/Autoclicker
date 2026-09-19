@@ -83,7 +83,7 @@ class BridgeReportMixin:
             # Dateireihenfolge, das ändert an den Summen nichts.
             "sessions": list(reversed(total["sessions"])),
             "skipped_files": max(0, len(self._report_all_files(folder)) - len(all_of)),
-            "bericht": self._report_brief(report),
+            "brief": self._report_brief(report),
             "yield_value": self._yield(report),
         }
 
@@ -132,7 +132,7 @@ class BridgeReportMixin:
             "selected": "",
             "sessions": [],
             "skipped_files": 0,
-            "bericht": None,
+            "brief": None,
             "yield_value": None,
         }
 

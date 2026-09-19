@@ -570,30 +570,30 @@ function setView(neu) {
     t.classList.toggle("on", t.dataset.view === neu);
   $("editor-body").hidden = neu !== "editor";
   $("view-sequences").hidden = neu !== "sequences";
-  $("view-run").hidden = neu !== "lauf";
-  $("view-settings").hidden = neu !== "einstellungen";
+  $("view-run").hidden = neu !== "run";
+  $("view-settings").hidden = neu !== "settings";
   $("view-scans").hidden = neu !== "scans";
-  $("view-share").hidden = neu !== "teilen";
-  $("view-tools").hidden = neu !== "werkzeuge";
-  $("view-report").hidden = neu !== "bericht";
+  $("view-share").hidden = neu !== "share";
+  $("view-tools").hidden = neu !== "tools";
+  $("view-report").hidden = neu !== "report";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequenz]"))
-    n.hidden = ["einstellungen", "scans", "teilen", "werkzeuge",
-                "bericht"].includes(neu);
+    n.hidden = ["settings", "scans", "share", "tools",
+                "report"].includes(neu);
   if (neu === "scans") renderScans(!SC);
   if (neu === "sequences") renderSequenceList();
-  if (neu === "teilen") renderShare();
+  if (neu === "share") renderShare();
   // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
   // den es nach einem Speichern nicht mehr gibt.
-  if (neu === "werkzeuge") renderTools(true);
+  if (neu === "tools") renderTools(true);
   // Bei jedem Oeffnen frisch: waehrend das Fenster offensteht, schreibt ein
   // Lauf im Hauptprozess weiter in dieselbe CSV.
-  if (neu === "bericht") renderReport();
+  if (neu === "report") renderReport();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
-  if (neu === "einstellungen") renderSettings(true);
-  setRunPolling(neu === "lauf");
+  if (neu === "settings") renderSettings(true);
+  setRunPolling(neu === "run");
 }
 
 /* ------------------------------------------------------------------ Zeichnen */
@@ -1106,7 +1106,7 @@ function setRunPolling(on) {
  * Nur auf der Flanke (nichts → laeuft), nicht solange etwas laeuft: sonst kaeme
  * man waehrend eines Durchgangs nicht mehr in den Editor zurueck. */
 function runEdge(active) {
-  if (active && !runWasRunning && view !== "lauf") setView("lauf");
+  if (active && !runWasRunning && view !== "run") setView("run");
   runWasRunning = active;
   const button = $("btn-run");
   button.textContent = active ? "■ Stoppen" : "▶ Starten";
@@ -1158,7 +1158,7 @@ function runFollowUp() {
 
 function edgePulse() {
   setInterval(async () => {
-    if (view === "lauf") return;      // dort fragt schon der schnelle Takt
+    if (view === "run") return;      // dort fragt schon der schnelle Takt
     const z = await ask("run_status");
     runEdge(!!(z && z.active));
   }, 2000);
@@ -1316,7 +1316,7 @@ function phaseStrip(z, finished) {
 async function renderRun() {
   const z = await ask("run_status");
   runEdge(!!(z && z.active));   // auch hier mitfuehren, sonst kippt die Flanke
-  if (view !== "lauf") return;
+  if (view !== "run") return;
   const target = $("view-run");
   target.replaceChildren();
   if (!z || !z.active) {
@@ -4750,7 +4750,7 @@ let shareMerge = true;
 
 async function renderShare(fresh) {
   const answer = await ask("share_data");
-  if (!answer || view !== "teilen") return;
+  if (!answer || view !== "share") return;
   T = answer;
   for (const t of T.parts) {
     if (shareExport[t.key] === undefined) shareExport[t.key] = true;
@@ -4911,7 +4911,7 @@ let B = null;
 
 async function renderReport(data_reload) {
   const answer = await ask("report_data", data_reload === undefined ? null : data_reload);
-  if (!answer || view !== "bericht") return;
+  if (!answer || view !== "report") return;
   B = answer;
   const memo = rememberFocus();
   reportRenderLeft();
@@ -5027,7 +5027,7 @@ function repSession(s) {
 function reportRenderMiddle() {
   const target = $("rep-middle");
   target.replaceChildren();
-  const b = B.bericht;
+  const b = B.brief;
   if (!b || !b.sessions) {
     target.appendChild(el("p", {class: "hint"},
       "Nichts auszuwerten. Der Bericht liest die CSV-Dateien, die ein Lauf mit "
@@ -5507,7 +5507,7 @@ function wzScope(key) {
 
 async function renderTools(fresh) {
   const answer = await ask("tool_data");
-  if (!answer || view !== "werkzeuge") return;
+  if (!answer || view !== "tools") return;
   W = answer;
   for (const u of W.scope)
     if (wzScopeState[u.key] === undefined) wzScopeState[u.key] = u.default_value;
@@ -5568,8 +5568,8 @@ function wzRenderLeft() {
 function wzOpen(key) {
   if (!WZ_TOOLS.some(w => w.key === key)) return;
   wzOpenTool = key;
-  if (view !== "werkzeuge") {
-    setView("werkzeuge");
+  if (view !== "tools") {
+    setView("tools");
     return;
   }
   wzRenderMiddle();
@@ -6443,7 +6443,7 @@ async function renderSettings(fresh) {
   if (fresh || !C) {
     const answer = await ask("config_read");
     // Zwischen Frage und Antwort kann umgeschaltet worden sein.
-    if (!answer || view !== "einstellungen") return;
+    if (!answer || view !== "settings") return;
     C = answer;
     // Was inzwischen von aussen genauso gesetzt wurde, ist keine Aenderung mehr.
     for (const k of Object.keys(cfgChanged))
@@ -7080,7 +7080,7 @@ function keyboard(e) {
     if (openQuestion) return closeQuestion();
     if (inTextField()) return document.activeElement.blur();
     if (view === "scans") return callScan("scan_cancel");
-    if (view === "einstellungen") return;
+    if (view === "settings") return;
     if (selectedPhase !== null) {
       selectedPhase = null;
       return renderPhases();
@@ -7090,7 +7090,7 @@ function keyboard(e) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
     // Derselbe Griff, drei Dateien: welche gemeint ist, sagt der offene Reiter.
-    if (view === "einstellungen") return cfgSave();
+    if (view === "settings") return cfgSave();
     if (view === "scans") return callScan("scan_save");
     return saveSequence();
   }
@@ -7159,7 +7159,7 @@ function keyboard(e) {
     return;
   }
   // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
-  if (view === "einstellungen") return;
+  if (view === "settings") return;
   if (e.key === "Delete" && selectedPhase !== null) {
     e.preventDefault();
     const phase = selectedPhase;

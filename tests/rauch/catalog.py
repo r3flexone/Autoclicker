@@ -167,7 +167,7 @@ def run():
         # `undefined`, die Seite liefe weiter und der Knopf fehlte — genau der
         # Fehler, den die Vertragssuite nicht sehen kann: dort steht
         # `cfgAction(` im Quelltext und ist trotzdem wirkungslos.
-        f.reiter("einstellungen")
+        f.reiter("settings")
         f.seite.fill("#cfg-search", "Item-Katalog")
         f.ruhe()
         knopf = f.seite.locator("#cfg-fields button",

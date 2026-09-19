@@ -144,19 +144,19 @@ try:
     check("der Reiter findet die Logs", len(_z["sessions"]) == 2)
     check("die neueste steht oben", _z["sessions"][0]["file"] == _zwei.name)
     check("ohne Wahl gilt alles zusammen",
-          _z["selected"] == "" and _z["bericht"]["sessions"] == 2)
+          _z["selected"] == "" and _z["brief"]["sessions"] == 2)
     check("und die Zahlen sind die der Auswertung",
-          _z["bericht"]["timeouts_total"] == 3 and _z["bericht"]["clicks"] == 3)
+          _z["brief"]["timeouts_total"] == 3 and _z["brief"]["clicks"] == 3)
     # Die Ranglisten kommen gekuerzt — angezeigt werden ohnehin nur die obersten.
     check("die Rangliste ist gedeckelt",
-          len(_z["bericht"]["timeouts"]) <= 10)
+          len(_z["brief"]["timeouts"]) <= 10)
     check("die Nachpruefung traegt beide Seiten je Zeile",
-          _z["bericht"]["verify_miss"] == [["Verkaufen", 1, 1]])
+          _z["brief"]["verify_miss"] == [["Verkaufen", 1, 1]])
 
     _z = _b.report_data({"file": _zwei.name})
     check("eine einzelne Sitzung laesst sich waehlen",
-          _z["selected"] == _zwei.name and _z["bericht"]["sessions"] == 1)
-    check("und zeigt nur deren Zahlen", _z["bericht"]["clicks"] == 1)
+          _z["selected"] == _zwei.name and _z["brief"]["sessions"] == 1)
+    check("und zeigt nur deren Zahlen", _z["brief"]["clicks"] == 1)
     check("die Liste links bleibt vollstaendig", len(_z["sessions"]) == 2)
 
     # Eine Wahl, deren Datei es nicht mehr gibt, faellt auf „alle" zurueck statt
@@ -164,7 +164,7 @@ try:
     # Fenster offen steht.
     _z = _b.report_data({"file": "weggeraeumt.csv"})
     check("eine verschwundene Wahl faellt auf alle zurueck",
-          _z["selected"] == "" and _z["bericht"]["sessions"] == 2)
+          _z["selected"] == "" and _z["brief"]["sessions"] == 2)
 
     check("ohne Marktwert-Datei gibt es keine Bewertung", _z["yield_value"] is None)
 
@@ -195,7 +195,7 @@ try:
     CONFIG.session_log_dir = "gibtsnicht"
     _z = _b.report_data()
     check("ohne Log-Ordner bleibt der Reiter leer statt zu werfen",
-          _z["sessions"] == [] and _z["bericht"]["sessions"] == 0)
+          _z["sessions"] == [] and _z["brief"]["sessions"] == 0)
 
     CONFIG.session_log_dir, CONFIG.scan_market_value_file = _alt_dir, _alt_markt
 finally:
@@ -204,7 +204,7 @@ finally:
 
 section("Bericht: der achte Reiter ist verdrahtet und symmetrisch")
 
-check("die Seite hat einen Reiter dafuer", 'data-view="bericht"' in _web)
+check("die Seite hat einen Reiter dafuer", 'data-view="report"' in _web)
 check("und einen Behaelter in derselben Dreiteilung",
       'id="view-report"' in _web and 'id="rep-middle"' in _web)
 
@@ -231,7 +231,7 @@ check("und keine Umschalt-Zeile ohne Knopf", _verwaist == set())
 # stehen, staenden zwei Speichern-Bedeutungen in einer Leiste.
 _liste = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(neu\)', _web)
 check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
-      _liste is not None and '"bericht"' in _liste.group(1))
+      _liste is not None and '"report"' in _liste.group(1))
 
 # **Symmetrie:** der Reiter baut mit dem, was da ist. Die Kennzahlen sind
 # dieselben Kacheln wie im Werkzeuge-Reiter, die Karten dieselben wie im Teilen-
