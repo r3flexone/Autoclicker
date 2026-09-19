@@ -37,7 +37,7 @@ from .bridge_share import BridgeShareMixin
 from .bridge_view import BridgeViewMixin
 from .bridge_tools import BridgeToolsMixin
 from .model import Lane, PalettePoint, SequenceBoard, palette_from_sequence, sequence_to_board
-from .scans import ScanTeil
+from .scans import ScanPart
 
 __all__ = [
     "ELSE_ACTIONS",
@@ -70,7 +70,7 @@ class StudioBridge(
     BridgeShareMixin,
     BridgeViewMixin,
     BridgeToolsMixin,
-    ScanTeil,
+    ScanPart,
 ):
     """Gemeinsame pywebview-API für Sequenz-Editor und Scan-Werkzeuge."""
 

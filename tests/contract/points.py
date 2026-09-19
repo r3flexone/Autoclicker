@@ -65,20 +65,20 @@ try:
                   [_CP(id=1, x=100, y=200, name="Bank", color=(10, 20, 30))])
     _choose(_b, 0)
     _z = _b.selection_duplicate()
-    _orig, _kopie = _steps(_b)
+    _orig, _copy = _steps(_b)
     check("das Duplikat steht dahinter", len(_steps(_b)) == 2)
-    check("und bekommt einen eigenen Punkt", _kopie.point_id != _orig.point_id)
+    check("und bekommt einen eigenen Punkt", _copy.point_id != _orig.point_id)
     check("der auf derselben Stelle liegt",
-          (_b._point(_kopie.point_id).x, _b._point(_kopie.point_id).y) == (100, 200))
+          (_b._point(_copy.point_id).x, _b._point(_copy.point_id).y) == (100, 200))
     check("Name und Farbe kommen mit",
-          _b._point(_kopie.point_id).name == "Bank"
-          and _b._point(_kopie.point_id).color == (10, 20, 30))
+          _b._point(_copy.point_id).name == "Bank"
+          and _b._point(_copy.point_id).color == (10, 20, 30))
     check("und es wird gesagt", "Punkt" in _z["status"]["text"])
 
     # Und jetzt das, was vorher schiefging: die Kopie verschieben.
     _b.sel_rows = {1}
-    _b.point_set({"point": _kopie.point_id, "field": "x", "value": 555})
-    check("die Kopie laesst sich verschieben", _b._point(_kopie.point_id).x == 555)
+    _b.point_set({"point": _copy.point_id, "field": "x", "value": 555})
+    check("die Kopie laesst sich verschieben", _b._point(_copy.point_id).x == 555)
     check("und das Original bleibt, wo es war", _b._point(_orig.point_id).x == 100)
 
     # --- Gegenprobe: der Punkt selbst zieht weiterhin ALLE mit -------------
@@ -98,9 +98,9 @@ try:
                   [_CP(id=1, x=100, y=200)])
     _choose(_b, 0)
     _b.selection_duplicate()
-    _kopie = _steps(_b)[1]
+    _copy = _steps(_b)[1]
     check("Klick und Pruef-Pixel der Kopie sind DERSELBE neue Punkt",
-          _kopie.point_id == _kopie.wait_condition.point_id and _kopie.point_id != 1)
+          _copy.point_id == _copy.wait_condition.point_id and _copy.point_id != 1)
     check("es entsteht dafuer nur EIN Punkt", len(_b.points) == 2)
 
     # Nachpruefung und ELSE ebenso — vier Stellen, eine Abbildung.
@@ -109,12 +109,12 @@ try:
                   [_CP(id=1, x=10, y=20), _CP(id=2, x=30, y=40)])
     _choose(_b, 0)
     _b.selection_duplicate()
-    _kopie = _steps(_b)[1]
+    _copy = _steps(_b)[1]
     check("zwei verschiedene Vorlagen ergeben zwei neue Punkte", len(_b.points) == 4)
     check("der ELSE-Klick teilt den Punkt des Klicks, wie im Original",
-          _kopie.else_config.point_id == _kopie.point_id)
+          _copy.else_config.point_id == _copy.point_id)
     check("die Nachpruefung behaelt ihren eigenen",
-          _kopie.verify_condition.point_id not in (1, 2, _kopie.point_id))
+          _copy.verify_condition.point_id not in (1, 2, _copy.point_id))
 
     # --- Mehrfachauswahl: die Beziehung UNTEREINANDER bleibt --------------
     # Zwei Gewaehlte auf einem Knopf ergeben zwei Kopien auf EINEM neuen Knopf,
@@ -325,16 +325,16 @@ _seq_pf = _SEQ(name="Farben", loop_phases=[_PHASE(name="A", steps=[
              _CP(3, 4, "blind", 2)])
 _br_pf = _SB(_seq_pf, Path("sequences/farben.json"), "sequences")
 _br_pf._points_apply()      # wie nach dem Laden: `load_sequence_file` loest auf
-_karten = _br_pf.snapshot()["phases"][1]["blocks"]
+_cards = _br_pf.snapshot()["phases"][1]["blocks"]
 check("ein Klick-Block traegt die Farbe seines Punkts",
-      _karten[0]["point_color"] == "#20876F")
+      _cards[0]["point_color"] == "#20876F")
 check("und die Stelle steht in seiner ersten Zeile",
-      _karten[0]["rows"][0].startswith("#1 "))
-check("ohne gemessene Farbe kein Feldchen", _karten[1]["point_color"] is None)
-check("ein Block ohne Punkt hat keins", _karten[2]["point_color"] is None)
+      _cards[0]["rows"][0].startswith("#1 "))
+check("ohne gemessene Farbe kein Feldchen", _cards[1]["point_color"] is None)
+check("ein Block ohne Punkt hat keins", _cards[2]["point_color"] is None)
 check("FARBE+KLICK traegt beides: Punktfarbe und Bedingung",
-      _karten[3]["point_color"] == "#20876F" and _karten[3]["color_swatch"] == "#20876F"
-      and _karten[3]["color_text"].startswith("wartet bis"))
+      _cards[3]["point_color"] == "#20876F" and _cards[3]["color_swatch"] == "#20876F"
+      and _cards[3]["color_text"].startswith("wartet bis"))
 _web_pf = _web_src()
 check("die Ansicht haengt das Feldchen an die erste Zeile",
       "block.point_color" in _web_pf and "card-row with-color" in _web_pf)

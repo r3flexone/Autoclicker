@@ -21,33 +21,33 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = "test_runtime_hardening.RuntimeHardeningTest."
 STUDIO = "test_studio_close.StudioCloseTest."
-FAELLE = {
-    "browser-pflicht": (
+CASES = {
+    "browser-required": (
         "tests.all_tests", "smoke", "e.ok = False", "e.ok = True",
         "test_test_runner.TestRunnerTest.test_browser_lokal_optional_aber_als_pflicht_rot"),
-    "doppelter-vertragslauf": (
+    "double-contract-run": (
         "tests.root_tests", "collect", "continue", "pass",
         "test_test_runner.TestRunnerTest.test_discovery_entfernt_nur_den_vertragswrapper"),
-    "pause-nach-fokus": (
+    "pause-after-focus": (
         "autoclicker.runtime.actions", "_input_allowed",
         "if not state.pause_event.is_set():", "if True:",
         "test_input_synchronisation.InputSynchronisationTest"),
-    **{f"stopp-nach-delay-{kind}": (
+    **{f"stop-after-delay-{kind}": (
         "autoclicker.runtime.actions", f"safe_{kind}",
         "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
         "_humanize_delay(state)",
         RUNTIME + "test_stopp_im_mikrodelay_verhindert_jede_eingabe")
        for kind in ("click", "key", "scroll")},
-    "worker-laufstatus": (
+    "worker-run-status": (
         "autoclicker.runtime.worker", "sequence_worker",
         "state.is_running = False", "state.is_running = True",
         RUNTIME + "test_worker_fehler_raeumt_lauf_und_log_auf"),
-    "rettung-punkte": (
+    "rescue-points": (
         "autoclicker.editors.sequence_studio.bridge_services",
         "BridgeServicesMixin.rescue_write",
         "sequence.points = palette_to_points(self.points)", "sequence.points = []",
         STUDIO + "test_rettung_ist_am_gemeldeten_pfad_vollstaendig_ladbar"),
-    "scan-schreibfehler": (
+    "scan-write-error": (
         "autoclicker.persistence._scan_store", "write_scan",
         "return False", "return True",
         STUDIO + "test_scan_schreibfehler_bleibt_ungespeichert_und_ist_wiederholbar"),
@@ -58,58 +58,58 @@ FAELLE = {
 }
 
 
-def run_check(name: str, mutiert: bool) -> int:
+def run_check(name: str, mutated: bool) -> int:
     # Zwei Orte: das Repo-Wurzelverzeichnis fuer `autoclicker` und `tests`, und
-    # `tests/wurzel` fuer die Testmodule, die `FAELLE` beim Namen nennt.
+    # `tests/wurzel` fuer die Testmodule, die `CASES` beim Namen nennt.
     for _path in (ROOT, ROOT / "tests" / "root"):
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))
-    module_name, path, old, new, test = FAELLE[name]
+    module_name, path, old, new, test = CASES[name]
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
-    funktion = importlib.import_module(module_name)
+    function_obj = importlib.import_module(module_name)
     for part in path.split("."):
-        funktion = getattr(funktion, part)
-    original = funktion.__code__
+        function_obj = getattr(function_obj, part)
+    original = function_obj.__code__
     try:
-        if mutiert:
-            source = textwrap.dedent(inspect.getsource(funktion))
+        if mutated:
+            source = textwrap.dedent(inspect.getsource(function_obj))
             if source.count(old) != 1:
                 raise ValueError(f"Mutationsstelle nicht mehr eindeutig: {name}")
-            namespace = dict(funktion.__globals__)
+            namespace = dict(function_obj.__globals__)
             exec(compile(source.replace(old, new), f"<Gegenprobe {name}>", "exec"), namespace)
             # Auch zuvor importierte Funktionsreferenzen sehen den Mutanten.
-            funktion.__code__ = namespace[funktion.__name__].__code__
-        ausgabe = io.StringIO()
-        result = unittest.TextTestRunner(stream=ausgabe).run(suite)
+            function_obj.__code__ = namespace[function_obj.__name__].__code__
+        output = io.StringIO()
+        result = unittest.TextTestRunner(stream=output).run(suite)
     finally:
-        funktion.__code__ = original
+        function_obj.__code__ = original
     if not result.testsRun or result.errors or result.skipped:
-        print(ausgabe.getvalue())
+        print(output.getvalue())
         return 2
-    if mutiert:
+    if mutated:
         if result.failures:
             return 0
         print("LÜCKE: Der eingeschleuste Fehler bleibt grün.")
         return 1
     if not result.wasSuccessful():
-        print(ausgabe.getvalue())
+        print(output.getvalue())
         return 2
     return 0
 
 
 def main() -> int:
-    for strom in (sys.stdout, sys.stderr):
-        if hasattr(strom, "reconfigure"):
-            strom.reconfigure(encoding="utf-8", errors="replace")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--case", choices=FAELLE, action="append")
+    parser.add_argument("--case", choices=CASES, action="append")
     parser.add_argument("--kind", choices=("basis", "mutiert"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.kind:
         return run_check(args.case[0], args.kind == "mutiert")
     error = 0
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
-    for name in args.case or FAELLE:
+    for name in args.case or CASES:
         for mode in ("basis", "mutiert"):
             try:
                 run = subprocess.run(

@@ -152,9 +152,9 @@ def run():
         f.settle()
         before = f.page.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
-        expect(all(n.startswith("maske:item:") for n in before),
+        expect(all(n.startswith("card:item:") for n in before),
                f"jede Item-Maske braucht ihre id: {before[:3]}")
-        ziel_id = before[0] or "(ohne id)"
+        target_id = before[0] or "(ohne id)"
 
         # 1. Umbenennen: echtes Tippen, echtes TAB.
         #
@@ -166,9 +166,9 @@ def run():
         # Python geholt und die Spalte ein zweites Mal aufgebaut. Sichtbar war
         # das als kurzes Flackern. Gemessen wird beides — die Zahl der
         # Neuaufbauten und ob das Bild durchgehend dasteht.
-        name_field = f'[id="{ziel_id}"] .scan-card-fields > input'
+        name_field = f'[id="{target_id}"] .scan-card-fields > input'
         had_image = f.page.eval_on_selector(
-            f'[id="{ziel_id}"]', "e => !!e.querySelector('img.mini')")
+            f'[id="{target_id}"]', "e => !!e.querySelector('img.mini')")
         expect(had_image, "das Item hat vor dem Umbenennen keine Vorschau")
         # Jeden Neuaufbau der rechten Spalte mitzaehlen.
         f.page.evaluate("""() => {
@@ -186,21 +186,21 @@ def run():
         expect(aufbauten <= 1,
                f"das Umbenennen baut die Spalte {aufbauten}x neu auf (Flackern)")
         expect(f.page.eval_on_selector(
-                   '[id="maske:item:Zeta"]',
+                   '[id="card:item:Zeta"]',
                    "e => !!e.querySelector('img.mini')"),
                "die Vorschau ist nach dem Umbenennen weg")
-        nach = f.page.eval_on_selector_all(
+        after = f.page.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
-        expect(nach[0] == "maske:item:Zeta",
-               f"das Umbenennen verschiebt die Zeile: {nach}")
-        expect(len(nach) == len(before) and nach[1:] == before[1:],
-               f"die uebrigen Zeilen haben sich bewegt: {before} -> {nach}")
+        expect(after[0] == "card:item:Zeta",
+               f"das Umbenennen verschiebt die Zeile: {after}")
+        expect(len(after) == len(before) and after[1:] == before[1:],
+               f"die uebrigen Zeilen haben sich bewegt: {before} -> {after}")
         wo = f.page.evaluate("""() => {
           const a = document.activeElement;
           const m = a && a.closest ? a.closest('.scan-card') : null;
           return m ? m.id : (a ? a.tagName : "nichts");
         }""")
-        expect(wo == "maske:item:Zeta",
+        expect(wo == "card:item:Zeta",
                f"der Fokus verlaesst die Maske: erwartet Zeta, da: {wo}")
 
         # 2. Kategorie: sie war der erste Sortierschluessel und damit das letzte
@@ -210,16 +210,16 @@ def run():
           e.focus();
           e.value = "Helme";
           e.dispatchEvent(new Event('change', {bubbles: true}));
-        }""", "maske:item:Zeta")
+        }""", "card:item:Zeta")
         f.page.wait_for_timeout(900)
         after_cat = f.page.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
-        expect(after_cat == nach,
-               f"die Kategorie verschiebt die Zeile: {nach} -> {after_cat}")
+        expect(after_cat == after,
+               f"die Kategorie verschiebt die Zeile: {after} -> {after_cat}")
         # Sie steht dann unter der ALTEN Ueberschrift — das muss dastehen,
         # sonst liest sich die Liste falsch.
         stamp = f.page.eval_on_selector(
-            '[id="maske:item:Zeta"] .scan-card-state', "e => e.textContent")
+            '[id="card:item:Zeta"] .scan-card-state', "e => e.textContent")
         expect("→ Helme" in stamp,
                f"die gewechselte Kategorie wird nicht angesagt: {stamp!r}")
 
@@ -274,9 +274,9 @@ def run():
             f.click_text("#scan-insp .tabs .tab", tab)
             cards_list = f.count("#scan-insp .scan-card")
             expect(cards_list > 0, f"Reiter „{tab}“ zeichnet keine Maske")
-            eigene = f.count(f'#scan-insp .scan-card[id^="maske:{kind}:"]')
-            expect(eigene == cards_list,
-                   f"„{tab}“: {cards_list} Masken, davon {eigene} mit {kind}-id")
+            own_ones = f.count(f'#scan-insp .scan-card[id^="card:{kind}:"]')
+            expect(own_ones == cards_list,
+                   f"„{tab}“: {cards_list} Masken, davon {own_ones} mit {kind}-id")
             expect(f.count("#ab-listen .scan-card") == 0,
                    f"„{tab}“: es steht noch eine Maske in der linken Spalte")
             left = f.page.eval_on_selector(
@@ -312,9 +312,9 @@ def run():
         # ihn, das Oeffnen schaltete auf die Item-Liste um, und der Knopf stand
         # in der Spalte, die man damit gerade verlassen hatte.
         f.click_text("#scan-insp .tabs .tab", "Scans")
-        f.click('#scan-insp .scan-card[id="maske:scan:Inventar"] input')
+        f.click('#scan-insp .scan-card[id="card:scan:Inventar"] input')
         f.settle()
-        f.click('#scan-insp .scan-card[id="maske:scan:Inventar"] .scan-card-state')
+        f.click('#scan-insp .scan-card[id="card:scan:Inventar"] .scan-card-state')
         tab_after = f.text("#scan-insp .tabs .tab.on")
         expect(tab_after.startswith("Scans"),
                f"nach dem Oeffnen steht der Reiter auf „{tab_after}“")

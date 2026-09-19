@@ -1,7 +1,7 @@
 """
 Kompatible Fassade für den Scan-Teil des Sequenz-Studios.
 
-Die Implementierung ist nach Verantwortlichkeiten getrennt; `ScanTeil` und die
+Die Implementierung ist nach Verantwortlichkeiten getrennt; `ScanPart` und die
 bisher öffentlich importierten Konstanten bleiben an derselben Stelle verfügbar.
 """
 
@@ -59,14 +59,14 @@ __all__ = [
     "MODE_REGION",
     "MODE_SLOT",
     "MODE_CHOICE",
-    "ScanTeil",
+    "ScanPart",
     "HIT_MIN",
     "UNDO_DEPTH",
     "_ConfigOnly",
 ]
 
 
-class ScanTeil(
+class ScanPart(
     ScanLibraryMixin,
     ScanLearningMixin,
     ScanDetectMixin,

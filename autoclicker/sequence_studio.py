@@ -36,26 +36,26 @@ def last_edited() -> "Path | None":
     trotzdem — entscheidend ist das jüngere der beiden Ereignisse.
     """
     available = list_available_sequences()
-    neueste, time_value = None, -1
+    newest, time_value = None, -1
     for _, path in available:
         try:
             m = path.stat().st_mtime_ns
         except OSError:
             continue
         if m > time_value:
-            neueste, time_value = path, m
+            newest, time_value = path, m
 
     marker = Path(STUDIO_LAST_SEQUENCE_FILE)
     try:
         data = json.loads(marker.read_text(encoding="utf-8"))
         folder = str(data.get("folder") or "") if isinstance(data, dict) else ""
-        gemerkt = next((path for _, path in available
+        remembered = next((path for _, path in available
                         if path.parent.name == folder), None)
-        if gemerkt is not None and marker.stat().st_mtime_ns >= time_value:
-            return gemerkt
+        if remembered is not None and marker.stat().st_mtime_ns >= time_value:
+            return remembered
     except (OSError, ValueError, TypeError):
         pass
-    return neueste
+    return newest
 
 
 def remember_last_used(path) -> bool:
@@ -123,7 +123,7 @@ def _save_scans_on_close(bridge) -> bool:
     return True
 
 
-def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
+def _on_close(bridge, quit_with_window: bool = False) -> None:
     """Sichert ungespeicherte Sequenz- und Scan-Änderungen beim Schliessen."""
     # Zuerst die Klick-Runde: sie haengt im Hauptprozess an einem systemweiten
     # Maus-Hook, und ihre Bedienung steht nur in diesem Fenster. Bleibt sie
@@ -140,35 +140,35 @@ def _on_close(bridge, beenden_mit_fenster: bool = False) -> None:
     if target is not None:
         print(f"\nUngespeicherte Aenderungen gesichert: {target}")
         print("  Zum Weiterarbeiten in den sequences/-Ordner kopieren.")
-    if beenden_mit_fenster and not getattr(bridge, "_beenden_gesendet", False):
+    if quit_with_window and not getattr(bridge, "_quit_sent", False):
         # Nur das automatisch gestartete Hauptfenster besitzt den Hauptprozess.
         # Ein per Hotkey zusätzlich geöffnetes Studio darf ihn beim Schliessen
         # nicht überraschend mitnehmen.
         from .mailbox import send_command
-        bridge._beenden_gesendet = True
+        bridge._quit_sent = True
         send_command("quit_program")
 
 
 def _attach_close_handler(window, bridge,
-                          beenden_mit_fenster: bool = False) -> None:
+                          quit_with_window: bool = False) -> None:
     """Hängt `_on_close` ans Fenster — über beide pywebview-Schreibweisen.
 
     Bis pywebview 3.5 hiess das Ereignis `window.closing`, danach
     `window.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
     """
-    for besitzer in (getattr(window, "events", None), window):
-        event = getattr(besitzer, "closing", None) if besitzer is not None else None
+    for owner_name in (getattr(window, "events", None), window):
+        event = getattr(owner_name, "closing", None) if owner_name is not None else None
         if event is not None and hasattr(event, "__iadd__"):
-            event += lambda: _on_close(bridge, beenden_mit_fenster)
+            event += lambda: _on_close(bridge, quit_with_window)
             return
 
 
 def main(argv: list[str]) -> int:
     # `--scans` waehlt nur den Reiter vor; ein leeres erstes Argument ist erlaubt.
     scans = "--scans" in argv[1:]
-    beenden_mit_fenster = "--beenden-mit-fenster" in argv[1:]
-    stellen = [a for a in argv[1:] if not a.startswith("--")]
-    seq_name = stellen[0] if stellen else ""
+    quit_with_window = "--beenden-mit-fenster" in argv[1:]
+    positions = [a for a in argv[1:] if not a.startswith("--")]
+    seq_name = positions[0] if positions else ""
 
     try:
         import webview
@@ -207,7 +207,7 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _attach_close_handler(window, bridge, beenden_mit_fenster)
+    _attach_close_handler(window, bridge, quit_with_window)
 
     def _after_start() -> None:
         """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.

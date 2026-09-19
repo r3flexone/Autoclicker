@@ -228,7 +228,7 @@ def is_timeout(answer: str) -> bool:
 _DEBUG_RAW_MAX = 4000       # Zeichen der rohen JSON-Antwort; ein Base64-Echo sprengt sonst die Konsole
 
 
-def _debug_an() -> bool:
+def _debug_on() -> bool:
     """Schreibt die Config gerade jede LLM-Antwort mit?"""
     try:
         from .config import CONFIG
@@ -362,8 +362,8 @@ def analyze_image(
     else:
         request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
 
-    mitschrift = _debug_an()
-    if mitschrift:
+    transcript = _debug_on()
+    if transcript:
         _debug_request(provider, model, endpoint, prompt, system_prompt, img)
 
     # API-Anfrage
@@ -383,14 +383,14 @@ def analyze_image(
 
             # Antwort extrahieren
             text = _extract_response_text(result, provider)
-            if mitschrift:
+            if transcript:
                 _debug_response(result, text, duration_ms)
             return True, text.strip(), duration_ms
 
     except socket.timeout:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
-        if mitschrift:
+        if transcript:
             _debug_error(f"Timeout nach {timeout}s", duration_ms)
         return False, f"Timeout nach {timeout}s", duration_ms
 
@@ -398,21 +398,21 @@ def analyze_image(
         duration_ms = (time.time() - start_time) * 1000
         reason = str(getattr(e, 'reason', e))
         logger.error(f"LLM API-Fehler ({provider}): {reason}")
-        if mitschrift:
+        if transcript:
             _debug_error(f"Verbindungsfehler: {reason}", duration_ms)
         return False, f"Verbindungsfehler: {reason}", duration_ms
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
-        if mitschrift:
+        if transcript:
             _debug_error(f"Antwort-Fehler: {e}", duration_ms)
         return False, f"Antwort-Fehler: {e}", duration_ms
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
         logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
-        if mitschrift:
+        if transcript:
             _debug_error(f"Fehler: {e}", duration_ms)
         return False, f"Fehler: {e}", duration_ms
 
@@ -576,7 +576,7 @@ def _closest_candidate(name: str, candidates: list[str]) -> Optional[str]:
     return match[0] if match else None
 
 
-def _name_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
+def _name_tokens(wanted: int, reasoning: bool, with_list: bool) -> int:
     """Wie viele Antwort-Tokens die Benennung bekommt.
 
     Drei Regeln, und die mittlere ist die, an der man sonst stolpert:
@@ -591,11 +591,11 @@ def _name_tokens(gewuenscht: int, reasoning: bool, mit_liste: bool) -> int:
       Abgeschnitten waere er nicht mehr woertlich und faende seinen eigenen
       Eintrag nicht wieder — deshalb nicht weniger.
     """
-    if gewuenscht > 0:
-        return gewuenscht
+    if wanted > 0:
+        return wanted
     if reasoning:
         return 0            # 0 = Auto, und Auto heisst mit Reasoning 2048
-    return 32 if mit_liste else 0
+    return 32 if with_list else 0
 
 
 def suggest_item_name(
@@ -675,7 +675,7 @@ def suggest_item_name_with_reason(
     return name[:40].strip(), ""
 
 
-def _model_known(model: str, modelle: list) -> bool:
+def _model_known(model: str, models: list) -> bool:
     """Kennt der Server dieses Modell?
 
     Ollama haengt an seine Namen ein Tag (`gemma3n:e4b` gegen `gemma3n`), und
@@ -686,7 +686,7 @@ def _model_known(model: str, modelle: list) -> bool:
     if not model:
         return True
     target = model.casefold()
-    for existing in modelle:
+    for existing in models:
         da = str(existing or "").casefold()
         if da == target or da.split(":", 1)[0] == target:
             return True
@@ -722,29 +722,29 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
             result = json.loads(response.read().decode("utf-8"))
 
         if provider == PROVIDER_OLLAMA:
-            modelle = [m.get("name", "?") for m in result.get("models", [])]
+            models = [m.get("name", "?") for m in result.get("models", [])]
         else:
-            modelle = [m.get("id", "?") for m in result.get("data", [])]
+            models = [m.get("id", "?") for m in result.get("data", [])]
 
-        if not modelle:
+        if not models:
             return True, "Verbunden! Kein Modell geladen."
-        if not _model_known(model, modelle):
+        if not _model_known(model, models):
             return False, (f"Verbunden — aber '{model}' ist nicht geladen. "
-                           f"Verfügbar: {', '.join(modelle[:5])}"
-                           + (" …" if len(modelle) > 5 else ""))
+                           f"Verfügbar: {', '.join(models[:5])}"
+                           + (" …" if len(models) > 5 else ""))
         if model:
             return True, f"Verbunden! '{model}' ist geladen."
 
         # Ohne eingestelltes Modell bleibt nur die Liste — und bei Ollama der
         # Hinweis, ob ueberhaupt eines davon Bilder lesen kann.
         if provider == PROVIDER_OLLAMA:
-            sehend = [m for m in modelle if any(v in m.lower() for v in
+            vision_capable = [m for m in models if any(v in m.lower() for v in
                       ["gemma", "llava", "bakllava", "moondream", "vision", "minicpm"])]
-            if sehend:
-                return True, f"Verbunden! Vision-Modelle: {', '.join(sehend)}"
-            return True, (f"Verbunden! Modelle: {', '.join(modelle[:5])} "
+            if vision_capable:
+                return True, f"Verbunden! Vision-Modelle: {', '.join(vision_capable)}"
+            return True, (f"Verbunden! Modelle: {', '.join(models[:5])} "
                           "(kein Vision-Modell erkannt)")
-        return True, f"Verbunden! Modelle: {', '.join(modelle[:5])}"
+        return True, f"Verbunden! Modelle: {', '.join(models[:5])}"
 
     except urllib.error.URLError as e:
         reason = str(getattr(e, 'reason', e))

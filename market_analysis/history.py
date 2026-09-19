@@ -233,10 +233,10 @@ def write_orderbook(conn: sqlite3.Connection, run_id: int, books: list,
     tag = _day_of_run(conn, run_id)
     data = []
     for book in books[:max(0, limit)]:
-        for seite in ("kauf", "verkauf"):
-            for level, (price_value, amount_value) in enumerate(book.get(seite) or [], 1):
+        for side in ("kauf", "verkauf"):
+            for level, (price_value, amount_value) in enumerate(book.get(side) or [], 1):
                 data.append((run_id, tag, int(book["item_id"]), _text_value(book.get("item")),
-                              seite, level, float(price_value), float(amount_value)))
+                              side, level, float(price_value), float(amount_value)))
     if data:
         conn.executemany(
             "INSERT INTO orderbook (run_id, tag, item_id, item, seite, stufe, preis, menge) "

@@ -29,20 +29,20 @@ from autoclicker.models import (
 _web = studio_web_source()
 
 # `tools/` ist kein installiertes Paket — dieselbe Zeile wie in der Bruecke.
-_WURZEL = str(Path(__file__).resolve().parents[2])
-if _WURZEL not in sys.path:
-    sys.path.insert(0, _WURZEL)
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 from tools.log_report import evaluate as _auswerten, report as _bericht  # noqa: E402
 
 
-_SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
+_COLUMNS = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
 
 def _log(path: Path, lines: list) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(_SPALTEN)
+        w.writerow(_COLUMNS)
         w.writerows(lines)
     return path
 
@@ -65,22 +65,22 @@ _one = _log(_sandbox / "logs" / "20260101_000000_farm.csv", [
     ("2026-01-01 00:00:11", 11, "focus_lost", "", "", "", ""),
     ("2026-01-01 01:00:00", 3600, "session_end", "Farm", "", "", ""),
 ])
-_zwei = _log(_sandbox / "logs" / "20260102_000000_farm.csv", [
+_two = _log(_sandbox / "logs" / "20260102_000000_farm.csv", [
     ("2026-01-02 00:00:00", 0, "session_start", "Farm", "", "", ""),
     ("2026-01-02 00:00:01", 1, "click", "Bank", 10, 20, ""),
     ("2026-01-02 00:00:02", 2, "item_found", "Erz", "", "", ""),
     ("2026-01-02 00:30:00", 1800, "session_end", "Farm", "", "", ""),
 ])
 
-_puffer = io.StringIO()
-with redirect_stdout(_puffer):
-    _d = _auswerten([_one, _zwei])
-check("die Auswertung gibt keine Zeile aus", _puffer.getvalue() == "")
+_buffer = io.StringIO()
+with redirect_stdout(_buffer):
+    _d = _auswerten([_one, _two])
+check("die Auswertung gibt keine Zeile aus", _buffer.getvalue() == "")
 check("beide Sitzungen sind erfasst", len(_d["sessions"]) == 2)
 check("die Laufzeit zaehlt zusammen", _d["duration"] == 5400.0)
 check("und jede Sitzung traegt ihre eigene", _d["sessions"][1]["duration"] == 1800.0)
 check("jede Sitzung kennt ihren Dateinamen",
-      [s["file"] for s in _d["sessions"]] == [_one.name, _zwei.name])
+      [s["file"] for s in _d["sessions"]] == [_one.name, _two.name])
 check("und den Beginn aus der ersten Zeile",
       _d["sessions"][0]["begin"] == "2026-01-01 00:00:00")
 
@@ -92,29 +92,29 @@ check("die Items ebenso", _d["items"] == [["Erz", 3], ["Holz", 1]])
 check("die Nachpruefung kommt von beiden Seiten",
       _d["verify_miss"] == [["Verkaufen", 1]] and _d["verify_ok"] == {"Verkaufen": 1})
 check("Unterbrechungen werden getrennt gefuehrt", _d["disturbances"] == [["focus_lost", 1]])
-check("und nichts bleibt unausgewertet", _d["unbekannt"] == [])
+check("und nichts bleibt unausgewertet", _d["unknown"] == [])
 
 # Gegenprobe: eine neue Ereignisart soll auffallen, nicht stillschweigend fehlen.
 _new = _log(_sandbox / "logs2" / "x.csv", [
     ("2026-01-03 00:00:00", 0, "irgendwas_neues", "", "", "", ""),
 ])
 check("eine unbekannte Ereignisart wird gemeldet",
-      _auswerten([_new])["unbekannt"] == ["irgendwas_neues"])
+      _auswerten([_new])["unknown"] == ["irgendwas_neues"])
 
 # Eine kaputte Datei ist ein Grund, kein Absturz — und keine Konsolenausgabe.
-_kaputt = _sandbox / "logs3" / "gibtsnicht.csv"
-_puffer = io.StringIO()
-with redirect_stdout(_puffer):
-    _dk = _auswerten([_kaputt])
+_broken = _sandbox / "logs3" / "gibtsnicht.csv"
+_buffer = io.StringIO()
+with redirect_stdout(_buffer):
+    _d_broken = _auswerten([_broken])
 check("eine unlesbare Datei kommt als Grund zurueck",
-      len(_dk["unreadable"]) == 1 and _dk["unreadable"][0][0] == "gibtsnicht.csv")
-check("und auch dabei wird nichts gedruckt", _puffer.getvalue() == "")
+      len(_d_broken["unreadable"]) == 1 and _d_broken["unreadable"][0][0] == "gibtsnicht.csv")
+check("und auch dabei wird nichts gedruckt", _buffer.getvalue() == "")
 
 # Die Konsole druckt weiterhin — sie ist der zweite Nutzer derselben Auswertung.
-_puffer = io.StringIO()
-with redirect_stdout(_puffer):
-    _bericht([_one, _zwei])
-_text = _puffer.getvalue()
+_buffer = io.StringIO()
+with redirect_stdout(_buffer):
+    _bericht([_one, _two])
+_text = _buffer.getvalue()
 check("der Kommandozeilen-Bericht druckt nach wie vor", "TIMEOUTS" in _text)
 check("und nennt dieselbe Zahl wie die Auswertung", "2x  Bank oeffnen" in _text)
 
@@ -142,7 +142,7 @@ try:
 
     _z = _b.report_data()
     check("der Reiter findet die Logs", len(_z["sessions"]) == 2)
-    check("die neueste steht oben", _z["sessions"][0]["file"] == _zwei.name)
+    check("die neueste steht oben", _z["sessions"][0]["file"] == _two.name)
     check("ohne Wahl gilt alles zusammen",
           _z["selected"] == "" and _z["brief"]["sessions"] == 2)
     check("und die Zahlen sind die der Auswertung",
@@ -153,9 +153,9 @@ try:
     check("die Nachpruefung traegt beide Seiten je Zeile",
           _z["brief"]["verify_miss"] == [["Verkaufen", 1, 1]])
 
-    _z = _b.report_data({"file": _zwei.name})
+    _z = _b.report_data({"file": _two.name})
     check("eine einzelne Sitzung laesst sich waehlen",
-          _z["selected"] == _zwei.name and _z["brief"]["sessions"] == 1)
+          _z["selected"] == _two.name and _z["brief"]["sessions"] == 1)
     check("und zeigt nur deren Zahlen", _z["brief"]["clicks"] == 1)
     check("die Liste links bleibt vollstaendig", len(_z["sessions"]) == 2)
 
@@ -219,12 +219,12 @@ _buttons = set(re.findall(r'data-view="(\w+)"', _web))
 _switched = {b for _, b in re.findall(
     r'\$\("view-([\w-]+)"\)\.hidden = neu !== "(\w+)"', _web)}
 # Der Editor liegt als `editor-body` im Dokument, nicht als `view-editor`.
-_offen = (_buttons - _switched) - {"editor"}
-check("jeder Reiter-Knopf hat seine Umschalt-Zeile", _offen == set())
-if _offen:
-    print("        ohne Umschaltung: " + ", ".join(sorted(_offen)))
-_verwaist = _switched - _buttons
-check("und keine Umschalt-Zeile ohne Knopf", _verwaist == set())
+_open = (_buttons - _switched) - {"editor"}
+check("jeder Reiter-Knopf hat seine Umschalt-Zeile", _open == set())
+if _open:
+    print("        ohne Umschaltung: " + ", ".join(sorted(_open)))
+_orphaned = _switched - _buttons
+check("und keine Umschalt-Zeile ohne Knopf", _orphaned == set())
 
 # **Die Kopfleiste blendet ihre Sequenz-Knoepfe in JEDEM fremden Reiter aus.**
 # Der Bericht liest `logs/`, nicht die offene Sequenz — bliebe „Speichern"
@@ -236,24 +236,24 @@ check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
 # **Symmetrie:** der Reiter baut mit dem, was da ist. Die Kennzahlen sind
 # dieselben Kacheln wie im Werkzeuge-Reiter, die Karten dieselben wie im Teilen-
 # Reiter — und jede eigene Klasse, die er trotzdem braucht, ist definiert.
-_bericht_js = _web[_web.index("async function renderReport"):
+_report_js = _web[_web.index("async function renderReport"):
                    _web.index("/* ----------------------------------------------------- "
                               "Ansicht: Einstellungen */")]
 check("die Kennzahlen sind dieselben Kacheln wie im Werkzeuge-Reiter",
-      "wz-metrics" in _bericht_js and "wzMetric(" in _bericht_js)
+      "wz-metrics" in _report_js and "wzMetric(" in _report_js)
 check("und die Karten dieselben wie im Teilen-Reiter",
-      "share-card" in _bericht_js)
+      "share-card" in _report_js)
 # Dieselbe Pruefung wie bei den `--slot-*`-Variablen: eine benutzte Klasse, die
 # niemand definiert, ist ein unsichtbarer Kasten.
 # Nur was wirklich als KLASSE gesetzt wird. Ein blosses `"ber-..."` faengt auch
 # die Element-Ids (`$("rep-middle")`) und die Schluessel der Erklaerungen —
 # beides ist keine Klasse, und der Test meldete zehn Fehlalarme.
-_benutzt = set()
-for _roh in re.findall(r'class: "([^"]+)"', _bericht_js):
-    _benutzt |= {k for k in _roh.split() if k.startswith("ber-")}
-_css = (Path(_WURZEL) / "autoclicker/editors/sequence_studio/web/styles.css"
+_used = set()
+for _raw in re.findall(r'class: "([^"]+)"', _report_js):
+    _used |= {k for k in _raw.split() if k.startswith("ber-")}
+_css = (Path(_ROOT) / "autoclicker/editors/sequence_studio/web/styles.css"
         ).read_text(encoding="utf-8")
-_without_css = sorted(k for k in _benutzt if "." + k not in _css)
+_without_css = sorted(k for k in _used if "." + k not in _css)
 check("jede eigene Bericht-Klasse ist auch gestaltet", _without_css == [])
 if _without_css:
     print("        ohne CSS: " + ", ".join(_without_css))
@@ -262,7 +262,7 @@ if _without_css:
 # ueber `call()` laufen: eine Antwort von hier als Momentaufnahme zu behandeln
 # zerschoesse den Editor-Zustand.
 check("der Reiter geht ueber den fragenden Kanal",
-      'ask("report_data"' in _bericht_js)
+      'ask("report_data"' in _report_js)
 check("und nicht ueber den befehlenden", 'call("report_data"' not in _web)
 
 import shutil as _sh  # noqa: E402
@@ -271,18 +271,18 @@ _sh.rmtree(_sandbox, ignore_errors=True)
 
 section("Kein Rauchtest bleibt unaufgerufen")
 
-# `RAUCHTESTS` in `tests/all_tests.py` ist eine getippte Liste — genau die Sorte
+# `SMOKE_TESTS` in `tests/all_tests.py` ist eine getippte Liste — genau die Sorte
 # Stelle, die man beim Hinzufuegen einer Datei vergisst. Der Lauf bleibt dann
 # gruen und meldet "5 Ansichten", waehrend die sechste nie lief.
-from tests.all_tests import RAUCHTESTS as _RT   # noqa: E402
-_da = sorted(p.stem for p in (Path(_WURZEL) / "tests/smoke").glob("*.py")
+from tests.all_tests import SMOKE_TESTS as _RT   # noqa: E402
+_present = sorted(p.stem for p in (Path(_ROOT) / "tests/smoke").glob("*.py")
              if not p.stem.startswith("_"))
-_vergessen = [n for n in _da if n not in _RT]
-check("jeder Rauchtest steht in der Liste des Sammel-Laufs", _vergessen == [])
-if _vergessen:
-    print("        laeuft nie: " + ", ".join(_vergessen))
+_forgotten = [n for n in _present if n not in _RT]
+check("jeder Rauchtest steht in der Liste des Sammel-Laufs", _forgotten == [])
+if _forgotten:
+    print("        laeuft nie: " + ", ".join(_forgotten))
 check("und kein Eintrag zeigt auf eine Datei, die es nicht gibt",
-      [n for n in _RT if n not in _da] == [])
+      [n for n in _RT if n not in _present] == [])
 
 
 section("Einstellungen: der Schreiber laedt sich selbst neu")

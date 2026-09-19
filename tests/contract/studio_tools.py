@@ -22,8 +22,8 @@ import autoclicker.mailbox as _bf
 
 def _sandbox_dir():
     """Ein vollständiger kleiner Bestand auf Platte, plus die Brücke darauf."""
-    sand = _tf.mkdtemp(prefix="wz_")
-    _os.chdir(sand)
+    sandbox_dir = _tf.mkdtemp(prefix="wz_")
+    _os.chdir(sandbox_dir)
     _P("sequences").mkdir()
 
     st = _ST()
@@ -50,7 +50,7 @@ def _sandbox_dir():
     # Die Maus gibt es im Test nicht: die Stelle kommt aus dem Stub, alles
     # andere laeuft wie im Fenster.
     bridge._await_position = lambda: (140, 130, "")
-    return sand, bridge
+    return sandbox_dir, bridge
 
 
 _cwd = _os.getcwd()
@@ -110,21 +110,21 @@ try:
     check("Slots sind standardmaessig AUS",
           {u["key"]: u["default_value"] for u in _d["scope"]}["with_slots"] is False)
 
-    _sauber = _b.tool_check()
-    check("ein sauberer Bestand meldet nichts", _sauber["ok"] and not _sauber["findings"])
-    check("und sagt trotzdem, was geprueft wurde", len(_sauber["checked"]) > 0)
+    _clean = _b.tool_check()
+    check("ein sauberer Bestand meldet nichts", _clean["ok"] and not _clean["findings"])
+    check("und sagt trotzdem, was geprueft wurde", len(_clean["checked"]) > 0)
 
     # Jetzt absichtlich kaputt: ein lokaler Scan ohne Slot und Erkennung.
     save_item_scan(_ISC(name="Inventar", owner_sequence="Farm"))
-    _kaputt = _b.tool_check()
-    _texte = " | ".join(f"{x['area']} {x['text']}" for x in _kaputt["findings"])
-    check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texte)
-    check("ein Scan ohne Erkennung ebenso", "keine aktiven Items" in _texte)
+    _broken = _b.tool_check()
+    _texts = " | ".join(f"{x['area']} {x['text']}" for x in _broken["findings"])
+    check("ein Scan ohne Slot wird gemeldet", "kein einziger Slot" in _texts)
+    check("ein Scan ohne Erkennung ebenso", "keine aktiven Items" in _texts)
     check("Fehler und Hinweise werden getrennt gezaehlt",
-          _kaputt["errors"] >= 1 and _kaputt["hints"] >= 1)
+          _broken["errors"] >= 1 and _broken["hints"] >= 1)
     # Gelesen wird von PLATTE, nicht aus dem, was die Reiter offen haben - sonst
     # meldete die Pruefung "sauber", weil sie die halben Daten gar nicht kennt.
-    check("gelesen wird vom gespeicherten Stand", _kaputt["ok"])
+    check("gelesen wird vom gespeicherten Stand", _broken["ok"])
 finally:
     _os.chdir(_cwd)
 
@@ -137,8 +137,8 @@ try:
     check("ohne Referenzpunkt gibt es nichts anzuwenden",
           _b.calib_apply({})["ok"] is False)
 
-    _erg = _b.calib_reference({"number": 1, "point_id": 1})
-    check("der Referenzpunkt laesst sich anfahren", _erg["ok"])
+    _res = _b.calib_reference({"number": 1, "point_id": 1})
+    check("der Referenzpunkt laesst sich anfahren", _res["ok"])
     _K = _b.tool_data()["calibration"]
     check("und ergibt den gemessenen Versatz",
           _K["offset"] == {"x": 40.0, "y": 30.0})
@@ -157,11 +157,11 @@ try:
     check("Buchstaben statt Zahlen werden abgelehnt",
           _b.calib_offset({"x": "viel"})["ok"] is False)
 
-    _erg = _b.calib_apply({"with_scans": True, "with_sequences": True,
+    _res = _b.calib_apply({"with_scans": True, "with_sequences": True,
                               "with_slots": False})
-    check("angewendet wird mit Meldung", _erg["ok"] and "Kalibriert" in _erg["message"])
+    check("angewendet wird mit Meldung", _res["ok"] and "Kalibriert" in _res["message"])
     check("und es entsteht eine Sicherung vorher",
-          bool(_erg["backup"]) and _P(_erg["backup"]).exists())
+          bool(_res["backup"]) and _P(_res["backup"]).exists())
 
     _points = {p["id"]: (p["x"], p["y"]) for p in _b.tool_data()["points"]}
     check("jeder Punkt ist um den Versatz gewandert",
@@ -256,11 +256,11 @@ try:
     check("der Studio-Knopf kann eine Aufnahme starten",
           _b.recording_start({"name": "Aufnahme UI", "cycles": 3,
                                "description": "sichtbar"})["ok"])
-    _auftrag = _bf.fetch_command()
+    _job = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
-          _auftrag is not None and _auftrag["command"] == "recording")
+          _job is not None and _job["command"] == "recording")
     check("alle Angaben stehen vor dem Spielen fest",
-          _auftrag["arguments"] == {"name": "aufnahme_ui", "cycles": 3,
+          _job["arguments"] == {"name": "aufnahme_ui", "cycles": 3,
                                      "description": "sichtbar"})
     check("auch Stoppen geht sichtbar im Studio", _b.recording_stop()["ok"])
     _stopp = _bf.fetch_command()
@@ -293,27 +293,27 @@ finally:
 section("Studio-Werkzeuge: Punkte sind vollständig verwaltbar")
 try:
     _sandbox, _b = _sandbox_dir()
-    _daten = _b.tool_data()
-    _p1 = next(p for p in _daten["points"] if p["id"] == 1)
+    _data = _b.tool_data()
+    _p1 = next(p for p in _data["points"] if p["id"] == 1)
     check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["usages"]))
-    _erg = _b.tool_point_delete({"point_id": 1})
+    _res = _b.tool_point_delete({"point_id": 1})
     check("ein verwendeter Punkt wird nicht gelöscht",
-          not _erg["ok"] and _b._point_with_id(1) is not None)
-    check("der Löschschutz nennt die Verwendungen", bool(_erg.get("usages")))
+          not _res["ok"] and _b._point_with_id(1) is not None)
+    check("der Löschschutz nennt die Verwendungen", bool(_res.get("usages")))
 
     _b._await_position = lambda: (333, 444, "")
     _b._color_at = staticmethod(lambda x, y: (12, 34, 56))
-    _erg = _b.tool_point_capture({"name": "Neu"})
-    _new = _b._point_with_id(_erg.get("point_id"))
+    _res = _b.tool_point_capture({"name": "Neu"})
+    _new = _b._point_with_id(_res.get("point_id"))
     check("ein freier Punkt lässt sich im Studio aufnehmen",
-          _erg["ok"] and (_new.x, _new.y) == (333, 444))
+          _res["ok"] and (_new.x, _new.y) == (333, 444))
     check("die Farbe wird dabei mitgemessen", _new.color == (12, 34, 56))
     check("und die Sequenz ist danach ungespeichert", _b._dirty)
 
-    _erg = _b.tool_colors({"kind": "point"})
+    _res = _b.tool_colors({"kind": "point"})
     check("der Farbanalysator liefert RGB und Hex",
-          _erg["ok"] and _erg["colors"][0]["rgb"] == [12, 34, 56]
-          and _erg["colors"][0]["hex"] == "#0C2238")
+          _res["ok"] and _res["colors"][0]["rgb"] == [12, 34, 56]
+          and _res["colors"][0]["hex"] == "#0C2238")
 finally:
     _os.chdir(_cwd)
 
@@ -327,18 +327,18 @@ try:
           _b.board.lanes[_loop_index].steps[0].delay_before == 1.5)
     _bf.COMMAND_PATH = _P("command.json")
     _b.select({"phase": _loop_index, "row": 0})
-    _erg = _b.block_test()
-    _auftrag = _bf.fetch_command()
-    check("der Block-Test wird ausdrücklich angekündigt", "echter" in _erg["status"]["text"])
+    _res = _b.block_test()
+    _job = _bf.fetch_command()
+    check("der Block-Test wird ausdrücklich angekündigt", "echter" in _res["status"]["text"])
     check("getestet wird nur die gespeicherte Blockposition",
-          _auftrag and _auftrag["command"] == "block_test"
-          and _auftrag["arguments"]["phase"] == "loop"
-          and _auftrag["arguments"]["block"] == 0)
-    _erg = _b.run_command({"command": "skip_step"})
-    _auftrag = _bf.fetch_command()
+          _job and _job["command"] == "block_test"
+          and _job["arguments"]["phase"] == "loop"
+          and _job["arguments"]["block"] == 0)
+    _res = _b.run_command({"command": "skip_step"})
+    _job = _bf.fetch_command()
     check("der echte Block-Skip wird ohne KeyError abgelegt und bestätigt",
-          _auftrag and _auftrag["command"] == "skip_step"
-          and "vollständig" in _erg["status"]["text"])
+          _job and _job["command"] == "skip_step"
+          and "vollständig" in _res["status"]["text"])
 finally:
     _os.chdir(_cwd)
 
@@ -380,27 +380,27 @@ check("unter den eindeutigen Aktionsknöpfen steht kein doppelter Erklärungstex
       "Zeigen setzt nur die Maus" not in _app)
 check("die Phasen-Skalierung ist am Knopf eindeutig benannt",
       "Wartezeiten ×" in _app and '"Zeit ×"' not in _app)
-_stelle_ui = _app[_app.index("function buildPosition"):
+_position_ui = _app[_app.index("function buildPosition"):
                   _app.index("function setPosition")]
 check("die Anleitung zum Maus-Setzen steht nur im Info-Text",
-      "Mit ‚Stelle mit der Maus setzen‘" in _stelle_ui
-      and 'el("p", {class: "hint"},\n    "Danach:' not in _stelle_ui)
-_inspektor_ui = _app[_app.index("function renderInspector"):
+      "Mit ‚Stelle mit der Maus setzen‘" in _position_ui
+      and 'el("p", {class: "hint"},\n    "Danach:' not in _position_ui)
+_inspector_ui = _app[_app.index("function renderInspector"):
                      _app.index("/* -------------------------------------------------------------------- Dialog")]
 # Offene Texte im Inspektor sind nur ZUSTAND, keine Bedienungsanleitung:
 # fehlender Punkt, fehlende Scan-Datei, Screenshot-Mass, fehlender Prüfpunkt,
 # ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann — und ein
 # Punkt, den andere Blöcke mitbenutzen (wer, nicht warum; das steht im ⓘ).
 check("alle Block-Typen haben nur noch sechs begründete offene Zustandsmeldungen",
-      _inspektor_ui.count('target.appendChild(el("p", {class: "hint') == 6)
+      _inspector_ui.count('target.appendChild(el("p", {class: "hint') == 6)
 check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
-      all(text in _inspektor_ui for text in (
+      all(text in _inspector_ui for text in (
           "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",
           "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung",
           "wird auch benutzt von")))
 check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
-      "const effect = b.else_action" in _inspektor_ui
-      and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspektor_ui)
+      "const effect = b.else_action" in _inspector_ui
+      and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspector_ui)
 
 section("Studio-Aufnahme: kein unsichtbarer Prompt und kein UI-Klick im Block")
 try:
@@ -430,11 +430,11 @@ try:
         _rec.remove_keyboard_hook = _old_keys_gone
     check("die UI-Vorgaben speichern ohne safe_input", _saved == "aufnahme_ui")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
-    _geladen = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
-    check("die Aufnahme wird wirklich zur Sequenz", _geladen is not None)
+    _loaded = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
+    check("die Aufnahme wird wirklich zur Sequenz", _loaded is not None)
     check("Zyklen und Notiz kommen aus dem UI",
-          _geladen.total_cycles == 2 and _geladen.description == "ohne Konsole")
-    check("und aus dem Ereignis entsteht ein Block", _geladen.total_steps() == 1)
+          _loaded.total_cycles == 2 and _loaded.description == "ohne Konsole")
+    check("und aus dem Ereignis entsteht ein Block", _loaded.total_steps() == 1)
 
     # **Gefragt wird das Fenster UNTER dem Klick, nicht der Vordergrund.** Die
     # Aufnahme wird mit einem Knopf im Studio gestartet, also ist das Studio
@@ -447,37 +447,37 @@ try:
     # Klick-Runde, deshalb derselbe Helfer — und dieselben vier Faelle.
     import autoclicker.editors._click_window as _kf
     _click_state = _State(recording_active=True)
-    _front, _unter = ["Idle Clans"], [None]   # None = wie der Vordergrund
+    _front, _under = ["Idle Clans"], [None]   # None = wie der Vordergrund
     _old_front, _old_below = _kf.get_foreground_window_title, _kf.get_window_title_at
     _kf.get_foreground_window_title = lambda: _front[0]
     _kf.get_window_title_at = lambda x, y: (
-        _front[0] if _unter[0] is None else _unter[0])
-    _aufnehmen = _rec._on_click_factory(_click_state)
+        _front[0] if _under[0] is None else _under[0])
+    _capture_fn = _rec._on_click_factory(_click_state)
     try:
         _front[0] = "Sequenz-Studio"
-        _aufnehmen(10, 20, (1, 2, 3))
+        _capture_fn(10, 20, (1, 2, 3))
         check("der Stopp-Klick im Studio wird nicht aufgenommen",
               not _click_state.recording_events)
         _front[0] = "Idle Clans"
-        _aufnehmen(10, 20, (1, 2, 3))
+        _capture_fn(10, 20, (1, 2, 3))
         check("derselbe Klick im Spiel wird aufgenommen",
               len(_click_state.recording_events) == 1)
 
         # Der Fall, an dem jede Studio-Aufnahme ihren ersten Schritt verlor.
-        _front[0], _unter[0] = "Sequenz-Studio", "Idle Clans"
-        _aufnehmen(4578, 490, (140, 77, 74))
+        _front[0], _under[0] = "Sequenz-Studio", "Idle Clans"
+        _capture_fn(4578, 490, (140, 77, 74))
         check("der erste Klick ins Spiel zaehlt, obwohl das Studio noch vorn ist",
               [(e.x, e.y) for e in _click_state.recording_events][-1] == (4578, 490))
         # Und der Klick auf „Aufnahme stoppen" bei vorn stehendem Spiel.
-        _front[0], _unter[0] = "Idle Clans", "Sequenz-Studio"
+        _front[0], _under[0] = "Idle Clans", "Sequenz-Studio"
         _count = len(_click_state.recording_events)
-        _aufnehmen(1347, 709, (28, 35, 51))
+        _capture_fn(1347, 709, (28, 35, 51))
         check("der Stopp-Klick zaehlt nicht, obwohl das Spiel noch vorn ist",
               len(_click_state.recording_events) == _count)
         # Ohne auffindbares Fenster gilt der Vordergrund — ein Filter, der
         # dann alles wegwirft, saehe aus wie ein kaputter Hook.
-        _front[0], _unter[0] = "Idle Clans", ""
-        _aufnehmen(5, 5, (0, 0, 0))
+        _front[0], _under[0] = "Idle Clans", ""
+        _capture_fn(5, 5, (0, 0, 0))
         check("ohne Fenster unter dem Zeiger entscheidet der Vordergrund",
               len(_click_state.recording_events) == _count + 1)
     finally:
@@ -511,24 +511,24 @@ try:
     _sandbox, _b = _sandbox_dir()
     _bf.COMMAND_PATH = _P("command.json")
     check("gestartet wird ueber den Briefkasten", _b.reclick_start()["ok"])
-    _auftrag = _bf.fetch_command()
+    _job = _bf.fetch_command()
     check("und der Befehl heisst 'nachklick'",
-          _auftrag is not None and _auftrag["command"] == "reclick")
+          _job is not None and _job["command"] == "reclick")
     # DIE Sache, die hier schiefgehen kann: der Hauptprozess hat womoeglich eine
     # ganz andere Sequenz geladen. Ohne die Datei klickt man eine Runde lang die
     # Punkte einer fremden Sequenz nach - und merkt es nicht, weil jeder Klick
     # ja im Spiel etwas tut.
     check("die offene Sequenz kommt MIT",
-          _P(_auftrag["arguments"].get("file", "")).exists())
+          _P(_job["arguments"].get("file", "")).exists())
     check("und der Knopf sagt, welche er meint",
           "Farm" in _b.reclick_start()["message"])
     _bf.fetch_command()
 
     # Ungespeichertes zuerst: die Runde klickt die Sequenz von PLATTE nach.
     _b._dirty = True
-    _erg = _b.reclick_start()
-    check("mit offenen Aenderungen wird nicht gestartet", _erg["ok"] is False)
-    check("und der Grund steht dabei", "speichern" in _erg["message"].lower())
+    _res = _b.reclick_start()
+    check("mit offenen Aenderungen wird nicht gestartet", _res["ok"] is False)
+    check("und der Grund steht dabei", "speichern" in _res["message"].lower())
     check("es liegt auch kein Befehl im Briefkasten", _bf.fetch_command() is None)
 
     _b._dirty = False
@@ -543,47 +543,47 @@ try:
     _sandbox, _b = _sandbox_dir()
     # Der Hauptprozess haelt eine andere Sequenz aktiv als die im Studio offene -
     # genau der Fall, in dem die alte Fassung die falsche nachklicken liess.
-    _fremd = _SEQ(name="Fremd", loop_phases=[_LP(name="X", steps=[_SS(point_id=3)])])
+    _foreign = _SEQ(name="Fremd", loop_phases=[_LP(name="X", steps=[_SS(point_id=3)])])
     _st2 = _ST()
-    _fremd.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
+    _foreign.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
                      _CP(id=2, x=900, y=600, name="Bestaetigen"),
                      _CP(id=3, x=400, y=300, name="Menue")]
-    _st2.sequences["Fremd"] = _fremd
-    _st2.active_sequence = _fremd
+    _st2.sequences["Fremd"] = _foreign
+    _st2.active_sequence = _foreign
     save_data(_st2)
 
     from autoclicker.handlers import command_reclick as _bn
     import autoclicker.editors.reclick as _nk
-    _gestartet = {}
+    _started = {}
 
     def _fake_start(state, seq=None):
-        _gestartet["name"] = seq.name if seq is not None else None
+        _started["name"] = seq.name if seq is not None else None
         return True
 
-    _echt = _nk.start_reclick
+    _real = _nk.start_reclick
     _nk.start_reclick = _fake_start
     try:
-        _farm_pfad = str(dict(list_available_sequences())["Farm"])
-        _bn(_st2, {"file": _farm_pfad})
+        _farm_path = str(dict(list_available_sequences())["Farm"])
+        _bn(_st2, {"file": _farm_path})
         check("die Reihenfolge kommt aus der mitgeschickten Datei",
-              _gestartet.get("name") == "Farm")
+              _started.get("name") == "Farm")
         # **Die geladene Sequenz wechselt dabei NICHT.** Die Runde arbeitet auf
         # Punkten; welche Sequenz der Hauptprozess scharf hat, geht sie nichts
         # an - sonst startete CTRL+ALT+S danach etwas anderes als vorher.
         check("die geladene Sequenz bleibt, wie sie war",
-              _st2.active_sequence is _fremd)
+              _st2.active_sequence is _foreign)
 
         # Ohne Datei passiert NICHTS - lieber gar keine Runde als eine auf der
         # falschen Sequenz.
-        _gestartet.clear()
+        _started.clear()
         _bn(_st2, {})
-        check("ohne Datei startet keine Runde", not _gestartet)
+        check("ohne Datei startet keine Runde", not _started)
 
-        _gestartet.clear()
+        _started.clear()
         _bn(_st2, {"file": "sequences/gibtsnicht/sequence.json"})
-        check("und eine unlesbare Datei startet auch keine", not _gestartet)
+        check("und eine unlesbare Datei startet auch keine", not _started)
     finally:
-        _nk.start_reclick = _echt
+        _nk.start_reclick = _real
 finally:
     _os.chdir(_cwd)
 
@@ -598,19 +598,19 @@ try:
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: (200, 10, 30))
 
-    _erg = _b.calib_reference({"number": 1, "point_id": 1})
-    check("gesetzt wird erst mal nichts", _erg["ok"] is False)
-    check("stattdessen kommt eine Rueckfrage", _erg.get("confirm") is True)
+    _res = _b.calib_reference({"number": 1, "point_id": 1})
+    check("gesetzt wird erst mal nichts", _res["ok"] is False)
+    check("stattdessen kommt eine Rueckfrage", _res.get("confirm") is True)
     check("mit beiden Farben zum Vergleich",
-          _erg["expected"] == [10, 200, 30] and _erg["measured"] == [200, 10, 30])
+          _res["expected"] == [10, 200, 30] and _res["measured"] == [200, 10, 30])
     check("und dem Abstand samt erlaubter Toleranz",
-          _erg["gap"] == 190 and _erg["tolerance"] >= 0)
+          _res["gap"] == 190 and _res["tolerance"] >= 0)
     check("die Kalibrierung ist noch leer", _b.tool_data()["calibration"] == {})
 
     # Bestaetigt gilt der Punkt trotzdem - manchmal hat sich das Spiel geaendert.
-    _erg = _b.calib_reference({"number": 1, "point_id": 1, "confirmed": True})
-    check("bestaetigt wird er gesetzt", _erg["ok"])
-    check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _erg["message"])
+    _res = _b.calib_reference({"number": 1, "point_id": 1, "confirmed": True})
+    check("bestaetigt wird er gesetzt", _res["ok"])
+    check("und die Meldung sagt, dass die Farbe abweicht", "weicht ab" in _res["message"])
     check("jetzt steht die Kalibrierung",
           _b.tool_data()["calibration"]["offset"] == {"x": 40.0, "y": 30.0})
 finally:
@@ -623,9 +623,9 @@ try:
     # Passende Farbe: keine Rueckfrage, direkt gesetzt.
     _b.points[0].color = (10, 200, 30)
     _b._color_at = staticmethod(lambda x, y: (12, 198, 33))
-    _erg = _b.calib_reference({"number": 1, "point_id": 1})
-    check("eine passende Farbe geht direkt durch", _erg["ok"])
-    check("und sagt es auch", "passt" in _erg["message"])
+    _res = _b.calib_reference({"number": 1, "point_id": 1})
+    check("eine passende Farbe geht direkt durch", _res["ok"])
+    check("und sagt es auch", "passt" in _res["message"])
 
     # Ein Punkt OHNE gespeicherte Farbe hat nichts, womit man vergleichen kann.
     # Eine Rueckfrage ohne Grundlage gewoehnt man sich ab wegzuklicken.
@@ -650,16 +650,16 @@ try:
     _sandbox, _b = _sandbox_dir()
     _bf.COMMAND_PATH = _P("command.json")
     check("beenden geht ueber den Briefkasten", _b.reclick_end()["ok"])
-    _auftrag = _bf.fetch_command()
+    _job = _bf.fetch_command()
     check("und heisst 'reclick_stop'",
-          _auftrag is not None and _auftrag["command"] == "reclick_stop")
+          _job is not None and _job["command"] == "reclick_stop")
 
     # Der Hauptprozess sagt, was er vorgefunden hat - hier wird nicht geraten.
     from autoclicker.handlers import command_reclick_stop as _bns
     import autoclicker.editors.reclick as _nk
     _st3 = _ST()
     _gestoppt = {}
-    _echt = _nk.stop_reclick
+    _real = _nk.stop_reclick
     _nk.stop_reclick = lambda state, reason="beendet": _gestoppt.setdefault("reason", reason)
     try:
         _bns(_st3, {})
@@ -668,7 +668,7 @@ try:
         _bns(_st3, {})
         check("mit laufender Runde wird gestoppt", "reason" in _gestoppt)
     finally:
-        _nk.stop_reclick = _echt
+        _nk.stop_reclick = _real
 finally:
     _os.chdir(_cwd)
 
@@ -726,8 +726,8 @@ if _too_many:
 # Und die Seite muss sie auch WIRKLICH ueber withWait() rufen — ein Eintrag in
 # der Tabelle allein zeigt noch keinen Kasten.
 for _m in sorted(_wartend):
-    _direkt = _re_wt.findall(r'(?:call|ask|callTool)\("' + _m + r'"', _appjs_wt)
-    check(f"'{_m}' wird nur ueber withWait gerufen", not _direkt)
+    _direct = _re_wt.findall(r'(?:call|ask|callTool)\("' + _m + r'"', _appjs_wt)
+    check(f"'{_m}' wird nur ueber withWait gerufen", not _direct)
 
 # Die Zeitgrenze steht an EINER Stelle und wird mitgeliefert: ohne das liefe der
 # Countdown der Seite neben dem echten Zeitablauf der Bruecke.

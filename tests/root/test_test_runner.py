@@ -11,20 +11,20 @@ from tests import all_tests, root_tests
 
 class TestRunnerTest(unittest.TestCase):
     def test_exitcode_null_ohne_erfolgreichen_vertragsabschluss_reicht_nicht(self):
-        for ausgabe in ("", "Start ohne Abschluss", "0 PASS / 0 FAIL",
+        for output in ("", "Start ohne Abschluss", "0 PASS / 0 FAIL",
                         "8 PASS / 1 FAIL", "8 PASS / 0 FAIL\n9 PASS / 1 FAIL"):
-            with self.subTest(ausgabe=ausgabe), \
-                    patch.object(all_tests, "_run", return_value=(0, ausgabe)):
+            with self.subTest(output=output), \
+                    patch.object(all_tests, "_run", return_value=(0, output)):
                 self.assertFalse(all_tests.contract().ok)
         with patch.object(all_tests, "_run", return_value=(0, "=== 8 PASS / 0 FAIL ===")):
             self.assertTrue(all_tests.contract().ok)
 
     def test_nicht_erkannter_mutant_macht_den_gesamtlauf_rot(self):
         with patch.object(all_tests, "_run", side_effect=[(0, "OK"), (1, "LÜCKE")]), \
-                redirect_stdout(io.StringIO()) as ausgabe:
+                redirect_stdout(io.StringIO()) as output:
             self.assertEqual(all_tests.main(["runner", "--only", "root", "--mutations"]), 1)
-        self.assertIn("Gegenproben", ausgabe.getvalue())
-        self.assertNotIn("alles grün", ausgabe.getvalue())
+        self.assertIn("Gegenproben", output.getvalue())
+        self.assertNotIn("alles grün", output.getvalue())
 
     def test_browser_lokal_optional_aber_als_pflicht_rot(self):
         for arguments, exitcode, message in (
@@ -32,12 +32,12 @@ class TestRunnerTest(unittest.TestCase):
             with self.subTest(arguments=arguments), \
                     patch("tests.smoke._bridge.playwright_available", return_value=(False, "Browser fehlt")), \
                     patch.object(all_tests, "_run") as run, \
-                    redirect_stdout(io.StringIO()) as ausgabe:
+                    redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(all_tests.main(["runner", "--only", "smoke", *arguments]), exitcode)
-                self.assertIn(message, ausgabe.getvalue())
-                self.assertIn("Browser fehlt", ausgabe.getvalue())
+                self.assertIn(message, output.getvalue())
+                self.assertIn("Browser fehlt", output.getvalue())
                 if exitcode:
-                    self.assertNotIn("alles grün", ausgabe.getvalue())
+                    self.assertNotIn("alles grün", output.getvalue())
                 run.assert_not_called()
 
     def test_roter_browserlauf_bleibt_rot(self):

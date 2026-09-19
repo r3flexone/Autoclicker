@@ -462,11 +462,11 @@ def config_sections() -> list:
     Der Nachzügler-Abschnitt macht ein in `_CONFIG_SECTIONS` vergessenes Feld
     sichtbar statt unsichtbar (ein Test verlangt trotzdem, dass er leer bleibt).
     """
-    zugeordnet = {k for _, keys in _CONFIG_SECTIONS for k in keys}
+    assigned = {k for _, keys in _CONFIG_SECTIONS for k in keys}
     all_of = [f.name for f in fields(AppConfig)]
     sections = [(title, [k for k in keys if k in all_of])
                   for title, keys in _CONFIG_SECTIONS]
-    remainder = [k for k in all_of if k not in zugeordnet]
+    remainder = [k for k in all_of if k not in assigned]
     if remainder:
         sections.append(("SONSTIGE", remainder))
     return sections

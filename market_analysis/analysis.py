@@ -407,10 +407,10 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
         # sehr wohl verkaufen kann.
         chain = resolve_chain(item_id, market_map, recipe_by_output, fish_to_cooked,
                               item_info_map)
-        if chain.zeit_ms <= 0:
+        if chain.time_ms <= 0:
             continue
 
-        actions_per_hour = 3_600_000.0 / chain.zeit_ms
+        actions_per_hour = 3_600_000.0 / chain.time_ms
         channel = effective_sell_price(item_id, market_map, item_info_map, actions_per_hour)
         sell_price, sold_to_npc = channel.price_value, channel.to_npc
         if sell_price <= 0:
@@ -473,7 +473,7 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "ChainSkills": " -> ".join(skills_involved),
             "ChainDepth": len(chain.steps_list),
             "FullySelfSufficient": chain.self_sufficient,
-            "TimePerItem_sec": chain.zeit_ms / 1000.0,
+            "TimePerItem_sec": chain.time_ms / 1000.0,
             "XP_letzter_Schritt_pro_Stück": xp_per_unit_final_step,
             "Gold/h (Eigenherstellung)": profit_per_hour,
             "Gold/h (Eigenherstellung, Ø-Preis)": profit_per_hour_avg,
@@ -1142,8 +1142,8 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     # Jede Messung bleibt im Blatt. Hier stand ein `.head(REASON_TOP_N)`, und weil
     # die Empfehlung ihre gemessene Zahl aus dieser Liste zieht, fielen die
     # uebrigen Messungen still weg - bezahlt und nie gezeigt.
-    df_reason = df_reason.assign(_rang=key_name).sort_values(
-        "_rang", ascending=False).drop(columns=["_rang"])
+    df_reason = df_reason.assign(_rank_value=key_name).sort_values(
+        "_rank_value", ascending=False).drop(columns=["_rank_value"])
     df_reason["Rang"] = range(1, len(df_reason) + 1)
     df_reason = df_reason.reset_index(drop=True)
     # Die Buecher in der Reihenfolge der gemessenen Rangliste: die Historie hebt nur
@@ -1192,8 +1192,8 @@ def sort_by_measurement(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.Dat
     out["Gold/h Quelle"] = measurement.notna().map({True: SOURCE_ORDERBOOK, False: SOURCE_PAPER})
     factor = pd.to_numeric(out["Verlässlichkeit"], errors="coerce").fillna(1.0)
     key_name = (measurement * factor).fillna(pd.to_numeric(out["Gold/h gewichtet"], errors="coerce"))
-    out = out.assign(_rang=key_name).sort_values(
-        "_rang", ascending=False, kind="stable").drop(columns=["_rang"]).reset_index(drop=True)
+    out = out.assign(_rank_value=key_name).sort_values(
+        "_rank_value", ascending=False, kind="stable").drop(columns=["_rank_value"]).reset_index(drop=True)
     out["Rang"] = range(1, len(out) + 1)
     ranks = dict(zip(out["Item"], out["Rang"]))
     df_reason["Rang"] = df_reason["Item"].map(ranks).fillna(df_reason["Rang"]).astype(int)
@@ -1321,11 +1321,11 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
             # In der Empfehlung traegt die markierte Spalte zwei Sorten Zahl: gemessen
             # (gelb) und Papier (grau, kursiv). Ohne den Unterschied im Blatt selbst
             # saehe ein Papier-Wert aus wie ein geprueftes Ergebnis.
-            quelle_idx = next((c.column for c in header_cells if c.value == "Gold/h Quelle"), None)
-            quelle_letter = get_column_letter(quelle_idx) if quelle_idx else None
+            source_idx = next((c.column for c in header_cells if c.value == "Gold/h Quelle"), None)
+            source_letter = get_column_letter(source_idx) if source_idx else None
             for row in range(2, ws.max_row + 1):
                 cell = ws[f"{col_letter}{row}"]
-                if quelle_letter and ws[f"{quelle_letter}{row}"].value == SOURCE_PAPER:
+                if source_letter and ws[f"{source_letter}{row}"].value == SOURCE_PAPER:
                     cell.font = PAPER_FONT
                 else:
                     cell.fill = HIGHLIGHT_FILL
@@ -1339,7 +1339,7 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
             headers = {c.value: c.column for c in header_cells}
             status_col = headers.get("Status")
             gold_col = headers.get("Gold/h")
-            grund_col = headers.get("AusschlussGrund")
+            reason_col = headers.get("AusschlussGrund")
             if status_col is not None:
                 for row in range(2, ws.max_row + 1):
                     status = ws.cell(row=row, column=status_col).value
@@ -1349,8 +1349,8 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
                         if col == gold_col:
                             continue
                         ws.cell(row=row, column=col).fill = ROW_FLAG_FILL
-                    if grund_col is not None:
-                        ws.cell(row=row, column=grund_col).fill = REASON_FIELD_FILL
+                    if reason_col is not None:
+                        ws.cell(row=row, column=reason_col).fill = REASON_FIELD_FILL
 
 
 # ---------------------------------------------------------------

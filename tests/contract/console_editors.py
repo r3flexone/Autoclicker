@@ -96,25 +96,25 @@ finally:
 # --- capture_markers: mindestens einer, sonst ist der Scan blind ---
 _old_cursor, _old_pixel = _DC.get_cursor_pos, _DC.get_pixel_color
 try:
-    _stellen = [(10, 10), (20, 20), (30, 30)]
-    _DC.get_cursor_pos = lambda: _stellen.pop(0) if _stellen else (0, 0)
+    _positions = [(10, 10), (20, 20), (30, 30)]
+    _DC.get_cursor_pos = lambda: _positions.pop(0) if _positions else (0, 0)
     _DC.get_pixel_color = lambda x, y: (x, y, 99)
     check("Enter nimmt die Farbe unter dem Zeiger auf",
           _dc_sequence(_DC.capture_markers, ["", "", "done"])
           == [(10, 10, 99), (20, 20, 99)])
-    _stellen = [(1, 2)]
+    _positions = [(1, 2)]
     # **'done' ohne einen einzigen Marker wird abgelehnt.** Ein Profil ohne Marker
     # und ohne Template wird nie erkannt - das faellt sonst erst im Lauf auf.
     check("'done' ohne Marker fragt erneut",
           _dc_sequence(_DC.capture_markers, ["done", "", "done"]) == [(1, 2, 99)])
-    _stellen = [(1, 2)]
+    _positions = [(1, 2)]
     check("'cancel' gibt None", _dc_sequence(_DC.capture_markers, ["cancel"]) is None)
     # Eine Stelle, an der sich nichts lesen laesst, legt KEINEN Marker an - sonst
     # stuende ein Profil mit einem Marker da, den es nie gab. Die Folge ist deshalb
     # dieselbe wie oben, nur liefert die Farbmessung nichts: zweimal Enter, dann
     # 'done' - und 'done' muss abgelehnt werden, weil die Liste leer geblieben ist.
     _DC.get_pixel_color = lambda x, y: None
-    _stellen = [(1, 2), (3, 4)]
+    _positions = [(1, 2), (3, 4)]
     check("eine unlesbare Stelle legt keinen Marker an",
           _dc_sequence(_DC.capture_markers, ["", "", "done", "cancel"]) is None)
 finally:
@@ -151,9 +151,9 @@ try:
     _st_r2.item_scans["Inventar"] = _ISCR(
         name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _erfolg = _air(_st_r2, "Alt", "Neu")
+        _success = _air(_st_r2, "Alt", "Neu")
 
-    check("das Umbenennen meldet Erfolg", _erfolg is True)
+    check("das Umbenennen meldet Erfolg", _success is True)
     check("der Eintrag heisst neu",
           "Neu" in _st_r2.global_items and "Alt" not in _st_r2.global_items)
     check("das Item traegt seinen neuen Namen auch im Objekt",
@@ -197,14 +197,14 @@ def _field_sequence(fn, inputs, **kw):
         _IF.safe_input = _old
 
 
-class _MessLock:
+class _MeasureLock:
     """Ein Lock, das mitzaehlt, ob es genommen wurde."""
 
     def __init__(self):
-        self.genommen = 0
+        self.taken = 0
 
     def __enter__(self):
-        self.genommen += 1
+        self.taken += 1
         return self
 
     def __exit__(self, *_):
@@ -213,7 +213,7 @@ class _MessLock:
 
 _st_f = _ST_F()
 _st_f.points = [_CP_F(id=7, x=10, y=20, name="Bestaetigen")]
-_st_f.lock = _MessLock()
+_st_f.lock = _MeasureLock()
 
 # --- Bestaetigungs-Klick ---
 check("ein bekannter Punkt kommt mit Wartezeit zurueck",
@@ -221,7 +221,7 @@ check("ein bekannter Punkt kommt mit Wartezeit zurueck",
                   state=_st_f, default_delay=0.5) == (7, 1.5))
 # DIE Eigenschaft, um die es geht: `get_point_by_id()` liest `state.points` und
 # sperrt nicht selbst. Drei der vier Kopien taten es auch nicht.
-check("die Punktsuche laeuft unter state.lock", _st_f.lock.genommen >= 1)
+check("die Punktsuche laeuft unter state.lock", _st_f.lock.taken >= 1)
 check("leere Eingabe heisst: kein Bestaetigungs-Klick",
       _field_sequence(_IF.ask_confirm_click, [""],
                   state=_st_f, default_delay=0.5) == (None, 0.5))

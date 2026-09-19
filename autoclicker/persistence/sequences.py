@@ -123,7 +123,7 @@ def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optiona
         # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in resolve({p.id: p for p in seq.points}, seq, still=True):
+        for m in resolve({p.id: p for p in seq.points}, seq, quiet=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -383,7 +383,7 @@ def _phases(sequence):
     return out
 
 
-def resolve(points: dict, sequence, still: bool = False) -> list[str]:
+def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `points` ist id -> ClickPoint.
 
     Vier Referenzen pro Schritt:
@@ -421,7 +421,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     old = (step.x, step.y)
                     step.x, step.y, step.name = point.x, point.y, point.name
                     step.recorded_color = point.color
-                    if old != (0, 0) and old != (point.x, point.y) and not still:
+                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
                         messages.append(
                             f"{location} '{step.name}' folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")
@@ -440,7 +440,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     # Ohne Farbe am Punkt gaebe es nichts zu vergleichen; der Editor
                     # laesst das nicht zu, eine von Hand gebaute Datei schon.
                     wc.color = point.color if point.color else wc.color
-                    if old != (0, 0) and old != wc.pixel and not still:
+                    if old != (0, 0) and old != wc.pixel and not quiet:
                         messages.append(
                             f"{location} Pruef-Pixel folgt Punkt #{point.id}: "
                             f"{old} -> {wc.pixel}")
@@ -460,7 +460,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                     old = tuple(vc.pixel)
                     vc.pixel = (point.x, point.y)
                     vc.color = point.color if point.color else vc.color
-                    if old != (0, 0) and old != vc.pixel and not still:
+                    if old != (0, 0) and old != vc.pixel and not quiet:
                         messages.append(
                             f"{location} Nachpruefung folgt Punkt #{point.id}: "
                             f"{old} -> {vc.pixel}")
@@ -478,7 +478,7 @@ def resolve(points: dict, sequence, still: bool = False) -> list[str]:
                 else:
                     old = (ec.x, ec.y)
                     ec.x, ec.y, ec.name = point.x, point.y, point.name
-                    if old != (0, 0) and old != (point.x, point.y) and not still:
+                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
                         messages.append(
                             f"{location} Else-Klick folgt Punkt #{point.id}: "
                             f"{old} -> ({point.x}, {point.y})")

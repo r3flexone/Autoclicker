@@ -147,11 +147,11 @@ class ImportExportSecurityTest(unittest.TestCase):
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
         echtes_copytree = module_name.shutil.copytree
-        mutiert = []
+        mutated = []
 
         def kopieren(source, target, *args, **kwargs):
             if Path(target).name == "broken":
-                mutiert.append((original / "templates/neu.png").read_bytes())
+                mutated.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
             return echtes_copytree(source, target, *args, **kwargs)
 
@@ -159,7 +159,7 @@ class ImportExportSecurityTest(unittest.TestCase):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
 
         self.assertFalse(ok)
-        self.assertEqual(mutiert, [b"neues Bild"])
+        self.assertEqual(mutated, [b"neues Bild"])
         self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual(state.sequences, {})
         self.assertEqual((original / "sequence.json").read_bytes(), before)
@@ -177,19 +177,19 @@ class ImportExportSecurityTest(unittest.TestCase):
     def test_boss_bibliothek_ueberlebt_einen_transformierten_import(self):
         manifest = _manifest_data()
         manifest["layout"] = "sequence-folders"
-        bibliothek = [{"name": "Drache", "action": "click", "action_point_id": 7}]
+        library = [{"name": "Drache", "action": "click", "action_point_id": 7}]
         seq = _sequence_data("farm")
         seq["points"] = [{"id": 7, "x": 10, "y": 20}]
         with zipfile.ZipFile("bundle.zip", "w") as zf:
             zf.writestr("manifest.json", json.dumps(manifest))
             zf.writestr("sequences/farm/sequence.json", json.dumps(seq))
-            zf.writestr("sequences/farm/boss_scans/bibliothek.json", json.dumps(bibliothek))
+            zf.writestr("sequences/farm/boss_scans/bibliothek.json", json.dumps(library))
         ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False,
                                    transform={"scale_x": 1, "scale_y": 1,
                                               "offset_x": 30, "offset_y": 40})
         self.assertTrue(ok, message)
         self.assertEqual(json.loads(Path("sequences/farm/boss_scans/bibliothek.json")
-                                    .read_text(encoding="utf-8")), bibliothek)
+                                    .read_text(encoding="utf-8")), library)
         self.assertEqual(json.loads(Path("sequences/farm/sequence.json")
                                     .read_text(encoding="utf-8"))["points"][0]["x"], 40)
 

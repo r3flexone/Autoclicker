@@ -56,7 +56,7 @@ def setup():
 
 
 def run():
-    b, ordner_raid = setup()
+    b, folder_raid = setup()
     error = []
 
     def expect(condition, text):
@@ -100,15 +100,15 @@ def run():
         # Abbrechen laesst alles stehen — sonst waere die Rueckfrage Dekoration.
         f.click("#dialog-cancel")
         expect(f.count(".seq-card") == 2, "Abbrechen hat trotzdem geloescht")
-        expect(ordner_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
+        expect(folder_raid.is_dir(), "der Ordner ist trotz Abbruch weg")
 
         f.click_text(".seq-card:nth-of-type(2) .button-pair .btn", "Löschen")
         f.click("#dialog-discard")
         expect(f.count(".seq-card") == 1,
                f"nach dem Loeschen 1 Karte erwartet, da: {f.count('.seq-card')}")
-        expect(not ordner_raid.exists(), "der Ordner steht noch")
+        expect(not folder_raid.exists(), "der Ordner steht noch")
         # Gespiegelte Struktur: `sequences/raid` -> `backups/sequences/raid`.
-        backup = Path("backups/sequences") / ordner_raid.name
+        backup = Path("backups/sequences") / folder_raid.name
         expect((backup / "templates/erz.png").exists(),
                "die Vorlage fehlt in der Sicherung")
         expect("backups" in f.status(), f"die Meldung nennt den Ort nicht: {f.status()!r}")

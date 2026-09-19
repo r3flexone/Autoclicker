@@ -19,7 +19,7 @@ from market_analysis.recipes import cost_factor, normalize_recipe, skill_cfg
 
 
 # Ein kleiner, vollständiger Markt: Bid/Ask/Volumen wie aus dem Bulk-Endpoint.
-MARKT = {
+MARKET = {
     100: {"buy": 76, "sell": 90, "buyVol": 6178, "sellVol": 5000, "avg": 78},
     200: {"buy": 120, "sell": 140, "buyVol": 20000, "sellVol": 9000, "avg": 130},
     201: {"buy": 300, "sell": 340, "buyVol": 15000, "sellVol": 7000, "avg": 310},
@@ -59,11 +59,11 @@ class RezeptTest(unittest.TestCase):
         }
         best = normalize_recipe("Smithing", raw, case="best")
         worst = normalize_recipe("Smithing", raw, case="worst")
-        erwartet_best = 3 * cfg.SMITHING_SMELTING_COST_MULTIPLIER
-        erwartet_worst_neben = 9 * cfg.ORE_STORAGE_COST_MULTIPLIER
-        self.assertAlmostEqual(best["costs"][0]["Amount"], erwartet_best)
-        self.assertAlmostEqual(worst["costs"][0]["Amount"], erwartet_best)
-        self.assertAlmostEqual(worst["costs"][1]["Amount"], erwartet_worst_neben)
+        expected_best = 3 * cfg.SMITHING_SMELTING_COST_MULTIPLIER
+        expected_worst_side = 9 * cfg.ORE_STORAGE_COST_MULTIPLIER
+        self.assertAlmostEqual(best["costs"][0]["Amount"], expected_best)
+        self.assertAlmostEqual(worst["costs"][0]["Amount"], expected_best)
+        self.assertAlmostEqual(worst["costs"][1]["Amount"], expected_worst_side)
 
     def test_brewing_hat_werkzeug(self):
         """Brewing-Ausrüstung: mit Werkzeug, nicht mehr konservativ ohne."""
@@ -84,22 +84,22 @@ class ErsparnisTest(unittest.TestCase):
     def test_potion_of_trickery_ist_25_prozent(self):
         """Update 18.08.2026: 25%, vorher waren 50% fest verdrahtet."""
         self.assertAlmostEqual(cfg.POTION_OF_TRICKERY_SAVE, 0.25)
-        nur_trickery = saving_factor((True, cfg.POTION_OF_TRICKERY_SAVE))
-        self.assertAlmostEqual(nur_trickery, 0.75)
+        only_trickery = saving_factor((True, cfg.POTION_OF_TRICKERY_SAVE))
+        self.assertAlmostEqual(only_trickery, 0.75)
 
     def test_seed_storage_kombiniert_mit_trickery(self):
-        mit_beiden = saving_factor((True, cfg.POTION_OF_TRICKERY_SAVE),
+        with_both = saving_factor((True, cfg.POTION_OF_TRICKERY_SAVE),
                                  (True, cfg.SEED_STORAGE_SAVE))
-        self.assertAlmostEqual(mit_beiden, 0.675)
+        self.assertAlmostEqual(with_both, 0.675)
         # Und der Schalter greift wirklich am Skill.
         self.assertAlmostEqual(skill_cfg("Farming").cost_multiplier,
                                cfg.FARMING_COST_MULTIPLIER)
 
     def test_ore_storage_kombiniert_mit_smelting_magic(self):
         """Beide sparen Erz an derselben Zeile – multiplikativ, nicht addiert."""
-        mit_beiden = saving_factor((True, 0.30), (True, 0.10))
-        self.assertAlmostEqual(mit_beiden, 0.63)
-        self.assertNotAlmostEqual(mit_beiden, 0.60)
+        with_both = saving_factor((True, 0.30), (True, 0.10))
+        self.assertAlmostEqual(with_both, 0.63)
+        self.assertNotAlmostEqual(with_both, 0.60)
         # Und der Konfigurationswert wird wirklich so gebildet – sonst prüft der
         # Test die Rechenregel, während die Config etwas anderes tut.
         self.assertAlmostEqual(
@@ -119,9 +119,9 @@ class ErsparnisTest(unittest.TestCase):
                                     smelt_factor=0.63, storage_factor=0.90)
         self.assertAlmostEqual(ausgenommen, 0.90)
         # Nebenzutat im Worst Case: ebenfalls nur das Lager, nicht der volle Preis.
-        neben = cost_factor(cfg_smith, True, 1, 11, "worst", frozenset(),
+        side = cost_factor(cfg_smith, True, 1, 11, "worst", frozenset(),
                               smelt_factor=0.63, storage_factor=0.90)
-        self.assertAlmostEqual(neben, 0.90)
+        self.assertAlmostEqual(side, 0.90)
         # Die Erz-Zeile selbst bekommt beide Ersparnisse.
         erz = cost_factor(cfg_smith, True, 0, 10, "worst", frozenset(),
                             smelt_factor=0.63, storage_factor=0.90)
@@ -134,7 +134,7 @@ class ErsparnisTest(unittest.TestCase):
             cfg.FARMING_COST_MULTIPLIER)
 
 
-class SteuerTest(unittest.TestCase):
+class TaxTest(unittest.TestCase):
     """Marktsteuer erst ab 100 Gold Gesamtwert."""
 
     def test_kleinbetrag_bleibt_steuerfrei(self):
@@ -155,14 +155,14 @@ class MarktwegTest(unittest.TestCase):
     """Verkaufen zählt Kaufgebote, kaufen zählt Angebote."""
 
     def test_verkauf_ignoriert_die_angebotsseite(self):
-        nur_gebote = {"buy": 50, "sell": 0, "buyVol": 500, "sellVol": 0, "avg": 50}
-        self.assertTrue(pricing.valid_sell_market(nur_gebote))
-        self.assertFalse(pricing.valid_buy_market(nur_gebote))
+        only_bids = {"buy": 50, "sell": 0, "buyVol": 500, "sellVol": 0, "avg": 50}
+        self.assertTrue(pricing.valid_sell_market(only_bids))
+        self.assertFalse(pricing.valid_buy_market(only_bids))
 
     def test_kauf_ignoriert_die_gebotsseite(self):
-        nur_angebote = {"buy": 0, "sell": 60, "buyVol": 0, "sellVol": 500, "avg": 60}
-        self.assertTrue(pricing.valid_buy_market(nur_angebote))
-        self.assertFalse(pricing.valid_sell_market(nur_angebote))
+        only_offers = {"buy": 0, "sell": 60, "buyVol": 0, "sellVol": 500, "avg": 60}
+        self.assertTrue(pricing.valid_buy_market(only_offers))
+        self.assertFalse(pricing.valid_sell_market(only_offers))
 
     def test_duennes_top_gebot_verwirft_den_marktpreis_nicht(self):
         """yew_log: 6.178 Stück am besten Gebot – früher unter MIN_SELL_VOLUME=10000.
@@ -170,7 +170,7 @@ class MarktwegTest(unittest.TestCase):
         Ohne den Fix fiel das Item auf den NPC-Preis (20 x 1,155 = 23,1) zurück,
         obwohl 76 g geboten werden.
         """
-        channel = pricing.effective_sell_price(100, MARKT, INFO, amount_value=1000)
+        channel = pricing.effective_sell_price(100, MARKET, INFO, amount_value=1000)
         self.assertFalse(channel.to_npc)
         self.assertAlmostEqual(channel.price_value, 76 * 0.99)
         self.assertGreater(channel.price_value, channel.npc_price)
@@ -178,20 +178,20 @@ class MarktwegTest(unittest.TestCase):
     def test_npc_gewinnt_wenn_er_mehr_zahlt(self):
         info = dict(INFO)
         info[100] = dict(INFO[100], base_value=200)      # NPC: 231 > 75,24
-        channel = pricing.effective_sell_price(100, MARKT, info, amount_value=1000)
+        channel = pricing.effective_sell_price(100, MARKET, info, amount_value=1000)
         self.assertTrue(channel.to_npc)
         self.assertAlmostEqual(channel.price_value, 200 * cfg.NPC_SELL_BOOST_MULTIPLIER)
 
     def test_duennes_gebot_ist_eine_frage_der_produktion(self):
         """Nicht 'unter 10.000 Stück', sondern 'reicht keine Stunde'."""
-        markt = {"buy": 76, "sell": 90, "buyVol": 6178, "sellVol": 500, "avg": 78}
-        self.assertFalse(pricing.thin_top_bid(markt, 200))     # 30 h Vorrat
-        self.assertTrue(pricing.thin_top_bid(markt, 40000))    # 9 min
-        self.assertFalse(pricing.thin_top_bid(markt, 0))
+        market = {"buy": 76, "sell": 90, "buyVol": 6178, "sellVol": 500, "avg": 78}
+        self.assertFalse(pricing.thin_top_bid(market, 200))     # 30 h Vorrat
+        self.assertTrue(pricing.thin_top_bid(market, 40000))    # 9 min
+        self.assertFalse(pricing.thin_top_bid(market, 0))
         self.assertFalse(pricing.thin_top_bid(None, 200))
 
     def test_ohne_jeden_weg_kommt_ein_grund(self):
-        channel = pricing.effective_sell_price(500, MARKT, INFO)
+        channel = pricing.effective_sell_price(500, MARKET, INFO)
         self.assertEqual(channel.price_value, 0.0)
         self.assertIn("CanNotBeTraded", channel.reason)
         self.assertIn("CanNotBeSoldToGameShop", channel.reason)
@@ -200,42 +200,42 @@ class MarktwegTest(unittest.TestCase):
         """Spielergebot verliert Steuer, der NPC nicht – sonst wäre der Vergleich schief."""
         info = dict(INFO)
         info[100] = dict(INFO[100], base_value=65)       # NPC: 75,075
-        channel = pricing.effective_sell_price(100, MARKT, info, amount_value=1000)
+        channel = pricing.effective_sell_price(100, MARKET, info, amount_value=1000)
         self.assertAlmostEqual(channel.player_net, 75.24)
         self.assertFalse(channel.to_npc)                     # 75,24 > 75,075, aber knapp
 
 
-class ZutatenpreisTest(unittest.TestCase):
+class IngredientPriceTest(unittest.TestCase):
     def test_gold_ist_ein_item_und_kostet_eins(self):
         """API-Item 19 ist direktes Gold – früher als 'kein Markteintrag' mit 0 gerechnet."""
         self.assertEqual(GOLD_ITEM_ID, 19)
-        price_value, known = pricing.ingredient_price(19, MARKT)
+        price_value, known = pricing.ingredient_price(19, MARKET)
         self.assertTrue(known)
         self.assertEqual(price_value, 1.0)
         # Gegenprobe: ohne den Sonderfall wäre die Zeile "unbekannt" und die
         # Carpentry-Kosten fielen auf 0 zurück.
-        self.assertFalse(pricing.ingredient_price(18, MARKT).known)
+        self.assertFalse(pricing.ingredient_price(18, MARKET).known)
 
     def test_fehlender_preis_ist_nicht_null(self):
-        price_value, known = pricing.ingredient_price(999, MARKT)
+        price_value, known = pricing.ingredient_price(999, MARKET)
         self.assertFalse(known)
         self.assertEqual(price_value, 0.0)
 
     def test_markteintrag_ohne_angebot_gilt_als_unbekannt(self):
-        _, known = pricing.ingredient_price(500, MARKT)
+        _, known = pricing.ingredient_price(500, MARKET)
         self.assertFalse(known)
 
     def test_goldkosten_landen_in_der_summe(self):
         image = pricing.cost_per_action(
             [{"Item": 100, "Amount": 1}, {"Item": GOLD_ITEM_ID, "Amount": 250}],
-            MARKT, item_info_map=INFO)
+            MARKET, item_info_map=INFO)
         self.assertTrue(image.complete)
         self.assertAlmostEqual(image.costs_value, 90 + 250)
 
     def test_fehlende_zutat_macht_die_kosten_unvollstaendig(self):
         image = pricing.cost_per_action(
             [{"Item": 100, "Amount": 1}, {"Item": 999, "Amount": 2}],
-            MARKT, item_info_map=INFO)
+            MARKET, item_info_map=INFO)
         self.assertFalse(image.complete)
         self.assertEqual(image.missing_ones, ("item_999",))
         self.assertAlmostEqual(image.costs_value, 90)       # nur die bekannte Zeile
@@ -245,7 +245,7 @@ class ChainTest(unittest.TestCase):
     """Komplette Ketten: Zeit, Kosten, Autarkie, Nebenertrag."""
 
     def setUp(self):
-        self.rezepte = {
+        self.recipes = {
             100: _rezept("yew_log", "Woodcutting", 100, 8000),
             200: _rezept("tuna", "Fishing", 200, 9000),
             201: _rezept("cooked_tuna", "Cooking", 201, 3000,
@@ -254,58 +254,58 @@ class ChainTest(unittest.TestCase):
         self.fisch = {200: 201}
 
     def test_einzelne_stufe_ohne_zutaten(self):
-        k = pricing.resolve_chain(100, MARKT, self.rezepte, {}, INFO)
+        k = pricing.resolve_chain(100, MARKET, self.recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
         self.assertTrue(k.costs_known)
         self.assertEqual(k.costs_value, 0.0)
         # Zeit für EIN Stück: die Aktionszeit geteilt durch die Ausbeute je Aktion.
         # Gegen das Rezept gerechnet statt gegen eine getippte Zahl – sonst prüft der
         # Test die Boost-Formel mit, und die hat ihren eigenen Test.
-        rezept = self.rezepte[100]
-        self.assertAlmostEqual(k.zeit_ms, rezept["base_time_ms"] / rezept["item_amount"])
+        rezept = self.recipes[100]
+        self.assertAlmostEqual(k.time_ms, rezept["base_time_ms"] / rezept["item_amount"])
 
     def test_zutat_wird_selbst_hergestellt_statt_gekauft(self):
-        rezepte = dict(self.rezepte)
-        rezepte[300] = _rezept("plank", "Carpentry", 300, 6000,
+        recipes = dict(self.recipes)
+        recipes[300] = _rezept("plank", "Carpentry", 300, 6000,
                                costs=[{"Item": 100, "Amount": 2}])
-        k = pricing.resolve_chain(300, MARKT, rezepte, {}, INFO)
+        k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
         self.assertEqual(k.costs_value, 0.0)            # Holz wird gefarmt, nicht gekauft
         self.assertEqual(len(k.steps_list), 2)
 
     def test_gekaufte_zutat_bricht_die_autarkie(self):
-        rezepte = {300: _rezept("ring", "Crafting", 300, 5000,
+        recipes = {300: _rezept("ring", "Crafting", 300, 5000,
                                 costs=[{"Item": 100, "Amount": 2}])}
-        k = pricing.resolve_chain(300, MARKT, rezepte, {}, INFO)
+        k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.self_sufficient)
         self.assertGreater(k.costs_value, 0.0)
 
     def test_gold_kostet_bricht_aber_die_autarkie_nicht(self):
-        rezepte = {300: _rezept("plank", "Carpentry", 300, 6000,
+        recipes = {300: _rezept("plank", "Carpentry", 300, 6000,
                                 costs=[{"Item": GOLD_ITEM_ID, "Amount": 250}])}
-        k = pricing.resolve_chain(300, MARKT, rezepte, {}, INFO)
+        k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
         self.assertAlmostEqual(k.costs_value, 250 / (1 * 1.05))     # je Stück Ausbeute
         self.assertEqual(k.liquidity, 0.0)       # Gold hat keinen Markt, der knapp wird
 
     def test_unbekannter_zutatenpreis_wird_gemeldet_nicht_genullt(self):
-        rezepte = {300: _rezept("ring", "Crafting", 300, 5000,
+        recipes = {300: _rezept("ring", "Crafting", 300, 5000,
                                 costs=[{"Item": 999, "Amount": 2}])}
-        k = pricing.resolve_chain(300, MARKT, rezepte, {}, INFO)
+        k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.costs_known)
         self.assertEqual(k.missing_ones, ("item_999",))
 
     def test_auto_cook_verkauft_den_rohen_rest(self):
         """Ein Fischzug liefert je zur Hälfte gekocht und roh – der rohe Teil zählt."""
-        k = pricing.resolve_chain(201, MARKT, self.rezepte, self.fisch, INFO)
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
         self.assertGreater(k.side_yield, 0.0)
         # Pro gekochtem Stück fällt genau ein rohes an (Chance 0,5).
-        roh_pro_stueck = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
-        channel = pricing.effective_sell_price(200, MARKT, INFO, roh_pro_stueck)
-        self.assertAlmostEqual(k.side_yield, roh_pro_stueck * channel.price_value)
+        raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
+        channel = pricing.effective_sell_price(200, MARKET, INFO, raw_per_unit)
+        self.assertAlmostEqual(k.side_yield, raw_per_unit * channel.price_value)
 
     def test_auto_cook_fischt_statt_zu_kochen(self):
-        k = pricing.resolve_chain(201, MARKT, self.rezepte, self.fisch, INFO)
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
         self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
 
     def test_auto_cook_abschaltbar(self):
@@ -313,21 +313,21 @@ class ChainTest(unittest.TestCase):
         old = pricing.AUTO_COOK_SELL_RAW_REST
         try:
             pricing.AUTO_COOK_SELL_RAW_REST = False
-            k = pricing.resolve_chain(201, MARKT, self.rezepte, self.fisch, INFO)
+            k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
             self.assertEqual(k.side_yield, 0.0)
         finally:
             pricing.AUTO_COOK_SELL_RAW_REST = old
 
     def test_zyklus_bricht_die_rekursion(self):
-        rezepte = {
+        recipes = {
             300: _rezept("a", "Crafting", 300, 1000, costs=[{"Item": 301, "Amount": 1}]),
             301: _rezept("b", "Crafting", 301, 1000, costs=[{"Item": 300, "Amount": 1}]),
         }
-        k = pricing.resolve_chain(300, MARKT, rezepte, {}, INFO)
+        k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.self_sufficient)
 
 
-class OrderbuchTest(unittest.TestCase):
+class OrderbookTest(unittest.TestCase):
     def test_orderbook_walk_reference_values(self):
         self.assertEqual(walk_orderbook([(90, 5), (100, 2)], 4), (380.0, 4, 90))
 
@@ -351,18 +351,18 @@ class OrderbuchTest(unittest.TestCase):
         depth = {COMPREHENSIVE_AVG_FIELDS["Avg30D"]: 100}
         gross, _ = price_position(100, depth)
         self.assertAlmostEqual(gross, 0.0)
-        netto, _ = price_position(net_player_price(100), depth)
-        self.assertAlmostEqual(netto, -0.01)
+        net, _ = price_position(net_player_price(100), depth)
+        self.assertAlmostEqual(net, -0.01)
 
 
-class HistorieTest(unittest.TestCase):
+class HistoryTest(unittest.TestCase):
     def setUp(self):
         self.conn = history.open_db(":memory:")
 
     def tearDown(self):
         self.conn.close()
 
-    def _zeile(self, item="oak", **remainder):
+    def _row(self, item="oak", **remainder):
         basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
                  "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                  "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
@@ -372,7 +372,7 @@ class HistorieTest(unittest.TestCase):
 
     def test_lauf_speichert_zeitpunkt_version_und_confighash(self):
         with history.run_ctx(self.conn) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile()])
+            history.write_items(self.conn, run_id, [self._row()])
         run_ctx = history.last_runs(self.conn)[0]
         self.assertTrue(run_ctx["ts"])
         self.assertTrue(run_ctx["code_version"])
@@ -382,20 +382,20 @@ class HistorieTest(unittest.TestCase):
     def test_nur_erfolgreiche_laeufe_werden_uebernommen(self):
         with self.assertRaises(RuntimeError):
             with history.run_ctx(self.conn) as run_id:
-                history.write_items(self.conn, run_id, [self._zeile()])
+                history.write_items(self.conn, run_id, [self._row()])
                 raise RuntimeError("Abbruch mitten im Lauf")
         self.assertEqual(history.last_runs(self.conn), [])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0], 0)
 
     def test_config_hash_aendert_sich_mit_den_annahmen(self):
-        class Anders:
+        class Other:
             pass
-        anders = Anders()
+        other = Other()
         for name in cfg.CONFIG_HASH_KEYS:
-            setattr(anders, name, getattr(cfg, name, None))
-        vorher = history.config_hash(anders)
-        anders.POTION_OF_TRICKERY_SAVE = 0.5
-        self.assertNotEqual(vorher, history.config_hash(anders))
+            setattr(other, name, getattr(cfg, name, None))
+        before = history.config_hash(other)
+        other.POTION_OF_TRICKERY_SAVE = 0.5
+        self.assertNotEqual(before, history.config_hash(other))
 
     def test_orderbuch_nur_fuer_die_wichtigsten_kandidaten(self):
         books = [{"item": f"i{n}", "item_id": n, "kauf": [(10, 5)], "verkauf": []}
@@ -409,9 +409,9 @@ class HistorieTest(unittest.TestCase):
     def test_alte_details_werden_zu_tageswerten_und_verschwinden(self):
         old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
         with history.run_ctx(self.conn, timestamp=old) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile(gold_h=1000)])
+            history.write_items(self.conn, run_id, [self._row(gold_h=1000)])
         with history.run_ctx(self.conn) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile(gold_h=2000)])
+            history.write_items(self.conn, run_id, [self._row(gold_h=2000)])
 
         report = history.tidy_up(self.conn)
         self.assertEqual(report["condensed"], 1)
@@ -425,7 +425,7 @@ class HistorieTest(unittest.TestCase):
     def test_verdichten_ist_wiederholbar(self):
         old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
         with history.run_ctx(self.conn, timestamp=old) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile()])
+            history.write_items(self.conn, run_id, [self._row()])
         limit = (datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS)).strftime("%Y-%m-%d")
         history.condense_until(self.conn, limit)
         history.condense_until(self.conn, limit)
@@ -434,7 +434,7 @@ class HistorieTest(unittest.TestCase):
     def test_alte_orderbuecher_verschwinden_frueher_als_details(self):
         old = datetime.now() - timedelta(days=cfg.HISTORY_ORDERBOOK_DAYS + 2)
         with history.run_ctx(self.conn, timestamp=old) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile()])
+            history.write_items(self.conn, run_id, [self._row()])
             history.write_orderbook(
                 self.conn, run_id,
                 [{"item": "oak", "item_id": 1, "kauf": [(76, 10)], "verkauf": []}])
@@ -445,14 +445,14 @@ class HistorieTest(unittest.TestCase):
     def test_hoechstens_hundert_laufprotokolle(self):
         for _ in range(cfg.HISTORY_RUN_LIMIT + 5):
             with history.run_ctx(self.conn) as run_id:
-                history.write_items(self.conn, run_id, [self._zeile()])
+                history.write_items(self.conn, run_id, [self._row()])
         history.tidy_up(self.conn)
         count = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
         self.assertEqual(count, cfg.HISTORY_RUN_LIMIT)
 
     def test_verlauf_liest_details_und_tageswerte(self):
         with history.run_ctx(self.conn) as run_id:
-            history.write_items(self.conn, run_id, [self._zeile()])
+            history.write_items(self.conn, run_id, [self._row()])
         entries = history.trend_rows(self.conn, "oak")
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["quelle"], "detail")
@@ -462,7 +462,7 @@ class HistorieTest(unittest.TestCase):
         """Ein fehlendes Gold/h ist nicht 0 – auch nicht in der Datenbank."""
         with history.run_ctx(self.conn) as run_id:
             history.write_items(self.conn, run_id,
-                                   [self._zeile(gold_h=None, gold_h_real=float("nan"))])
+                                   [self._row(gold_h=None, gold_h_real=float("nan"))])
         line = self.conn.execute("SELECT gold_h, gold_h_real FROM items").fetchone()
         self.assertIsNone(line["gold_h"])
         self.assertIsNone(line["gold_h_real"])
@@ -479,12 +479,12 @@ class ExtendedJsonTest(unittest.TestCase):
     auseinanderlaufen.
     """
 
-    ROH = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
+    RAW = ('{"_id": ObjectId("61e2b1b0"), "n": NumberLong(0), "m": NumberLong("42"),'
            ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
            ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
 
     def test_bekannte_huellen_werden_uebersetzt(self):
-        data, hints = extended_json.load(self.ROH)
+        data, hints = extended_json.load(self.RAW)
         self.assertEqual(data["_id"], "61e2b1b0")
         self.assertEqual(data["n"], 0)
         self.assertEqual(data["m"], 42)        # mit Anfuehrungszeichen: trotzdem Zahl
@@ -492,11 +492,11 @@ class ExtendedJsonTest(unittest.TestCase):
         self.assertIsNone(data["leer"])
 
     def test_konstrukt_im_string_bleibt_text(self):
-        data, _ = extended_json.load(self.ROH)
+        data, _ = extended_json.load(self.RAW)
         self.assertEqual(data["t"], 'nutze ObjectId("x") hier')
 
     def test_unbekanntes_ueberlebt_und_wird_gemeldet(self):
-        data, hints = extended_json.load(self.ROH)
+        data, hints = extended_json.load(self.RAW)
         self.assertEqual(data["u"], 3)                    # ein Skalar bleibt der Skalar
         self.assertEqual(data["w"], "Timestamp(1, 2)")    # mehrere Argumente: als Text
         self.assertEqual(len(hints), 2)
@@ -524,14 +524,14 @@ class ExtendedJsonTest(unittest.TestCase):
 
 
 try:                                    # braucht pandas/requests/openpyxl - lokal ja, in CI nicht
-    from market_analysis import analysis as _analyse
+    from market_analysis import analysis as _analysis
     import pandas as _pd
 except ImportError:                     # pragma: no cover - wird gesagt, nicht verschwiegen
-    _analyse = _pd = None
+    _analysis = _pd = None
 
 
-@unittest.skipUnless(_analyse, "pandas/requests/openpyxl fehlen - Messungs-Rangfolge uebersprungen")
-class MessungsRangfolgeTest(unittest.TestCase):
+@unittest.skipUnless(_analysis, "pandas/requests/openpyxl fehlen - Messungs-Rangfolge uebersprungen")
+class MeasurementRankingTest(unittest.TestCase):
     """Jede Messung kommt ins Blatt, und die Rangfolge haelt ihr Versprechen.
 
     Gemeldet als „nur zehn Items haben Gold/h, der Rest ist leer": gemessen wurden
@@ -542,54 +542,54 @@ class MessungsRangfolgeTest(unittest.TestCase):
     """
 
     @staticmethod
-    def _empfehlung(lines):
-        spalten = ["Rang", "Item", "Skills", "Gold/h", "Verkauf an", "NPC-Preis",
+    def _recommendation(lines):
+        columns = ["Rang", "Item", "Skills", "Gold/h", "Verkauf an", "NPC-Preis",
                    "Stück/h", "Erlös pro Stück", "Spieler-Gebot (brutto)",
                    "Verlässlichkeit", "Warnung"]
-        df = _pd.DataFrame([dict(zip(spalten, z)) for z in lines])
+        df = _pd.DataFrame([dict(zip(columns, z)) for z in lines])
         df["Gold/h gewichtet"] = df["Gold/h"] * df["Verlässlichkeit"]
         return df
 
     def test_kandidaten_sind_alle_mit_gold_und_der_deckel_gilt(self):
-        df = self._empfehlung([
+        df = self._recommendation([
             (1, "a", "Mining", 300, "NPC-Vendor", 3, 100, 3, None, 1.0, None),
             (2, "b", "Mining", 200, "NPC-Vendor", 2, 100, 2, None, 1.0, None),
             (3, "c", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
             (4, "d", "Mining", -50, "NPC-Vendor", 0, 100, 0, None, 1.0, None),
         ])
-        old = _analyse.REASON_CANDIDATES
+        old = _analysis.REASON_CANDIDATES
         try:
-            _analyse.REASON_CANDIDATES = 0
-            self.assertEqual(list(_analyse.reason_candidates(df)["Item"]), ["a", "b"])
-            _analyse.REASON_CANDIDATES = 1
-            self.assertEqual(list(_analyse.reason_candidates(df)["Item"]), ["a"])
+            _analysis.REASON_CANDIDATES = 0
+            self.assertEqual(list(_analysis.reason_candidates(df)["Item"]), ["a", "b"])
+            _analysis.REASON_CANDIDATES = 1
+            self.assertEqual(list(_analysis.reason_candidates(df)["Item"]), ["a"])
         finally:
-            _analyse.REASON_CANDIDATES = old
+            _analysis.REASON_CANDIDATES = old
 
     def test_jede_messung_kommt_in_die_empfehlung(self):
         """Zwoelf gemessen -> zwoelf Werte im Blatt, nicht die ersten zehn.
 
         Mehr als zehn, weil genau dort der alte `.head(REASON_TOP_N)` schnitt."""
         names = [f"item{i:02d}" for i in range(1, 13)]
-        df_rec = self._empfehlung([
+        df_rec = self._recommendation([
             (i, name, "Mining", 200 - i, "NPC-Vendor", 2 - i / 100, 100, 2, None, 1.0, None)
             for i, name in enumerate(names, start=1)] + [
             (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
         df_chain = _pd.DataFrame({"Item": names + ["nichts"], "ItemID": range(1, 14),
                                   "RawMaterialCost/h": 0.0, "Nebenertrag/h": 0.0})
-        old = _analyse.fetch_orderbook_depth
+        old = _analysis.fetch_orderbook_depth
         try:
-            _analyse.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
-            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+            _analysis.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
         finally:
-            _analyse.fetch_orderbook_depth = old
+            _analysis.fetch_orderbook_depth = old
         self.assertEqual(len(df_reason), 12)
-        out = _analyse.sort_by_measurement(df_rec, df_reason)
+        out = _analysis.sort_by_measurement(df_rec, df_reason)
         source = dict(zip(out["Item"], out["Gold/h Quelle"]))
-        self.assertEqual(sum(q == _analyse.SOURCE_ORDERBOOK for q in source.values()), 12)
+        self.assertEqual(sum(q == _analysis.SOURCE_ORDERBOOK for q in source.values()), 12)
         # Das Ungemessene steht trotzdem da - mit Papier-Wert und als solches markiert.
         self.assertEqual(int(out["Gold/h realistisch"].notna().sum()), 13)
-        self.assertEqual(source["nichts"], _analyse.SOURCE_PAPER)
+        self.assertEqual(source["nichts"], _analysis.SOURCE_PAPER)
         self.assertEqual(list(out["Item"][:2]), ["item01", "item02"])
         self.assertEqual(list(out["Item"])[-1], "nichts")
         self.assertEqual(list(out["Rang"]), list(range(1, 14)))
@@ -600,38 +600,38 @@ class MessungsRangfolgeTest(unittest.TestCase):
     def test_sortiert_wird_ueber_die_angezeigte_zahl(self):
         """Ein gemessenes Item, das die Messung auf 50 drueckt, steht unter einem
         ungemessenen mit 200 auf dem Papier - nicht "Gemessene zuerst"."""
-        df_rec = self._empfehlung([
+        df_rec = self._recommendation([
             (1, "gedrueckt", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None),
             (2, "papier", "Mining", 200, "Spieler", 0, 100, 2, 2, 1.0, None),
         ])
         df_reason = _pd.DataFrame({"Rang": [1], "Item": ["gedrueckt"], "Gold/h realistisch": [50]})
-        out = _analyse.sort_by_measurement(df_rec, df_reason)
+        out = _analysis.sort_by_measurement(df_rec, df_reason)
         self.assertEqual(list(out["Item"]), ["papier", "gedrueckt"])
         self.assertEqual(list(out["Gold/h realistisch"]), [200, 50])
-        self.assertEqual(list(out["Gold/h Quelle"]), [_analyse.SOURCE_PAPER, _analyse.SOURCE_ORDERBOOK])
+        self.assertEqual(list(out["Gold/h Quelle"]), [_analysis.SOURCE_PAPER, _analysis.SOURCE_ORDERBOOK])
         self.assertEqual(int(df_reason.loc[0, "Rang"]), 2)
 
     def test_ohne_messung_steht_der_papierwert_da(self):
-        df_rec = self._empfehlung([(1, "a", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None)])
-        out = _analyse.sort_by_measurement(df_rec, _pd.DataFrame())
+        df_rec = self._recommendation([(1, "a", "Mining", 300, "Spieler", 0, 100, 3, 3, 1.0, None)])
+        out = _analysis.sort_by_measurement(df_rec, _pd.DataFrame())
         self.assertEqual(list(out["Gold/h realistisch"]), [300])
-        self.assertEqual(list(out["Gold/h Quelle"]), [_analyse.SOURCE_PAPER])
+        self.assertEqual(list(out["Gold/h Quelle"]), [_analysis.SOURCE_PAPER])
 
     def test_gemessener_rang_wendet_die_verlaesslichkeit_an(self):
         """NPC-Verkauf, kein Netz: gemessen = NPC-Preis x Stueck/h. Farming (0,5)
         bringt gemessen mehr und steht trotzdem hinter dem planbaren Item."""
-        df_rec = self._empfehlung([
+        df_rec = self._recommendation([
             (1, "papaya", "Farming", 200, "NPC-Vendor", 2, 100, 2, None, 0.5, None),
             (2, "oak", "Woodcutting", 150, "NPC-Vendor", 1.5, 100, 1.5, None, 1.0, None),
         ])
         df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
                                   "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
-        old = _analyse.fetch_orderbook_depth
+        old = _analysis.fetch_orderbook_depth
         try:
-            _analyse.fetch_orderbook_depth = lambda item_id: None
-            df_reason, _ = _analyse.build_reason_df(df_rec, df_chain)
+            _analysis.fetch_orderbook_depth = lambda item_id: None
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
         finally:
-            _analyse.fetch_orderbook_depth = old
+            _analysis.fetch_orderbook_depth = old
         self.assertEqual(list(df_reason["Item"]), ["oak", "papaya"])
         self.assertEqual(list(df_reason["Rang"]), [1, 2])
         # Der WERT bleibt ungewichtet - abgewertet wird nur der Rang.

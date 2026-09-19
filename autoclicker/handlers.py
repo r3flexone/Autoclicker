@@ -329,15 +329,15 @@ def handle_debug_toggle(state: AutoClickerState, level: str) -> None:
         else:
             state.config.debug_detail = not state.config.debug_detail
             active, name = state.config.debug_detail, "Stufe 2 (Detail + Zeiger)"
-        log_an, detail_an = state.config.debug_log, state.config.debug_detail
+        log_on, detail_on = state.config.debug_log, state.config.debug_detail
         snapshot = state.config
 
     save_config(snapshot)
     state_value = col('AN', 'green') if active else col('AUS', 'cyan')
     print(f"\n{col('[DEBUG]', 'cyan')} {name}: {state_value}")
-    print(f"         Jetzt aktiv: Stufe 1 {'an' if log_an else 'aus'}, "
-          f"Stufe 2 {'an' if detail_an else 'aus'}")
-    if detail_an and not log_an:
+    print(f"         Jetzt aktiv: Stufe 1 {'an' if log_on else 'aus'}, "
+          f"Stufe 2 {'an' if detail_on else 'aus'}")
+    if detail_on and not log_on:
         note = ("Stufe 2 gibt mehrzeilig aus und schreibt deshalb immer persistent - "
                 "Stufe 1 ist darin enthalten.")
         print(f"         {hint(note)}")
@@ -358,11 +358,11 @@ def handle_show(state: AutoClickerState) -> None:
         return
     with state.lock:
         active = state.active_sequence.name if state.active_sequence else None
-    vorauswahl = next((i for i, (name, _path) in enumerate(sequences)
+    preselection = next((i for i, (name, _path) in enumerate(sequences)
                        if name == active), 0)
     selection = interactive_select(
         [name + (" *AKTIV*" if name == active else "") for name, _ in sequences],
-        title="\nPUNKTE: Sequenz wählen", default=vorauswahl)
+        title="\nPUNKTE: Sequenz wählen", default=preselection)
     if selection < 0 or selection >= len(sequences):
         return
     _name, path = sequences[selection]
@@ -539,10 +539,10 @@ def handle_finish(state: AutoClickerState) -> None:
     print(f"\n{col('[FINISH]', 'yellow')} Zyklus wird abgeschlossen, dann END-Phase und Stop.")
 
 
-def handle_toggle(state: AutoClickerState, aus_studio: bool | None = False) -> None:
+def handle_toggle(state: AutoClickerState, from_studio: bool | None = False) -> None:
     """Startet oder stoppt die Sequenz.
 
-    `aus_studio` sagt, wo ein Haltepunkt spaeter fragen soll: False = Hotkey,
+    `from_studio` sagt, wo ein Haltepunkt spaeter fragen soll: False = Hotkey,
     also Konsole; True = Studio-Knopf, also Tafel im Live-Run; None = so lassen
     (der Countdown-Thread startet fuer den, der den Zeitplan gestellt hat).
     """
@@ -606,8 +606,8 @@ def handle_toggle(state: AutoClickerState, aus_studio: bool | None = False) -> N
                 print(warn("Die vorherige Boss-Erkennung wird noch beendet — bitte danach erneut starten."))
                 return
             state.is_running = True
-            if aus_studio is not None:
-                state.run_from_studio = bool(aus_studio)
+            if from_studio is not None:
+                state.run_from_studio = bool(from_studio)
             state.gate_waiting = False
             state.stop_event.clear()
             state.pause_event.clear()
@@ -657,7 +657,7 @@ def command_start(state: AutoClickerState, arguments: dict) -> None:
         state.points = seq.points
     _load_sequence_data(state)
     print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
-    handle_toggle(state, aus_studio=True)
+    handle_toggle(state, from_studio=True)
 
 
 def command_start_manual(state: AutoClickerState, arguments: dict) -> None:
@@ -747,10 +747,10 @@ def command_manual_action(state: AutoClickerState, arguments: dict) -> None:
         state.step_command_event.set()
 
 
-def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
+def _start_schedule(state: AutoClickerState, time_text: str) -> bool:
     """Startet den nicht-interaktiven Countdown für TUI und Studio gemeinsam."""
     try:
-        seconds, description, zielstempel = parse_time_input(zeit_text)
+        seconds, description, target_stamp = parse_time_input(time_text)
     except ValueError as e:
         print(err(str(e)))
         return False
@@ -758,10 +758,10 @@ def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
         print(err(description))
         return False
     if seconds < 1:
-        handle_toggle(state, aus_studio=None)
+        handle_toggle(state, from_studio=None)
         return True
 
-    target_time = zielstempel if zielstempel is not None else time.time() + seconds
+    target_time = target_stamp if target_stamp is not None else time.time() + seconds
     with state.lock:
         if state.countdown_active or state.is_running:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
@@ -773,12 +773,12 @@ def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
     laufstatus.schedule_run(name, target_time)
 
     def countdown_worker():
-        starten = False
+        start_now = False
         try:
             while not state.stop_event.is_set() and not state.quit_event.is_set():
                 remainder = target_time - time.time()
                 if remainder <= 0:
-                    starten = True
+                    start_now = True
                     break
                 if state.stop_event.wait(min(0.5, max(0.05, remainder))):
                     break
@@ -790,9 +790,9 @@ def _start_schedule(state: AutoClickerState, zeit_text: str) -> bool:
             state.stop_event.clear()
             print(f"\n{col('[ABBRUCH]', 'yellow')} Zeitplan abgebrochen.")
             return
-        if starten and not state.quit_event.is_set():
+        if start_now and not state.quit_event.is_set():
             print(f"\n{col('[START]', 'green')} Zeit erreicht — starte Sequenz!")
-            handle_toggle(state, aus_studio=None)
+            handle_toggle(state, from_studio=None)
 
     threading.Thread(target=countdown_worker, daemon=True).start()
     print(f"\n{col('[COUNTDOWN]', 'cyan')} '{name}' startet {description}.")
@@ -808,7 +808,7 @@ def command_schedule(state: AutoClickerState, arguments: dict) -> None:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
             return
     raw = str(arguments.get("file") or "").strip()
-    zeit_text = str(arguments.get("time") or "").strip()
+    time_text = str(arguments.get("time") or "").strip()
     seq = load_sequence_file(Path(raw)) if raw else None
     if seq is None:
         print(f"\n{err('Zeitplan ohne lesbare Sequenz — ignoriert.')}")
@@ -818,7 +818,7 @@ def command_schedule(state: AutoClickerState, arguments: dict) -> None:
         state.points = seq.points
         state.run_from_studio = True
     _load_sequence_data(state)
-    _start_schedule(state, zeit_text)
+    _start_schedule(state, time_text)
 
 
 def command_show(state: AutoClickerState, arguments: dict) -> None:
@@ -873,9 +873,9 @@ def command_config(state: AutoClickerState, arguments: dict) -> None:
     new = load_config()
     with state.lock:
         _uebernehmen(state.config, new)
-        log_an = state.config.debug_log or state.config.debug_detail
+        log_on = state.config.debug_log or state.config.debug_detail
     # Die Ausgabe-Stufen haengen am Logger, der nur beim Start gesetzt wurde.
-    init_logging(log_an)
+    init_logging(log_on)
     print(f"\n{col('[STUDIO]', 'cyan')} Einstellungen neu geladen.")
 
 
@@ -898,13 +898,13 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
         active = state.active_sequence
     if active is not None:
         path = sequence_file(active.name)
-        frisch = load_sequence_file(path)
-        if frisch is not None:
+        fresh = load_sequence_file(path)
+        if fresh is not None:
             with state.lock:
                 state.sequences.pop(active.name, None)
-                state.sequences[frisch.name] = frisch
-                state.active_sequence = frisch
-                state.points = frisch.points
+                state.sequences[fresh.name] = fresh
+                state.active_sequence = fresh
+                state.points = fresh.points
         _load_sequence_data(state)
     else:
         with state.lock:
@@ -1378,7 +1378,7 @@ def handle_rec_phase(state: AutoClickerState) -> None:
 
 
 def handle_sequence_studio(state: AutoClickerState,
-                           beenden_mit_fenster: bool = False) -> bool:
+                           quit_with_window: bool = False) -> bool:
     """Öffnet das Sequenz-Studio als separaten Subprocess.
 
     Eigener Prozess, damit sich seine Event-Loop nicht mit der
@@ -1391,7 +1391,7 @@ def handle_sequence_studio(state: AutoClickerState,
     import subprocess
 
     args = [sys.executable, "-m", "autoclicker.sequence_studio"]
-    if beenden_mit_fenster:
+    if quit_with_window:
         args.append("--beenden-mit-fenster")
 
     try:
@@ -1438,8 +1438,8 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
     with state.lock:
         was_recording = state.recording_active
         state.recording_active = False
-        war_nachklick = state.reclick_active
-    if war_nachklick:
+        was_reclick = state.reclick_active
+    if was_reclick:
         # **Beenden ist kein Übernehmen.** Vorher schrieb dieser Pfad, was bis
         # dahin gesetzt war — und damit landeten in einer echten Runde drei
         # Klicks auf Fensterdekoration dauerhaft in sequence.json. Wer übernehmen

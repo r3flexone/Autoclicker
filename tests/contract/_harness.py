@@ -15,7 +15,7 @@ So sieht ein neues Modul aus:
 
     section("Was hier geprueft wird")
     from autoclicker.irgendwas import funktion
-    check("die Eigenschaft, um die es geht", funktion(1) == 2)
+    check("die Eigenschaft, um die es geht", function_obj(1) == 2)
 """
 import sys
 import types

@@ -308,10 +308,10 @@ class BridgeToolsMixin:
         return {
             "ok": True,
             "findings": [{"level": b.level, "area": b.area, "text": b.text,
-                         "tip": b.tip} for b in report.befunde],
+                         "tip": b.tip} for b in report.findings],
             "checked": list(report.checked),
-            "errors": sum(1 for b in report.befunde if b.level == LEVEL_ERROR),
-            "hints": sum(1 for b in report.befunde if b.level != LEVEL_ERROR),
+            "errors": sum(1 for b in report.findings if b.level == LEVEL_ERROR),
+            "hints": sum(1 for b in report.findings if b.level != LEVEL_ERROR),
         }
 
     # ------------------------------------------------------------- Kalibrieren

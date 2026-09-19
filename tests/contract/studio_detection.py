@@ -60,13 +60,13 @@ check("und jede nimmt das eine Argument an, das die Seite schickt", _unpassend =
 # Die SCAN-ART-Kacheln im HTML gegen die Arten der Bruecke — Zug um Zug, nicht
 # als Menge: die Reihenfolge ist die Rangfolge (Items zuerst, das ist der Fall,
 # den es am laengsten gibt).
-_kacheln = re.findall(r'data-scan-kind="([a-z]+)"', _web)
+_tiles = re.findall(r'data-scan-kind="([a-z]+)"', _web)
 check("jede Scan-Art hat eine Kachel, in der Reihenfolge der Bruecke",
-      _kacheln == list(_ARTEN))
-_js_arten = re.search(r'const SCAN_KINDS = \[([^\]]+)\]', _web)
+      _tiles == list(_ARTEN))
+_js_kinds = re.search(r'const SCAN_KINDS = \[([^\]]+)\]', _web)
 check("und die Seite fuehrt dieselbe Liste",
-      _js_arten is not None
-      and re.findall(r'"([a-z]+)"', _js_arten.group(1)) == list(_ARTEN))
+      _js_kinds is not None
+      and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_ARTEN))
 
 # ---------------------------------------------------------------------------
 section("Boss- und Icon-Scans: anlegen, Region, Felder, Bibliothek")
@@ -200,14 +200,14 @@ try:
     # -----------------------------------------------------------------------
     # Alles Weitere braucht ein Bild. Denselben Weg geht der Item-Teil: die
     # Aufnahme wird gestellt, alles dahinter ist echt.
-    _hat_pil = False
+    _has_pil = False
     try:
         from PIL import Image as _PILImage
-        _hat_pil = True
+        _has_pil = True
     except ImportError:
         pass
 
-    if not _hat_pil:
+    if not _has_pil:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
         section("Erkennungs-Scans auf einem gestellten Bild")
@@ -222,7 +222,7 @@ try:
 
         import autoclicker.imaging as _img
         import autoclicker.winapi as _win
-        _echt_shot, _echt_org = _img.take_screenshot, _win.get_virtual_origin
+        _real_shot, _real_org = _img.take_screenshot, _win.get_virtual_origin
         _img.take_screenshot = lambda region=None: (
             _image.copy() if not region else _image.crop(tuple(region)))
         _win.get_virtual_origin = lambda: (0, 0)
@@ -383,8 +383,8 @@ try:
             check("eine fremde Aenderung an einem Icon-Scan faellt auf",
                   _b2.scan_data()["foreign"] is True)
         finally:
-            _img.take_screenshot = _echt_shot
-            _win.get_virtual_origin = _echt_org
+            _img.take_screenshot = _real_shot
+            _win.get_virtual_origin = _real_org
 finally:
     _os.chdir(_cwd)
 
@@ -460,16 +460,16 @@ _html = (Path(__file__).resolve().parent.parent.parent
          / "autoclicker/editors/sequence_studio/web/index.html").read_text("utf-8")
 _js = (Path(__file__).resolve().parent.parent.parent
        / "autoclicker/editors/sequence_studio/web/app.js").read_text("utf-8")
-_gefragt = set(re.findall(r'\$\("([a-zA-Z0-9_-]+)"\)', _js))
+_asked = set(re.findall(r'\$\("([a-zA-Z0-9_-]+)"\)', _js))
 _present = set(re.findall(r'id="([a-zA-Z0-9_-]+)"', _html))
 # Was die Seite selbst anlegt, zaehlt mit: im Aufbau (`id: "x"`) und als
 # Konstante daneben (`const xId = "y"`).
 _present |= set(re.findall(r'\bid:\s*"([a-zA-Z0-9_-]+)"', _js))
 _present |= set(re.findall(r'Id\s*=\s*"([a-zA-Z0-9_-]+)"', _js))
-_without = sorted(_gefragt - _present)
+_without = sorted(_asked - _present)
 check("jede von der Seite angesprochene Stelle gibt es auch", _without == [])
 if _without:
     print("        fehlt in index.html: " + ", ".join(_without))
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
-      {"sec-det-choice", "sec-det-steps", "scan-library"} <= _gefragt)
+      {"sec-det-choice", "sec-det-steps", "scan-library"} <= _asked)
 check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)

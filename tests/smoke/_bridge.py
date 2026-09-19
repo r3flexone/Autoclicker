@@ -30,14 +30,14 @@ WEB = ROOT / "autoclicker" / "editors" / "sequence_studio" / "web"
 # als ein Python-Aufruf auf der Bruecke. Genau ein Argument, wie im Fenster.
 # Der Proxy zaehlt, wie viele Bruecken-Aufrufe gerade unterwegs sind — das
 # ist die eine Groesse, an der ein Test erkennen kann, ob die Seite fertig ist
-# (s. `Window.ruhe`). `__offen++` passiert synchron im Klick-Handler, also
+# (s. `Window.settle`). `__pending++` passiert synchron im Klick-Handler, also
 # bevor Playwright den Klick als erledigt meldet.
 STUB = """
-window.__offen = 0;
+window.__pending = 0;
 window.pywebview = {api: new Proxy({}, {get: (t, name) => async (d) => {
-  window.__offen++;
-  try { return await window.__bruecke(String(name), d === undefined ? null : d); }
-  finally { window.__offen--; }
+  window.__pending++;
+  try { return await window.__bridge(String(name), d === undefined ? null : d); }
+  finally { window.__pending--; }
 }})};
 """
 
@@ -48,10 +48,10 @@ _SETTLE = """(ms) => new Promise((res, rej) => {
   const start = performance.now();
   let quiet = 0;
   const tick = () => {
-    if ((window.__offen || 0) === 0) { if (++quiet >= 2) return res(true); }
+    if ((window.__pending || 0) === 0) { if (++quiet >= 2) return res(true); }
     else quiet = 0;
     if (performance.now() - start > ms)
-      return rej(new Error("Seite kommt nicht zur Ruhe: " + window.__offen
+      return rej(new Error("Seite kommt nicht zur Ruhe: " + window.__pending
                            + " Bruecken-Aufruf(e) offen"));
     requestAnimationFrame(tick);
   };
@@ -118,8 +118,8 @@ def _chromium() -> str:
                    "chromium*/chrome-linux64/chrome", "chromium*/chrome-win64/chrome.exe"):
         for candidate in sorted(base_name.glob(pattern)):
             return str(candidate)
-    direkt = base_name / "chromium"
-    return str(direkt) if direkt.exists() else ""
+    direct = base_name / "chromium"
+    return str(direct) if direct.exists() else ""
 
 
 def sandbox(prefix: str) -> str:
@@ -128,10 +128,10 @@ def sandbox(prefix: str) -> str:
     Die Pfad-Konstanten sind CWD-relativ (s. CLAUDE.md), also reicht ein
     `chdir` — kein Test schreibt damit je in den echten Datenbestand.
     """
-    sand = tempfile.mkdtemp(prefix=prefix)
-    os.chdir(sand)
+    sandbox_dir = tempfile.mkdtemp(prefix=prefix)
+    os.chdir(sandbox_dir)
     Path("sequences").mkdir()
-    return sand
+    return sandbox_dir
 
 
 class Window:
@@ -161,7 +161,7 @@ class Window:
         self.page.on("pageerror", lambda e: self.error.append(f"pageerror: {e}"))
         self.page.on("console", lambda m: self.error.append(
             f"console.error: {m.text}") if m.type == "error" else None)
-        self.page.expose_function("__bruecke", self._call)
+        self.page.expose_function("__bridge", self._call)
         self.page.add_init_script(STUB)
         self.page.goto((WEB / "index.html").as_uri())
         self.settle()
@@ -196,7 +196,7 @@ class Window:
         Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen ueber alle
         acht Rauchtests: 86 s Laufzeit, davon **70 s Schlaf** in 117 Aufrufen,
         6,5 s echte Arbeit. Fertig ist die Seite, wenn kein Bruecken-Aufruf
-        mehr unterwegs ist (`window.__offen`, gezaehlt im Proxy) und das zwei
+        mehr unterwegs ist (`window.__pending`, gezaehlt im Proxy) und das zwei
         Frames lang so bleibt — der Neuaufbau nach einer Antwort laeuft in
         Microtasks, also vor dem naechsten Frame, und eine Kette (Antwort ->
         Neuaufbau -> Vorschau nachladen) faengt ihr naechstes Glied noch im

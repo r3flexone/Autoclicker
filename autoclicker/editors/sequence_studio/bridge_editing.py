@@ -238,7 +238,7 @@ class BridgeEditingMixin:
     def drag(self, data: dict) -> dict:
         """Ziel eines Drag&Drop mit Karten."""
         data = data or {}
-        source = self._lane(data.get("von_phase"))
+        source = self._lane(data.get("from_phase"))
         target = self._lane(data.get("to_phase"))
         if source is None or target is None:
             return self.snapshot()

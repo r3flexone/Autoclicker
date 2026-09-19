@@ -19,19 +19,19 @@ class StartupEditorTest(unittest.TestCase):
         state = SimpleNamespace(config=AppConfig())
 
         with patch.object(main_module, "handle_sequence_studio",
-                          return_value=True) as oeffnen:
+                          return_value=True) as open_mock:
             self.assertTrue(main_module._studio_beim_start_oeffnen(state))
 
-        oeffnen.assert_called_once_with(state, beenden_mit_fenster=True)
+        open_mock.assert_called_once_with(state, quit_with_window=True)
 
     def test_studio_start_can_be_disabled(self):
         state = SimpleNamespace(
             config=AppConfig(studio_open_on_start=False))
 
-        with patch.object(main_module, "handle_sequence_studio") as oeffnen:
+        with patch.object(main_module, "handle_sequence_studio") as open_mock:
             self.assertFalse(main_module._studio_beim_start_oeffnen(state))
 
-        oeffnen.assert_not_called()
+        open_mock.assert_not_called()
 
     def test_start_option_selects_exactly_one_start_surface(self):
         studio = SimpleNamespace(config=AppConfig(studio_open_on_start=True))
@@ -51,11 +51,11 @@ class StartupEditorTest(unittest.TestCase):
         state = SimpleNamespace(
             active_sequence=Sequence(name="AktivImHauptprozess"))
 
-        with patch("subprocess.Popen") as starten:
+        with patch("subprocess.Popen") as start_now:
             self.assertTrue(handlers.handle_sequence_studio(
-                state, beenden_mit_fenster=True))
+                state, quit_with_window=True))
 
-        args = starten.call_args.args[0]
+        args = start_now.call_args.args[0]
         self.assertNotIn("AktivImHauptprozess", args)
         self.assertIn("--beenden-mit-fenster", args)
 

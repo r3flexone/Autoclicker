@@ -86,9 +86,9 @@ def saving_factor(*pairs: tuple[bool, float]) -> float:
     der Kosten, der UEBRIG bleibt: `saving_factor((True, 0.25), (True, 0.10))` = 0.675.
     """
     factor = 1.0
-    for active, anteil in pairs:
+    for active, fraction in pairs:
         if active:
-            factor *= (1.0 - anteil)
+            factor *= (1.0 - fraction)
     return factor
 
 

@@ -13,7 +13,7 @@ except ImportError:                                              # pragma: no co
     Image = None
     PILLOW = False
 
-braucht_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
+needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.scan_services import (
     _hue_intervals,
@@ -35,7 +35,7 @@ class HueIntervalsTest(unittest.TestCase):
         self.assertEqual(_hue_intervals(20, 999), [(0, 179)])
 
 
-@braucht_pillow
+@needs_pillow
 class SlotDetectionTest(unittest.TestCase):
     def test_red_hue_wrap_detects_slot(self):
         try:

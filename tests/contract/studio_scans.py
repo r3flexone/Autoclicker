@@ -61,9 +61,9 @@ try:
     # Ein Screenshot und die daraus gebauten Bereiche brauchen zuerst ein
     # eindeutiges Speicherziel. Vorher lagen sie nur in dieser Studio-Sitzung
     # und verschwanden beim Schliessen, ohne je zu einem Scan zu gehoeren.
-    for _art18, _name18 in (("item", "Item-Scan"), ("boss", "Boss-Scan"),
+    for _kind18, _name18 in (("item", "Item-Scan"), ("boss", "Boss-Scan"),
                             ("icon", "Icon-Scan")):
-        _z18 = _b18.scan_screenshot({"kind": _art18})
+        _z18 = _b18.scan_screenshot({"kind": _kind18})
         check(f"ohne {_name18} wird kein Screenshot aufgenommen",
               _z18["photo"] is None and _z18["status"]["kind"] == "warn"
               and _name18 in _z18["status"]["text"])
@@ -90,14 +90,14 @@ try:
     # --- Ein gestelltes Bild unterschieben ---
     # Denselben Weg geht der Browser-Pruefstand: `take_screenshot` gibt es auf
     # dieser Plattform nicht, alles dahinter schon.
-    _hat_pil18 = False
+    _has_pil18 = False
     try:
         from PIL import Image as _PILImage18
-        _hat_pil18 = True
+        _has_pil18 = True
     except ImportError:
         pass
 
-    if not _hat_pil18:
+    if not _has_pil18:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
         _image18 = _PILImage18.new("RGB", (400, 300), (24, 28, 36))
@@ -110,8 +110,8 @@ try:
 
         import autoclicker.imaging as _img18
         import autoclicker.winapi as _win18
-        _echt_shot18 = _img18.take_screenshot
-        _echt_org18 = _win18.get_virtual_origin
+        _real_shot18 = _img18.take_screenshot
+        _real_org18 = _win18.get_virtual_origin
         # Der Stub schneidet wie das Original: `take_screenshot(region)` liefert
         # den Ausschnitt, nicht den ganzen Schirm. Ohne das koennte der Test die
         # Bereichs-Aufnahme gar nicht messen - sie saehe aus wie Vollbild.
@@ -350,11 +350,11 @@ try:
             # auch keine Korrelation. Echte Item-Symbole haben beides.)
             import random as _rnd18
             _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
-            def _zelle18(ox, oy, saat):
+            def _zelle18(ox, oy, seed):
                 for _px18 in range(60):
                     for _py18 in range(60):
                         _gitter18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
-                r = _rnd18.Random(saat)
+                r = _rnd18.Random(seed)
                 for _px18 in range(20, 40):
                     for _py18 in range(20, 40):
                         _gitter18.putpixel((ox + _px18, oy + _py18),
@@ -619,8 +619,8 @@ try:
             check("die Fensterliste ist eine Liste",
                   isinstance(_b18.scan_windows(), list))
         finally:
-            _img18.take_screenshot = _echt_shot18
-            _win18.get_virtual_origin = _echt_org18
+            _img18.take_screenshot = _real_shot18
+            _win18.get_virtual_origin = _real_org18
 
 
     # Neuer Vertrag: der geöffnete Scan IST der vollständige Bestand. Ein
@@ -732,11 +732,11 @@ section("Die Item-Maske: vier Angaben in der Liste statt eines Ein-Aus-Knopfs")
 # **Ein Haken war zu wenig.** Die Liste konnte nur „gehoert dazu / gehoert nicht
 # dazu"; Name, Kategorie und Prioritaet kosteten je einen Klick in die Liste,
 # einen Blick nach rechts und einen Weg zurueck — bei sechzig Items sechzig Mal.
-_maske18 = _html18[_html18.index("function scanItemCard("):]
-_maske18 = _maske18[:_maske18.index("\n/** Die Zustandszeile einer Item-Maske")]
+_card18 = _html18[_html18.index("function scanItemCard("):]
+_card18 = _card18[:_card18.index("\n/** Die Zustandszeile einer Item-Maske")]
 for _field18, _was18 in (('cardName("item"', "Name"), ('setter("category"', "Kategorie"),
                         ('setter("priority"', "Prioritaet")):
-    check(f"die Maske setzt {_was18}", _field18 in _maske18)
+    check(f"die Maske setzt {_was18}", _field18 in _card18)
 
 # Und dieselbe Sache steht NICHT zweimal da. Der Inspektor als eigener Ort ist
 # ganz entfallen: es gibt keine zweite Spalte mehr, in der ein Item stehen
@@ -855,11 +855,11 @@ check("Vorlage, Marker und Konfidenz baut EINE Funktion",
 check("die Maske klappt sie beim Gewaehlten auf",
       "(boxEl) => scanItemDetails(boxEl, i)" in _html18)
 # Dasselbe fuer Slot und Scan: EIN Detailteil je Art, gerufen aus der Bauform.
-for _art18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
-    check(f"{_art18} gibt es genau einmal",
-          _html18.count(f"function {_art18}(") == 1)
-    check(f"und die Maske klappt {_art18} auf",
-          f"(boxEl) => {_art18}(boxEl, {_bau18})" in _html18)
+for _kind18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
+    check(f"{_kind18} gibt es genau einmal",
+          _html18.count(f"function {_kind18}(") == 1)
+    check(f"und die Maske klappt {_kind18} auf",
+          f"(boxEl) => {_kind18}(boxEl, {_bau18})" in _html18)
 
 # **Waehlen ist der Normalfall, tippen die Ausnahme.** Ein freies Textfeld
 # allein macht aus „Helme" und „helme" zwei Kategorien - und Items derselben
@@ -867,7 +867,7 @@ for _art18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
 # seiner Gruppe. Eine `<datalist>` daneben war ein Angebot, das man kennen
 # musste; sechzig Masken haetten sich ausserdem eine id teilen muessen.
 check("die Maske waehlt die Kategorie ueber das gemeinsame Bedienelement",
-      "categoryChooser(i.category" in _maske18)
+      "categoryChooser(i.category" in _card18)
 check("und baut kein eigenes Textfeld mehr dafuer",
       "list: listenId" not in _html18 and "kategorienListe(" not in _html18)
 
@@ -977,41 +977,41 @@ try:
         _bN.scan_mode_set({"mode": "slot"})
         _bN.scan_click({"x": _i * 100, "y": 0})
         _bN.scan_click({"x": _i * 100 + 60, "y": 60})
-    _namenN = [s.name for s in _bN.slots.values()]
+    _namesN = [s.name for s in _bN.slots.values()]
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
 
     check("jeder Slot des Scans kennt seine Stelle",
-          [_slotsN[n]["number"] for n in _namenN] == [1, 2, 3])
-    check("und wieviele es insgesamt sind", _slotsN[_namenN[1]]["total"] == 3)
+          [_slotsN[n]["number"] for n in _namesN] == [1, 2, 3])
+    check("und wieviele es insgesamt sind", _slotsN[_namesN[1]]["total"] == 3)
     check("und je eine eigene ID, keine doppelt",
-          len({_slotsN[n]["id"] for n in _namenN}) == 3)
+          len({_slotsN[n]["id"] for n in _namesN}) == 3)
 
     # **Die Stelle im Scan und die Stelle im LAUF gehen auseinander**, sobald
     # „Slots rückwärts" an ist.
-    check("vorwaerts sind beide gleich", _slotsN[_namenN[0]]["run_index"] == 1)
+    check("vorwaerts sind beide gleich", _slotsN[_namesN[0]]["run_index"] == 1)
     _bN.scan_set({"name": "Inv", "field": "reverse", "value": True})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("rueckwaerts dreht sich die Lauf-Stelle um",
-          [_slotsN[n]["run_index"] for n in _namenN] == [3, 2, 1])
+          [_slotsN[n]["run_index"] for n in _namesN] == [3, 2, 1])
     check("die Stelle im Scan bleibt dieselbe",
-          [_slotsN[n]["number"] for n in _namenN] == [1, 2, 3])
+          [_slotsN[n]["number"] for n in _namesN] == [1, 2, 3])
 
-    _zN = _bN.scan_slot_set({"name": _namenN[1], "field": "active", "value": False})
+    _zN = _bN.scan_slot_set({"name": _namesN[1], "field": "active", "value": False})
     _slotsN = {s["name"]: s for s in _zN["slots"]}
     check("ein Slot lässt sich ausschalten, ohne seine Daten zu löschen",
-          _slotsN[_namenN[1]]["active"] is False
-          and _namenN[1] in _bN.slots and len(_bN.scans["Inv"].slots) == 3)
+          _slotsN[_namesN[1]]["active"] is False
+          and _namesN[1] in _bN.slots and len(_bN.scans["Inv"].slots) == 3)
     check("nur aktive Slots bekommen eine laufende Nummer",
-          [_slotsN[n]["number"] for n in _namenN] == [1, None, 2])
-    _bN.scan_slot_set({"name": _namenN[1], "field": "active", "value": True})
+          [_slotsN[n]["number"] for n in _namesN] == [1, None, 2])
+    _bN.scan_slot_set({"name": _namesN[1], "field": "active", "value": True})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("und derselbe Schalter schaltet ihn wieder ein",
-          _slotsN[_namenN[1]]["active"] is True
-          and [_slotsN[n]["number"] for n in _namenN] == [1, 2, 3])
+          _slotsN[_namesN[1]]["active"] is True
+          and [_slotsN[n]["number"] for n in _namesN] == [1, 2, 3])
 
     # Die ID übersteht echte Bearbeitung; eine Mitgliedschaft gibt es nicht mehr.
-    _idN = _slotsN[_namenN[1]]["id"]
-    _bN.scan_slot_set({"name": _namenN[1], "field": "name", "value": "Mitte"})
+    _idN = _slotsN[_namesN[1]]["id"]
+    _bN.scan_slot_set({"name": _namesN[1], "field": "name", "value": "Mitte"})
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("die ID bleibt beim Umbenennen gleich", _slotsN["Mitte"]["id"] == _idN)
     check("die Stelle im Scan bleibt beim Umbenennen gleich",
@@ -1024,12 +1024,12 @@ try:
     _slotsN = {s["name"]: s for s in _bN.scan_data()["slots"]}
     check("ein neuer Slot hat sofort eine Stelle", _slotsN["Weiter"]["number"] == 4)
     check("und eine stabile ID", _slotsN["Weiter"]["id"] > 0)
-    _slot_maskeN = _html18[_html18.index("function scanSlotCard("):
+    _slot_cardN = _html18[_html18.index("function scanSlotCard("):
                             _html18.index("function scanSlotState(")]
     check("jede Slot-Kachel baut einen echten Ein-Aus-Schalter",
-          'type: "checkbox"' in _slot_maskeN
-          and 'setter("active", box.checked)' in _slot_maskeN
-          and '"aria-label": s.name + " ein- oder ausschalten"' in _slot_maskeN)
+          'type: "checkbox"' in _slot_cardN
+          and 'setter("active", box.checked)' in _slot_cardN
+          and '"aria-label": s.name + " ein- oder ausschalten"' in _slot_cardN)
     check("der nutzlose Daneben-Knopf ist vollständig entfernt",
           "scan_slot_doppeln" not in _html18)
 
@@ -1044,12 +1044,12 @@ try:
     _bN.scan_item_set({"name": "Parkbar", "field": "active", "value": True})
     check("und dasselbe Item lässt sich wieder einschalten",
           _bN.items["Parkbar"].enabled is True)
-    _item_maskeN = _html18[_html18.index("function scanItemCard("):
+    _item_cardN = _html18[_html18.index("function scanItemCard("):
                             _html18.index("function scanItemState(")]
     check("jede Item-Kachel baut einen echten Ein-Aus-Schalter",
-          'type: "checkbox"' in _item_maskeN
-          and 'setter("active", box.checked)' in _item_maskeN
-          and '"aria-label": i.name + " ein- oder ausschalten"' in _item_maskeN)
+          'type: "checkbox"' in _item_cardN
+          and 'setter("active", box.checked)' in _item_cardN
+          and '"aria-label": i.name + " ein- oder ausschalten"' in _item_cardN)
     _bN.scan_toggle_all({"kind": "slot", "active": False})
     check("Alle aus schaltet wirklich jeden Slot aus",
           not any(s.enabled for s in _bN.slots.values()))
@@ -1564,7 +1564,7 @@ try:
           [c["name"] for c in _z19["scans"]] == ["Inventar"])
     check("und ist offen", _z19["open"] == "Inventar")
 
-    if not _hat_pil18:
+    if not _has_pil18:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
         _image19 = _PILImage18.new("RGB", (200, 150), (20, 24, 30))
@@ -1780,9 +1780,9 @@ try:
             _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
             _bk.open_scan = "S"
-            _kat_namen = iter(["Godlike Bow", "Citadel Helmet"])
-            _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_kat_namen, None), "")
-            _erg_kat = _pass_on(_bk, {"all_items": True})
+            _cat_names = iter(["Godlike Bow", "Citadel Helmet"])
+            _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (next(_cat_names, None), "")
+            _res_cat = _pass_on(_bk, {"all_items": True})
             check("ein Katalogname bleibt woertlich stehen",
                   "Godlike Bow" in _bk.items and "godlike_bow" not in _bk.items)
             # Ueber `.get()`, damit ein roter erster Check die restliche Suite
@@ -1794,7 +1794,7 @@ try:
                   _gb_on is not None and _ch_on is not None
                   and _gb_on.category == "Bogen" and _ch_on.category == "Helm")
             check("die Meldung nennt das Einordnen mit",
-                  "eingeordnet" in _erg_kat["status"]["text"])
+                  "eingeordnet" in _res_cat["status"]["text"])
             # Der teurere von beiden bekommt den ersten Rang — aber innerhalb
             # SEINER Kategorie, und die haben hier je ein Item.
             check("und die Prioritaet steht dicht innerhalb der Kategorie",
@@ -1929,10 +1929,10 @@ section("Studio-Items: eine Kategorie umbenennen zieht alle ihre Items mit")
 # und der Katalog ordnet bewusst ENG ein: an einem echten Bestand hatten
 # dreizehn von dreiundzwanzig Kategorien genau ein Item.
 _sandbox_cat = tempfile.mkdtemp(prefix="studiokategorie_")
-_cwd_kat = _os.getcwd()
+_cwd_cat = _os.getcwd()
 _os.chdir(_sandbox_cat)
 try:
-    def _bau_kat():
+    def _build_cat():
         _b = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
         _b.scan_data()
         _b.items = {
@@ -1943,18 +1943,18 @@ try:
         }
         return _b
 
-    _bk1 = _bau_kat()
-    _erg_kat = _bk1.scan_category_rename({"alt": "Bow", "neu": "Fernkampf"})
+    _bk1 = _build_cat()
+    _res_cat = _bk1.scan_category_rename({"alt": "Bow", "neu": "Fernkampf"})
     check("alle Items der Gruppe ziehen mit",
           [_bk1.items[n].category for n in ("Bogen A", "Bogen B")] == ["Fernkampf"] * 2)
     check("und andere Kategorien bleiben unberuehrt",
           _bk1.items["Armbrust"].category == "Crossbow")
-    check("die Meldung nennt die Anzahl", "2 Item(s)" in _erg_kat["status"]["text"])
+    check("die Meldung nennt die Anzahl", "2 Item(s)" in _res_cat["status"]["text"])
 
     # **Zusammengelegt heisst doppelte Raenge.** Zwei Items mit P1 in derselben
     # Kategorie sind eine Rangfolge, die der Zufall entscheidet — in Modus
     # `all` gewinnt eines und das andere wird nie geklickt.
-    _bk2 = _bau_kat()
+    _bk2 = _build_cat()
     _res_extra = _bk2.scan_category_rename({"alt": "Crossbow", "neu": "Bow"})
     _ranks = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
     check("beim Zusammenlegen werden die Raenge dicht", _ranks == [1, 2, 3])
@@ -1972,11 +1972,11 @@ try:
 
     # Ein leerer Zielname nimmt die Kategorie weg, ein leerer Quellname meint
     # die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
-    _bk3 = _bau_kat()
+    _bk3 = _build_cat()
     _bk3.scan_category_rename({"alt": "Bow", "neu": ""})
     check("ein leerer Zielname nimmt die Kategorie weg",
           _bk3.items["Bogen A"].category is None)
-    _bk4 = _bau_kat()
+    _bk4 = _build_cat()
     _bk4.scan_category_rename({"alt": "", "neu": "Sonstiges"})
     check("und ein leerer Quellname meint 'ohne Kategorie'",
           _bk4.items["Stein"].category == "Sonstiges"
@@ -1984,19 +1984,19 @@ try:
 
     # Kein Rueckgaengig-Stand ohne Aenderung: ein STRG+Z, das nichts
     # zurueckdreht, ist eins, dem man danach nicht mehr traut.
-    _bk5 = _bau_kat()
+    _bk5 = _build_cat()
     _depth_before = _bk5.scan_data()["undo"]["depth"]
     _res_empty_cat = _bk5.scan_category_rename({"alt": "Gibtsnicht", "neu": "X"})
     check("eine leere Gruppe aendert nichts",
           _res_empty_cat["status"]["kind"] == "warn"
           and _bk5.scan_data()["undo"]["depth"] == _depth_before)
-    _bk6 = _bau_kat()
+    _bk6 = _build_cat()
     _bk6.scan_category_rename({"alt": "Bow", "neu": "Bow"})
     check("und derselbe Name auch nicht",
           _bk6.scan_data()["undo"]["depth"] == _depth_before)
 
     # STRG+Z holt den ganzen Durchgang zurueck.
-    _bk7 = _bau_kat()
+    _bk7 = _build_cat()
     _bk7.scan_category_rename({"alt": "Bow", "neu": "Fernkampf"})
     _bk7.scan_undo()
     check("STRG+Z stellt die alte Kategorie wieder her",
@@ -2007,5 +2007,5 @@ try:
           "scan_category_rename" in _source_cat
           and "scanCategoryHeader" in _source_cat)
 finally:
-    _os.chdir(_cwd_kat)
+    _os.chdir(_cwd_cat)
     shutil.rmtree(_sandbox_cat, ignore_errors=True)

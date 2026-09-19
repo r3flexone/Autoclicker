@@ -19,7 +19,7 @@ except ImportError:                                              # pragma: no co
     Image = None
     PILLOW = False
 
-braucht_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
+needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
 from autoclicker.editors.sequence_studio.scans import MODE_SLOT, MODE_CHOICE
@@ -28,7 +28,7 @@ from autoclicker.models import (
 )
 
 
-@braucht_pillow
+@needs_pillow
 class ItemscanEditorUxTest(unittest.TestCase):
     def setUp(self):
         self.old_cwd = os.getcwd()
@@ -408,15 +408,15 @@ class ItemscanEditorUxTest(unittest.TestCase):
             return image
 
         pattern((62, 57), 0).save(templates / "robe.png")
-        passend = pattern((50, 50), 1)
-        passend.save(templates / "robe_50x50.png")
+        matching = pattern((50, 50), 1)
+        matching.save(templates / "robe_50x50.png")
         item = ItemProfile(
             name="Robe", template="robe.png",
             template_variants=["robe_50x50.png"], min_confidence=0.8)
         state = AutoClickerState()
 
         self.assertTrue(_check_profile_match(
-            item, passend, 40, state, False, template_root=templates))
+            item, matching, 40, state, False, template_root=templates))
         with self.assertNoLogs("autoclicker", level="WARNING"):
             self.assertFalse(_check_profile_match(
                 item, pattern((51, 50), 1), 40, state, False,
@@ -426,9 +426,9 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(data["template_sizes"], [[62, 57], [50, 50]])
 
         from autoclicker.persistence.serialization import _item_from_dict, _item_to_dict
-        gespeicherte_daten = _item_to_dict(item)
-        self.assertEqual(gespeicherte_daten["template_variants"], ["robe_50x50.png"])
-        loaded = _item_from_dict(gespeicherte_daten, "Robe")
+        saved_data = _item_to_dict(item)
+        self.assertEqual(saved_data["template_variants"], ["robe_50x50.png"])
+        loaded = _item_from_dict(saved_data, "Robe")
         self.assertEqual(loaded.template_names(), ["robe.png", "robe_50x50.png"])
 
     def test_priority_is_visible_with_category_context(self):

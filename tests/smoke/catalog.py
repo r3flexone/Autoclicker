@@ -15,8 +15,8 @@ from ._bridge import Window, main, sandbox
 
 # Namen aus dem echten Katalog. Zwei Helme (damit die Rangfolge etwas zu
 # entscheiden hat) und ein Name, den der Katalog NICHT kennt.
-BEKANNT = ["Citadel Helmet", "Centaurs Helmet"]
-FREMD = "item_7"
+KNOWN = ["Citadel Helmet", "Centaurs Helmet"]
+FOREIGN = "item_7"
 
 
 
@@ -73,7 +73,7 @@ def setup():
     # Aenderung, die erst danach passiert, ueberhaupt nicht.
     templates_list = Path("sequences/smoke/templates")
     templates_list.mkdir(parents=True, exist_ok=True)
-    for i, name in enumerate(BEKANNT + [FREMD]):
+    for i, name in enumerate(KNOWN + [FOREIGN]):
         mini_png(templates_list / f"t{i}.png")
         b.items[name] = ItemProfile(name=name, template=f"t{i}.png")
         b._add_to_scan("item", name)
@@ -133,8 +133,8 @@ def run():
                f"die Rangfolge stimmt nicht: "
                f"{[(n, i.priority) for n, i in b.items.items()]}")
         # Ein Name, den der Katalog nicht kennt, wird nicht geraten.
-        expect(b.items[FREMD].category is None,
-               f"'{FREMD}' wurde eingeordnet, obwohl er nicht im Katalog steht")
+        expect(b.items[FOREIGN].category is None,
+               f"'{FOREIGN}' wurde eingeordnet, obwohl er nicht im Katalog steht")
 
         # Und es steht auch dran, dass etwas passiert ist.
         status = f.status()

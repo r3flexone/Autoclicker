@@ -207,7 +207,7 @@ def _studio_beim_start_oeffnen(state) -> bool:
     """Öffnet auf Wunsch das Studio, nachdem der Hauptprozess empfangsbereit ist."""
     if not state.config.studio_open_on_start:
         return False
-    return handle_sequence_studio(state, beenden_mit_fenster=True)
+    return handle_sequence_studio(state, quit_with_window=True)
 
 
 def _tui_ist_startoberflaeche(state) -> bool:

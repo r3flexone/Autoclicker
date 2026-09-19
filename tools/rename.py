@@ -224,7 +224,7 @@ class Renamer:
 
     # Ein `{…}`-Feld eines f-Strings, eine Klammerebene tief (`{x:{breite}}`);
     # `{{` und `}}` sind Text.
-    _FSTRING_FELD = re.compile(r"(?<!\{)\{(?!\{)((?:[^{}]|\{[^{}]*\})*)\}")
+    _FSTRING_FIELD = re.compile(r"(?<!\{)\{(?!\{)((?:[^{}]|\{[^{}]*\})*)\}")
 
     def _fstring_rule(self, content: str) -> str:
         """Vor Python 3.12 ist ein f-String EIN Token: der Text darin folgt der
@@ -232,7 +232,7 @@ class Renamer:
         `tokenize` beides getrennt (FSTRING_MIDDLE + NAME), und dieser Weg
         wird gar nicht erst betreten — auf beiden Wegen kommt dasselbe heraus."""
         out, pos = [], 0
-        for field in self._FSTRING_FELD.finditer(content):
+        for field in self._FSTRING_FIELD.finditer(content):
             out.append(self._doc_rule(content[pos:field.start()]))
             expression = field.group(1)
             if self._re_ident is not None:
@@ -297,15 +297,15 @@ class Renamer:
                 out.append(src[i:j]); i = j; last_sig = "re"; continue
             m = _JS_IDENT.match(src, i)
             if m:
-                wort = m.group(0)
-                self.seen.add(wort)
+                word = m.group(0)
+                self.seen.add(word)
                 rest = src[m.end():m.end() + 2].lstrip()
                 if scopes is not None and last_sig == "function" and depth == 0:
-                    scope_name, scope_names = wort, set()
+                    scope_name, scope_names = word, set()
                 elif scope_name and last_sig != "." and not rest.startswith(":"):
-                    scope_names.add(wort)
-                out.append(self.ident.get(wort, wort))
-                i = m.end(); last_sig = wort; continue
+                    scope_names.add(word)
+                out.append(self.ident.get(word, word))
+                i = m.end(); last_sig = word; continue
             if ch == "{":
                 depth += 1
             elif ch == "}":
@@ -443,43 +443,43 @@ def scope_name_sets(src: str) -> list:
     Funktionen nur mit ihrem Namen."""
     import ast
     try:
-        baum = ast.parse(src)
+        tree = ast.parse(src)
     except SyntaxError:
         return []
 
-    SCOPE_KNOTEN = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+    SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
     def own_names(scope) -> set:
         """Die Namen im Rumpf dieses Scopes — an einer verschachtelten Funktion
         bleibt nur ihr Name, ihr Rumpf gehoert ihr selbst. Ein `try`/`with`
         dazwischen aendert daran nichts: abgestiegen wird ueberall, nur nicht
         in einen fremden Scope."""
-        gefunden = set()
+        found = set()
 
-        def gehe(knoten):
-            for kind in ast.iter_child_nodes(knoten):
-                if isinstance(kind, SCOPE_KNOTEN):
-                    if hasattr(kind, "name"):
-                        gefunden.add(kind.name)
+        def visit(node):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, SCOPE_NODES):
+                    if hasattr(child, "name"):
+                        found.add(child.name)
                     continue
-                if isinstance(kind, ast.Name):
-                    gefunden.add(kind.id)
-                elif isinstance(kind, ast.arg):
-                    gefunden.add(kind.arg)
-                gehe(kind)
+                if isinstance(child, ast.Name):
+                    found.add(child.id)
+                elif isinstance(child, ast.arg):
+                    found.add(child.arg)
+                visit(child)
 
         # Die eigenen Parameter gehoeren zum Scope, obwohl `arguments` ein Kind ist.
         if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             for a in ast.walk(scope.args):
                 if isinstance(a, ast.arg):
-                    gefunden.add(a.arg)
-        gehe(scope)
-        return gefunden
+                    found.add(a.arg)
+        visit(scope)
+        return found
 
-    scopes = [("<modul>", baum)] + [
-        (getattr(k, "name", "<lambda>"), k) for k in ast.walk(baum)
-        if isinstance(k, SCOPE_KNOTEN)]
-    return [(designation, own_names(knoten)) for designation, knoten in scopes]
+    scopes = [("<modul>", tree)] + [
+        (getattr(k, "name", "<lambda>"), k) for k in ast.walk(tree)
+        if isinstance(k, SCOPE_NODES)]
+    return [(designation, own_names(node)) for designation, node in scopes]
 
 
 def identifiers_in(path: Path, src: str) -> set:
@@ -538,7 +538,7 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
               file=out)
         return 2
 
-    gesamt = 0
+    total = 0
     for f, src in sources:
         try:
             new = renamer.rewrite(f, src)
@@ -549,7 +549,7 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
             continue
         old_lines, new_lines = src.splitlines(), new.splitlines()
         count = sum(1 for a, b in zip(old_lines, new_lines) if a != b) + abs(len(old_lines) - len(new_lines))
-        gesamt += count
+        total += count
         rel = f.relative_to(root).as_posix()
         print(f"{rel}: {count} Zeile(n)", file=out)
         if dry_run:
@@ -558,7 +558,7 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
                     print(f"  {nr}: {b.strip()[:110]}", file=out)
         else:
             f.write_text(new, encoding="utf-8", newline="")
-    print(f"\n{gesamt} geaenderte Zeile(n)" + (" (nicht geschrieben)" if dry_run else ""),
+    print(f"\n{total} geaenderte Zeile(n)" + (" (nicht geschrieben)" if dry_run else ""),
           file=out)
     return 0
 

@@ -573,12 +573,12 @@ class BridgeServicesMixin:
             sys.path.insert(0, str(root_layer))
         try:
             from tools.catalog import (build_catalog, fetch_game_data,
-                                       _summary, STANDARD_ZIEL)
+                                       _summary, DEFAULT_TARGET)
         except ImportError as e:
             return {"ok": False,
                     "message": f"tools/catalog.py nicht gefunden ({e})."}
 
-        target = Path(str(CONFIG.scan_catalog_file or "").strip() or STANDARD_ZIEL)
+        target = Path(str(CONFIG.scan_catalog_file or "").strip() or DEFAULT_TARGET)
         # Was das Werkzeug an der Antwort nicht kannte, gehoert in die
         # Statuszeile — auf stderr saehe es im Studio niemand, und ein neues
         # Konstrukt nach einem Spiel-Update ist ein Hinweis, kein Abbruch.

@@ -368,13 +368,13 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
             counters = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
                        "templates": 0}
             if include_data:
-                for name, hauptdatei in list_available_sequences():
-                    folder = Path(hauptdatei).parent
-                    archiv_wurzel = PurePosixPath("sequences", folder.name)
+                for name, main_file in list_available_sequences():
+                    folder = Path(main_file).parent
+                    archive_root = PurePosixPath("sequences", folder.name)
                     for source in sorted(p for p in folder.rglob("*") if p.is_file()):
-                        relativ = PurePosixPath(source.relative_to(folder).as_posix())
-                        zf.write(source, str(archiv_wurzel / relativ))
-                        parts = relativ.parts
+                        rel_path = PurePosixPath(source.relative_to(folder).as_posix())
+                        zf.write(source, str(archive_root / rel_path))
+                        parts = rel_path.parts
                         if parts and parts[0] in counters and source.suffix.lower() == ".json":
                             counters[parts[0]] += 1
                         if parts and parts[0] == "templates" and source.suffix.lower() == ".png":
@@ -640,8 +640,8 @@ def _remap_sequence_folder(folder: Path, transform: dict) -> None:
         return
     for path in folder.rglob("*.json"):
         data = json.loads(path.read_text(encoding="utf-8"))
-        relativ = path.relative_to(folder).parts
-        if relativ == ("boss_scans", "bibliothek.json"):
+        rel_path = path.relative_to(folder).parts
+        if rel_path == ("boss_scans", "bibliothek.json"):
             # Die Bibliothek enthält Profile mit Punkt-IDs, keine Regionen.
             # Ihre Punkte werden in sequence.json genau einmal umgerechnet.
             continue
@@ -650,7 +650,7 @@ def _remap_sequence_folder(folder: Path, transform: dict) -> None:
                 point["x"], point["y"] = remap_point(
                     int(point.get("x", 0)), int(point.get("y", 0)), transform)
             _remap_sequence_data(data, transform)
-        elif relativ and relativ[0] == "item_scans":
+        elif rel_path and rel_path[0] == "item_scans":
             for slot in (data.get("slots") or {}).values():
                 if slot.get("scan_region"):
                     slot["scan_region"] = list(remap_region(tuple(slot["scan_region"]), transform))
@@ -659,7 +659,7 @@ def _remap_sequence_folder(folder: Path, transform: dict) -> None:
             if data.get("capture_window_rect"):
                 data["capture_window_rect"] = list(
                     remap_region(tuple(data["capture_window_rect"]), transform))
-        elif relativ and relativ[0] in ("boss_scans", "icon_scans"):
+        elif rel_path and rel_path[0] in ("boss_scans", "icon_scans"):
             if data.get("scan_region"):
                 data["scan_region"] = list(remap_region(tuple(data["scan_region"]), transform))
         atomic_write(path, compact_json(data))
@@ -673,26 +673,26 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
     from .config import save_config
     from .persistence import ensure_sequences_dir, load_sequence_file
 
-    importierte = []
+    imported_ones = []
     with tempfile.TemporaryDirectory(prefix="autoclicker_import_") as temp:
         temp_root = Path(temp)
         if import_sequences:
             for name in names:
-                archiv = _safe_bundle_path(name)
-                if archiv is None or name.endswith("/"):
+                archive = _safe_bundle_path(name)
+                if archive is None or name.endswith("/"):
                     continue
-                target = temp_root.joinpath(*archiv.parts[1:]).resolve()
+                target = temp_root.joinpath(*archive.parts[1:]).resolve()
                 if not target.is_relative_to(temp_root.resolve()):
                     raise ValueError(f"Archivpfad verlässt den Importordner: {name}")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(zf.read(name))
 
             for source in sorted(p for p in temp_root.iterdir() if p.is_dir()):
-                hauptdatei = source / "sequence.json"
-                if not hauptdatei.is_file():
+                main_file = source / "sequence.json"
+                if not main_file.is_file():
                     raise ValueError(f"{source.name}: sequence.json fehlt")
                 _remap_sequence_folder(source, transform)
-                data = json.loads(hauptdatei.read_text(encoding="utf-8"))
+                data = json.loads(main_file.read_text(encoding="utf-8"))
                 if not isinstance(data, dict):
                     raise ValueError(f"{source.name}/sequence.json ist ungültig")
 
@@ -705,7 +705,7 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                         number += 1
                     if target.name != base_name:
                         data["name"] = target.name
-                        atomic_write(hauptdatei, compact_json(data))
+                        atomic_write(main_file, compact_json(data))
                 elif target.exists():
                     shutil.rmtree(target)
                 shutil.copytree(source, target)
@@ -714,18 +714,18 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                     raise ValueError(f"{target.name}: importierte Sequenz ist nicht lesbar")
                 with state.lock:
                     state.sequences[seq.name] = seq
-                importierte.append(seq.name)
+                imported_ones.append(seq.name)
 
         if import_config and "config.json" in names:
             raw = json.loads(zf.read("config.json").decode("utf-8"))
             if isinstance(raw, dict):
-                erlaubt = {k: v for k, v in raw.items() if k not in _SENSITIVE_CONFIG_KEYS}
-                for key, value in erlaubt.items():
+                allowed = {k: v for k, v in raw.items() if k not in _SENSITIVE_CONFIG_KEYS}
+                for key, value in allowed.items():
                     if hasattr(state.config, key):
                         setattr(state.config, key, value)
                 save_config(state.config)
 
-    parts = [f"{len(importierte)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
+    parts = [f"{len(imported_ones)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
     if import_config and "config.json" in names:
         parts.append("Einstellungen")
     return True, ", ".join(parts)

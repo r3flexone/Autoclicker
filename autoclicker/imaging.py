@@ -107,9 +107,9 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
             def enough(rgb) -> bool:
                 # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
                 values = rgb.astype(np.float32)
-                abstaende = np.sum((values - target) ** 2, axis=2)
+                distances = np.sum((values - target) ** 2, axis=2)
                 return int(np.count_nonzero(
-                    abstaende <= tolerance * tolerance)) >= min_pixels
+                    distances <= tolerance * tolerance)) >= min_pixels
 
             # In fast allen Fällen trifft schon das kleine Raster. Nur beim
             # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
@@ -155,7 +155,7 @@ _TEMPLATE_CACHE_MAX = 256
 # einmal pro Item da, und das sind bei zwei Inventaren im Bestand zwei Dutzend
 # Zeilen mit derselben Aussage. Genau der Fall, gegen den die Sperre gedacht war:
 # eine Konsole voll gleichlautender Warnungen liest niemand mehr.
-_gemeldete_groessen: set = set()
+_reported_sizes: set = set()
 
 
 def _load_template(template_path: str):
@@ -206,8 +206,8 @@ def with_background_mask(img: 'Image.Image', background) -> 'Image.Image':
     rgb = img.convert("RGB")
     width, height = rgb.size
     pixel = rgb.load()
-    maske = Image.new("L", (width, height))
-    mp = maske.load()
+    mask = Image.new("L", (width, height))
+    mp = mask.load()
     hr, hg, hb = background[:3]
     for y in range(height):
         for x in range(width):
@@ -217,11 +217,11 @@ def with_background_mask(img: 'Image.Image', background) -> 'Image.Image':
             else:
                 mp[x, y] = 255
     result = rgb.convert("RGBA")
-    result.putalpha(maske)
+    result.putalpha(mask)
     return result
 
 
-def _masked_confidence(image, template, maske) -> float:
+def _masked_confidence(image, template, mask) -> float:
     """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
 
     Von Hand statt `cv2.matchTemplate(..., mask=)`: mit Maske kann OpenCV nur
@@ -229,7 +229,7 @@ def _masked_confidence(image, template, maske) -> float:
     gespeicherte `min_confidence` verschöbe sich still. Template und Ausschnitt
     sind hier immer gleich gross, also genau eine Korrelation und keine Suche.
     """
-    choice = maske > 127
+    choice = mask > 127
     if int(choice.sum()) < 16:
         # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
         return 0.0
@@ -237,8 +237,8 @@ def _masked_confidence(image, template, maske) -> float:
     b = image[choice].astype(np.float64).ravel()
     a -= a.mean()
     b -= b.mean()
-    nenner = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
-    return float((a * b).sum() / nenner) if nenner > 0 else 0.0
+    denominator = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
+    return float((a * b).sum() / denominator) if denominator > 0 else 0.0
 
 
 def _template_at_size(template_path: str, image, width: int, height: int):
@@ -255,10 +255,10 @@ def _template_at_size(template_path: str, image, width: int, height: int):
         done = entry["skaliert"].get(key_name)
         if done is not None:
             return done
-    skaliert = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
+    scaled = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
     if entry is not None:
-        entry["skaliert"][key_name] = skaliert
-    return skaliert
+        entry["skaliert"][key_name] = scaled
+    return scaled
 
 
 def template_size(template_name: str, template_root=None) -> tuple[int, int] | None:
@@ -282,10 +282,10 @@ def _size_hint(template_name: str, tw: int, th: int,
     seine übrigen Items noch?), statt „Template neu aufnehmen" zu empfehlen —
     und keinen negativen Prozentwert, denn CCOEFF läuft von -1 bis +1.
     """
-    aehnlich = "keine Ähnlichkeit" if value <= 0 else f"nur {value:.0%} Ähnlichkeit"
+    similar = "keine Ähnlichkeit" if value <= 0 else f"nur {value:.0%} Ähnlichkeit"
     return (
         f"'{template_name}' wurde in einem Slot von {tw}x{th} gelernt, geprüft "
-        f"wurde gegen {iw}x{ih} — {aehnlich}.\n"
+        f"wurde gegen {iw}x{ih} — {similar}.\n"
         "         Meist ist das normal: verschiedene Flächen desselben Spiels haben "
         "verschiedene Slot-Höhen (Ausrüstungsreihe vs. Inventar-Raster), und dieses "
         "Item gehört dann schlicht zur anderen.\n"
@@ -359,13 +359,13 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
 
         # Traegt das Template eine Maske, wird nur ueber das Item verglichen -
         # der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
-        maske = None
+        mask = None
         if template_cv.ndim == 3 and template_cv.shape[2] == 4:
-            maske = template_cv[:, :, 3]
+            mask = template_cv[:, :, 3]
             template_cv = np.ascontiguousarray(template_cv[:, :, :3])
 
-        if maske is not None and template_cv.shape[:2] == img_cv.shape[:2]:
-            max_val = _masked_confidence(img_cv, template_cv, maske)
+        if mask is not None and template_cv.shape[:2] == img_cv.shape[:2]:
+            max_val = _masked_confidence(img_cv, template_cv, mask)
             max_loc = (0, 0)
         else:
             # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
@@ -382,8 +382,8 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             if (report_size_mismatch and max_val < 0.3
                     and (tw != iw or th != ih)):
                 key_name = (tw, th, iw, ih)
-                if key_name not in _gemeldete_groessen:
-                    _gemeldete_groessen.add(key_name)
+                if key_name not in _reported_sizes:
+                    _reported_sizes.add(key_name)
                     logger.warning(_size_hint(template_name, tw, th, iw, ih,
                                                      max_val))
             return (False, max_val, None)
@@ -489,9 +489,9 @@ def take_consistent_window_screenshot(hwnd: int) -> Optional[tuple]:
     """
     if not hwnd:
         return None
-    direkt = take_window_screenshot(hwnd)
-    if direkt is not None and not is_blank(direkt[0]):
-        return direkt[0], tuple(direkt[1]), ""
+    direct = take_window_screenshot(hwnd)
+    if direct is not None and not is_blank(direct[0]):
+        return direct[0], tuple(direct[1]), ""
 
     rect_value = get_client_rect_by_handle(hwnd)
     if rect_value is None:

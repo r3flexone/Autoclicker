@@ -47,11 +47,11 @@ class RuntimeHardeningTest(unittest.TestCase):
                     patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
                           return_value=(image, [], False)), \
                     patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
-                          return_value="Bogen") as suche, \
+                          return_value="Bogen") as search, \
                     patch("autoclicker.editors.item_editor.markers._item_has_compatible_template",
                           return_value=True) as size:
                 item_scan._learn_unknown_slot_item(state, slot, image, False)
-            suche.assert_called_once_with(image, [("Bogen", item)],
+            search.assert_called_once_with(image, [("Bogen", item)],
                                           state.config.scan_min_confidence, folder)
             size.assert_called_once_with(item, image, folder)
             image.save.assert_not_called()
@@ -62,10 +62,10 @@ class RuntimeHardeningTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, \
                 patch.object(mailbox, "COMMAND_PATH", Path(temp) / "briefkasten.json"):
             mailbox.send_command("start")
-            lesen = Path.read_text
+            read_fn = Path.read_text
 
             def with_new_command(path, *args, **kwargs):
-                text = lesen(path, *args, **kwargs)
+                text = read_fn(path, *args, **kwargs)
                 mailbox.send_command("stop")
                 return text
 
@@ -95,9 +95,9 @@ class RuntimeHardeningTest(unittest.TestCase):
                                   side_effect=lambda s: s.stop_event.set()), \
                         patch.object(actions, "_humanize_check_break"), \
                         patch.object(actions, "_wait_for_target_window", return_value=True), \
-                        patch.object(actions, "send_" + kind, return_value=True) as senden:
+                        patch.object(actions, "send_" + kind, return_value=True) as send_fn:
                     self.assertFalse(getattr(actions, "safe_" + kind)(state, *arguments))
-                senden.assert_not_called()
+                send_fn.assert_not_called()
 
     def test_pause_sperrt_auch_einen_klick_ohne_wartezeit(self):
         state = AutoClickerState()
@@ -113,33 +113,33 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch.object(steps, "print_step_detail"), \
                 patch.object(steps.status, "write_status"), \
                 patch.object(actions, "wait_while_paused", side_effect=waiting), \
-                patch.object(actions, "send_click", return_value=True) as senden:
+                patch.object(actions, "send_click", return_value=True) as send_fn:
             t = threading.Thread(target=steps.execute_step, args=(
                 state, SequenceStep(point_id=1, delay_before=0), 1, 1, "INIT"))
             t.start()
             try:
                 self.assertTrue(arrived.wait(1), "Keine Pausenprüfung vor der Eingabe")
-                senden.assert_not_called()
+                send_fn.assert_not_called()
             finally:
                 state.pause_event.clear()
                 t.join(2)
             self.assertFalse(t.is_alive())
-            senden.assert_called_once()
+            send_fn.assert_called_once()
 
     def test_fokus_wird_nach_humanize_pause_erneut_geprueft(self):
         state = AutoClickerState()
         state.config.window_focus_check = True
         state.config.window_focus_title = "Spiel"
         state.config.window_focus_action = "stop"
-        fokus = {"active": True}
+        focus = {"active": True}
         with patch.object(actions, "is_target_window_active",
-                          side_effect=lambda _titel: fokus["active"]), \
+                          side_effect=lambda _title: focus["active"]), \
                 patch.object(actions, "get_foreground_window_title", return_value="Editor"), \
                 patch.object(actions, "_humanize_check_break",
-                             side_effect=lambda _s: fokus.update(active=False)), \
-                patch.object(actions, "send_click", return_value=True) as senden:
+                             side_effect=lambda _s: focus.update(active=False)), \
+                patch.object(actions, "send_click", return_value=True) as send_fn:
             self.assertFalse(actions.safe_click(state, 10, 20))
-        senden.assert_not_called()
+        send_fn.assert_not_called()
 
     def test_boss_und_icon_klicken_nur_einen_existierenden_punkt(self):
         from autoclicker.persistence import resolve_click_references
@@ -152,7 +152,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 state.boss_scans["B"] = BossScanConfig(name="B", bosses=[boss])
                 state.icon_scans["I"] = icon
 
-                def ausfuehren():
+                def execute():
                     if kind == "boss":
                         return boss_detection._execute_boss_action(
                             state, boss, SequenceStep(boss_scan="B"), 1, 1, "INIT", False)
@@ -160,16 +160,16 @@ class RuntimeHardeningTest(unittest.TestCase):
                         state, SequenceStep(icon_scan="I"), 1, 1, "INIT")
 
                 with patch.object(steps, "execute_icon_scan", return_value=True), \
-                        patch.object(boss_detection, "safe_click", return_value=True) as klicken:
+                        patch.object(boss_detection, "safe_click", return_value=True) as click_fn:
                     resolve_click_references(state)
-                    ausfuehren()
-                    klicken.assert_not_called()
+                    execute()
+                    click_fn.assert_not_called()
                     # Auch (0, 0) kann ein gültiger Punkt sein: die ID entscheidet.
                     state.active_sequence.points = [ClickPoint(0, 0, "Ziel", 7)]
                     resolve_click_references(state)
-                    ausfuehren()
-                    self.assertEqual(klicken.call_args.args[1:3], (0, 0))
-                    self.assertEqual(klicken.call_count, 1)
+                    execute()
+                    self.assertEqual(click_fn.call_args.args[1:3], (0, 0))
+                    self.assertEqual(click_fn.call_count, 1)
 
     def test_worker_fehler_raeumt_lauf_und_log_auf(self):
         state = AutoClickerState()
@@ -205,10 +205,10 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch.object(steps, "print_step_detail"), \
                 patch.object(steps, "wait_with_pause_skip",
                              side_effect=skip_while_waiting), \
-                patch.object(steps, "_execute_click") as klicken:
+                patch.object(steps, "_execute_click") as click_fn:
             self.assertTrue(steps.execute_step(state, step, 1, 1, "Ablauf"))
 
-        klicken.assert_not_called()
+        click_fn.assert_not_called()
         self.assertFalse(state.skip_step_event.is_set())
 
     @unittest.skipUnless(imaging.PILLOW_AVAILABLE, "Pillow fehlt")

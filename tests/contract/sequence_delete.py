@@ -75,10 +75,10 @@ try:
     # `sys.platform`: auch Windows kann case-sensitive Verzeichnisse haben.
     # Geprueft werden beide Seiten — auf der einen bleibt der Fremdordner stehen,
     # auf der anderen ist er der echte und muss mitgewandert sein.
-    _falle = Path("sequences/Raid")
-    _falle.mkdir(parents=True, exist_ok=True)
-    (_falle / "nicht_gemeint.txt").write_bytes(b"x")
-    _falle_eigen = not _os.path.samefile(_falle, _folder_raid)
+    _trap = Path("sequences/Raid")
+    _trap.mkdir(parents=True, exist_ok=True)
+    (_trap / "nicht_gemeint.txt").write_bytes(b"x")
+    _trap_own = not _os.path.samefile(_trap, _folder_raid)
 
     _b = _SB(_farm, dict(list_available_sequences())["Farm"], "sequences")
     _b._running = lambda: False          # kein echter Lauf in der Testumgebung
@@ -129,12 +129,12 @@ try:
           sorted(p.name for p in (_bak / "templates").iterdir()) == ["erz.png", "holz.png"])
     check("die Uebersicht zeigt sie nicht mehr",
           [e["name"] for e in _b.sequence_list()] == ["Farm"])
-    if _falle_eigen:
+    if _trap_own:
         check("der gleichnamige Fremdordner bleibt unangetastet",
-              (_falle / "nicht_gemeint.txt").exists())
+              (_trap / "nicht_gemeint.txt").exists())
     else:
         check("ohne Gross-/Kleinunterschied ist er der echte und wandert mit",
-              (_bak / "nicht_gemeint.txt").exists() and not _falle.exists())
+              (_bak / "nicht_gemeint.txt").exists() and not _trap.exists())
 
     # --- Zweimal derselbe Name ueberschreibt die Sicherung nicht -----------
     _create("Raid")
@@ -164,23 +164,23 @@ finally:
 # Klick einen Ordner nimmt.** Der Knopf muss also ueber den Dialog gehen, und
 # der Dialog muss den Fall kennen — fehlt einer der beiden Teile, passiert
 # entweder nichts oder zu viel.
-_karte = _web[_web.index("function seqCard"):_web.index("function askDelete")]
-check("die Karte hat einen Loeschen-Knopf", '"Löschen"' in _karte)
+_card = _web[_web.index("function seqCard"):_web.index("function askDelete")]
+check("die Karte hat einen Loeschen-Knopf", '"Löschen"' in _card)
 check("und er geht ueber die Rueckfrage, nicht direkt an die Bruecke",
-      "askDelete(s)" in _karte and 'sequence_delete' not in _karte)
+      "askDelete(s)" in _card and 'sequence_delete' not in _card)
 check("die offene Sequenz laesst sich nicht loeschen — auch nicht im Knopf",
-      re.search(r'class: "btn danger quiet", disabled: s\.open', _karte) is not None)
+      re.search(r'class: "btn danger quiet", disabled: s\.open', _card) is not None)
 # Gleiche Spalten: zwei verschieden breite Knoepfe nebeneinander lesen sich als
 # zwei Rangstufen. Dieselbe Klasse wie ueberall sonst, kein drittes Muster.
 check("beide Knoepfe teilen sich gleiche Spalten",
-      'el("div", {class: "button-pair"}' in _karte)
+      'el("div", {class: "button-pair"}' in _card)
 check("und die Klasse ist auch gestaltet", ".seq-footer .button-pair{" in _web)
-_forts = _web[_web.index("async function proceed"):_web.index("Ansicht: Scans")]
-check("der Dialog kennt den Loesch-Fall", 'open.kind === "seq_delete"' in _forts)
+_cont = _web[_web.index("async function proceed"):_web.index("Ansicht: Scans")]
+check("der Dialog kennt den Loesch-Fall", 'open.kind === "seq_delete"' in _cont)
 check("und ruft die Bruecke ueber den fragenden Kanal",
-      'ask("sequence_delete"' in _forts)
+      'ask("sequence_delete"' in _cont)
 check("danach wird die Uebersicht neu gezeichnet",
-      "renderSequenceList()" in _forts)
+      "renderSequenceList()" in _cont)
 # Die lokale Variable hiess `ask` und verdeckte den gleichnamigen Helfer.
 check("die lokale Variable verdeckt den Bruecken-Helfer nicht mehr",
       "const ask = openQuestion" not in _web)

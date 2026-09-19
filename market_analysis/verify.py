@@ -193,7 +193,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
         return
     chain = ma.resolve_chain(item_id, market_map, recipe_by_output, fish_to_cooked,
                              item_info_map)
-    total_ms, cost, steps = chain.zeit_ms, chain.costs_value, chain.steps_list
+    total_ms, cost, steps = chain.time_ms, chain.costs_value, chain.steps_list
     if total_ms <= 0:
         return
 

@@ -64,8 +64,8 @@ try:
         items=[_ITEM(name="Erz", marker_colors=[(10, 20, 30)])],
     ))
 
-    _farm_pfad = dict(list_available_sequences())["Farm"]
-    _b = _SB(_seq, _farm_pfad, "sequences")
+    _farm_path = dict(list_available_sequences())["Farm"]
+    _b = _SB(_seq, _farm_path, "sequences")
     # Der Test misst ausdrücklich den Pfad ohne bekanntes Spielfenster; eine
     # zufällig laufende echte Instanz darf das Ergebnis nicht umdrehen.
     _b._window_layout = lambda: None
@@ -97,7 +97,7 @@ try:
     check("und das Fenster liest danach neu", len(_b.points) >= 2)
 
     # **Der Import schreibt auf Platte, nicht nur in den Speicher.**
-    _b2 = _SB(_seq, _farm_pfad, "sequences")
+    _b2 = _SB(_seq, _farm_path, "sequences")
     check("ein frisches Studio sieht dasselbe",
           _b2.share_data()["inventory"]["sequences"] >= 1)
 finally:

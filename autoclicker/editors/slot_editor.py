@@ -560,34 +560,34 @@ def _check_assignment(old_slots: list, new_rects: list[tuple],
     ox, oy = offset
     pairs = []
     for slot, (x, y, w, h) in zip(old_slots, new_rects):
-        neue_region = (x + ox + inset, y + oy + inset,
+        new_region = (x + ox + inset, y + oy + inset,
                        x + ox + w - inset, y + oy + h - inset)
-        pairs.append((slot, neue_region))
+        pairs.append((slot, new_region))
 
     # Einzelversaetze: bei einer reinen Verschiebung sind alle gleich
-    versaetze = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
+    offsets = [(new[0] - slot.scan_region[0], new[1] - slot.scan_region[1])
                  for slot, new in pairs]
-    xs = [v[0] for v in versaetze]
-    ys = [v[1] for v in versaetze]
-    streuung = max(max(xs) - min(xs), max(ys) - min(ys))
+    xs = [v[0] for v in offsets]
+    ys = [v[1] for v in offsets]
+    spread = max(max(xs) - min(xs), max(ys) - min(ys))
 
     # Groessen muessen ebenfalls passen — sonst hat sich die Aufloesung geaendert
     # und eine reine Verschiebung waere die falsche Antwort.
-    groessen_diff = 0
+    size_diff = 0
     for slot, new in pairs:
-        alt_b = slot.scan_region[2] - slot.scan_region[0]
-        alt_h = slot.scan_region[3] - slot.scan_region[1]
-        groessen_diff = max(groessen_diff,
-                            abs((new[2] - new[0]) - alt_b),
-                            abs((new[3] - new[1]) - alt_h))
+        old_w = slot.scan_region[2] - slot.scan_region[0]
+        old_h = slot.scan_region[3] - slot.scan_region[1]
+        size_diff = max(size_diff,
+                            abs((new[2] - new[0]) - old_w),
+                            abs((new[3] - new[1]) - old_h))
 
-    if groessen_diff > _REPAIR_MAX_SIZE_DIFF:
+    if size_diff > _REPAIR_MAX_SIZE_DIFF:
         messages.append(
-            f"Die Slot-Groesse weicht um bis zu {groessen_diff} px ab — sieht nach einer "
+            f"Die Slot-Groesse weicht um bis zu {size_diff} px ab — sieht nach einer "
             f"anderen Aufloesung aus, nicht nach einer Verschiebung.")
-    if streuung > _REPAIR_MAX_SPREAD:
+    if spread > _REPAIR_MAX_SPREAD:
         messages.append(
-            f"Die Einzelversaetze streuen um {streuung} px — die Zuordnung ist nicht "
+            f"Die Einzelversaetze streuen um {spread} px — die Zuordnung ist nicht "
             f"eindeutig (andere Reihenfolge? ein Slot verdeckt?).")
 
     if messages:

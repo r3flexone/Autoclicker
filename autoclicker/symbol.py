@@ -100,15 +100,15 @@ def _rotator(transform: str):
     match = _ROTATION.fullmatch(transform)
     if not match:
         raise ValueError(f"Unbekannte SVG-Transformation im Studio-Logo: {transform!r}")
-    winkel = math.radians(float(match.group(1)))
+    angle = math.radians(float(match.group(1)))
     cx = float(match.group(2) or 0.0)
     cy = float(match.group(3) or 0.0)
-    cosinus, sinus = math.cos(winkel), math.sin(winkel)
+    cos_value, sin_value = math.cos(angle), math.sin(angle)
 
     def rotate(point):
         x, y = point[0] - cx, point[1] - cy
-        return (cx + x * cosinus - y * sinus,
-                cy + x * sinus + y * cosinus)
+        return (cx + x * cos_value - y * sin_value,
+                cy + x * sin_value + y * cos_value)
 
     return rotate
 
@@ -125,17 +125,17 @@ def _logo_geometry():
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
 
-    farb_rect = next((e for e in root_layer if _tag(e) == "rect" and "mask" in e.attrib), None)
-    if farb_rect is None:
+    color_rect = next((e for e in root_layer if _tag(e) == "rect" and "mask" in e.attrib), None)
+    if color_rect is None:
         raise ValueError("Farbfläche im Studio-Logo fehlt")
-    color_text = farb_rect.attrib.get("fill", "").lstrip("#")
+    color_text = color_rect.attrib.get("fill", "").lstrip("#")
     if len(color_text) != 6:
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
     color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
-    maske = next((e for e in root_layer.iter() if _tag(e) == "mask"), None)
-    group = (next((e for e in maske.iter() if _tag(e) == "g"), None)
-               if maske is not None else None)
+    mask = next((e for e in root_layer.iter() if _tag(e) == "mask"), None)
+    group = (next((e for e in mask.iter() if _tag(e) == "g"), None)
+               if mask is not None else None)
     if group is None:
         raise ValueError("Pfadgruppe in der Maske des Studio-Logos fehlt")
     rotate = _rotator(group.attrib.get("transform", ""))
@@ -168,46 +168,46 @@ def _intervals(polygons, y: float):
             yield cuts[i], cuts[i + 1]
 
 
-def _paint(line: bytearray, intervalle, value: int,
+def _paint(line: bytearray, intervals, value: int,
           left: float, step: float) -> None:
     """Setzt Subpixel, deren Mittelpunkt in einem der Intervalle liegt."""
     width = len(line)
-    fuellung = bytes((value,))
-    for beginning, end in intervalle:
+    fill = bytes((value,))
+    for beginning, end in intervals:
         from_index = max(0, math.ceil((beginning - left) / step - 0.5))
         until = min(width, math.ceil((end - left) / step - 0.5))
         if until > from_index:
-            line[from_index:until] = fuellung * (until - from_index)
+            line[from_index:until] = fill * (until - from_index)
 
 
-def pixel_rows(edge: int, proben: int = SAMPLES):
+def pixel_rows(edge: int, samples: int = SAMPLES):
     """Liefert das Logo von oben nach unten als Zeilen mit RGBA-Pixeln.
 
     Kleine Windows-Symbole erhalten vier Subpixel je Achse. Bei großen Exporten
     reichen weniger Proben, weil ein Bildpixel dort bereits deutlich kleiner als
     die Kurven des 256er-SVGs ist.
     """
-    if edge <= 0 or proben <= 0:
+    if edge <= 0 or samples <= 0:
         raise ValueError("Kantenlänge und Probenzahl müssen positiv sein")
     if edge >= 512:
-        proben = min(proben, 1)
+        samples = min(samples, 1)
     elif edge >= 128:
-        proben = min(proben, 2)
+        samples = min(samples, 2)
 
     color, (left, top, width, height), reason, cutouts = _logo_geometry()
-    sub_breite = edge * proben
-    x_schritt = width / sub_breite
-    y_schritt = height / (edge * proben)
-    total = proben * proben
+    sub_width = edge * samples
+    x_step = width / sub_width
+    y_step = height / (edge * samples)
+    total = samples * samples
 
     for zy in range(edge):
-        deckung = [0] * edge
-        for py in range(proben):
-            y = top + (zy * proben + py + 0.5) * y_schritt
-            subpixel = bytearray(sub_breite)
-            _paint(subpixel, _intervals(reason, y), 1, left, x_schritt)
-            _paint(subpixel, _intervals(cutouts, y), 0, left, x_schritt)
+        coverage = [0] * edge
+        for py in range(samples):
+            y = top + (zy * samples + py + 0.5) * y_step
+            subpixel = bytearray(sub_width)
+            _paint(subpixel, _intervals(reason, y), 1, left, x_step)
+            _paint(subpixel, _intervals(cutouts, y), 0, left, x_step)
             for zx in range(edge):
-                from_index = zx * proben
-                deckung[zx] += sum(subpixel[from_index:from_index + proben])
-        yield [color + (round(255 * anteil / total),) for anteil in deckung]
+                from_index = zx * samples
+                coverage[zx] += sum(subpixel[from_index:from_index + samples])
+        yield [color + (round(255 * fraction / total),) for fraction in coverage]

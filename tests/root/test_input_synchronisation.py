@@ -15,12 +15,12 @@ from autoclicker.runtime import actions
 
 class InputSynchronisationTest(unittest.TestCase):
     def test_pause_waehrend_fokusverlust_sperrt_bis_zur_freigabe(self):
-        self._focus_pause(stoppen=False)
+        self._focus_pause(stop_flag=False)
 
     def test_stopp_waehrend_fokuspause_verhindert_die_eingabe(self):
-        self._focus_pause(stoppen=True)
+        self._focus_pause(stop_flag=True)
 
-    def _focus_pause(self, stoppen):
+    def _focus_pause(self, stop_flag):
         for kind, arguments in (("click", (10, 20)), ("key", ("a",)), ("scroll", (1,))):
             with self.subTest(kind=kind), ExitStack() as mocks:
                 state = AutoClickerState()
@@ -32,15 +32,15 @@ class InputSynchronisationTest(unittest.TestCase):
                 wieder_da = threading.Event()
                 decided = threading.Event()
                 results_list, error = [], []
-                aufrufe = 0
+                calls = 0
                 original_pause = actions.wait_while_paused
 
-                def fokus(_titel):
-                    nonlocal aufrufe
-                    aufrufe += 1
-                    if aufrufe == 1:
+                def focus(_title):
+                    nonlocal calls
+                    calls += 1
+                    if calls == 1:
                         return True
-                    if aufrufe == 2:
+                    if calls == 2:
                         verloren.set()
                         return False
                     if not wieder_da.wait(3):
@@ -59,18 +59,18 @@ class InputSynchronisationTest(unittest.TestCase):
                 sender = [mocks.enter_context(patch.object(actions, "send_" + name,
                                                           side_effect=sent))
                           for name in ("click", "key", "scroll")]
-                mocks.enter_context(patch.object(actions, "is_target_window_active", side_effect=fokus))
+                mocks.enter_context(patch.object(actions, "is_target_window_active", side_effect=focus))
                 mocks.enter_context(patch.object(actions, "get_foreground_window_title", return_value="Editor"))
                 mocks.enter_context(patch.object(actions, "wait_while_paused", side_effect=pause))
 
-                def ausfuehren():
+                def execute():
                     try:
                         results_list.append(getattr(actions, "safe_" + kind)(state, *arguments))
                     except BaseException as exc:
                         error.append(exc)
                         decided.set()
 
-                thread = threading.Thread(target=ausfuehren, daemon=True)
+                thread = threading.Thread(target=execute, daemon=True)
                 thread.start()
                 try:
                     self.assertTrue(verloren.wait(3), "Fokus-Wartephase nicht erreicht")
@@ -78,17 +78,17 @@ class InputSynchronisationTest(unittest.TestCase):
                     wieder_da.set()
                     self.assertTrue(decided.wait(3), "Keine Reaktion auf Fokusrückkehr")
                     self.assertEqual(error, [])
-                    for senden in sender:
-                        senden.assert_not_called()
-                    if stoppen:
+                    for send_fn in sender:
+                        send_fn.assert_not_called()
+                    if stop_flag:
                         state.stop_event.set()
                     else:
                         state.pause_event.clear()
                     thread.join(3)
                     self.assertFalse(thread.is_alive(), "Eingabe-Thread hängt")
                     self.assertEqual(error, [])
-                    self.assertEqual(results_list, [not stoppen])
-                    self.assertEqual(sum(s.call_count for s in sender), 0 if stoppen else 1)
+                    self.assertEqual(results_list, [not stop_flag])
+                    self.assertEqual(sum(s.call_count for s in sender), 0 if stop_flag else 1)
                 finally:
                     state.stop_event.set()
                     state.pause_event.clear()

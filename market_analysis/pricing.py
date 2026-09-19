@@ -251,7 +251,7 @@ def _ingredient_name(item_id, item_info_map: dict | None) -> str:
 
 class Chain(NamedTuple):
     """Ergebnis einer rekursiven Kettenaufloesung."""
-    zeit_ms: float
+    time_ms: float
     costs_value: float
     steps_list: list
     liquidity: float
@@ -318,12 +318,12 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
     recipe = recipe_by_output[item_id]
     visited = visited | {item_id}
     actions_needed = qty_needed / recipe["item_amount"]
-    zeit_ms = actions_needed * recipe["base_time_ms"]
-    steps_list = [(recipe["name"], recipe["skill"], qty_needed, zeit_ms)]
+    time_ms = actions_needed * recipe["base_time_ms"]
+    steps_list = [(recipe["name"], recipe["skill"], qty_needed, time_ms)]
 
     return _subchains(recipe["costs"], actions_needed, market_map, recipe_by_output,
                         fish_to_cooked, item_info_map, visited, depth, max_depth,
-                        zeit_ms, steps_list, 0.0)
+                        time_ms, steps_list, 0.0)
 
 
 def _auto_cook_chain(item_id, fish_source_id, market_map, recipe_by_output, fish_to_cooked,
@@ -340,9 +340,9 @@ def _auto_cook_chain(item_id, fish_source_id, market_map, recipe_by_output, fish
 
     cooked_per_action = fish_recipe["item_amount"] * AUTO_COOK_CHANCE
     actions_needed = qty_needed / cooked_per_action
-    zeit_ms = actions_needed * fish_recipe["base_time_ms"]
+    time_ms = actions_needed * fish_recipe["base_time_ms"]
     steps_list = [(fish_recipe["name"] + " (mit Auto-Cook)", fish_recipe["skill"],
-                 qty_needed, zeit_ms)]
+                 qty_needed, time_ms)]
 
     raw_amount = actions_needed * fish_recipe["item_amount"] * (1.0 - AUTO_COOK_CHANCE)
     side_yield = 0.0
@@ -352,11 +352,11 @@ def _auto_cook_chain(item_id, fish_source_id, market_map, recipe_by_output, fish
 
     return _subchains(fish_recipe["costs"], actions_needed, market_map, recipe_by_output,
                         fish_to_cooked, item_info_map, visited2, depth, max_depth,
-                        zeit_ms, steps_list, side_yield)
+                        time_ms, steps_list, side_yield)
 
 
 def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cooked,
-                 item_info_map, visited, depth, max_depth, zeit_ms, steps_list,
+                 item_info_map, visited, depth, max_depth, time_ms, steps_list,
                  side_yield) -> Chain:
     """Die Zutaten einer Stufe aufloesen und alles zu einer Kette zusammenfuehren."""
     costs_value, max_ratio = 0.0, 0.0
@@ -368,7 +368,7 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
         qty = (c.get("Amount", 0) or 0.0) * actions_needed
         part = resolve_chain(c.get("Item"), market_map, recipe_by_output, fish_to_cooked,
                              item_info_map, qty, visited, depth + 1, max_depth)
-        zeit_ms += part.zeit_ms
+        time_ms += part.time_ms
         costs_value += part.costs_value
         side_yield += part.side_yield
         max_ratio = max(max_ratio, part.liquidity)
@@ -377,5 +377,5 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
         missing_ones.extend(part.missing_ones)
         steps_list.extend(part.steps_list)
 
-    return Chain(zeit_ms, costs_value, steps_list, max_ratio, self_sufficient, side_yield,
+    return Chain(time_ms, costs_value, steps_list, max_ratio, self_sufficient, side_yield,
                  costs_known, tuple(dict.fromkeys(missing_ones)))

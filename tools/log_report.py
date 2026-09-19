@@ -23,20 +23,20 @@ from pathlib import Path
 LOGS_DIR = Path("logs")
 
 # Ereignisse, die kein Zaehlwerk brauchen (Rahmen der Session)
-_RAHMEN = {"session_start", "session_end"}
+_FRAME = {"session_start", "session_end"}
 
 # Ereignisarten, die dieser Bericht wirklich auswertet. Stand als Menge mitten in der
 # Ausgabefunktion; als Konstante ist die Kopplung zu `session_log.py` benennbar und
 # messbar - ein Test haelt beide Seiten gegeneinander. Wer eine neue Ereignisart
 # einfuehrt, traegt sie hier ein; bis dahin meldet der Bericht sie als "nicht
 # ausgewertet", statt sie stillschweigend zu verschlucken.
-AUSGEWERTET = {
+EVALUATED = {
     "click", "key", "scroll", "timeout", "item_found", "detected",
     "verify_ok", "verify_miss",
 }
 
 
-def _lies(path: Path) -> tuple[list[dict], str]:
+def _read(path: Path) -> tuple[list[dict], str]:
     """Zeilen der Datei und, falls sie nicht lesbar war, der Grund.
 
     Der Grund wird zurueckgegeben statt gedruckt: `evaluate()` darf nichts
@@ -60,8 +60,8 @@ def _duration(lines: list[dict]) -> float:
     return 0.0
 
 
-def _fmt_duration(sek: float) -> str:
-    h, remainder = divmod(int(sek), 3600)
+def _fmt_duration(sec: float) -> str:
+    h, remainder = divmod(int(sec), 3600)
     m, s = divmod(remainder, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
@@ -84,20 +84,20 @@ def evaluate(paths: list[Path]) -> dict:
     auswaehlt). Zweimal zu lesen waere der naheliegende Weg und der falsche —
     bei einer Nacht voller Logs liest man dann jede Datei doppelt.
     """
-    gesamt_events = Counter()
+    total_events = Counter()
     timeouts_per_step = Counter()
     items = Counter()
     detected = Counter()
     verify_miss = Counter()
     verify_ok = Counter()
     sessions = []
-    nicht_lesbar = []
+    unreadable = []
     total_duration = 0.0
 
     for path in paths:
-        lines, error = _lies(path)
+        lines, error = _read(path)
         if error:
-            nicht_lesbar.append([path.name, error])
+            unreadable.append([path.name, error])
             continue
         if not lines:
             continue
@@ -106,7 +106,7 @@ def evaluate(paths: list[Path]) -> dict:
         own = Counter()
         for z in lines:
             ev = z.get("event", "")
-            gesamt_events[ev] += 1
+            total_events[ev] += 1
             own[ev] += 1
             detail = (z.get("detail") or "").strip()
             if ev == "timeout":
@@ -129,21 +129,21 @@ def evaluate(paths: list[Path]) -> dict:
             "verify_miss": own.get("verify_miss", 0),
         })
 
-    disturbances = {k: v for k, v in gesamt_events.items()
+    disturbances = {k: v for k, v in total_events.items()
                   if k.startswith(("focus_", "humanize_"))}
-    unbekannt = set(gesamt_events) - _RAHMEN - AUSGEWERTET - set(disturbances)
+    unknown = set(total_events) - _FRAME - EVALUATED - set(disturbances)
     return {
         "sessions": sessions,
-        "unreadable": nicht_lesbar,
+        "unreadable": unreadable,
         "duration": total_duration,
-        "events": dict(gesamt_events),
+        "events": dict(total_events),
         "timeouts": _rank(timeouts_per_step),
         "items": _rank(items),
         "detected": _rank(detected),
         "verify_miss": _rank(verify_miss),
         "verify_ok": dict(verify_ok),
         "disturbances": sorted([k, v] for k, v in disturbances.items()),
-        "unbekannt": sorted(unbekannt),
+        "unknown": sorted(unknown),
     }
 
 
@@ -157,7 +157,7 @@ def report(paths: list[Path]) -> None:
         print("Keine lesbaren Logs gefunden.")
         return
 
-    gesamt_events = data["events"]
+    total_events = data["events"]
     timeouts_per_step = data["timeouts"]
     verify_miss = data["verify_miss"]
     verify_ok = data["verify_ok"]
@@ -167,9 +167,9 @@ def report(paths: list[Path]) -> None:
     print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_duration(total_duration)}")
     print("=" * 66)
 
-    clicks = gesamt_events.get("click", 0)
-    print(f"\nAktionen: {clicks} Klick(s), {gesamt_events.get('key', 0)} Taste(n), "
-          f"{gesamt_events.get('scroll', 0)} Scroll(s)")
+    clicks = total_events.get("click", 0)
+    print(f"\nAktionen: {clicks} Klick(s), {total_events.get('key', 0)} Taste(n), "
+          f"{total_events.get('scroll', 0)} Scroll(s)")
     if total_duration > 0 and clicks:
         print(f"          {clicks / (total_duration / 3600):.0f} Klicks/Stunde")
 
@@ -189,8 +189,8 @@ def report(paths: list[Path]) -> None:
         print(f"  {sum(verify_ok.values())}x bestaetigt, "
               f"{sum(n for _, n in verify_miss)}x ohne Wirkung")
         for name, n in verify_miss[:10]:
-            gut = verify_ok.get(name, 0)
-            quote = f"{gut}/{gut + n}" if (gut + n) else "-"
+            good = verify_ok.get(name, 0)
+            quote = f"{good}/{good + n}" if (good + n) else "-"
             print(f"  {n:>5}x ohne Wirkung  {name}   (bestaetigt: {quote})")
         if verify_miss:
             print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
@@ -212,9 +212,9 @@ def report(paths: list[Path]) -> None:
         for k, v in data["disturbances"]:
             print(f"  {v:>5}x  {k}")
 
-    if data["unbekannt"]:
+    if data["unknown"]:
         # Neue Ereignisarten sollen hier auffallen, nicht stillschweigend fehlen.
-        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(data['unbekannt'])}")
+        print(f"\n  Nicht ausgewertete Ereignisarten: {', '.join(data['unknown'])}")
 
 
 def main() -> int:

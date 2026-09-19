@@ -49,16 +49,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # nur ein Traceback und ein Exitcode, den niemand mehr las. `errors="replace"`
 # statt eines harten Fehlers - ein unbekanntes Zeichen ist ein Darstellungs-
 # problem, kein Testergebnis.
-for _strom in (sys.stdout, sys.stderr):
-    if hasattr(_strom, "reconfigure"):
-        _strom.reconfigure(encoding="utf-8", errors="replace")
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
-RAUCHTESTS = ("items", "detection", "sequences", "share", "tools",
+SMOKE_TESTS = ("items", "detection", "sequences", "share", "tools",
               "report", "sequence_delete", "catalog")
 
-SCHICHTEN = ("contract", "root", "smoke")
+LAYERS = ("contract", "root", "smoke")
 
 
 class Result:
@@ -68,14 +68,14 @@ class Result:
         self.name = name
         self.ok = True
         self.skipped = ""
-        self.zusammenfassung = ""
+        self.summary = ""
         self.duration = 0.0
 
     def __str__(self) -> str:
         if self.skipped:
             return f"  ÜBERSPRUNGEN  {self.name:<14} {self.skipped}"
         badge = "OK  " if self.ok else "FAIL"
-        return (f"  {badge}          {self.name:<14} {self.zusammenfassung}"
+        return (f"  {badge}          {self.name:<14} {self.summary}"
                 f"  ({self.duration:.1f}s)")
 
 
@@ -86,11 +86,11 @@ def _run(command: list[str], environment: dict | None = None) -> tuple[int, str]
     `msvcrt` und `ctypes.windll` beim Import und wechselt das Arbeitsverzeichnis.
     In denselben Interpreter geladen faerbte sie damit alles, was danach kommt.
     """
-    umw = os.environ.copy()
-    umw["PYTHONUTF8"] = "1"
-    umw["PYTHONIOENCODING"] = "utf-8"
-    umw.update(environment or {})
-    done = subprocess.run(command, cwd=ROOT, env=umw, capture_output=True,
+    env_vars = os.environ.copy()
+    env_vars["PYTHONUTF8"] = "1"
+    env_vars["PYTHONIOENCODING"] = "utf-8"
+    env_vars.update(environment or {})
+    done = subprocess.run(command, cwd=ROOT, env=env_vars, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     sys.stdout.write(done.stdout)
     sys.stderr.write(done.stderr)
@@ -105,16 +105,16 @@ def contract() -> Result:
     e.ok = code == 0
     for line in reversed(text.splitlines()):
         if " PASS / " in line:
-            e.zusammenfassung = line.strip().strip("= ")
+            e.summary = line.strip().strip("= ")
             break
-    statistik = re.fullmatch(r"([1-9][0-9]*) PASS / 0 FAIL", e.zusammenfassung)
-    e.ok = e.ok and statistik is not None
-    if not e.zusammenfassung:
-        e.zusammenfassung = "Abschluss der Vertragssuite fehlt"
+    stat_line = re.fullmatch(r"([1-9][0-9]*) PASS / 0 FAIL", e.summary)
+    e.ok = e.ok and stat_line is not None
+    if not e.summary:
+        e.summary = "Abschluss der Vertragssuite fehlt"
     return e
 
 
-def root_layer(vertrag_separat: bool = False) -> Result:
+def root_layer(contract_separately: bool = False) -> Result:
     """Die Wurzeltests; im Gesamtlauf wurde der Vertragswrapper schon ausgeführt.
 
     `discover` statt eines Glob-Musters: die Shell expandiert `test_*.py` auf
@@ -123,57 +123,57 @@ def root_layer(vertrag_separat: bool = False) -> Result:
     e = Result("Wurzelmodule")
     start = time.monotonic()
     command = [sys.executable, "-m", "tests.root_tests"]
-    if vertrag_separat:
+    if contract_separately:
         command.append("--without-contract")
     code, text = _run(command)
     e.duration = time.monotonic() - start
     e.ok = code == 0
     for line in reversed(text.splitlines()):
         if line.startswith("Ran ") or line.startswith("OK") or "FAILED" in line:
-            e.zusammenfassung = line.strip()
+            e.summary = line.strip()
             break
     return e
 
 
-def smoke(only: tuple[str, ...] = RAUCHTESTS, pflicht: bool = False) -> Result:
+def smoke(only: tuple[str, ...] = SMOKE_TESTS, required: bool = False) -> Result:
     e = Result("Rauchtests")
     sys.path.insert(0, str(ROOT))
     from tests.smoke._bridge import playwright_available
 
     da, reason = playwright_available()
     if not da:
-        if pflicht:
+        if required:
             e.ok = False
-            e.zusammenfassung = f"Pflichtprüfung nicht ausführbar: {reason}"
+            e.summary = f"Pflichtprüfung nicht ausführbar: {reason}"
         else:
             e.skipped = reason
         return e
 
     start = time.monotonic()
-    fehlgeschlagen = []
+    failed = []
     for name in only:
         code, _ = _run([sys.executable, "-m", f"tests.smoke.{name}"])
         if code != 0:
-            fehlgeschlagen.append(name)
+            failed.append(name)
     e.duration = time.monotonic() - start
-    e.ok = not fehlgeschlagen
-    e.zusammenfassung = (f"{len(only)} Ansichten"
-                         + (f", rot: {', '.join(fehlgeschlagen)}" if fehlgeschlagen else ""))
+    e.ok = not failed
+    e.summary = (f"{len(only)} Ansichten"
+                         + (f", rot: {', '.join(failed)}" if failed else ""))
     return e
 
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--only", choices=SCHICHTEN, action="append",
+    p.add_argument("--only", choices=LAYERS, action="append",
                    help="nur diese Schicht (mehrfach erlaubt)")
-    p.add_argument("--smoke-test", action="append", choices=RAUCHTESTS,
+    p.add_argument("--smoke-test", action="append", choices=SMOKE_TESTS,
                    help="nur diesen Rauchtest")
     p.add_argument("--smoke-required", action="store_true",
                    help="fehlenden Browser als Fehler melden (Browser-CI)")
     p.add_argument("--mutations", action="store_true",
                    help="zusätzlich gezielte Fehler einschleusen und ihre Erkennung prüfen")
     args = p.parse_args(argv[1:])
-    layers = tuple(args.only) if args.only else SCHICHTEN
+    layers = tuple(args.only) if args.only else LAYERS
     if args.smoke_required and "smoke" not in layers:
         p.error("--rauch-pflicht braucht die Schicht rauch")
 
@@ -181,17 +181,17 @@ def main(argv: list[str]) -> int:
     if "contract" in layers:
         results_list.append(contract())
     if "root" in layers:
-        results_list.append(root_layer(vertrag_separat="contract" in layers))
+        results_list.append(root_layer(contract_separately="contract" in layers))
     if "smoke" in layers:
-        results_list.append(smoke(tuple(args.smoke_test) if args.smoke_test else RAUCHTESTS,
-                                 pflicht=args.smoke_required))
+        results_list.append(smoke(tuple(args.smoke_test) if args.smoke_test else SMOKE_TESTS,
+                                 required=args.smoke_required))
     if args.mutations:
         e = Result("Gegenproben")
         start = time.monotonic()
         code, _ = _run([sys.executable, str(ROOT / "tests" / "mutation_check.py")])
         e.ok = code == 0
         e.duration = time.monotonic() - start
-        e.zusammenfassung = "gezielte Mutationsprüfung"
+        e.summary = "gezielte Mutationsprüfung"
         results_list.append(e)
 
     width = 78
@@ -200,13 +200,13 @@ def main(argv: list[str]) -> int:
         print(e)
     print("=" * width)
 
-    rot = [e.name for e in results_list if not e.ok]
-    if rot:
-        print(f"  {len(rot)} Schicht(en) rot: {', '.join(rot)}")
+    red = [e.name for e in results_list if not e.ok]
+    if red:
+        print(f"  {len(red)} Schicht(en) rot: {', '.join(red)}")
         return 1
-    fehlt = [e for e in results_list if e.skipped]
+    missing = [e for e in results_list if e.skipped]
     print("  alles grün"
-          + (f" ({len(fehlt)} Schicht übersprungen)" if fehlt else ""))
+          + (f" ({len(missing)} Schicht übersprungen)" if missing else ""))
     return 0
 
 

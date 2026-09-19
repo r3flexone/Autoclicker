@@ -273,8 +273,8 @@ class SequenceStep:
         if wc:
             if wc.check_only:
                 state_value = "WEG" if wc.until_gone else "DA"
-                vorlauf = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
-                return (f"{vorlauf}prüfe einmal ob Farbe {state_value} bei "
+                lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+                return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
                         f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
                         f"{else_str or ' | sonst: überspringen'}")
             gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"

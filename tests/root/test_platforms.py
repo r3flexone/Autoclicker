@@ -56,12 +56,12 @@ class LinuxBackendTests(unittest.TestCase):
 
     def test_start_bricht_bei_nicht_nutzbarer_plattform_ab(self):
         import main as app
-        ausgabe = io.StringIO()
+        output = io.StringIO()
         with patch.object(app, "environment_warnings",
                           return_value=["Wayland erkannt"]), \
-                contextlib.redirect_stdout(ausgabe):
+                contextlib.redirect_stdout(output):
             self.assertFalse(app._plattform_bereit())
-        self.assertIn("Start abgebrochen", ausgabe.getvalue())
+        self.assertIn("Start abgebrochen", output.getvalue())
 
         with patch.object(app, "print_banner"), patch.object(
                 app, "_plattform_bereit", return_value=False):
@@ -113,9 +113,9 @@ class LinuxBackendTests(unittest.TestCase):
         """
         from autoclicker import imaging
         with patch.object(imaging, "PILLOW_AVAILABLE", True), patch.object(
-                imaging, "get_screen_pixel", return_value=(12, 34, 56)) as messung:
+                imaging, "get_screen_pixel", return_value=(12, 34, 56)) as measurement:
             self.assertEqual((12, 34, 56), imaging.get_pixel_color(7, 9))
-        messung.assert_called_once_with(7, 9)
+        measurement.assert_called_once_with(7, 9)
 
     def test_linux_mausposition_meldet_backendfehler(self):
         with patch.object(linux_x11, "_pynput",

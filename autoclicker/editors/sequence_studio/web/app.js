@@ -852,7 +852,7 @@ function drop(e, phase, row) {
   drag = null;
   if (!what) return;
   if (what.kind === "point") call("point_insert", {phase: phase, row: row, point: what.point});
-  else call("drag", {von_phase: what.phase, from_row: what.row,
+  else call("drag", {from_phase: what.phase, from_row: what.row,
                       nach_phase: phase, to_row: row});
 }
 
@@ -2225,10 +2225,10 @@ function scanRenderResult() {
   target.append(
     el("b", {}, "Testergebnis"),
     el("span", {class: "metric", style: "color:var(--ok)"}, e.detected + " erkannt"),
-    el("span", {class: "metric", style: "color:var(--accent)"}, e.unbekannt + " unbekannt"),
+    el("span", {class: "metric", style: "color:var(--accent)"}, e.unknown + " unbekannt"),
     el("span", {class: "grow"})
   );
-  if (e.unbekannt) target.appendChild(el("button", {class: "btn quiet",
+  if (e.unknown) target.appendChild(el("button", {class: "btn quiet",
     onclick: () => scanResultNext("unknown_slots")}, "Nächsten unbekannten zeigen"));
 }
 
@@ -2377,7 +2377,7 @@ function scanTools() {
     "ALT+Klick misst den Hintergrund eines Slots, Doppelklick setzt seinen "
     + "Klickpunkt — beides wählt ihn gleich mit aus. Ein gewählter Slot lässt "
     + "sich mit der Maus ziehen oder mit den Pfeiltasten verschieben "
-    + "(SHIFT = 10 px).", "direkt"));
+    + "(SHIFT = 10 px).", "direct"));
   const mode = SCAN_MODES.find((m) => m.key === SC.mode);
   $("scan-mode-short").textContent = mode ? mode.text : "";
   maintainCollapse();
@@ -2553,7 +2553,7 @@ function byName(a, b) {
  *
  * Ohne sie zaehlt `rememberFocus()` die Position ueber die ganze Spalte, und die
  * drei Felder, die man dort tippt, sortieren die Liste gerade um. */
-function cardId(kind, name) { return "maske:" + kind + ":" + name; }
+function cardId(kind, name) { return "card:" + kind + ":" + name; }
 
 /** Der Reiter folgt der Auswahl — aber nur, wenn sie sich geaendert hat.
  *
@@ -5086,11 +5086,11 @@ function reportRenderMiddle() {
     target.appendChild(el("p", {class: "hint warning"},
       file + ": nicht lesbar (" + error + ")"));
   }
-  if (b.unbekannt.length) {
+  if (b.unknown.length) {
     // Dieselbe Meldung wie in der Konsole: eine neue Ereignisart soll auffallen,
     // nicht stillschweigend fehlen.
     target.appendChild(el("p", {class: "hint"},
-      "Nicht ausgewertete Ereignisarten: " + b.unbekannt.join(", ")));
+      "Nicht ausgewertete Ereignisarten: " + b.unknown.join(", ")));
   }
 }
 

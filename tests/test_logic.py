@@ -132,13 +132,13 @@ _src_rev = _ast_rev.parse((Path(__file__).resolve().parent.parent / "autoclicker
                            / "editors" / "item_scan_editor.py").read_text(encoding="utf-8"))
 _fn_rev = next(n for n in _ast_rev.walk(_src_rev)
                if isinstance(n, _ast_rev.FunctionDef) and n.name == "edit_item_scan")
-_bau_rev = [n for n in _ast_rev.walk(_fn_rev) if isinstance(n, _ast_rev.Call)
+_build_rev = [n for n in _ast_rev.walk(_fn_rev) if isinstance(n, _ast_rev.Call)
             and getattr(n.func, "id", "") == "ItemScanConfig"]
-check("edit_item_scan baut genau eine Config", len(_bau_rev) == 1)
-_handed_over = {k.arg for k in _bau_rev[0].keywords}
-_erwartet = {f.name for f in _dc_rev.fields(ItemScanConfig)} - {"slot_names", "item_names"}
+check("edit_item_scan baut genau eine Config", len(_build_rev) == 1)
+_handed_over = {k.arg for k in _build_rev[0].keywords}
+_expected = {f.name for f in _dc_rev.fields(ItemScanConfig)} - {"slot_names", "item_names"}
 check(f"und uebergibt jedes Feld der Dataclass (fehlt: "
-      f"{sorted(_erwartet - _handed_over) or 'nichts'})", _handed_over == _erwartet)
+      f"{sorted(_expected - _handed_over) or 'nichts'})", _handed_over == _expected)
 
 boss = BossProfile(name="Drache", marker_colors=[(10, 20, 30)], template="drache.png", min_confidence=0.9,
                    action="click", action_point_id=4, action_delay=1.5)
@@ -452,21 +452,21 @@ check("manueller Modus schaltet Stufe 2 NICHT ein", _dbg.is_detail_debug(_st) is
 # Gate-Tasten
 _step = SequenceStep(x=100, y=200, delay_before=5, name="Testpunkt")
 _orig_read_key = _dbg.read_command
-_ergebnisse = {}
+_results = {}
 for _key in ("w", "enter", "s", "q", "c"):
     _st.step_mode = True
     _st.stop_event.clear()
     # `read_command` nimmt seit dem Haltepunkt eine Zeitgrenze entgegen — der
     # Stub muss sie schlucken, sonst misst der Test die Signatur statt das Gate.
     _dbg.read_command = (lambda *a, _t=_key, **k: _t)
-    _ergebnisse[_key] = _dbg.step_gate(_st, _step, "LOOP", 1, 3)
+    _results[_key] = _dbg.step_gate(_st, _step, "LOOP", 1, 3)
 _dbg.read_command = _orig_read_key
-check("Gate: 'w' fuehrt aus", _ergebnisse["w"] == _dbg.GATE_RUN)
-check("Gate: Enter fuehrt aus", _ergebnisse["enter"] == _dbg.GATE_RUN)
-check("Gate: 's' ueberspringt", _ergebnisse["s"] == _dbg.GATE_SKIP)
-check("Gate: 'q' bricht ab", _ergebnisse["q"] == _dbg.GATE_STOP)
+check("Gate: 'w' fuehrt aus", _results["w"] == _dbg.GATE_RUN)
+check("Gate: Enter fuehrt aus", _results["enter"] == _dbg.GATE_RUN)
+check("Gate: 's' ueberspringt", _results["s"] == _dbg.GATE_SKIP)
+check("Gate: 'q' bricht ab", _results["q"] == _dbg.GATE_STOP)
 check("Gate: 'c' laeuft weiter UND schaltet den Modus aus",
-      _ergebnisse["c"] == _dbg.GATE_RUN and _st.step_mode is False)
+      _results["c"] == _dbg.GATE_RUN and _st.step_mode is False)
 
 # Studio-Entscheidung: der Worker liest dann ausdrücklich NICHT aus stdin.
 import threading as _threading_step
@@ -475,20 +475,20 @@ import autoclicker.runtime.status as _status_step
 _st.step_mode = True
 _st.step_via_studio = True
 _st.stop_event.clear()
-_studio_ergebnis = {}
+_studio_result = {}
 _studio_thread = _threading_step.Thread(
-    target=lambda: _studio_ergebnis.setdefault(
+    target=lambda: _studio_result.setdefault(
         "value", _dbg.step_gate(_st, _step, "LOOP", 2, 3)))
 _studio_thread.start()
-_frist = _time_step.time() + 1.0
-while not (_status_step._state.get("manual")) and _time_step.time() < _frist:
+_deadline = _time_step.time() + 1.0
+while not (_status_step._state.get("manual")) and _time_step.time() < _deadline:
     _time_step.sleep(0.01)
 with _st.lock:
     _st.step_command = "skip"
     _st.step_command_event.set()
 _studio_thread.join(1.0)
 check("Studio-Gate wartet auf den sichtbaren Befehl",
-      _studio_ergebnis.get("value") == _dbg.GATE_SKIP)
+      _studio_result.get("value") == _dbg.GATE_SKIP)
 check("und räumt die sichtbare Rückfrage danach weg",
       _status_step._state.get("manual") is None)
 _st.step_via_studio = False
@@ -595,12 +595,12 @@ check("verwaiste Referenz wird dauerhaft gemeldet", len(_second) == 1)
 # Gegenprobe zum Fix: ohne die unresolved-Abfrage in step_gate liefert das GATE_RUN,
 # und _s[3] klickt mit seinen aufgeloesten (0, 0) in die Bildschirmecke.
 from autoclicker.runtime.debug import (step_gate as _gate, GATE_SKIP as _G_SKIP,
-                                       GATE_RUN as _G_RUN, target_of as _ziel)
+                                       GATE_RUN as _G_RUN, target_of as _target)
 _st2.step_mode = False
 check("verwaister Schritt wird zur Laufzeit uebersprungen",
       _gate(_st2, _s[3], "LOOP", 4, 4) == _G_SKIP)
 check("ein aufgeloester Schritt laeuft normal", _gate(_st2, _s[0], "LOOP", 1, 4) == _G_RUN)
-check("verwaister Schritt hat kein Ziel fuer den Zeiger", _ziel(_s[3]) is None)
+check("verwaister Schritt hat kein Ziel fuer den Zeiger", _target(_s[3]) is None)
 
 check("Label nennt die Punkt-ID", "#3" in _label(_s[0]))
 check("Label sagt klar, wenn es gar keine Stelle gibt", "ohne Stelle" in _label(_s[2]))
@@ -887,7 +887,7 @@ check("jeder Dateityp ist in _CHAINS oder _NORMALIZER registriert", _without == 
 _repo = Path(__file__).resolve().parent.parent
 
 # Bewusste Ausnahmen, mit Grund. Wer eine neue eintraegt, muss sie begruenden koennen.
-_MIGRATE_AUSNAHMEN = {
+_MIGRATE_EXCEPTIONS = {
     # Die Config hat kein schema_version und laeuft ueber AppConfig.from_dict(),
     # das unbekannte Keys wegfiltert - der Normalisierer waere hier wirkungslos.
     "autoclicker/config.py":
@@ -933,14 +933,14 @@ for _pf in sorted((_repo / "autoclicker").rglob("*.py")):
         continue
     _rel = _pf.relative_to(_repo).as_posix()
     _leser.append(_rel)
-    if "migrate(" not in _txt and _rel not in _MIGRATE_AUSNAHMEN:
+    if "migrate(" not in _txt and _rel not in _MIGRATE_EXCEPTIONS:
         _without_call.append(_rel)
 check("jeder Loader ruft migrate() auf (oder steht begruendet auf der Ausnahmeliste)",
       _without_call == [])
 if _without_call:
     print("        " + ", ".join(_without_call))
 # Gegenrichtung: eine Ausnahme, die gar nicht mehr laedt, ist eine Fiktion
-_dead_exceptions = [a for a in _MIGRATE_AUSNAHMEN if a not in _leser]
+_dead_exceptions = [a for a in _MIGRATE_EXCEPTIONS if a not in _leser]
 check("keine Ausnahme fuer eine Datei, die gar nichts mehr laedt", _dead_exceptions == [])
 check("der Test findet ueberhaupt Loader", len(_leser) >= 6)
 
@@ -964,9 +964,9 @@ _current = {
 }
 check("Testdaten decken alle Dateitypen ab", set(_current) == set(_mg.ALL_KINDS))
 _untouched = True
-for _kind, _daten in _current.items():
-    _before = json.dumps(_daten, sort_keys=True)
-    _out, _report = _mg.migrate(_daten, _kind)
+for _kind, _data in _current.items():
+    _before = json.dumps(_data, sort_keys=True)
+    _out, _report = _mg.migrate(_data, _kind)
     # Der Versions-Stempel darf gesetzt werden, der Inhalt nicht wandern.
     _after = json.dumps(_out, sort_keys=True)
     if _report or (_kind != _mg.KIND_SEQUENCE and _before != _after):
@@ -1023,9 +1023,9 @@ try:
     # (ein Lauf legt per LLM entdeckte Bosse dort ab).
     (_sw / "sequences/alt/boss_scans/bibliothek.json").write_text(
         json.dumps([{"name": "Drache", "action": "skip", "tot": 1}]), encoding="utf-8")
-    _arten = {p.name: k for p, k, _ in _sammle()}
+    _kinds = {p.name: k for p, k, _ in _sammle()}
     check("die Boss-Bibliothek wird als Bibliothek erkannt, nicht als Scan",
-          _arten.get("bibliothek.json") == _mg.KIND_GLOBAL_BOSSES)
+          _kinds.get("bibliothek.json") == _mg.KIND_GLOBAL_BOSSES)
 
     _e1 = _sweep(write=True)
     check("Sweep hebt die Altbestaende", _e1.changed_count == 3)
@@ -1212,7 +1212,7 @@ _with_ref = [
     _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7, scroll=-3),
 ]
 _returned = _p2s([_s2d(st) for st in _with_ref])
-_aufl(_pool, _Seq(name="rt", loop_phases=[_LP(name="L", steps=_returned)]), still=True)
+_aufl(_pool, _Seq(name="rt", loop_phases=[_LP(name="L", steps=_returned)]), quiet=True)
 check("Round-Trip + Aufloesen stellt den Schritt vollstaendig wieder her",
       [st for a, st in zip(_returned, _with_ref) if a != st] == [])
 
@@ -1248,8 +1248,8 @@ check("Scan behält sein eigenes Item", _cfg.items == [_item4])
 check("nichts zu meckern wenn alles da ist", _report == [])
 
 from autoclicker.persistence.serialization import _item_scan_to_dict as _isc2d
-_vom_editor = _ISC(name="neu", slots=[_slot4], items=[_item4])
-_saved = _isc2d(_vom_editor)
+_from_editor = _ISC(name="neu", slots=[_slot4], items=[_item4])
+_saved = _isc2d(_from_editor)
 check("vollständiger Slot wird eingebettet", "S1" in _saved["slots"])
 check("vollständiges Item wird eingebettet", "Kohle" in _saved["items"])
 
@@ -1392,17 +1392,17 @@ try:
     # --- Punkt-IDs sind sequenzlokal, also kann nichts mehr kollidieren ---
     # Genau deshalb gibt es keine ID-Zuordnung mehr: eine zweite Sequenz mit
     # demselben Punkt #7 ist kein Konflikt, sondern ein anderer Punkt.
-    _st_zwei = _ACS()
-    _st_zwei.sequences = {"andere": _SEQ_i("andere", [], [_LP_i(
+    _st_two = _ACS()
+    _st_two.sequences = {"andere": _SEQ_i("andere", [], [_LP_i(
         name="L", steps=[_SS_i(delay_before=0, point_id=7)], repeat=1)], [], 1, "",
         [_CP_i(9, 9, "Woanders", 7)])}
-    _import_bundle(_st_zwei, str(_new_bundle), import_config=False, merge=True)
+    _import_bundle(_st_two, str(_new_bundle), import_config=False, merge=True)
     # `merge` weicht einem vorhandenen Ordner aus (farm -> farm_2), der Name
     # steht also nicht vorher fest; gesucht wird die dazugekommene Sequenz.
-    _add_to_scan = [n for n in _st_zwei.sequences if n != "andere"]
+    _add_to_scan = [n for n in _st_two.sequences if n != "andere"]
     check("die Sequenz kommt neben der vorhandenen an", len(_add_to_scan) == 1)
-    _a = _st_zwei.sequences["andere"].points[0]
-    _b = _st_zwei.sequences[_add_to_scan[0]].points[0]
+    _a = _st_two.sequences["andere"].points[0]
+    _b = _st_two.sequences[_add_to_scan[0]].points[0]
     check("zwei Sequenzen duerfen denselben Punkt #7 haben",
           _a.id == _b.id == 7 and (_a.x, _a.y) != (_b.x, _b.y))
 finally:
@@ -1420,11 +1420,11 @@ from autoclicker.models import (Sequence as _Seq3, LoopPhase as _LP3,
 # dorthin verschoben UND die Datei ueberschrieben.
 _st3 = _ACS()
 _st3.points = [_CP3(50, 50, "P3", 3)]
-_fremd = _SS3(x=900, y=900, delay_before=0, name="P3")
-_seq3 = _Seq3("foreign", [], [_LP3("Loop", [_fremd])], [])
+_foreign = _SS3(x=900, y=900, delay_before=0, name="P3")
+_seq3 = _Seq3("foreign", [], [_LP3("Loop", [_foreign])], [])
 _report_point_mismatches(_st3, _seq3)
-check("Schritt-Koordinaten bleiben unangetastet", (_fremd.x, _fremd.y) == (900, 900))
-check("keine Referenz wird stillschweigend gesetzt", _fremd.point_id is None)
+check("Schritt-Koordinaten bleiben unangetastet", (_foreign.x, _foreign.y) == (900, 900))
+check("keine Referenz wird stillschweigend gesetzt", _foreign.point_id is None)
 
 # Mit Referenz ist die Aufloesung zustaendig - dort wird der Schritt auch gemeldet
 _linked = _SS3(x=900, y=900, delay_before=0, name="P3", point_id=3)
@@ -1500,25 +1500,25 @@ _st6.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra")], use_llm=True,
                                  default_scan="gibtsnicht")}
 _st6.icon_scans = {"ico": _ISC4(name="ico")}
 
-_ber = check_setup(_st6, with_sequences=False)
-_texte = [f"{b.area}: {b.text}" for b in _ber.befunde]
+_rep = check_setup(_st6, with_sequences=False)
+_texts = [f"{b.area}: {b.text}" for b in _rep.findings]
 
 
-def _hat(part):
-    return any(part in t for t in _texte)
+def _has(part):
+    return any(part in t for t in _texts)
 
 
-check("fehlendes Template wird gefunden", _hat("gibtsnicht.png"))
+check("fehlendes Template wird gefunden", _has("gibtsnicht.png"))
 check("Boss ohne Template UND ohne Marker wird gefunden",
-      _hat("Hydra") and _hat("wird nie erkannt"))
-check("Icon-Scan ohne Erkennung wird gefunden", _hat("Icon-Scan 'ico'"))
-check("Scan ganz ohne Slot wird gefunden", _hat("kein einziger Slot"))
+      _has("Hydra") and _has("wird nie erkannt"))
+check("Icon-Scan ohne Erkennung wird gefunden", _has("Icon-Scan 'ico'"))
+check("Scan ganz ohne Slot wird gefunden", _has("kein einziger Slot"))
 check("Scan nur mit ausgeschaltetem Slot wird gefunden",
-      _hat("kein Slot ist eingeschaltet"))
-check("use_llm ohne llm_enabled wird gemeldet", _hat("llm_enabled global aus"))
+      _has("kein Slot ist eingeschaltet"))
+check("use_llm ohne llm_enabled wird gemeldet", _has("llm_enabled global aus"))
 check("Fehler und Hinweise sind getrennt",
-      len(_ber.errors) >= 3 and len(_ber.hints) >= 2
-      and all(b.level in (LEVEL_ERROR, LEVEL_HINT) for b in _ber.befunde))
+      len(_rep.errors) >= 3 and len(_rep.hints) >= 2
+      and all(b.level in (LEVEL_ERROR, LEVEL_HINT) for b in _rep.findings))
 
 # **Der Fallback-Scan ist die fuenfte Referenz auf einen Scan-Namen** - und die
 # einzige, die nicht in einem Schritt steht, sondern in einer Boss-Scan-Datei.
@@ -1526,7 +1526,7 @@ check("Fehler und Hinweise sind getrennt",
 # `boss_watcher`, `icon_scan`); diese fiel durch, obwohl `runtime/steps.py` sie
 # bei „kein Boss erkannt" wirklich ausfuehrt.
 check("ein Fallback-Scan, den es nicht gibt, wird gemeldet",
-      _hat("Fallback-Scan"))
+      _has("Fallback-Scan"))
 
 _st_fb = _ACS()
 _st_fb.item_scans = {"inv": _ISC3(
@@ -1536,16 +1536,16 @@ _st_fb.boss_scans = {"b": _BSC2(name="b", bosses=[_BP2("Hydra", template="t.png"
                                 default_scan="inv")}
 _fb = check_setup(_st_fb, with_sequences=False)
 check("ein Fallback-Scan, den es GIBT, wird nicht gemeldet",
-      not any("Fallback-Scan" in f"{b.area}: {b.text}" for b in _fb.befunde))
+      not any("Fallback-Scan" in f"{b.area}: {b.text}" for b in _fb.findings))
 
 # Ein sauberes Setup darf NICHTS melden - sonst gewoehnt man sich das Ignorieren an
 _st7 = _ACS()
 _st7.item_scans = {"inv": _ISC3(
     name="inv", slots=[_IS3("S1", (0, 0, 10, 10), (5, 5))],
     items=[_IP3("Kohle", marker_colors=[(1, 2, 3)])])}
-_sauber = check_setup(_st7, with_sequences=False)
-check("sauberes Setup meldet nichts", not _sauber and _sauber.befunde == [])
-check("trotzdem steht da, was geprueft wurde", len(_sauber.checked) >= 3)
+_clean = check_setup(_st7, with_sequences=False)
+check("sauberes Setup meldet nichts", not _clean and _clean.findings == [])
+check("trotzdem steht da, was geprueft wurde", len(_clean.checked) >= 3)
 
 
 # ------------------------------------------------------- Template-Cache
@@ -1605,10 +1605,10 @@ _RS.safe_key = _RA.safe_key = lambda st, key, label="": (_keys.append(key), True
 _RS.check_failsafe = lambda st: False
 _RS.PILLOW_AVAILABLE = True
 
-def _color_step(trifft, else_cfg, check_only=True):
+def _color_step(hits, else_cfg, check_only=True):
     """Fuehrt einen Farb-Schritt aus. Returns (rueckgabe, klicks, tasten)."""
     _clicks.clear(); _keys.clear()
-    _RS.take_screenshot = lambda region=None: _Pixel((10, 10, 10) if trifft else (200, 200, 200))
+    _RS.take_screenshot = lambda region=None: _Pixel((10, 10, 10) if hits else (200, 200, 200))
     st = AutoClickerState(); st.config = _AC2()
     st.config.pixel_wait_timeout = 0.05
     st.config.pixel_check_interval = 0.01
@@ -1621,39 +1621,39 @@ def _color_step(trifft, else_cfg, check_only=True):
 
 try:
     # Referenz: Bedingung erfuellt -> der Schritt klickt ganz normal
-    _r, _eigen, _ = _color_step(True, None)
-    check("checkcolor erfuellt -> eigener Klick laeuft", _r is True and len(_eigen) == 1)
+    _r, _own, _ = _color_step(True, None)
+    check("checkcolor erfuellt -> eigener Klick laeuft", _r is True and len(_own) == 1)
 
     # Nicht erfuellt, kein else -> nur diesen Schritt ueberspringen (True!), kein Klick
-    _r, _eigen, _ = _color_step(False, None)
+    _r, _own, _ = _color_step(False, None)
     check("checkcolor nicht erfuellt -> Schritt uebersprungen, Phase laeuft weiter",
-          _r is True and _eigen == [])
+          _r is True and _own == [])
 
     # else skip -> kein eigener Klick
-    _r, _eigen, _ = _color_step(False, _EC2(action="skip"))
-    check("checkcolor + 'else skip' -> kein eigener Klick", _r is True and _eigen == [])
+    _r, _own, _ = _color_step(False, _EC2(action="skip"))
+    check("checkcolor + 'else skip' -> kein eigener Klick", _r is True and _own == [])
 
     # else <Punkt> -> NUR der Else-Punkt, nicht auch das eigene Ziel
-    _r, _eigen, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"))
+    _r, _own, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"))
     check("checkcolor + 'else <Punkt>' -> nur der Else-Punkt",
-          _r is True and _eigen == [] and (999, 999, "else:E") in _clicks)
+          _r is True and _own == [] and (999, 999, "else:E") in _clicks)
 
     # else key -> Taste statt Klick
-    _r, _eigen, _t = _color_step(False, _EC2(action="key", key="enter"))
+    _r, _own, _t = _color_step(False, _EC2(action="key", key="enter"))
     check("checkcolor + 'else key' -> Taste statt eigenem Klick",
-          _r is True and _eigen == [] and _t == ["enter"])
+          _r is True and _own == [] and _t == ["enter"])
 
     # else restart/skip_cycle muessen weiterhin abbrechen
-    _r, _eigen, _ = _color_step(False, _EC2(action="restart"))
-    check("checkcolor + 'else restart' bricht ab", _r is False and _eigen == [])
+    _r, _own, _ = _color_step(False, _EC2(action="restart"))
+    check("checkcolor + 'else restart' bricht ab", _r is False and _own == [])
 
     # Dasselbe auf dem Warte-Pfad: Timeout -> else, danach KEIN eigener Klick
-    _r, _eigen, _ = _color_step(False, _EC2(action="skip"), check_only=False)
-    check("Warten + Timeout + 'else skip' -> kein eigener Klick", _eigen == [])
-    _r, _eigen, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"),
+    _r, _own, _ = _color_step(False, _EC2(action="skip"), check_only=False)
+    check("Warten + Timeout + 'else skip' -> kein eigener Klick", _own == [])
+    _r, _own, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"),
                                  check_only=False)
     check("Warten + Timeout + 'else <Punkt>' -> nur der Else-Punkt",
-          _eigen == [] and (999, 999, "else:E") in _clicks)
+          _own == [] and (999, 999, "else:E") in _clicks)
 finally:
     _RS.safe_click = _RA.safe_click = _orig_click
     _RS.safe_key = _RA.safe_key = _orig_key
@@ -1796,13 +1796,13 @@ _RS.safe_scroll = _RA.safe_scroll = lambda st, c, x=None, y=None, label="": (_ak
 _RS.PILLOW_AVAILABLE = True
 _RS.check_failsafe = lambda st: False
 
-def _with_trigger(step, trifft):
+def _with_trigger(step, hits):
     for v in _akt.values():
         v.clear()
     _shots.clear()
     def _shot(region=None):
         _shots.append(region)
-        return _Pix2((10, 10, 10) if trifft else (200, 200, 200))
+        return _Pix2((10, 10, 10) if hits else (200, 200, 200))
     _RS.take_screenshot = _shot
     st = AutoClickerState(); st.config = _AC2()
     st.config.pixel_wait_timeout = 0.05
@@ -1822,23 +1822,23 @@ try:
         ("Scroll", _SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
                        wait_condition=_wc3()), "scroll"),
     ]:
-        _checked, _was = _with_trigger(_step_local, trifft=False)
+        _checked, _was = _with_trigger(_step_local, hits=False)
         check(f"{_name}-Schritt: Farb-Bedingung wird geprueft", _checked)
         check(f"{_name}-Schritt: Aktion feuert NICHT bei Nichttreffer", _was[_field] == [])
 
     # Trifft zu -> Aktion laeuft
     _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
-                               wait_condition=_wc3()), trifft=True)
+                               wait_condition=_wc3()), hits=True)
     check("Taste-Schritt: Aktion laeuft bei Treffer", _was["action_key"] == ["enter"])
     _, _was = _with_trigger(_SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
-                               wait_condition=_wc3()), trifft=True)
+                               wait_condition=_wc3()), hits=True)
     check("Scroll-Schritt: Aktion laeuft bei Treffer", _was["scroll"] == [-3])
 
     # else greift jetzt auch hier — und ersetzt die Aktion
     _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
                                wait_condition=_wc3(check_only=True),
                                else_config=_EC2(action="click", x=99, y=99, name="E")),
-                           trifft=False)
+                           hits=False)
     check("Taste-Schritt: else greift und ersetzt die Taste",
           _was["action_key"] == [] and _was["klick"] == [(99, 99)])
 
@@ -1847,17 +1847,17 @@ try:
     # fragen per Truthiness ab, und die Koordinate eines Scan-Blocks ist (0, 0) —
     # ein Klick in die Bildschirmecke. Der Block ist erlaubt (man legt ihn an, um
     # die Stelle im Ablauf festzuhalten), also muss ihn die Laufzeit tragen.
-    for _art, _kw in [("Item-Scan", dict(item_scan="")),
+    for _art_kind, _kw in [("Item-Scan", dict(item_scan="")),
                       ("Boss-Scan", dict(boss_scan="")),
                       ("Icon-Scan", dict(icon_scan="")),
                       ("Boss-Watcher", dict(boss_watcher=""))]:
-        _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, **_kw), trifft=True)
-        check(f"{_art} ohne Konfiguration klickt NICHT in die Ecke",
+        _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, **_kw), hits=True)
+        check(f"{_art_kind} ohne Konfiguration klickt NICHT in die Ecke",
               _was["klick"] == [])
 
     # Ohne Farb-Bedingung bleibt es beim reinen Warten (keine Screenshots)
     _checked, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T",
-                                       key_press="enter"), trifft=True)
+                                       key_press="enter"), hits=True)
     check("Taste ohne Bedingung: kein Screenshot, Taste laeuft",
           not _checked and _was["action_key"] == ["enter"])
 
@@ -1872,15 +1872,15 @@ try:
           "Farbe" not in str(_SS(x=0, y=0, delay_before=3, key_press="enter")))
     # Jeder Schritt-Typ muss sich in der Liste als das zeigen, was er ist. Der
     # Icon-Scan hatte gar keinen Zweig und erschien als "sofort -> klicke (0, 0)".
-    for _typ, _kw, _erwartet in [
+    for _type, _kw, _expected in [
         ("Icon-Scan", dict(icon_scan="Mission"), "ICON-SCAN 'Mission'"),
         ("Boss-Scan", dict(boss_scan="B"), "BOSS-SCAN 'B'"),
         ("Watcher", dict(boss_watcher="W"), "BOSS-WATCHER 'W'"),
         ("Item-Scan", dict(item_scan="I"), "SCAN 'I'"),
         ("Screenshot", dict(screenshot_only=True), "SCREENSHOT"),
     ]:
-        check(f"Anzeige: {_typ} wird als solcher angezeigt",
-              _erwartet in str(_SS(x=0, y=0, delay_before=0, **_kw)))
+        check(f"Anzeige: {_type} wird als solcher angezeigt",
+              _expected in str(_SS(x=0, y=0, delay_before=0, **_kw)))
 finally:
     _RS.safe_click = _RA.safe_click = _orig_c3
     _RS.safe_key = _RA.safe_key = _orig_k3
@@ -1940,10 +1940,10 @@ try:
     }
     for _name, _kw in _cases.items():
         _step_local = _SS(x=1, y=2, delay_before=0, name="s", **_kw)
-        _editor_erlaubt = _can_else(_step_local)
+        _editor_allowed = _can_else(_step_local)
         _runtime_evaluates = _else_fires(**_kw)
         check(f"{_name}: Editor-Regel deckt sich mit der Runtime",
-              _editor_erlaubt == _runtime_evaluates)
+              _editor_allowed == _runtime_evaluates)
 
     # Und die konkreten Faelle, die vorher verworfen wurden
     for _name, _kw in [("boss", dict(boss_scan="X")), ("icon", dict(icon_scan="X"))]:
@@ -2001,9 +2001,9 @@ class _EinTick:
     danach mit `stop_event.wait(10)`. Ein vorab gesetztes Event wuerde den Rumpf
     also nie ausfuehren, ein echtes Event 10 Sekunden kosten.
     """
-    def __init__(self): self._fertig = False
-    def is_set(self): return self._fertig
-    def wait(self, timeout=None): self._fertig = True; return True   # -> break
+    def __init__(self): self._done = False
+    def is_set(self): return self._done
+    def wait(self, timeout=None): self._done = True; return True   # -> break
 
 
 def _watcher_tick(phases, h, m, pending=None, last=None):
@@ -2011,12 +2011,12 @@ def _watcher_tick(phases, h, m, pending=None, last=None):
     pending = {} if pending is None else pending
     last = {} if last is None else last
 
-    class _FixeZeit(_dt_mod.datetime):
+    class _FixedTime(_dt_mod.datetime):
         @classmethod
         def now(cls, tz=None): return cls(2026, 7, 31, h, m, 0)
 
     orig_dt = _WK.datetime
-    _WK.datetime = _FixeZeit
+    _WK.datetime = _FixedTime
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _sw(phases, pending, last, _EinTick(), _th.Lock(), _th.Event())
@@ -2032,15 +2032,15 @@ def _timer_run(phases, h, m):
     protokolliert, welche Phase wirklich drankam.
     """
     pending = _watcher_tick(phases, h, m)
-    gelaufen = []
+    ran = []
     orig_step = _WK.execute_step
-    _WK.execute_step = lambda s, step, i, n, ph: (gelaufen.append(step), True)[1]
+    _WK.execute_step = lambda s, step, i, n, ph: (ran.append(step), True)[1]
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _rlp(AutoClickerState(), _FakeSeq(phases), pending, _th.Lock(), "Zyklus 1", False)
     finally:
         _WK.execute_step = orig_step
-    return gelaufen
+    return ran
 
 
 import datetime as _dt_mod
@@ -2111,16 +2111,16 @@ check("Serie: lueckenlos zaehlt weiter",
 
 # Der Ablauf der Auto-Erkennung: N Slots anlegen darf nie einen bestehenden treffen
 _slots = {"Slot 1": "alt", "Slot 3": "alt"}
-_vergeben = []
+_assigned = []
 for _ in range(4):
     _n = _nf("Slot", _slots)
     _slots[_n] = "neu"
-    _vergeben.append(_n)
+    _assigned.append(_n)
 check("Auto-Erkennung ueberschreibt keinen bestehenden Slot",
       _slots["Slot 1"] == "alt" and _slots["Slot 3"] == "alt")
 check("Auto-Erkennung legt alle 4 Slots wirklich an", len(_slots) == 6)
 check("Auto-Erkennung vergibt lesbare Namen",
-      _vergeben == ["Slot 2", "Slot 4", "Slot 5", "Slot 6"])
+      _assigned == ["Slot 2", "Slot 4", "Slot 5", "Slot 6"])
 
 # Beide Helfer haben ihren Platz: fuer einen VORGEGEBENEN Namen gibt es keine Serie
 check("unique_name bleibt fuer vorgegebene Namen zustaendig",
@@ -2172,7 +2172,7 @@ check("zwei Punkte skalieren zusaetzlich",
                                                       (0,0), (500,500))) == (200, 300))
 
 
-def _kalib_state():
+def _calib_state():
     """Ein Bestand mit je einem Vertreter jeder Koordinaten-Art."""
     s = AutoClickerState()
     _points = [_KCP(x=100, y=200, name="Bank", id=1),
@@ -2210,7 +2210,7 @@ def _kalib_state():
 
 
 # Die Vorschau darf nichts anfassen — sonst waere ein 'nein' beim Nachfragen wirkungslos
-_vs, _, _, _ = _kalib_state()
+_vs, _, _, _ = _calib_state()
 _preview = _IE.calibration_preview(_vs, _t)
 check("Vorschau laesst den Bestand unveraendert",
       (_vs.points[0].x, _vs.points[0].y) == (100, 200))
@@ -2218,15 +2218,15 @@ check("Vorschau meldet vorher und nachher",
       ("Punkt #1 Bank", (100, 200), (140, 175)) in _preview)
 
 # In einem temporaeren Verzeichnis arbeiten: calibrate_inventory SCHREIBT
-_kalib_tmp = tempfile.mkdtemp()
-_kalib_cwd = _os.getcwd()
-_os.chdir(_kalib_tmp)
+_calib_tmp = tempfile.mkdtemp()
+_calib_cwd = _os.getcwd()
+_os.chdir(_calib_tmp)
 try:
-    _st, _step_local, _trig, _shot = _kalib_state()
+    _st, _step_local, _trig, _shot = _calib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
         _number = _IE.calibrate_inventory(_st, _t, with_scans=True, with_sequences=True)
 
-    for _was, _ist, _soll in [
+    for _was, _actual, _expected_value in [
         ("Punkt (der Referenzpunkt selbst)", (_st.points[0].x, _st.points[0].y), (140, 175)),
         ("Punkt (ein anderer)", (_st.points[1].x, _st.points[1].y), (540, 775)),
         ("Slot-Scanregion", _st.global_slots["Slot 1"].scan_region, (50, -5, 100, 45)),
@@ -2245,7 +2245,7 @@ try:
         ("else-Klick ohne Punkt", (_trig.else_config.x, _trig.else_config.y), (940, 925)),
         ("Screenshot-Region", _shot.screenshot_region, (41, -23, 43, -21)),
     ]:
-        check(f"kalibriert: {_was}", _ist == _soll)
+        check(f"kalibriert: {_was}", _actual == _expected_value)
 
     # Ein Schritt MIT point_id wird von der Kalibrierung selbst NICHT angefasst - sonst
     # wanderte er zweimal: einmal als Punkt und einmal als Schritt. Er landet trotzdem
@@ -2258,7 +2258,7 @@ try:
           (_step_local.x, _step_local.y) == (140, 175))
 
     # Umfang muss sich begrenzen lassen
-    _st2, _step2, _, _ = _kalib_state()
+    _st2, _step2, _, _ = _calib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
         _IE.calibrate_inventory(_st2, _t, with_scans=False, with_sequences=False)
     check("nur Punkte: Punkt wandert",
@@ -2271,7 +2271,7 @@ try:
     # Slots getrennt ausklammerbar: eine aus der Maus abgeleitete Verschiebung ist
     # fuer eine Scan-Region nur eine Naeherung — dafuer gibt es slot_repair().
     # Nach einer Reparatur duerfen die Slots kein zweites Mal wandern.
-    _st4, _step4, _, _ = _kalib_state()
+    _st4, _step4, _, _ = _calib_state()
     with _cl2.redirect_stdout(_io2.StringIO()):
         _z4 = _IE.calibrate_inventory(_st4, _t, with_scans=True, with_sequences=True,
                                      with_slots=False)
@@ -2365,7 +2365,7 @@ try:
     check("Rueckrechnung trifft den Ausgangswert genau",
           (_d2["init_steps"][0]["x"], _d2["init_steps"][0]["y"]) == (100, 200))
 finally:
-    _os.chdir(_kalib_cwd)
+    _os.chdir(_calib_cwd)
 
 
 # Hier stand die Sektion "Start-Durchgang: zwei Altdateien teilen sich ihre Punkte".
@@ -2388,17 +2388,17 @@ _BASIS = [(100, 100, 150, 150), (160, 100, 210, 150),
           (220, 100, 270, 150), (100, 160, 150, 210)]
 
 
-def _rep_slots(regionen):
+def _rep_slots(regions):
     return [_KIS(name=f"Slot {i+1}", scan_region=r,
                  click_pos=((r[0]+r[2])//2, (r[1]+r[3])//2))
-            for i, r in enumerate(regionen)]
+            for i, r in enumerate(regions)]
 
 
-def _rep_rects(regionen, dx=0, dy=0):
+def _rep_rects(regions, dx=0, dy=0):
     """Macht aus gespeicherten Regionen wieder rohe Erkennungs-Rechtecke (x,y,w,h)."""
     return [(x1 - _INSET + dx, y1 - _INSET + dy,
              (x2 - x1) + 2 * _INSET, (y2 - y1) + 2 * _INSET)
-            for (x1, y1, x2, y2) in regionen]
+            for (x1, y1, x2, y2) in regions]
 
 
 _p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS), _INSET, (0, 0))
@@ -2485,7 +2485,7 @@ import autoclicker.runtime.debug as _DBG
 from autoclicker.models import ClickPoint as _WCP
 
 
-def _walk_pfad(keys_list):
+def _walk_path(keys_list):
     """Gibt die Reihenfolge der besuchten Punkt-Indizes zurueck."""
     st = AutoClickerState()
     st.points = [_WCP(x=i * 10, y=i * 10, name=f"P{i}", id=i) for i in range(1, 6)]
@@ -2503,33 +2503,33 @@ def _walk_pfad(keys_list):
 
 
 check("walk: 'w' blaettert vorwaerts",
-      _walk_pfad(["w", "w", "w", "q"]) == [1, 2, 3, 4])
+      _walk_path(["w", "w", "w", "q"]) == [1, 2, 3, 4])
 check("walk: 'a' blaettert ZURUECK (lief vorher vorwaerts)",
-      _walk_pfad(["w", "w", "a", "q"]) == [1, 2, 3, 2])
+      _walk_path(["w", "w", "a", "q"]) == [1, 2, 3, 2])
 check("walk: 'a' am Anfang bleibt beim ersten Punkt",
-      _walk_pfad(["a", "a", "q"]) == [1, 1, 1])
-check("walk: Enter blaettert vorwaerts", _walk_pfad(["enter", "enter", "q"]) == [1, 2, 3])
-check("walk: 'q' beendet sofort", _walk_pfad(["q"]) == [1])
+      _walk_path(["a", "a", "q"]) == [1, 1, 1])
+check("walk: Enter blaettert vorwaerts", _walk_path(["enter", "enter", "q"]) == [1, 2, 3])
+check("walk: 'q' beendet sofort", _walk_path(["q"]) == [1])
 check("walk: hin und zurueck landet wieder am Ausgangspunkt",
-      _walk_pfad(["w", "a", "q"]) == [1, 2, 1])
+      _walk_path(["w", "a", "q"]) == [1, 2, 1])
 # Pfeiltasten gleichwertig — die kommen in IDE-Konsolen ohnehin an
 check("walk: Pfeil rechts blaettert vorwaerts",
-      _walk_pfad(["right", "right", "q"]) == [1, 2, 3])
+      _walk_path(["right", "right", "q"]) == [1, 2, 3])
 check("walk: Pfeil links blaettert zurueck",
-      _walk_pfad(["right", "right", "left", "q"]) == [1, 2, 3, 2])
+      _walk_path(["right", "right", "left", "q"]) == [1, 2, 3, 2])
 check("walk: Pfeil runter/hoch wirken wie rechts/links",
-      _walk_pfad(["down", "down", "up", "q"]) == [1, 2, 3, 2])
+      _walk_path(["down", "down", "up", "q"]) == [1, 2, 3, 2])
 check("walk: 'd' blaettert vorwaerts (WASD)",
-      _walk_pfad(["d", "d", "q"]) == [1, 2, 3])
-check("walk: ESC beendet wie 'q'", _walk_pfad(["escape"]) == [1])
+      _walk_path(["d", "d", "q"]) == [1, 2, 3])
+check("walk: ESC beendet wie 'q'", _walk_path(["escape"]) == [1])
 # Fehlgriff darf nicht weiterblaettern — sonst sucht man die Stelle neu
 check("walk: unbekannte Taste bleibt stehen",
-      _walk_pfad(["x", "x", "w", "q"]) == [1, 1, 1, 2])
+      _walk_path(["x", "x", "w", "q"]) == [1, 1, 1, 2])
 
 
 # 'n' setzt den Punkt auf die aktuelle Mausposition — damit repariert man eine Sequenz,
 # ohne Wartezeiten/else/Scans anzufassen: Schritte mit point_id ziehen automatisch nach.
-def _walk_setzen(keys_list, maus, color=(9, 9, 9)):
+def _walk_set(keys_list, mouse, color=(9, 9, 9)):
     """Gibt die Punkte nach dem Durchgang zurueck."""
     st = AutoClickerState()
     st.points = [_WCP(x=10, y=10, name="P1", id=1, color=(1, 2, 3)),
@@ -2542,7 +2542,7 @@ def _walk_setzen(keys_list, maus, color=(9, 9, 9)):
     _o_pix, _o_save = _IMG.get_pixel_color, _PERS.save_points
     _DBG.read_command = lambda *a, **k: consequence.pop(0) if consequence else "q"
     _DBG.set_cursor_pos = lambda x, y: None
-    _DBG.get_cursor_pos = lambda: maus
+    _DBG.get_cursor_pos = lambda: mouse
     _IMG.get_pixel_color = lambda x, y: color
     _PERS.save_points = lambda s: None
     try:
@@ -2555,7 +2555,7 @@ def _walk_setzen(keys_list, maus, color=(9, 9, 9)):
     return st.points
 
 
-_pk = _walk_setzen(["n", "q"], maus=(77, 88))
+_pk = _walk_set(["n", "q"], mouse=(77, 88))
 check("walk 'n': Punkt uebernimmt die Mausposition",
       (_pk[0].x, _pk[0].y) == (77, 88))
 check("walk 'n': Farbe wird mitgezogen (sie gehoert zur Position)",
@@ -2567,17 +2567,17 @@ check("walk 'n': Name und ID bleiben (Schritte zeigen per ID darauf)",
 
 # Punkt ohne Farbe bekommt auch keine — sonst schleicht sich ein Trigger ein,
 # den niemand gesetzt hat
-_pk = _walk_setzen(["w", "n", "q"], maus=(55, 66))
+_pk = _walk_set(["w", "n", "q"], mouse=(55, 66))
 check("walk 'n': Punkt ohne Farbe bekommt keine", _pk[1].color is None)
 check("walk 'n': Position trotzdem gesetzt", (_pk[1].x, _pk[1].y) == (55, 66))
 
 # Maus steht noch auf der alten Stelle -> nichts tun, nicht weiterblaettern
-_pk = _walk_setzen(["n", "q"], maus=(10, 10))
+_pk = _walk_set(["n", "q"], mouse=(10, 10))
 check("walk 'n' ohne Mausbewegung aendert nichts",
       (_pk[0].x, _pk[0].y) == (10, 10))
 
 # 'f' liest nur die Farbe neu, die Position bleibt
-_pk = _walk_setzen(["f", "q"], maus=(77, 88), color=(4, 5, 6))
+_pk = _walk_set(["f", "q"], mouse=(77, 88), color=(4, 5, 6))
 check("walk 'f': nur die Farbe wird neu gelesen",
       _pk[0].color == (4, 5, 6) and (_pk[0].x, _pk[0].y) == (10, 10))
 
@@ -2634,15 +2634,15 @@ PLATTFORM_MODULE = {
     "autoclicker/utils/io.py",      # Tastendruck-Erfassung (msvcrt / GetAsyncKeyState)
     "autoclicker/utils/console.py", # Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung
 }
-_WIN_MUSTER = _re_p.compile(r"ctypes\.(windll|WinDLL|WINFUNCTYPE)|\bwintypes\b|\bmsvcrt\b")
+_WIN_PATTERN = _re_p.compile(r"ctypes\.(windll|WinDLL|WINFUNCTYPE)|\bwintypes\b|\bmsvcrt\b")
 
-_paket = Path(__file__).resolve().parent.parent / "autoclicker"
+_package = Path(__file__).resolve().parent.parent / "autoclicker"
 _outlier = []
-for _path in sorted(_paket.rglob("*.py")):
-    _rel = _path.relative_to(_paket.parent).as_posix()
+for _path in sorted(_package.rglob("*.py")):
+    _rel = _path.relative_to(_package.parent).as_posix()
     if _rel in PLATTFORM_MODULE:
         continue
-    _matches = _WIN_MUSTER.findall(_path.read_text(encoding="utf-8"))
+    _matches = _WIN_PATTERN.findall(_path.read_text(encoding="utf-8"))
     if _matches:
         _outlier.append(f"{_rel} ({len(_matches)}x)")
 
@@ -2654,7 +2654,7 @@ if _outlier:
 # Die Gegenrichtung: steht ein Modul auf der Liste, das gar nichts Windows-Spezifisches
 # mehr enthaelt, gehoert es runter — sonst waechst die Liste zur Fiktion.
 _superfluous = [m for m in sorted(PLATTFORM_MODULE)
-                  if not _WIN_MUSTER.search((_paket.parent / m).read_text(encoding="utf-8"))]
+                  if not _WIN_PATTERN.search((_package.parent / m).read_text(encoding="utf-8"))]
 check("jedes gelistete Plattform-Modul ist auch wirklich eines", _superfluous == [])
 if _superfluous:
     print("        unnoetig gelistet: " + ", ".join(_superfluous))
@@ -2759,27 +2759,27 @@ check("Tastendruecke dazwischen verschieben die Nummern nicht",
 # untereinander. Gefragt werden deshalb beide erreichbaren Wege und verglichen -
 # nicht die Implementierung abgeschrieben.
 from autoclicker.persistence.sequences import point_for_position as _pfs
-_st_namen = AutoClickerState()
-_seq_namen = _KSEQ(name="N", init_steps=[], end_steps=[], loop_phases=[], points=[])
-_st_namen.sequences = {"N": _seq_namen}
-_st_namen.active_sequence = _seq_namen
-_st_namen.points = _seq_namen.points
-_id_a = _pfs(_st_namen, 10, 20, (1, 2, 3))
-_id_b = _pfs(_st_namen, 900, 900, (4, 5, 6))
-_namen_pfs = [pt.name for pt in _st_namen.points]
+_st_names = AutoClickerState()
+_seq_names = _KSEQ(name="N", init_steps=[], end_steps=[], loop_phases=[], points=[])
+_st_names.sequences = {"N": _seq_names}
+_st_names.active_sequence = _seq_names
+_st_names.points = _seq_names.points
+_id_a = _pfs(_st_names, 10, 20, (1, 2, 3))
+_id_b = _pfs(_st_names, 900, 900, (4, 5, 6))
+_names_pfs = [pt.name for pt in _st_names.points]
 check("der Rueckfall in point_for_position nimmt P<ID>",
-      _namen_pfs == [f"P{_id_a}", f"P{_id_b}"])
+      _names_pfs == [f"P{_id_a}", f"P{_id_b}"])
 check("und damit dasselbe Schema wie die Aufnahme",
-      [n[0] for n in _namen_pfs] == [n[0] for n in ("P1", "P2")])
+      [n[0] for n in _names_pfs] == [n[0] for n in ("P1", "P2")])
 # Ein uebergebener Name gewinnt weiterhin - der Rueckfall ist ein Rueckfall.
-_id_c = _pfs(_st_namen, 500, 500, None, name="Bankschalter")
+_id_c = _pfs(_st_names, 500, 500, None, name="Bankschalter")
 check("ein getippter Name wird nicht ueberschrieben",
-      next(pt.name for pt in _st_namen.points if pt.id == _id_c) == "Bankschalter")
-_aufnahme_ziel = _aufnahme_datei("Neue Aufnahme")
+      next(pt.name for pt in _st_names.points if pt.id == _id_c) == "Bankschalter")
+_capture_target = _aufnahme_datei("Neue Aufnahme")
 check("Recorder speichert im Besitzordner der Sequenz",
-      _aufnahme_ziel.parts[-3:] == ("sequences", "neue_aufnahme", "sequence.json"))
+      _capture_target.parts[-3:] == ("sequences", "neue_aufnahme", "sequence.json"))
 check("Recorder legt keine direkte JSON-Datei mehr unter sequences/ an",
-      _aufnahme_ziel.parent.name != "sequences")
+      _capture_target.parent.name != "sequences")
 
 # --- Fast dieselbe Stelle ist dieselbe Stelle - aber nur bei gleicher Farbe ---
 # Denselben Knopf trifft man beim Aufnehmen nie zweimal pixelgenau. Mit exaktem
@@ -2853,7 +2853,7 @@ check("Sequenz-Studio: Koordinaten und Farbe kommen mit",
 # Und die Gegenrichtung: kein Erzeuger von Klick-Schritten darf point_id vergessen.
 # Ein Blanko-Block (0,0) ist ausgenommen — der hat noch gar keine Position.
 import ast as _ast_p
-_KEIN_KLICK = {"wait_only", "item_scan", "boss_scan", "boss_watcher", "icon_scan",
+_NO_CLICK = {"wait_only", "item_scan", "boss_scan", "boss_watcher", "icon_scan",
                "screenshot_only", "key_press"}
 _without_ref = []
 for _pf in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob("*.py")):
@@ -2864,7 +2864,7 @@ for _pf in sorted((Path(__file__).resolve().parent.parent / "autoclicker").rglob
                 and getattr(_n.func, "id", None) == "SequenceStep"):
             continue
         _kw = {k.arg: k.value for k in _n.keywords}
-        if _KEIN_KLICK & set(_kw) or "point_id" in _kw:
+        if _NO_CLICK & set(_kw) or "point_id" in _kw:
             continue
         # Blanko: x=0, y=0 als Literale -> noch keine echte Position
         def _null(a):
@@ -2888,41 +2888,41 @@ from autoclicker.editors.sequence_recorder import (
 # Eine Aufnahme, die alle vier Arten enthaelt. Der Marker wird 2s nach dem ersten
 # Klick gedrueckt (bis dahin lief normal etwas ab — das bleibt Wartezeit), und erst
 # 3.4s SPAETER kommt der Klick: das ist das Warten auf die Farbe.
-_ev_alle = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
+_ev_all = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_WAIT, 2.0),
             _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
             _RE(_R_KEY, 6.0, key="enter"),
             _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
-_st_alle = AutoClickerState()
-_map_alle, _new_all = _pfe(_ev_alle)
-_steps_alle = _sae(_ev_alle, _map_alle)
+_st_all = AutoClickerState()
+_map_all, _new_all = _pfe(_ev_all)
+_steps_all = _sae(_ev_all, _map_all)
 
-check("Tastendruck bekommt keinen Punkt", 3 not in _map_alle)
+check("Tastendruck bekommt keinen Punkt", 3 not in _map_all)
 # DAS war der Fehler aus der echten Aufnahme: der Marker legte einen Punkt an der
 # zufaelligen Mausposition an — Muell in points.json, mit einer Farbe von irgendwo.
-check("Warte-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_alle)
-check("nur Klick und Scroll bekommen einen", set(_map_alle) == {0, 2, 4})
-check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_alle[2] == _map_alle[4])
+check("Warte-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_all)
+check("nur Klick und Scroll bekommen einen", set(_map_all) == {0, 2, 4})
+check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_all[2] == _map_all[4])
 check("kein Punkt ohne echte Stelle", len(_new_all) == 2)
 
 check("Tastendruck wird ein key_press-Schritt",
-      _steps_alle[2].key_press == "enter" and _steps_alle[2].point_id is None)
-check("Mausrad wird ein scroll-Schritt", _steps_alle[3].scroll == -3)
+      _steps_all[2].key_press == "enter" and _steps_all[2].point_id is None)
+check("Mausrad wird ein scroll-Schritt", _steps_all[3].scroll == -3)
 
 # Der Kern: der Marker ist KEIN eigener Schritt, sondern eine Bedingung am naechsten
-check("Marker wird kein eigener Schritt", len(_steps_alle) == 4)
-_ws = _steps_alle[1]
+check("Marker wird kein eigener Schritt", len(_steps_all) == 4)
+_ws = _steps_all[1]
 check("der Klick danach traegt die Bedingung", _ws.wait_condition is not None)
 check("und prueft SEINE EIGENE Stelle (ein Punkt, zweimal referenziert)",
-      _ws.wait_condition.point_id == _ws.point_id == _map_alle[2])
+      _ws.wait_condition.point_id == _ws.point_id == _map_all[2])
 check("er klickt weiterhin", _ws.wait_only is False)
 # Die Zeit bis zum Marker (2.0 - 0.0) bleibt; die 3.4s danach sind das Warten.
 check("die Uhr wird beim Marker angehalten", _ws.delay_before == 2.0)
 check("spaetere Schritte messen wieder normal",
-      _steps_alle[2].delay_before == 0.6 and _steps_alle[3].delay_before == 0.5)
+      _steps_all[2].delay_before == 0.6 and _steps_all[3].delay_before == 0.5)
 
 # Die Wartefarbe ist die des Klicks — richtig, weil man erst klickt, wenn es da ist
-_pt_click = [p for p in _new_all if p.id == _map_alle[2]][0]
+_pt_click = [p for p in _new_all if p.id == _map_all[2]][0]
 check("gewartet wird auf die Farbe, die der Klick vorfand", _pt_click.color == (7, 7, 7))
 
 # In der Datei stehen nur zwei Referenzen auf denselben Punkt, keine Koordinate
@@ -2932,16 +2932,16 @@ check("in der Datei stehen nur die zwei Referenzen",
       and not {"x", "y", "pixel", "color"} & set(_d_extra))
 
 # Der Marker haengt an dem Klick, der ihm folgt — auch wenn dazwischen Zeit vergeht
-_ev_echt = [_RE(_R_CLICK, 0.0, 4464, 1357, (32, 135, 111)),
+_ev_real = [_RE(_R_CLICK, 0.0, 4464, 1357, (32, 135, 111)),
             _RE(_R_WAIT, 1.0),
             _RE(_R_CLICK, 435.34, 4764, 29, (179, 57, 57))]
-_st_echt = AutoClickerState()
-_map_echt, _points_real = _pfe(_ev_echt)
-_steps_echt = _sae(_ev_echt, _map_echt)
+_st_real = AutoClickerState()
+_map_real, _points_real = _pfe(_ev_real)
+_steps_real = _sae(_ev_real, _map_real)
 check("echte Aufnahme: 434s Warten werden zur Bedingung, nicht zur Schlafzeit",
-      _steps_echt[1].delay_before == 1.0)
+      _steps_real[1].delay_before == 1.0)
 check("echte Aufnahme: geprueft wird die Klick-Stelle",
-      _steps_echt[1].wait_condition.point_id == _steps_echt[1].point_id)
+      _steps_real[1].wait_condition.point_id == _steps_real[1].point_id)
 check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_points_real) == 2)
 
 # Frisch gebaute Schritte tragen NUR Referenzen — Pruef-Pixel und Farbe sind leer, bis
@@ -2950,13 +2950,13 @@ check("echte Aufnahme: kein Punkt an einer Zufallsstelle", len(_points_real) == 
 from autoclicker.models import Sequence as _SEQ3, LoopPhase as _LP3
 from autoclicker.persistence import resolve_point_references as _rpr3
 check("vor dem Aufloesen ist der Pruef-Pixel noch leer",
-      _steps_echt[1].wait_condition.pixel == (0, 0))
-_seq_fresh = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_echt, repeat=1)],
+      _steps_real[1].wait_condition.pixel == (0, 0))
+_seq_fresh = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_real, repeat=1)],
                     points=_points_real)
-_st_echt.sequences = {"F": _seq_fresh}
-_st_echt.active_sequence = _seq_fresh
-_st_echt.points = _seq_fresh.points
-_rpr3(_st_echt, _seq_fresh)
+_st_real.sequences = {"F": _seq_fresh}
+_st_real.active_sequence = _seq_fresh
+_st_real.points = _seq_fresh.points
+_rpr3(_st_real, _seq_fresh)
 _sf = _seq_fresh.loop_phases[0].steps[1]
 check("nach dem Aufloesen zeigt die Bedingung auf die Klick-Stelle",
       _sf.wait_condition.pixel == (_sf.x, _sf.y) == (4764, 29))
@@ -3051,31 +3051,31 @@ from autoclicker.editors.sequence_recorder import (
     build_phases as _pb, mark_region as _mber, mark_phase as _mph)
 
 # --- Bereich: zwei Ecken werden EIN Screenshot mit Rechteck ---
-_ev_ber = [_RE(_R_CLICK, 0.0, 1, 1),
+_ev_report = [_RE(_R_CLICK, 0.0, 1, 1),
            _RE(_R_REG, 1.0, 300, 400),      # Ecke 1
            _RE(_R_REG, 3.0, 100, 200),      # Ecke 2 (verkehrt herum angefahren)
            _RE(_R_CLICK, 4.0, 2, 2)]
-_g_ber, _half = _bz(_ev_ber)
-check("zwei Ecken werden EIN Ereignis", len(_g_ber) == 3 and _half == 0)
+_g_report, _half = _bz(_ev_report)
+check("zwei Ecken werden EIN Ereignis", len(_g_report) == 3 and _half == 0)
 check("und zwar ein Screenshot mit Rechteck",
-      _g_ber[1].kind == _R_SHOT and _g_ber[1].region == (100, 200, 300, 400))
+      _g_report[1].kind == _R_SHOT and _g_report[1].region == (100, 200, 300, 400))
 # Normalisiert: egal in welcher Reihenfolge die Ecken angefahren wurden
 check("das Rechteck wird normalisiert (links/oben zuerst)",
-      _g_ber[1].region[0] < _g_ber[1].region[2]
-      and _g_ber[1].region[1] < _g_ber[1].region[3])
+      _g_report[1].region[0] < _g_report[1].region[2]
+      and _g_report[1].region[1] < _g_report[1].region[3])
 # Der Zeitstempel ist der der ERSTEN Ecke — die 2s Mausweg sind Bedienzeit
-check("der Zeitstempel ist der der ersten Ecke", _g_ber[1].t == 1.0)
-_steps_ber = _sae(_g_ber, _pfe(_g_ber)[0])
+check("der Zeitstempel ist der der ersten Ecke", _g_report[1].t == 1.0)
+_steps_report = _sae(_g_report, _pfe(_g_report)[0])
 check("der Screenshot sitzt dort, wo die erste Ecke gesetzt wurde",
-      _steps_ber[1].delay_before == 1.0)
+      _steps_report[1].delay_before == 1.0)
 # Die Aufnahme erfindet keine Zeit und wirft keine weg: die Summe der Wartezeiten
 # muss die verstrichene Zeit ergeben. Die 2s Mausweg zwischen den Ecken bleiben
 # deshalb in der Wartezeit des NAECHSTEN Schritts stehen — Bedienzeit von Spielzeit
 # zu trennen kann die Aufnahme nicht (Nachdenken sieht genauso aus).
 check("keine Zeit geht durch das Falten verloren",
-      sum(s.delay_before for s in _steps_ber) == _ev_ber[-1].t - _ev_ber[0].t)
+      sum(s.delay_before for s in _steps_report) == _ev_report[-1].t - _ev_report[0].t)
 check("und der Schritt traegt den Bereich statt Vollbild",
-      _steps_ber[1].screenshot_region == (100, 200, 300, 400))
+      _steps_report[1].screenshot_region == (100, 200, 300, 400))
 
 # Eine halbe Ecke ist kein Bereich — verwerfen, nicht still zu Vollbild degradieren
 _g_half, _n_half = _bz([_RE(_R_CLICK, 0.0, 1, 1), _RE(_R_REG, 1.0, 5, 5)])
@@ -3215,7 +3215,7 @@ section("OCR und LLM bilden denselben Text auf denselben Boss ab")
 from autoclicker.ocr import _match_text_to_boss as _ocr_match
 from autoclicker.llm_vision import match_boss_name as _llm_match
 
-_FAELLE = [
+_CASES = [
     # (Boss-Liste, erkannter Text)
     (["Ork", "Orkhaeuptling"], "Der Orkhaeuptling erscheint"),   # <- war der Bug
     (["Orkhaeuptling", "Ork"], "Der Orkhaeuptling erscheint"),   # Reihenfolge egal
@@ -3225,11 +3225,11 @@ _FAELLE = [
     (["Goblin", "Goblinkoenig"], "Goblinkoenig greift an"),
 ]
 _disagree = []
-for _bosse, _text in _FAELLE:
-    _o = _ocr_match(_text, _bosse)
-    _l = _llm_match(_text, _bosse)[0]
+for _bosses, _text in _CASES:
+    _o = _ocr_match(_text, _bosses)
+    _l = _llm_match(_text, _bosses)[0]
     if _o != _l:
-        _disagree.append(f"{_text!r} bei {_bosse}: OCR={_o!r} LLM={_l!r}")
+        _disagree.append(f"{_text!r} bei {_bosses}: OCR={_o!r} LLM={_l!r}")
 check("beide Erkenner sind sich bei jedem Fall einig", _disagree == [])
 if _disagree:
     for _z in _disagree:
@@ -3269,11 +3269,11 @@ check("zwei getrennte Drehungen bleiben zwei Ereignisse",
 # record_scroll: der Schalter wirkt am Hook, nicht erst im Callback. Beide Richtungen
 # pruefen — ein Test nur auf None waere auch gruen, wenn das Rad NIE ankaeme.
 from autoclicker.editors.sequence_recorder import _on_wheel_factory as _owf
-_st_rad = AutoClickerState()
-check("Standard nimmt das Mausrad auf", _st_rad.config.record_scroll is True)
-check("und liefert dafuer einen Callback", callable(_owf(_st_rad)))
-_st_rad.config.record_scroll = False
-check("record_scroll=false liefert keinen Callback", _owf(_st_rad) is None)
+_st_wheel = AutoClickerState()
+check("Standard nimmt das Mausrad auf", _st_wheel.config.record_scroll is True)
+check("und liefert dafuer einen Callback", callable(_owf(_st_wheel)))
+_st_wheel.config.record_scroll = False
+check("record_scroll=false liefert keinen Callback", _owf(_st_wheel) is None)
 # install_mouse_hook(cb, None) ignoriert das Rad laut Vertrag — das ist der Zweck von None
 import inspect as _insp2
 from autoclicker.winapi import install_mouse_hook as _imh
@@ -3281,10 +3281,10 @@ check("None ist der dokumentierte Weg, das Rad zu ignorieren",
       _insp2.signature(_imh).parameters["on_wheel"].default is None)
 
 # Der Schalter muss die config.json ueberleben, sonst steht er beim naechsten Start wieder auf True
-_cfg_rad = AppConfig.from_dict({"record_scroll": False})
+_cfg_wheel = AppConfig.from_dict({"record_scroll": False})
 check("record_scroll ueberlebt den Weg durch die config.json",
-      _cfg_rad.record_scroll is False
-      and AppConfig.from_dict(_cfg_rad.to_dict()).record_scroll is False)
+      _cfg_wheel.record_scroll is False
+      and AppConfig.from_dict(_cfg_wheel.to_dict()).record_scroll is False)
 
 # Pausiert wird nichts aufgezeichnet — das galt fuer Klicks und muss fuer alles gelten
 _st_pause = AutoClickerState()
@@ -3340,14 +3340,14 @@ class _Capture:
 
 _CONS._last_status_length = 0
 _with = _Capture()
-_echt_out = sys.stdout
+_real_out = sys.stdout
 try:
     sys.stdout = _with
     _sl("short")
     _sl("[Loop] Schritt 2/50 | " + "X" * 90)     # laenger als die alten 80 Spalten
     _sl("danach wieder kurz")
 finally:
-    sys.stdout = _echt_out
+    sys.stdout = _real_out
 
 check("jede Status-Zeile geht als EIN write() raus", len(_with.writes) == 3)
 check("und traegt ihr eigenes \\r bei sich",
@@ -3369,7 +3369,7 @@ try:
     sys.stdout = _with2
     _sl(_CONS.col("abc", "red"))
 finally:
-    sys.stdout = _echt_out
+    sys.stdout = _real_out
 check("ANSI-Codes zaehlen nicht zur Zeilenbreite",
       _CONS._visible_length(_CONS.col("abc", "red")) == 3)
 
@@ -3381,7 +3381,7 @@ try:
     sys.stdout = _with3
     _sl("A" * 50 + "\nkurz")
 finally:
-    sys.stdout = _echt_out
+    sys.stdout = _real_out
 check("nach einem \\n zaehlt nur der Teil dahinter",
       _CONS._last_status_length == 4)
 _CONS._last_status_length = 0
@@ -3400,14 +3400,14 @@ check("waehrend der Aufnahme nimmt CTRL+ALT+U das Ereignis zurueck",
 # Die Umkehrung im Editor: 'colorgone' dreht einen aufgenommenen Trigger um, statt
 # eine LIVE-Farbe abzugreifen (die Maus steht beim Editieren ja woanders).
 from autoclicker.editors.sequence_editor.steps import _PhaseEditor as _SE_cls
-_marker = _SS(x=50, y=60, point_id=_map_alle[2],
-              wait_condition=_WC(point_id=_map_alle[2]))
-_drehen = _SE_cls.__dict__["_apply_trigger"]
+_marker = _SS(x=50, y=60, point_id=_map_all[2],
+              wait_condition=_WC(point_id=_map_all[2]))
+_turn = _SE_cls.__dict__["_apply_trigger"]
 check("colorgone dreht die Richtung des Triggers um",
-      _drehen(None, _marker, "gone") is True
+      _turn(None, _marker, "gone") is True
       and _marker.wait_condition.until_gone is True)
 check("und laesst den aufgenommenen Punkt in Ruhe",
-      _marker.wait_condition.point_id == _map_alle[2])
+      _marker.wait_condition.point_id == _map_all[2])
 
 
 # Hier standen die Tests zu `_seq_v2_to_v3` und `_seq_v3_to_v4`; beide Schritte
@@ -3426,7 +3426,7 @@ _once_tmp = tempfile.mkdtemp()
 _once_cwd = _os.getcwd()
 _os.chdir(_once_tmp)
 _counters = {"n": 0}
-_orig_kette = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
+_orig_chain = list(_MG._CHAINS[_MG.KIND_SEQUENCE])
 try:
     def _counted(data, context):
         _counters["n"] += 1
@@ -3472,7 +3472,7 @@ try:
     check("Sequenz laden ruft keinen Migrationsschritt mehr auf",
           _counters["n"] == _after_first)
 finally:
-    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_kette
+    _MG._CHAINS[_MG.KIND_SEQUENCE] = _orig_chain
     _os.chdir(_once_cwd)
 
 
@@ -3493,7 +3493,7 @@ check("Unsinn mit Strich -> None", _bp("a-b", 10) is None)
 check("zu viele Teile -> None", _bp("1-2-3", 10) is None)
 
 
-def _selection(inputs, entries=None, vorgewaehlt=(), **kw):
+def _selection(inputs, entries=None, preselected=(), **kw):
     """Fuettert multi_select mit einer Tastenfolge."""
     entries = list(entries if entries is not None else ["A", "B", "C", "D"])
     consequence = list(inputs)
@@ -3502,7 +3502,7 @@ def _selection(inputs, entries=None, vorgewaehlt=(), **kw):
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             return _ISE.multi_select(
-                "> ", entries, list(vorgewaehlt),
+                "> ", entries, list(preselected),
                 lambda i, n, an: f"{i} {n} {an}", **kw)
     finally:
         _ISE.safe_input = _o
@@ -3514,7 +3514,7 @@ check("Bereich waehlt mehrere", _selection(["2-4", "done"]) == ["B", "C", "D"])
 check("'all' waehlt alles", _selection(["all", "done"]) == ["A", "B", "C", "D"])
 check("'clear' leert die Auswahl", _selection(["all", "clear", "done"]) == [])
 check("Vorauswahl bleibt erhalten",
-      _selection(["done"], vorgewaehlt=["C"]) == ["C"])
+      _selection(["done"], preselected=["C"]) == ["C"])
 check("'cancel' gibt None zurueck", _selection(["2", "cancel"]) is None)
 check("Bereich fuegt nichts doppelt hinzu",
       _selection(["1-3", "2-4", "done"]) == ["A", "B", "C", "D"])
@@ -3529,9 +3529,9 @@ check("ohne empty_error ist eine leere Auswahl erlaubt", _selection(["done"]) ==
 
 # Der 'new'-Befehl haengt einen Eintrag an UND waehlt ihn aus
 _new_list = ["A", "B"]
-_ergebnis = _selection(["new 1", "done"], entries=_new_list,
+_result = _selection(["new 1", "done"], entries=_new_list,
                      extra_prefix="new", extra_fn=lambda raw: "Frisch")
-check("'new' waehlt den neuen Eintrag gleich mit", _ergebnis == ["Frisch"])
+check("'new' waehlt den neuen Eintrag gleich mit", _result == ["Frisch"])
 check("'new' bekommt die Roh-Eingabe (Slot-Nummer bleibt lesbar)",
       _selection(["new 3", "done"], extra_prefix="new",
                extra_fn=lambda raw: raw) == ["new 3"])
@@ -3600,13 +3600,13 @@ check("der Punkt fuellt Stelle und Farbe der Nachpruefung",
 
 # Fehlender Punkt: Vorbedingung wuerde den Schritt ueberspringen — die NACHpruefung
 # ist Zusatzsicherung, der Schritt laeuft weiter. Aber gemeldet wird es.
-_st_weg = AutoClickerState()
-_seq_weg = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=[
+_st_gone = AutoClickerState()
+_seq_gone = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=[
     _SS(x=1, y=2, delay_before=0, point_id=None,
         verify_condition=_WC4(point_id=999))], repeat=1)])
-_st_weg.sequences = {"W": _seq_weg}
-_report = _rpr3(_st_weg, _seq_weg)
-_sw = _seq_weg.loop_phases[0].steps[0]
+_st_gone.sequences = {"W": _seq_gone}
+_report = _rpr3(_st_gone, _seq_gone)
+_sw = _seq_gone.loop_phases[0].steps[0]
 check("verwaiste Nachpruefung entfaellt, statt den Schritt zu reissen",
       _sw.verify_condition is None and _sw.unresolved is False)
 check("und wird gemeldet", any("Nachpruefung" in m for m in _report))
@@ -3616,7 +3616,7 @@ class _FakeImg:
     def __init__(self, color): self.color = color
     def getpixel(self, _): return self.color
 
-def _run(wirkt_ab_klick, retries, else_cfg=None):
+def _run(effective_from_click, retries, else_cfg=None):
     """Fuehrt einen Schritt mit Nachpruefung aus. Gibt (ergebnis, klicks, shots) zurueck.
 
     Die Attrappe haengt am KLICK-Zaehler, nicht am Screenshot-Zaehler: eine Pruefung
@@ -3631,8 +3631,8 @@ def _run(wirkt_ab_klick, retries, else_cfg=None):
     counters = {"shots": 0}
     def _shot(region=None):
         counters["shots"] += 1
-        return _FakeImg((0, 255, 0) if st.total_clicks >= wirkt_ab_klick else (255, 0, 0))
-    alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
+        return _FakeImg((0, 255, 0) if st.total_clicks >= effective_from_click else (255, 0, 0))
+    old_shot, old_click, old_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
     _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
     try:
         step = _SS(x=1, y=2, delay_before=0.0, name="T", point_id=1,
@@ -3642,21 +3642,21 @@ def _run(wirkt_ab_klick, retries, else_cfg=None):
             res = _RS.execute_step(st, step, 1, 1, "Loop")
         return res, st.total_clicks, counters["shots"]
     finally:
-        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
+        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = old_shot, old_click, old_fs
 
-_erg, _clicks, _shots = _run(wirkt_ab_klick=1, retries=2)
+_res, _clicks, _shots = _run(effective_from_click=1, retries=2)
 check("wirkt die Aktion sofort, wird sie NICHT wiederholt",
-      _erg is True and _clicks == 1)
-_erg, _clicks, _shots = _run(wirkt_ab_klick=2, retries=2)
+      _res is True and _clicks == 1)
+_res, _clicks, _shots = _run(effective_from_click=2, retries=2)
 check("wirkt sie erst nach einer Wiederholung, wird sie wiederholt", _clicks == 2)
-check("und der Schritt gilt als erledigt", _erg is True)
-_erg, _clicks, _shots = _run(wirkt_ab_klick=9999, retries=2)
+check("und der Schritt gilt als erledigt", _res is True)
+_res, _clicks, _shots = _run(effective_from_click=9999, retries=2)
 check("bleibt die Wirkung aus, wird genau (retries+1)x versucht", _clicks == 3)
-check("danach reisst die Sequenz NICHT ab (Hinweis, kein Abbruch)", _erg is True)
-_erg0, _clicks0, _ = _run(wirkt_ab_klick=9999, retries=0)
+check("danach reisst die Sequenz NICHT ab (Hinweis, kein Abbruch)", _res is True)
+_erg0, _clicks0, _ = _run(effective_from_click=9999, retries=0)
 check("verify_retries=0 heisst: ein Versuch, keine Wiederholung", _clicks0 == 1)
 # Mit else greift dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung
-_erg_e, _, _ = _run(wirkt_ab_klick=9999, retries=1, else_cfg=_EC4(action=_ESK4))
+_erg_e, _, _ = _run(effective_from_click=9999, retries=1, else_cfg=_EC4(action=_ESK4))
 check("mit else_config greift else nach dem letzten Versuch", _erg_e is True)
 
 # Der Normalfall darf nichts kosten: ohne Bedingung kein einziger Screenshot
@@ -3667,14 +3667,14 @@ def _run_without():
     def _shot(region=None):
         counters["shots"] += 1
         return _FakeImg((0, 255, 0))
-    alt_shot, alt_click, alt_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
+    old_shot, old_click, old_fs = _RS.take_screenshot, _RA.send_click, _RS.check_failsafe
     _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = _shot, (lambda *a, **k: True), (lambda s: False)
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
             _RS.execute_step(st, _SS(x=1, y=2, delay_before=0.0, point_id=1), 1, 1, "Loop")
         return counters["shots"]
     finally:
-        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = alt_shot, alt_click, alt_fs
+        _RS.take_screenshot, _RA.send_click, _RS.check_failsafe = old_shot, old_click, old_fs
 check("ohne Nachpruefung kostet der Schritt keinen Screenshot", _run_without() == 0)
 
 
@@ -3964,10 +3964,10 @@ check("ohne Fenster-Kennung passiert nichts",
 # auf Nichts, ohne dass es jemand merkt.
 try:
     from PIL import Image as _PIL12
-    _pillow_da2 = True
+    _pillow_present2 = True
 except ImportError:
-    _pillow_da2 = False
-if _pillow_da2:
+    _pillow_present2 = False
+if _pillow_present2:
     check("eine einfarbige Flaeche gilt als leer",
           _img12.is_blank(_PIL12.new("RGB", (8, 8), (0, 0, 0))) is True)
     _bunt12 = _PIL12.new("RGB", (8, 8), (0, 0, 0))
@@ -4149,10 +4149,10 @@ def _importierte_module(folder: Path, pattern: str) -> list[str]:
     match = []
     for _p in sorted(folder.rglob("*.py")):
         try:
-            baum = _ast6.parse(_p.read_text(encoding="utf-8"))
+            tree = _ast6.parse(_p.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
-        for _n in _ast6.walk(baum):
+        for _n in _ast6.walk(tree):
             names = []
             if isinstance(_n, _ast6.Import):
                 names = [a.name for a in _n.names]
@@ -4285,8 +4285,8 @@ def _choose8(b, phase, *lines):
         b.select({"phase": phase, "row": line, "mode": "einzeln" if i == 0 else "dazu"})
 
 
-def _zieh8(b, von_phase, from_row, to_phase, to_row):
-    b.drag({"von_phase": von_phase, "from_row": from_row,
+def _zieh8(b, from_phase, from_row, to_phase, to_row):
+    b.drag({"from_phase": from_phase, "from_row": from_row,
               "to_phase": to_phase, "to_row": to_row})
 
 
@@ -4884,9 +4884,9 @@ try:
     # Beide Ecken in EINEM Aufruf: zwischendurch zum Fenster zurueckzufahren ist
     # genau der Weg, den die Maus-Aufnahme ersparen soll. Hier kommt Ecke 1 unten
     # rechts und Ecke 2 oben links - verkehrt herum, die Bruecke muss sortieren.
-    _ecken15 = iter([(900, 700), (300, 200)])
+    _corners15 = iter([(900, 700), (300, 200)])
     _io15.wait_for_global_key = lambda *a, **k: "enter"
-    _wa15.get_cursor_pos = lambda: next(_ecken15)
+    _wa15.get_cursor_pos = lambda: next(_corners15)
     _z15 = _b15.area_capture()
     check("zwei ENTER ergeben einen Bereich",
           _z15["block"]["screenshot_region"] == [300, 200, 900, 700])
@@ -4894,14 +4894,14 @@ try:
 
     # Ein Bereich, der keiner ist, wird gemeldet statt still gespeichert.
     _before15 = _z15["block"]["screenshot_region"]
-    _ecken15 = iter([(300, 200), (301, 201)])
+    _corners15 = iter([(300, 200), (301, 201)])
     _z15 = _b15.area_capture()
     check("ein zu kleiner Bereich meldet sich und aendert nichts",
           _z15["status"]["kind"] == "warn"
           and _z15["block"]["screenshot_region"] == _before15)
 
     # ESC bei der ZWEITEN Ecke: auch die erste darf dann nicht stehenbleiben.
-    _ecken15 = iter([(10, 10), (20, 20)])
+    _corners15 = iter([(10, 10), (20, 20)])
     _keys15 = iter(["enter", "escape"])
     _io15.wait_for_global_key = lambda *a, **k: next(_keys15)
     _z15 = _b15.area_capture()
@@ -5055,29 +5055,29 @@ _html13 = _H.studio_web_source()
 # (`switchSequence("neu")`) der eine, den kein Muster sah: der Knopf „Neu"
 # rief eine Methode, die es nicht mehr gab.
 _HELFER13 = ("call", "callScan", "callShare", "callTool", "ask", "switchSequence")
-_gerufen13 = set(_re13.findall(
+_called13 = set(_re13.findall(
     r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13))
 # `withWait()` ist der sechste Kanal und der einzige, bei dem der Methodenname
 # NICHT das erste Argument ist: davor steht, welcher Helfer darunter laeuft
 # ("call" / "ask" / "tool"). Ohne diese Zeile faellt jede blockierende
 # Methode aus der Pruefung — also ausgerechnet die, die eine Minute lang
 # wartet und bei einem Tippfehler gar nichts tut.
-_gerufen13 |= set(_re13.findall(
+_called13 |= set(_re13.findall(
     r'\bwithWait\("(?:call|ask|tool)",\s*"([a-z_]+)"', _html13))
 # `withWork()` ist der siebte Kanal — und der Gegenfall zu `withWait`: dort
 # wartet die Bruecke auf einen ENTER-Druck, hier RECHNET sie (sechsundfuenfzig
 # Modell-Aufrufe hintereinander). Wie dort waehlt das erste Argument den
 # Kanal darunter, der Methodenname steht also an zweiter Stelle.
-_gerufen13 |= set(_re13.findall(
+_called13 |= set(_re13.findall(
     r'\bwithWork\("(?:scan|ask)",\s*"([a-z_]+)"', _html13))
-_gerufen13 = sorted(_gerufen13)
-check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_gerufen13) >= 20)
+_called13 = sorted(_called13)
+check("die Seite ruft ueberhaupt Bruecken-Methoden auf", len(_called13) >= 20)
 check("und beide Kanaele sind erfasst - auch der fragende",
-      "sequence_list" in _gerufen13 and "run_status" in _gerufen13)
+      "sequence_list" in _called13 and "run_status" in _called13)
 check("und der Scans-Reiter ist mit erfasst (callScan)",
-      "scan_data" in _gerufen13 and "scan_click" in _gerufen13)
+      "scan_data" in _called13 and "scan_click" in _called13)
 check("und der Werkzeuge-Reiter (callTool)",
-      "tool_check" in _gerufen13 and "calib_reference" in _gerufen13)
+      "tool_check" in _called13 and "calib_reference" in _called13)
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
 # `callTool`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
@@ -5085,23 +5085,23 @@ _BEKANNT13 = _HELFER13 + ("withWait", "withWork")
 # Gefunden wird JEDE async-Funktion, die einen Bruecken-Namen weiterreicht —
 # nicht nur die mit `call` im Namen. `withWait` heisst nicht so und waere unter
 # dem alten Muster still durchgerutscht.
-_helfer_da13 = sorted(set(_re13.findall(
+_helper_present13 = sorted(set(_re13.findall(
     r'\basync function (\w+)\(', _html13)))
-_helfer_da13 = [h for h in _helfer_da13
+_helper_present13 = [h for h in _helper_present13
                if h.startswith("call") or h in ("withWait", "withWork", "switchSequence")]
-if not all(h in _BEKANNT13 for h in _helfer_da13):
-    print(f"    ungeprueft: {[h for h in _helfer_da13 if h not in _BEKANNT13]}")
+if not all(h in _BEKANNT13 for h in _helper_present13):
+    print(f"    ungeprueft: {[h for h in _helper_present13 if h not in _BEKANNT13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
-      all(h in _BEKANNT13 for h in _helfer_da13))
+      all(h in _BEKANNT13 for h in _helper_present13))
 
-_missing13 = [n for n in _gerufen13 if not callable(getattr(_SB8, n, None))]
+_missing13 = [n for n in _called13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _missing13 == [])
 if _missing13:
     print("        fehlt in bridge.py: " + ", ".join(_missing13))
 
 # `call()` uebergibt IMMER ein Argument - auch bei `call("snapshot")`, dann `null`.
 _unpassend13 = []
-for _name13 in _gerufen13:
+for _name13 in _called13:
     _f13 = getattr(_SB8, _name13, None)
     if _f13 is None:
         continue
@@ -5118,10 +5118,10 @@ if _unpassend13:
 # Der try-Zweig ist nicht Zierde - ohne ihn reisst genau dieser Aufruf die ganze
 # Suite mit einem TypeError ab, statt eine Zeile FAIL zu melden.
 try:
-    _gleich13 = _b12.snapshot(None)["name"] == _b12.snapshot()["name"]
+    _same13 = _b12.snapshot(None)["name"] == _b12.snapshot()["name"]
 except TypeError:
-    _gleich13 = False
-check("snapshot(None) liefert denselben Zustand wie snapshot()", _gleich13)
+    _same13 = False
+check("snapshot(None) liefert denselben Zustand wie snapshot()", _same13)
 
 # --- Und derselbe Vertrag eine Etage tiefer: der Warte-Kasten ---
 # Die Seite liest `w.<feld>` aus einem Dict, das die Laufzeit schreibt. Ein Feld
@@ -5144,9 +5144,9 @@ _color_fields13 = set(_fws13(_StW13(), _SS(delay_before=0), _wc13, (9, 9, 9), 4.
 import autoclicker.runtime.actions as _act13
 _time_source13 = _inspect13.getsource(_act13._wait_loop)
 _time_fields13 = set(_re13.findall(r'"(\w+)":', _time_source13))
-_kasten13 = _html13[_html13.index("function waitBox("):]
-_kasten13 = _kasten13[:_kasten13.index("\nfunction ")]
-_gelesen13 = set(_re13.findall(r"\bw\.([a-z_]+)", _kasten13))
+_box13 = _html13[_html13.index("function waitBox("):]
+_box13 = _box13[:_box13.index("\nfunction ")]
+_gelesen13 = set(_re13.findall(r"\bw\.([a-z_]+)", _box13))
 check("der Warte-Kasten liest ueberhaupt Felder", len(_gelesen13) >= 6)
 _unknown13 = sorted(_gelesen13 - _color_fields13 - _time_fields13)
 check("und jedes davon schreibt die Laufzeit auch", _unknown13 == [])
@@ -5542,11 +5542,11 @@ try:
     def _run16() -> dict:
         return json.loads(Path(_rsf16).read_text(encoding="utf-8"))
 
-    _gelesen16 = _run16()
+    _read16 = _run16()
     check("der zweite Schreiber loescht den ersten nicht",
-          _gelesen16.get("phase") == "A" and _gelesen16.get("block") == 3)
+          _read16.get("phase") == "A" and _read16.get("block") == 3)
     check("die Zaehler kommen aus dem State",
-          _gelesen16.get("counters", {}).get("clicks") == 7)
+          _read16.get("counters", {}).get("clicks") == 7)
 
     # Die Drossel wirft den SCHREIBVORGANG weg, nicht die Information: sonst zeigte
     # der naechste Schreibvorgang einen Block, der laengst durch ist.
@@ -5782,9 +5782,9 @@ try:
     # sie DARF alt sein. Nur ein Lauf, der sich fuer aktiv haelt, hat ein Alter.
     _end16["stamp"] = _time16.time() - 600
     Path(_rsf16).write_text(json.dumps(_end16), encoding="utf-8")
-    _gelesen16 = _b16.run_status()
+    _read16 = _b16.run_status()
     check("eine alte Zusammenfassung bleibt lesbar",
-          _gelesen16.get("end") and _gelesen16.get("reason"))
+          _read16.get("end") and _read16.get("reason"))
     Path(_rsf16).write_text(json.dumps({"active": True, "sequence": "S",
                                         "stamp": _time16.time() - 600}), encoding="utf-8")
     check("ein alter AKTIVER Lauf gilt weiter als verwaist",
@@ -5816,20 +5816,20 @@ section("Template-Vergleich blendet den Hintergrund aus")
 try:
     from PIL import Image as _PILm
     import autoclicker.imaging as _imgm
-    _hat_maske = _imgm.OPENCV_AVAILABLE and _imgm.NUMPY_AVAILABLE
+    _has_mask = _imgm.OPENCV_AVAILABLE and _imgm.NUMPY_AVAILABLE
 except ImportError:
-    _hat_maske = False
+    _has_mask = False
 
-if not _hat_maske:
+if not _has_mask:
     print("  ----  uebersprungen (Pillow/OpenCV/NumPy fehlt)")
 else:
     _HG_M = (30, 128, 108)
 
-    def _slot_image(background, saat):
+    def _slot_image(background, seed):
         """Ein Slot: Hintergrund + ein Symbol in der Mitte."""
         import random
         b = _PILm.new("RGB", (40, 40), background)
-        r = random.Random(saat)
+        r = random.Random(seed)
         for x in range(14, 26):
             for y in range(14, 26):
                 b.putpixel((x, y), (r.randrange(120, 256), r.randrange(120, 256),
@@ -5859,9 +5859,9 @@ else:
         check("im eigenen Slot wird es erkannt", _equal[0] and _equal[1] > 0.99)
 
         _other_menu = _slot_image((90, 40, 120), 1)      # violetter Hintergrund
-        _fremd = _imgm.match_template_in_image(_other_menu, "gelernt.png", 0.8)
+        _foreign = _imgm.match_template_in_image(_other_menu, "gelernt.png", 0.8)
         check("und vor einem anders gefaerbten Menue genauso",
-              _fremd[0] and _fremd[1] > 0.99)
+              _foreign[0] and _foreign[1] > 0.99)
 
         # Gegenprobe: ein ANDERES Symbol darf nicht passen, auch nicht auf
         # demselben Hintergrund - sonst haette die Maske nur alles durchgelassen.
@@ -5890,20 +5890,20 @@ else:
         import autoclicker.config as _cfgm
         _old_limit = _cfgm.CONFIG.scan_slot_color_distance
         _cfgm.CONFIG.scan_slot_color_distance = _ACrev().scan_slot_color_distance
-        _roh_marker = _cms_m(_with_margin, _HG_M)
+        _raw_markers = _cms_m(_with_margin, _HG_M)
         _mask_marker = _cms_m(_imgm.with_background_mask(_with_margin, _HG_M), _HG_M)
         check("der Slot-Rand ist keine Marker-Farbe mehr",
               (20, 95, 80) not in _mask_marker)
         check("die Item-Farbe schon", (210, 15, 150) in _mask_marker)
         check("und ueber die Maske kommt dasselbe heraus wie ueber die Farbregel",
-              set(_mask_marker) == set(_roh_marker))
+              set(_mask_marker) == set(_raw_markers))
         _cfgm.CONFIG.scan_slot_color_distance = _old_limit
 
         _slot_image(_HG_M, 1).save(_osm.path.join(_dirm, "ohne.png"))
         _imgm._template_cache.clear()
         _without = _imgm.match_template_in_image(_slot_image((90, 40, 120), 1), "ohne.png", 0.8)
         check("ohne Maske stoert der fremde Hintergrund sehr wohl",
-              _without[1] < _fremd[1])
+              _without[1] < _foreign[1])
 
         # --- Der Groessen-Konflikt wird EINMAL gemeldet, nicht pro Item ---
         # Wer zwei Inventare im Bestand hat, hat zwei Slot-Groessen; die
@@ -5915,12 +5915,12 @@ else:
         _seen_m = []
 
         class _Catchm(_logm.Handler):
-            def emit(self, satz):
-                _seen_m.append(satz.getMessage())
+            def emit(self, rate):
+                _seen_m.append(rate.getMessage())
 
         _catchm = _Catchm()
         _imgm.logger.addHandler(_catchm)
-        _imgm._gemeldete_groessen.clear()
+        _imgm._reported_sizes.clear()
         try:
             _otherm = _PILm.new("RGB", (40, 37), _HG_M)      # 3 px flacher
             for _i_m in range(3):
@@ -5968,7 +5968,7 @@ else:
         # 3 px flacheren Slot), nicht aus einem echten Bestand.
         check("beide Groessen stehen in der Meldung",
               "40x40" in _text_m and "40x37" in _text_m)
-        _imgm._gemeldete_groessen.clear()
+        _imgm._reported_sizes.clear()
     finally:
         _imgm.TEMPLATES_DIR = _oldm
         _imgm._template_cache.clear()
@@ -6089,12 +6089,12 @@ for _pf18 in sorted((_repo17 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf18.parts:
         continue
     for _k18 in _ast10.walk(_ast10.parse(_pf18.read_text(encoding="utf-8"))):
-        _namen18 = []
+        _names18 = []
         if isinstance(_k18, _ast10.Import):
-            _namen18 = [a.name for a in _k18.names]
+            _names18 = [a.name for a in _k18.names]
         elif isinstance(_k18, _ast10.ImportFrom):
-            _namen18 = [_k18.module or ""]
-        for _n18 in _namen18:
+            _names18 = [_k18.module or ""]
+        for _n18 in _names18:
             if "dearpygui" in _n18 or "scan_canvas" in _n18:
                 _rest18.append(f"{_pf18.name}:{_k18.lineno} {_n18}")
 check("kein Modul importiert mehr Dear PyGui", _rest18 == [])
@@ -6231,14 +6231,14 @@ try:
     # dieselbe Datei, und ein Fenster, das seit einer Stunde offensteht, darf
     # dessen Aenderungen nicht mit seinem alten Stand ueberbuegeln.
     _sc17(_AC17(window_focus_title="Idle Clans X", scan_marker_count=9))
-    _antwort17 = _b17.config_write({"values": {"click_post_delay": 0.25}})
-    check("das Speichern meldet Erfolg", _antwort17["ok"])
+    _answer17 = _b17.config_write({"values": {"click_post_delay": 0.25}})
+    check("das Speichern meldet Erfolg", _answer17["ok"])
     _file17 = json.loads(Path("config.json").read_text(encoding="utf-8"))
     check("der geaenderte Wert steht in der Datei", _file17["click_post_delay"] == 0.25)
     check("und der fremde Wert ist unangetastet",
           _file17["window_focus_title"] == "Idle Clans X"
           and _file17["scan_marker_count"] == 9)
-    check("nichts wurde korrigiert", _antwort17["corrections"] == [])
+    check("nichts wurde korrigiert", _answer17["corrections"] == [])
     check("die Reihenfolge in der Datei folgt den Abschnitten",
           list(_file17) == [k for _, keys in _gruppen17 for k in keys])
 
@@ -6250,18 +6250,18 @@ try:
           _auftrag17 is not None and _auftrag17["command"] == "config")
 
     # Eine Korrektur wird gemeldet statt still hingenommen.
-    _antwort17 = _b17.config_write({"values": {"scan_min_confidence": 1.5}})
+    _answer17 = _b17.config_write({"values": {"scan_min_confidence": 1.5}})
     check("eine Korrektur wird zurueckgemeldet",
-          [k["key"] for k in _antwort17["corrections"]] == ["scan_min_confidence"]
-          and _antwort17["corrections"][0]["became"] == 0.8)
+          [k["key"] for k in _answer17["corrections"]] == ["scan_min_confidence"]
+          and _answer17["corrections"][0]["became"] == 0.8)
     check("und die Datei traegt den korrigierten Wert",
           json.loads(Path("config.json").read_text(encoding="utf-8"))["scan_min_confidence"] == 0.8)
 
     # Ein `600` von Hand darf nicht als Korrektur gelten, nur weil der Loader
     # eine 600.0 daraus macht.
-    _antwort17 = _b17.config_write({"values": {"pixel_show_delay": 1}})
+    _answer17 = _b17.config_write({"values": {"pixel_show_delay": 1}})
     check("eine ganze Zahl in einem Kommafeld ist keine Korrektur",
-          _antwort17["corrections"] == [])
+          _answer17["corrections"] == [])
 
     # Nichts zu tun ist kein Fehler, aber auch kein Schreibvorgang.
     check("ohne Werte wird nicht geschrieben", _b17.config_write({"values": {}})["ok"] is False)
@@ -6269,9 +6269,9 @@ try:
     # Kaputt ist nicht leer: draufschreiben wuerde den einzigen Rest wegwerfen,
     # den man noch von Hand reparieren kann.
     Path("config.json").write_text("{kein json", encoding="utf-8")
-    _antwort17 = _b17.config_write({"values": {"click_per_point": 3}})
+    _answer17 = _b17.config_write({"values": {"click_per_point": 3}})
     check("eine unlesbare config.json wird nicht ueberschrieben",
-          not _antwort17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
+          not _answer17["ok"] and Path("config.json").read_text(encoding="utf-8") == "{kein json")
     check("und der Leser meldet sie statt Standardwerte zu behaupten",
           bool(_b17.config_read()["error"]))
 finally:
@@ -6446,10 +6446,10 @@ for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
         if not (isinstance(_k10, _ast10.ImportFrom) and _k10.level and _k10.module):
             continue
         # level=1 -> eigenes Paket, level=2 -> eins darueber, ...
-        _basis10 = _pf10.parent
+        _base10 = _pf10.parent
         for _ in range(_k10.level - 1):
-            _basis10 = _basis10.parent
-        _ziel10 = _basis10.joinpath(*_k10.module.split("."))
+            _base10 = _base10.parent
+        _ziel10 = _base10.joinpath(*_k10.module.split("."))
         if not (_ziel10.with_suffix(".py").exists() or (_ziel10 / "__init__.py").exists()):
             _tote10.append(f"{_pf10.name}:{_k10.lineno} from {'.' * _k10.level}{_k10.module}")
 check("auch Importe INNERHALB von Funktionen zeigen auf existierende Module",

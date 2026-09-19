@@ -97,13 +97,13 @@ def run():
         # mittig darueber hinaus, nach links aus dem Fenster heraus. Dieselbe
         # Falle wie einmal beim Status („Zustandsklassen bekommen ein Praefix").
         f.click(".wz-nav.check")
-        kompakt = f.page.eval_on_selector_all(".wz-info-compact", """ns => ns.map(n => ({
+        compact = f.page.eval_on_selector_all(".wz-info-compact", """ns => ns.map(n => ({
           cls: n.className,
           text: (n.textContent || "").trim(),
           width: Math.round(n.getBoundingClientRect().width),
           links: Math.round(n.getBoundingClientRect().left)}))""")
-        expect(kompakt, "kein einziger Hinweis mit ⓘ im Werkzeuge-Reiter")
-        for k in kompakt:
+        expect(compact, "kein einziger Hinweis mit ⓘ im Werkzeuge-Reiter")
+        for k in compact:
             expect("info" not in k["cls"].split(),
                    f"der Hinweiskasten traegt die ⓘ-Knopfklasse: {k}")
             expect(len(k["text"]) > 3, f"Hinweis ohne sichtbaren Titel: {k}")

@@ -53,13 +53,13 @@ from autoclicker.llm_vision import (                                # noqa: E402
     suggest_item_name_with_reason, test_endpoint_for,
 )
 
-BILDQUELLEN = ("vorlage", "reason", "slot")
+IMAGE_SOURCES = ("vorlage", "reason", "slot")
 NEUTRAL = (38, 42, 52)      # der Ton der Studio-Flaeche, nicht Schwarz: ein
                             # ausgeschnittenes Item auf Schwarz ist ein anderer
                             # Kontrast als eines in seinem Slot.
 
 
-class NurConfig:
+class ConfigOnly:
     """`state`-Stellvertreter fuer `_check_profile_match`.
 
     Die Erkennung braucht vom State nichts als die Config. Nachgebaut statt
@@ -105,7 +105,7 @@ def load_scan(path: Path) -> dict:
     }
 
 
-def lade_foto(path: Path):
+def load_photo(path: Path):
     """Das gemerkte Bild samt Ursprung — `(Bild, links, oben)` oder `None`.
 
     Der Ursprung des virtuellen Desktops steht IM PNG (Text-Chunk), nicht in
@@ -142,11 +142,11 @@ def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> lis
                 image = raw.copy()
         except (OSError, ValueError):
             continue
-        samples.append((catalog.match(name), auf_grund(image) if reason else image))
+        samples.append((catalog.match(name), on_background(image) if reason else image))
     return samples
 
 
-def auf_grund(image, color=NEUTRAL):
+def on_background(image, color=NEUTRAL):
     """Alpha auf einen neutralen Grund legen, statt es mitzuschicken."""
     from PIL import Image
     if image.mode != "RGBA":
@@ -169,13 +169,13 @@ def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
     from autoclicker.runtime.item_scan import _check_profile_match
     from autoclicker.persistence.serialization import _item_from_dict
 
-    photo = lade_foto(scan["image"])
+    photo = load_photo(scan["image"])
     if photo is None:
         raise SystemExit(f"Kein gemerktes Bild ({scan['image']}) — "
                          "im Scans-Reiter einmal aufnehmen, oder --image vorlage.")
     image, left, top = photo
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
-    stellvertreter = NurConfig(config)
+    stand_in = ConfigOnly(config)
     samples = []
     for slot in scan["slots"].values():
         if len(samples) >= limit:
@@ -183,18 +183,18 @@ def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
         region = slot.get("scan_region")
         if not region or len(region) != 4:
             continue
-        kasten = (region[0] - left, region[1] - top,
+        box = (region[0] - left, region[1] - top,
                   region[2] - left, region[3] - top)
-        if kasten[0] < 0 or kasten[1] < 0:
+        if box[0] < 0 or box[1] < 0:
             continue
-        if kasten[2] > image.width or kasten[3] > image.height:
+        if box[2] > image.width or box[3] > image.height:
             continue
-        crop = image.crop(kasten).convert("RGB")
+        crop = image.crop(box).convert("RGB")
         for item in profile:
             if not catalog.match(item.name):
                 continue
             if _check_profile_match(item, crop, scan["tolerance"],
-                                    stellvertreter, False,
+                                    stand_in, False,
                                     template_root=scan["templates"]):
                 samples.append((catalog.match(item.name), crop))
                 break
@@ -233,13 +233,13 @@ def ask_two_stage(image, catalog, config, model: str) -> tuple:
     if not ok:
         return None, (TIMEOUT if str(answer).startswith("Timeout") else str(answer))
     kind = clean_boss_name(answer)
-    passend = {k.casefold(): k for k in categories}.get(kind.casefold())
-    if passend is None:
+    matching = {k.casefold(): k for k in categories}.get(kind.casefold())
+    if matching is None:
         # Eine erfundene Art ist kein Ergebnis: die zweite Frage haette dann
         # gar keine Kandidaten. Lieber sagen, woran es lag.
         return None, f"unbekannte Art '{kind}'"
-    eng = [n for n in catalog.names() if catalog.category(n) == passend]
-    return ask_single_stage(image, eng, config, model)
+    narrow = [n for n in catalog.names() if catalog.category(n) == matching]
+    return ask_single_stage(image, narrow, config, model)
 
 
 def with_votes(ask_fn, votes: int) -> tuple:
@@ -291,14 +291,14 @@ def run(samples: list, catalog, config, args, model: str) -> dict:
             name, reason = once()
         duration = time.time() - start
         times.append(duration)
-        richtig = bool(name) and name.casefold() == truth.casefold()
-        match += 1 if richtig else 0
+        correct = bool(name) and name.casefold() == truth.casefold()
+        match += 1 if correct else 0
         if not name:
             remaining += 1
-        if not richtig:
+        if not correct:
             error.append((truth, name or f"— ({reason})"))
-        marke = "OK " if richtig else "-- "
-        print(f"    {marke} {truth:<26} -> {str(name):<26} ({duration:.1f}s)")
+        badge = "OK " if correct else "-- "
+        print(f"    {badge} {truth:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
         "match": match, "total": len(samples), "without": remaining,
         "seconds": sum(times) / len(times) if times else 0.0,
@@ -306,7 +306,7 @@ def run(samples: list, catalog, config, args, model: str) -> dict:
     }
 
 
-def geladene_modelle(config) -> list:
+def loaded_models(config) -> list:
     """Was der Server gerade anbietet — fuer `--all-models`."""
     import json as _json
     import urllib.request
@@ -329,7 +329,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Misst die LLM-Benennung gegen den eigenen Bestand.")
     p.add_argument("--scan", default="", help="Scan-Datei (Standard: die zuletzt bearbeitete)")
-    p.add_argument("--image", choices=BILDQUELLEN, default="vorlage",
+    p.add_argument("--image", choices=IMAGE_SOURCES, default="vorlage",
                    help="vorlage = gelerntes Template, grund = ohne Alpha, "
                         "slot = Ausschnitt aus dem gemerkten Bild")
     p.add_argument("--model", default="", help="Modellname (Standard: aus config.json)")
@@ -372,23 +372,23 @@ def main(argv=None) -> int:
               "richtigen Item stehen. --image slot misst gegen die "
               "Template-Erkennung.\033[0m")
 
-    modelle = geladene_modelle(config) if args.all_models else [
+    models = loaded_models(config) if args.all_models else [
         args.model or config.llm_model]
-    ergebnisse = {}
-    for model in modelle:
+    results = {}
+    for model in models:
         print(f"\n=== {model} ===")
         if not args.no_warmup:
             print(f"  \033[90maufwaermen … {warm_up(samples[0][1], config, model):.0f}s"
                   "\033[0m")
-        ergebnisse[model] = run(samples, catalog, config, args, model)
-        e = ergebnisse[model]
+        results[model] = run(samples, catalog, config, args, model)
+        e = results[model]
         print(f"  {e['match']}/{e['total']} richtig, "
               f"{e['seconds']:.1f}s je Item"
               + (f", {e['without']} ohne Antwort" if e["without"] else ""))
 
-    if len(ergebnisse) > 1:
+    if len(results) > 1:
         print("\nZUSAMMENFASSUNG")
-        for model, e in sorted(ergebnisse.items(),
+        for model, e in sorted(results.items(),
                                 key=lambda kv: -kv[1]["match"]):
             print(f"  {e['match']:>3}/{e['total']}  {e['seconds']:>6.1f}s  {model}")
     return 0

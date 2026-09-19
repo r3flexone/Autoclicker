@@ -12,14 +12,14 @@ from pathlib import Path
 
 from ._bridge import Window, main, sandbox
 
-SPALTEN = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
+COLUMNS = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
 
 def _log(path: Path, lines: list) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(SPALTEN)
+        w.writerow(COLUMNS)
         w.writerows(lines)
 
 

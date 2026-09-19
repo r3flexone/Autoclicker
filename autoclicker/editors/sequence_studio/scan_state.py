@@ -114,10 +114,10 @@ class ScanStateMixin:
         # anlegte, sah beim nächsten Öffnen eine leere Mitte und musste erst
         # merken, dass oben links eine Auswahl steht.
         if self._scan_state_snapshot:
-            neuster = max(self._scan_state_snapshot, key=lambda n: self._scan_state_snapshot[n])
-            self.open_scan = neuster
-            self._scan_working_set(neuster)
-            self._photo_load(neuster)
+            newest = max(self._scan_state_snapshot, key=lambda n: self._scan_state_snapshot[n])
+            self.open_scan = newest
+            self._scan_working_set(newest)
+            self._photo_load(newest)
         self._disk = self._disk_state()
 
     def _scan_has_config(self, kind: str) -> bool:
@@ -156,9 +156,9 @@ class ScanStateMixin:
         soll auffallen.
         """
         stamp = {}
-        scan_ordner = self.filepath.parent / "item_scans"
-        paths = [scan_ordner]
-        paths += sorted(scan_ordner.glob("*.json")) if scan_ordner.is_dir() else []
+        scan_folder = self.filepath.parent / "item_scans"
+        paths = [scan_folder]
+        paths += sorted(scan_folder.glob("*.json")) if scan_folder.is_dir() else []
         # Boss- und Icon-Scans gehören dazu, seit der Reiter sie bearbeitet:
         # der Konsolen-Editor bleibt als zweiter Weg bestehen, und ein per LLM
         # entdeckter Boss landet im Lauf in der Bibliothek. Ohne diese Pfade
@@ -407,19 +407,19 @@ class ScanStateMixin:
         Der Stand wird abgeleitet, nicht mitgeschrieben — erledigt heisst: es ist da.
         """
         cfg = self.scans.get(self.open_scan)
-        hat_slots = (any(s.enabled for s in cfg.slots) if cfg
+        has_slots = (any(s.enabled for s in cfg.slots) if cfg
                      else any(s.enabled for s in self.slots.values()))
-        hat_items = (any(i.enabled for i in cfg.items) if cfg
+        has_items = (any(i.enabled for i in cfg.items) if cfg
                      else any(i.enabled for i in self.items.values()))
         raw = [
             (1, "Bild", "Aufnehmen — Vollbild, oder vorher rechts ein Fenster "
                 "wählen.", self._photo is not None,
              "scan_screenshot", "Screenshot aufnehmen"),
             (2, "Slots", "Bereich um das Inventar aufziehen, dann auf einen "
-                "LEEREN Slot-Hintergrund klicken.", hat_slots,
+                "LEEREN Slot-Hintergrund klicken.", has_slots,
              "modus:" + MODE_FIND, "Slots finden"),
             (3, "Items", "Inventar im Spiel füllen, NEU aufnehmen, dann lernen.",
-             hat_items, "scan_learn_preview", "Items prüfen & lernen"),
+             has_items, "scan_learn_preview", "Items prüfen & lernen"),
         ]
         remaining = [nr for nr, _, _, done, _, _ in raw if not done]
         current = remaining[0] if remaining else 0
@@ -437,14 +437,14 @@ class ScanStateMixin:
         """
         if self._photo_info:
             return dict(self._photo_info, image=True)
-        regionen = [s.scan_region for s in self._scan_slots() if s.scan_region]
-        if not regionen:
+        regions = [s.scan_region for s in self._scan_slots() if s.scan_region]
+        if not regions:
             return None
         margin = 40
-        left = min(r[0] for r in regionen) - margin
-        top = min(r[1] for r in regionen) - margin
-        right = max(r[2] for r in regionen) + margin
-        bottom = max(r[3] for r in regionen) + margin
+        left = min(r[0] for r in regions) - margin
+        top = min(r[1] for r in regions) - margin
+        right = max(r[2] for r in regions) + margin
+        bottom = max(r[3] for r in regions) + margin
         return {"left": left, "top": top, "image": False, "scale": 1.0,
                 "width": max(1, right - left), "height": max(1, bottom - top),
                 "stamp": 0.0}
@@ -470,8 +470,8 @@ class ScanStateMixin:
         self._scan_load()
         text, kind = self._scan_status
         cfg = self.scans.get(self.open_scan)
-        dabei_slots = set(cfg.slot_names) if cfg else set()
-        dabei_items = set(cfg.item_names) if cfg else set()
+        member_slots = set(cfg.slot_names) if cfg else set()
+        member_items = set(cfg.item_names) if cfg else set()
         # Einmal gerechnet: die Arbeitsfläche steht in der Aufnahme UND
         # entscheidet, welche fremden Slots gerade zu sehen sind.
         surface = self._canvas_area()
@@ -480,8 +480,8 @@ class ScanStateMixin:
         # genau diese Reihenfolge läuft `execute_item_scan()` ab. „#7" heisst
         # also „wird als siebter angesehen", und das ist die Frage, die man an
         # eine Nummer hat.
-        aktive_slots = [s for s in cfg.slots if s.enabled] if cfg else []
-        nummern = {s.name: i + 1 for i, s in enumerate(aktive_slots)}
+        active_slots = [s for s in cfg.slots if s.enabled] if cfg else []
+        numbers = {s.name: i + 1 for i, s in enumerate(active_slots)}
         detected = self._detected_items()
         return {
             # Scan, Slots, Items und Vorlagen liegen im Ordner dieser Sequenz.
@@ -500,11 +500,11 @@ class ScanStateMixin:
             # worin gesucht wird.
             "search_area": list(self._search_area) if self._search_area else None,
             "photo": surface,
-            "slots": [self._slot_json(s, s.name in dabei_slots,
-                                      nummern.get(s.name), len(aktive_slots),
+            "slots": [self._slot_json(s, s.name in member_slots,
+                                      numbers.get(s.name), len(active_slots),
                                       bool(cfg.reverse) if cfg else False)
                       for s in self.slots.values()],
-            "items": [self._item_json(i, i.name in dabei_items, detected.get(i.name))
+            "items": [self._item_json(i, i.name in member_items, detected.get(i.name))
                       for i in self.items.values()],
             "scans": [self._scan_json(c) for c in self.scans.values()],
             "categories": existing_categories(self.items),
@@ -563,15 +563,15 @@ class ScanStateMixin:
         if not self._matches:
             return None
         slots = self._scan_slots()
-        slot_namen = {s.name for s in slots}
-        match = {n: t for n, t in self._matches.items() if n in slot_namen}
+        slot_name_set = {s.name for s in slots}
+        match = {n: t for n, t in self._matches.items() if n in slot_name_set}
         detected = [n for n, t in match.items() if t.get("name") and not t.get("foreign")]
         foreign = [n for n, t in match.items() if t.get("name") and t.get("foreign")]
-        unbekannt = [n for n, t in match.items() if not t.get("name")]
+        unknown = [n for n, t in match.items() if not t.get("name")]
         return {
             "total": len(slots), "detected": len(detected), "foreign": len(foreign),
-            "unbekannt": len(unbekannt), "detected_slots": detected,
-            "foreign_slots": foreign, "unknown_slots": unbekannt,
+            "unknown": len(unknown), "detected_slots": detected,
+            "foreign_slots": foreign, "unknown_slots": unknown,
         }
 
     def _review_json(self) -> Optional[dict]:
@@ -659,7 +659,7 @@ class ScanStateMixin:
             size = template_size(name, self.filepath.parent / "templates")
             if size and list(size) not in sizes:
                 sizes.append(list(size))
-        scan_groessen = []
+        scan_sizes = []
         cfg = self.scans.get(self.open_scan)
         if cfg is not None:
             for slot_name in cfg.slot_names:
@@ -668,9 +668,9 @@ class ScanStateMixin:
                     continue
                 region = slot.scan_region
                 size = [region[2] - region[0], region[3] - region[1]]
-                if size not in scan_groessen:
-                    scan_groessen.append(size)
-        fehlende_groessen = ([g for g in scan_groessen if g not in sizes]
+                if size not in scan_sizes:
+                    scan_sizes.append(size)
+        missing_sizes = ([g for g in scan_sizes if g not in sizes]
                              if templates_list else [])
         return {
             "included": included,
@@ -691,7 +691,7 @@ class ScanStateMixin:
             "template": templates_list[0] if templates_list else None,
             "templates": templates_list,
             "template_sizes": sizes,
-            "missing_scan_sizes": fehlende_groessen,
+            "missing_scan_sizes": missing_sizes,
             "marker": [hex_color(c) for c in item.marker_colors],
             # **Der Klick danach.** Manche Spiele fragen nach („wirklich
             # verkaufen?"), und ohne die Bestätigung bleibt das Popup stehen —
@@ -769,9 +769,9 @@ class ScanStateMixin:
             stamp = path.stat().st_mtime
         except OSError:
             return ""
-        gemerkt = self._preview.get(file_name)
-        if gemerkt and gemerkt[0] == stamp:
-            return gemerkt[1]
+        remembered = self._preview.get(file_name)
+        if remembered and remembered[0] == stamp:
+            return remembered[1]
         try:
             raw = path.read_bytes()
         except OSError:

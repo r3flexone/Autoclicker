@@ -1515,7 +1515,7 @@ Die CI führt auch `--mutations` aus: Zehn gezielt entfernte Sicherungen müssen
 durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
 Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
 Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
-`python tests/mutation_check.py --case pause-nach-fokus` wiederholen. Das ist
+`python tests/mutation_check.py --case pause-after-focus` wiederholen. Das ist
 eine begrenzte Auswahl kritischer Regressionen, keine vollständige Mutationsabdeckung.
 
 Die Rauchtests sind die Schicht, die die Vertragssuite nicht sehen **kann**: sie

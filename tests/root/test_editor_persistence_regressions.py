@@ -32,8 +32,8 @@ class EditorPersistenzTest(unittest.TestCase):
         os.chdir(self.temp.name)
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(os.chdir, self.cwd)
-        self.ausgabe = io.StringIO()
-        self.redirect = redirect_stdout(self.ausgabe)
+        self.output = io.StringIO()
+        self.redirect = redirect_stdout(self.output)
         self.redirect.__enter__()
         self.addCleanup(self.redirect.__exit__, None, None, None)
         self.state = AutoClickerState()
@@ -72,7 +72,7 @@ class EditorPersistenzTest(unittest.TestCase):
 
     def test_anzeige_und_loeschen_verwenden_dieselbe_nummer(self):
         editor._dispatch_command(self.state, "show", "show")
-        first = next(z for z in self.ausgabe.getvalue().splitlines() if z.strip().startswith("1."))
+        first = next(z for z in self.output.getvalue().splitlines() if z.strip().startswith("1."))
         displayed = "A" if " A:" in first else "B"
         editor._handle_delete_single(self.state, "del 1")
         self.assertNotIn(displayed, self.state.global_items)
@@ -148,10 +148,10 @@ class EditorPersistenzTest(unittest.TestCase):
         for save in (inventory.save_global_items, inventory.save_global_slots):
             with self.subTest(save=save.__name__), \
                     patch.object(item_scans, "save_item_scan", return_value=False):
-                self.ausgabe.seek(0)
-                self.ausgabe.truncate()
+                self.output.seek(0)
+                self.output.truncate()
                 self.assertIs(save(self.state), False)
-                self.assertNotIn("[SAVE]", self.ausgabe.getvalue())
+                self.assertNotIn("[SAVE]", self.output.getvalue())
 
     def test_done_bleibt_bei_speicherfehler_offen(self):
         with patch.object(editor, "PILLOW_AVAILABLE", True), \
@@ -233,9 +233,9 @@ class EditorPersistenzTest(unittest.TestCase):
                 file.parent.mkdir(parents=True, exist_ok=True)
                 entry = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
                 file.write_text(json.dumps({"Neu": entry}), encoding="utf-8")
-                with patch.object(presets, save, return_value=False) as speichern_mock:
+                with patch.object(presets, save, return_value=False) as save_mock:
                     self.assertFalse(load(self.state, "neu"))
-                speichern_mock.assert_called_once()
+                save_mock.assert_called_once()
 
     def test_scan_speichern_faengt_fehler_beim_ordner_anlegen_ab(self):
         for save, cfg in (

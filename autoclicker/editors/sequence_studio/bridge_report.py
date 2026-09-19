@@ -166,7 +166,7 @@ class BridgeReportMixin:
             "verify_miss": [[name, n, verify_ok.get(name, 0)]
                             for name, n in miss[:RANK_ROWS]],
             "disturbances": raw["disturbances"],
-            "unbekannt": raw["unbekannt"],
+            "unknown": raw["unknown"],
             "unreadable": raw["unreadable"],
         }
 

@@ -8,7 +8,7 @@ an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 from ._bridge import Window, main, sandbox
 
 
-def _sequenz(name: str, note: str, phases: int, steps_list: int):
+def _sequence(name: str, note: str, phases: int, steps_list: int):
     from autoclicker.models import LoopPhase, Sequence, SequenceStep
 
     s = Sequence(name=name, description=note, total_cycles=1)
@@ -32,7 +32,7 @@ def setup():
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        state_value.sequences[name] = _sequenz(name, note, phases, steps_list)
+        state_value.sequences[name] = _sequence(name, note, phases, steps_list)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
     state_value.sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
@@ -68,17 +68,17 @@ def run():
         # Der Pfad der langen dritten Sequenz darf nicht über den Öffnen-Knopf
         # und in die Nachbarkarte malen. `min-width:0` allein reicht dafür nicht:
         # der Text schrumpft rechnerisch, bleibt bei overflow:visible aber sichtbar.
-        pfad_overflow = f.page.eval_on_selector_all(
+        path_overflow = f.page.eval_on_selector_all(
             ".seq-footer .grow",
             "ns => ns.map(n => getComputedStyle(n).overflowX)")
-        expect(pfad_overflow and all(value != "visible" for value in pfad_overflow),
-               f"Sequenzpfade laufen aus ihren Karten: {pfad_overflow}")
-        knopf_in_karte = f.page.eval_on_selector_all(
+        expect(path_overflow and all(value != "visible" for value in path_overflow),
+               f"Sequenzpfade laufen aus ihren Karten: {path_overflow}")
+        button_in_card = f.page.eval_on_selector_all(
             ".seq-card",
             "ns => ns.every(k => { const b=k.querySelector('.seq-footer .btn'); "
             "if (!b) return true; const kr=k.getBoundingClientRect(); "
             "const br=b.getBoundingClientRect(); return br.right <= kr.right + 1; })")
-        expect(knopf_in_karte, "ein Öffnen-Knopf ragt aus seiner Karte")
+        expect(button_in_card, "ein Öffnen-Knopf ragt aus seiner Karte")
         f.image("sequenzen_karten")
 
         # ------------------------------------------------------------- Editor

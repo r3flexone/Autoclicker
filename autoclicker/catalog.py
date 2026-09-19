@@ -131,10 +131,10 @@ def load_catalog(path: str) -> Catalog:
     return catalog
 
 
-def ranks(namen_und_werte: list) -> dict:
+def ranks(names_and_values: list) -> dict:
     """Dichte Prioritaeten je Kategorie: teuerstes Item bekommt P1.
 
-    `namen_und_werte` ist eine Liste `(name, kategorie, wert)`. Zurueck kommt
+    `names_and_values` ist eine Liste `(name, kategorie, wert)`. Zurueck kommt
     `name -> prioritaet`.
 
     **Gerechnet wird innerhalb der uebergebenen Menge**, also innerhalb EINES
@@ -146,12 +146,12 @@ def ranks(namen_und_werte: list) -> dict:
     dasselbe Item, und zwei verschiedene Zahlen dafuer waeren eine Rangfolge,
     die per Zufall entscheidet.
     """
-    je_kategorie: dict = {}
-    for name, category, value in namen_und_werte:
-        je_kategorie.setdefault(category, []).append((name, value))
+    per_category: dict = {}
+    for name, category, value in names_and_values:
+        per_category.setdefault(category, []).append((name, value))
 
     result: dict = {}
-    for entries in je_kategorie.values():
+    for entries in per_category.values():
         assigned: dict = {}
         for name, _value in sorted(entries, key=lambda nw: (-(nw[1] or 0), nw[0])):
             if name not in assigned:

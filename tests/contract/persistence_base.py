@@ -14,12 +14,12 @@ section("Crash-sicheres Schreiben (atomic_write)")
 from autoclicker.utils import atomic_write as _aw
 
 _aw_dir = Path(tempfile.mkdtemp())
-_ziel = _aw_dir / "daten.json"
+_target = _aw_dir / "daten.json"
 
-_aw(_ziel, '{"a": 1}')
-check("schreibt eine neue Datei", _ziel.read_text(encoding="utf-8") == '{"a": 1}')
-_aw(_ziel, '{"a": 2}')
-check("ueberschreibt eine vorhandene", _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+_aw(_target, '{"a": 1}')
+check("schreibt eine neue Datei", _target.read_text(encoding="utf-8") == '{"a": 1}')
+_aw(_target, '{"a": 2}')
+check("ueberschreibt eine vorhandene", _target.read_text(encoding="utf-8") == '{"a": 2}')
 check("und laesst keine Temp-Datei liegen",
       [p.name for p in _aw_dir.iterdir()] == ["daten.json"])
 
@@ -28,28 +28,28 @@ check("und laesst keine Temp-Datei liegen",
 # also nach dem Anlegen und vor dem `os.replace()`. Ohne die Temp-Datei-Technik stuende
 # hier jetzt eine halb geschriebene, unlesbare `data.json`.
 import autoclicker.utils.parsing as _pmod
-_echtes_fsync, _echtes_replace = _pmod.os.fsync, _pmod.os.replace
+_real_fsync, _real_replace = _pmod.os.fsync, _pmod.os.replace
 
 _pmod.os.fsync = lambda fd: (_ for _ in ()).throw(OSError("Platte voll"))
 try:
-    _aw(_ziel, '{"a": 3}')
+    _aw(_target, '{"a": 3}')
 except OSError:
     pass
 finally:
-    _pmod.os.fsync = _echtes_fsync
+    _pmod.os.fsync = _real_fsync
 check("bricht das Schreiben ab, steht die alte Datei unveraendert da",
-      _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+      _target.read_text(encoding="utf-8") == '{"a": 2}')
 
 # Und wenn das Umbenennen selbst scheitert, ebenso.
 _pmod.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("locked"))
 try:
-    _aw(_ziel, '{"a": 4}')
+    _aw(_target, '{"a": 4}')
 except OSError:
     pass
 finally:
-    _pmod.os.replace = _echtes_replace
+    _pmod.os.replace = _real_replace
 check("scheitert das Umbenennen, bleibt die alte Datei ebenfalls intakt",
-      _ziel.read_text(encoding="utf-8") == '{"a": 2}')
+      _target.read_text(encoding="utf-8") == '{"a": 2}')
 
 # Ein Verzeichnis, das es noch nicht gibt, wird angelegt - sonst muesste jeder
 # Aufrufer selbst daran denken.
@@ -74,18 +74,18 @@ check("+30m sind 1800 Sekunden", _pt("+30m")[0] == 1800)
 # Absolute Uhrzeiten: das Ergebnis liegt in der Zukunft, hoechstens 24 h entfernt.
 # Auf die Sekunde genau zu pruefen hiesse, die Uhr des Testlaufs festzuschreiben.
 for _form in ("14:30", "1430"):
-    _sek, _txt, _ziel_ts = _pt(_form)
+    _sec, _txt, _target_ts = _pt(_form)
     check(f"'{_form}' liegt in der Zukunft und hoechstens 24 h entfernt",
-          0 <= _sek <= 24 * 3600)
-    check(f"'{_form}' nennt einen Zeitpunkt", _ziel_ts is not None)
+          0 <= _sec <= 24 * 3600)
+    check(f"'{_form}' nennt einen Zeitpunkt", _target_ts is not None)
 check("beide Schreibweisen meinen dieselbe Uhrzeit",
       abs(_pt("14:30")[0] - _pt("1430")[0]) <= 1)
 
 # Unsinn wird abgelehnt statt geraten - eine falsch verstandene Wartezeit faellt
 # erst Stunden spaeter auf.
-for _mist in ("", "abc", "25:00", "2570", "-5", "12:99"):
-    _erg = _pt(_mist)
-    check(f"'{_mist}' wird nicht als Zeit akzeptiert", _erg[0] <= 0 or _erg[1] == "")
+for _junk in ("", "abc", "25:00", "2570", "-5", "12:99"):
+    _res = _pt(_junk)
+    check(f"'{_junk}' wird nicht als Zeit akzeptiert", _res[0] <= 0 or _res[1] == "")
 
 
 section("Presets: speichern, laden, loeschen")
@@ -156,8 +156,8 @@ try:
     with _cl2.redirect_stdout(_io2.StringIO()):
         _gl.save_global_slots(_st_r)
         _gl.save_global_items(_st_r)
-    _pfad_r = Path("sequences/farm/item_scans/inventar.json")
-    _studio_scan = _load_scan_r(_pfad_r, "Farm")
+    _path_r = Path("sequences/farm/item_scans/inventar.json")
+    _studio_scan = _load_scan_r(_path_r, "Farm")
     _studio_slots = {s.name: s for s in _studio_scan.slots}
     _studio_items = {i.name: i for i in _studio_scan.items}
     check("das Studio liest, was die TUI-Arbeitsansicht geschrieben hat",
@@ -215,7 +215,7 @@ try:
               any("timeout" in z for z in _lines))
         # `log_report.py` wertet genau diese Datei aus - ein Ereignis, das es nicht
         # kennt, meldet es als "nicht ausgewertete Ereignisart".
-        from tools.log_report import AUSGEWERTET as _BE
+        from tools.log_report import EVALUATED as _BE
         check("die geschriebenen Ereignisarten kennt der Bericht",
               {"click", "timeout"} <= set(_BE))
 finally:
@@ -252,15 +252,15 @@ try:
 
     _write_seq("erste", "erste")
     _os.utime("sequences", (_folder_time, _folder_time))
-    _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
-    check("die erste Sequenz steht in der Liste", _namen == ["erste"])
+    _names = [p.parent.name for _, p in _seqmod.list_available_sequences()]
+    check("die erste Sequenz steht in der Liste", _names == ["erste"])
 
     # Zweite Datei, Ordner-Zeit absichtlich unveraendert.
     _write_seq("zweite", "zweite")
     _os.utime("sequences", (_folder_time, _folder_time))
-    _namen = [p.parent.name for _, p in _seqmod.list_available_sequences()]
+    _names = [p.parent.name for _, p in _seqmod.list_available_sequences()]
     check("die zweite auch, obwohl die Ordner-Zeit gleich blieb",
-          _namen == ["erste", "zweite"])
+          _names == ["erste", "zweite"])
 
     # Und die Folge, wegen der es weh tut: das Studio oeffnet die richtige.
     _os.utime(Path("sequences/erste/sequence.json"), (_folder_time, _folder_time))
@@ -288,14 +288,14 @@ from pathlib import Path as _P_hk
 
 from autoclicker.platforms.common import HOTKEY_BINDINGS as _BIND
 
-_wurzel_hk = _P_hk(__file__).resolve().parent.parent.parent
-_win_hk = (_wurzel_hk / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
+_root_hk = _P_hk(__file__).resolve().parent.parent.parent
+_win_hk = (_root_hk / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _tab_hk = _re_hk.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _win_hk, _re_hk.S).group(1)
 
 # Eintrag: (HOTKEY_ID, Modifier, VK, "CTRL+ALT+X (BESCHREIBUNG)")
-_win_namen = dict(_re_hk.findall(
+_win_names = dict(_re_hk.findall(
     r"\(\s*(HOTKEY_\w+),[^,]+,[^,]+,\s*\"([^\"]+)\"", _tab_hk))
-check("der Test findet ueberhaupt Windows-Hotkeys", len(_win_namen) > 20)
+check("der Test findet ueberhaupt Windows-Hotkeys", len(_win_names) > 20)
 
 from autoclicker.platforms import common as _common_hk
 _id_name = {value: name for name, value in vars(_common_hk).items()
@@ -303,32 +303,32 @@ _id_name = {value: name for name, value in vars(_common_hk).items()
 
 _lin_ids = {_id_name[i] for i in _BIND if i in _id_name}
 check("beide Backends kennen dieselben Hotkey-IDs",
-      _lin_ids == set(_win_namen))
-if _lin_ids != set(_win_namen):
-    print("        nur Linux:   " + ", ".join(sorted(_lin_ids - set(_win_namen))))
-    print("        nur Windows: " + ", ".join(sorted(set(_win_namen) - _lin_ids)))
+      _lin_ids == set(_win_names))
+if _lin_ids != set(_win_names):
+    print("        nur Linux:   " + ", ".join(sorted(_lin_ids - set(_win_names))))
+    print("        nur Windows: " + ", ".join(sorted(set(_win_names) - _lin_ids)))
 
 
-def _kombi_linux(s):
+def _combo_linux(s):
     """'<ctrl>+<alt>+a' -> 'CTRL+ALT+A'"""
     return s.replace("<", "").replace(">", "").upper()
 
 
-def _kombi_windows(s):
+def _combo_windows(s):
     """'CTRL+ALT+A (PUNKT SPEICHERN)' -> 'CTRL+ALT+A' — die Beschreibung faellt weg."""
     return s.split(" (")[0].strip().upper()
 
 
-_ungleich = []
-for _id, _kombi in _BIND.items():
+_unequal = []
+for _id, _combo in _BIND.items():
     _name = _id_name.get(_id)
-    if _name in _win_namen:
-        _a, _b = _kombi_linux(_kombi), _kombi_windows(_win_namen[_name])
+    if _name in _win_names:
+        _a, _b = _combo_linux(_combo), _combo_windows(_win_names[_name])
         if _a != _b:
-            _ungleich.append(f"{_name}: Linux={_a} Windows={_b}")
-check("und dieselbe Tastenkombination je Hotkey", _ungleich == [])
-if _ungleich:
-    print("        " + "; ".join(_ungleich))
+            _unequal.append(f"{_name}: Linux={_a} Windows={_b}")
+check("und dieselbe Tastenkombination je Hotkey", _unequal == [])
+if _unequal:
+    print("        " + "; ".join(_unequal))
 
 
 section("Alle Aufnahme-Marker liegen auf derselben Ebene")
@@ -369,6 +369,6 @@ check("Start/Stopp, Pause und Zuruecknehmen bleiben auf der Basis-Ebene",
 
 # M und D waren an die Aufnahme vergeben und sind damit wieder frei. Die
 # Basis-Ebene hatte nur noch R und Y uebrig — das ist der eigentliche Gewinn.
-_basis = {_BIND[i].rsplit("+", 1)[-1] for i in _BIND if "<shift>" not in _BIND[i]}
+_base = {_BIND[i].rsplit("+", 1)[-1] for i in _BIND if "<shift>" not in _BIND[i]}
 check("dadurch sind M und D in der Basis-Ebene wieder frei",
-      "m" not in _basis and "d" not in _basis)
+      "m" not in _base and "d" not in _base)

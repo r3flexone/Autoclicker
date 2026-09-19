@@ -50,7 +50,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
-STANDARD_ZIEL = "catalog.json"
+DEFAULT_TARGET = "catalog.json"
 
 # EquipmentSlot -> Kategorie. Die Zuordnung ist aus den Item-Namen der jeweiligen
 # Gruppe abgelesen (alle 19 Eintraege von Slot 1 enden auf `_boots` usw.).
@@ -70,12 +70,12 @@ def display_name(key_name: str) -> str:
 def category_for(item: dict) -> str:
     """Die Gruppe, innerhalb derer dieses Item mit anderen konkurriert."""
     slot = item.get("EquipmentSlot") or 0
-    fest = SLOTS.get(slot)
-    if fest:
-        return fest
+    fixed = SLOTS.get(slot)
+    if fixed:
+        return fixed
     # Slot 7 und 0: das letzte Wort ist die engste verlaessliche Gruppe.
-    letztes = display_name(item.get("Name", "")).split()
-    return letztes[-1] if letztes else "Sonstiges"
+    last_one = display_name(item.get("Name", "")).split()
+    return last_one[-1] if last_one else "Sonstiges"
 
 
 # ---------------------------------------------------------------------------
@@ -91,11 +91,11 @@ def category_for(item: dict) -> str:
 # Unbekanntes als Wert uebernommen und gemeldet.
 # ---------------------------------------------------------------------------
 
-ZAHL_HUELLEN = frozenset({"NumberLong", "NumberInt", "NumberDecimal", "Long", "Int32", "Int64"})
-TEXT_HUELLEN = frozenset({"ObjectId", "ISODate", "UUID", "Date", "DBRef"})
+NUMBER_WRAPPERS = frozenset({"NumberLong", "NumberInt", "NumberDecimal", "Long", "Int32", "Int64"})
+TEXT_WRAPPERS = frozenset({"ObjectId", "ISODate", "UUID", "Date", "DBRef"})
 
-_AUFRUF = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(")
-_SKALAR = re.compile(r'^(?:"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)$')
+_CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+_SCALAR = re.compile(r'^(?:"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)$')
 
 
 def _string_end(text: str, start: int) -> int:
@@ -133,9 +133,9 @@ def _argument_end(text: str, start: int) -> int:
     return -1
 
 
-def _as_number(inneres: str):
+def _as_number(inner: str):
     """`5`, `"5"`, `"1.5"` -> `5` bzw. `1.5`; sonst None."""
-    raw = inneres.strip()
+    raw = inner.strip()
     if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
         raw = raw[1:-1].strip()
     if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", raw):
@@ -143,30 +143,30 @@ def _as_number(inneres: str):
     return None
 
 
-def _replacement(name: str, inneres: str, unbekannt: dict) -> str:
+def _replacement(name: str, inner: str, unknown: dict) -> str:
     """Der JSON-Text, der fuer `Name(inneres)` an dieselbe Stelle kommt."""
-    inneres = inneres.strip()
-    if name in ZAHL_HUELLEN:
-        number = _as_number(inneres)
+    inner = inner.strip()
+    if name in NUMBER_WRAPPERS:
+        number = _as_number(inner)
         if number is not None:
             return number
-    elif name in TEXT_HUELLEN:
-        if _SKALAR.match(inneres) and inneres.startswith('"'):
-            return inneres
-        if not inneres:
+    elif name in TEXT_WRAPPERS:
+        if _SCALAR.match(inner) and inner.startswith('"'):
+            return inner
+        if not inner:
             return "null"
     else:
-        unbekannt[name] = unbekannt.get(name, 0) + 1
-        if _SKALAR.match(inneres):
-            return inneres
-        return json.dumps(f"{name}({inneres})")
-    unbekannt[name] = unbekannt.get(name, 0) + 1
-    return json.dumps(f"{name}({inneres})")
+        unknown[name] = unknown.get(name, 0) + 1
+        if _SCALAR.match(inner):
+            return inner
+        return json.dumps(f"{name}({inner})")
+    unknown[name] = unknown.get(name, 0) + 1
+    return json.dumps(f"{name}({inner})")
 
 
 def clean_extended_json(text: str) -> tuple:
     """`(json_text, unbekannte)` — `unbekannte` zaehlt je Konstruktname."""
-    unbekannt: dict = {}
+    unknown: dict = {}
     parts = []
     i = 0
     n = len(text)
@@ -177,7 +177,7 @@ def clean_extended_json(text: str) -> tuple:
             parts.append(text[i:end])
             i = end
             continue
-        match = _AUFRUF.match(text, i)
+        match = _CALL.match(text, i)
         if match is None:
             parts.append(c)
             i += 1
@@ -187,17 +187,17 @@ def clean_extended_json(text: str) -> tuple:
             parts.append(text[i:match.end()])
             i = match.end()
             continue
-        parts.append(_replacement(match.group(1), text[match.end():end - 1], unbekannt))
+        parts.append(_replacement(match.group(1), text[match.end():end - 1], unknown))
         i = end
-    return "".join(parts), unbekannt
+    return "".join(parts), unknown
 
 
-def extended_json_hints(unbekannt: dict) -> list:
+def extended_json_hints(unknown: dict) -> list:
     """Die Meldungen zu unbekannten Konstrukten — eine je Name, mit Anzahl."""
     return [f"Unbekanntes Extended-JSON-Konstrukt {name}(…) {count}× — Wert "
             f"uebernommen, nicht uebersetzt. Falls es eine Zahl oder ein Text ist: "
-            f"in ZAHL_HUELLEN bzw. TEXT_HUELLEN eintragen."
-            for name, count in sorted(unbekannt.items())]
+            f"in NUMBER_WRAPPERS bzw. TEXT_WRAPPERS eintragen."
+            for name, count in sorted(unknown.items())]
 
 
 def fetch_game_data(url: str = GAME_URL, timeout: int = 60, hints: list = None) -> dict:
@@ -211,16 +211,16 @@ def fetch_game_data(url: str = GAME_URL, timeout: int = 60, hints: list = None) 
     req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-catalog"})
     with urllib.request.urlopen(req, timeout=timeout) as answer:
         raw = answer.read().decode("utf-8")
-    cleaned, unbekannt = clean_extended_json(raw)
+    cleaned, unknown = clean_extended_json(raw)
     if hints is not None:
-        hints.extend(extended_json_hints(unbekannt))
+        hints.extend(extended_json_hints(unknown))
     return json.loads(cleaned)
 
 
-def build_catalog(spieldaten: dict) -> dict:
+def build_catalog(game_data: dict) -> dict:
     """Aus den Spieldaten die beiden Listen, die der Autoclicker braucht."""
     items = {}
-    for entry in (spieldaten.get("Items") or {}).get("Items") or []:
+    for entry in (game_data.get("Items") or {}).get("Items") or []:
         key_name = entry.get("Name")
         if not key_name:
             continue
@@ -232,36 +232,36 @@ def build_catalog(spieldaten: dict) -> dict:
     # Gegner stehen verstreut (Kampf-Aufgaben, Raids, Clan-Bosse) und tragen mal
     # `EnemyName`, mal `MonsterName`, mal `BossNameLocalizationKey`. Eingesammelt
     # wird ueber den ganzen Baum, damit kein Zweig vergessen wird.
-    gegner = set()
+    enemies = set()
 
-    def sammle(knoten) -> None:
-        if isinstance(knoten, dict):
+    def collect(node) -> None:
+        if isinstance(node, dict):
             for field in ("EnemyName", "MonsterName", "BossNameLocalizationKey"):
-                value = knoten.get(field)
+                value = node.get(field)
                 if isinstance(value, str) and value:
-                    gegner.add(display_name(value))
-            for value in knoten.values():
-                sammle(value)
-        elif isinstance(knoten, list):
-            for value in knoten:
-                sammle(value)
+                    enemies.add(display_name(value))
+            for value in node.values():
+                collect(value)
+        elif isinstance(node, list):
+            for value in node:
+                collect(value)
 
-    sammle(spieldaten)
+    collect(game_data)
     return {
         "_source": GAME_URL,
         "_erzeugt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "items": items,
-        "gegner": sorted(gegner),
+        "gegner": sorted(enemies),
     }
 
 
 def _summary(catalog: dict) -> str:
     """Was drinsteht — die Zeile, die man nach dem Lauf liest."""
-    kategorien = {}
+    categories = {}
     for entry in catalog["items"].values():
-        kategorien[entry["kategorie"]] = kategorien.get(entry["kategorie"], 0) + 1
-    big = sorted(kategorien.items(), key=lambda kv: -kv[1])[:8]
-    return (f"{len(catalog['items'])} Items in {len(kategorien)} Kategorien, "
+        categories[entry["kategorie"]] = categories.get(entry["kategorie"], 0) + 1
+    big = sorted(categories.items(), key=lambda kv: -kv[1])[:8]
+    return (f"{len(catalog['items'])} Items in {len(categories)} Kategorien, "
             f"{len(catalog['gegner'])} Gegner\n"
             "  groesste Kategorien: "
             + ", ".join(f"{name} ({count})" for name, count in big))
@@ -269,8 +269,8 @@ def _summary(catalog: dict) -> str:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Item-/Gegner-Katalog aus der Idle-Clans-API.")
-    p.add_argument("--target", default=STANDARD_ZIEL,
-                   help=f"Zieldatei (Standard: {STANDARD_ZIEL})")
+    p.add_argument("--target", default=DEFAULT_TARGET,
+                   help=f"Zieldatei (Standard: {DEFAULT_TARGET})")
     p.add_argument("--show", action="store_true",
                    help="nur anzeigen, nichts schreiben")
     args = p.parse_args(argv)
@@ -278,7 +278,7 @@ def main(argv=None) -> int:
     print(f"Lade {GAME_URL} ...")
     hints: list = []
     try:
-        spieldaten = fetch_game_data(hints=hints)
+        game_data = fetch_game_data(hints=hints)
     except (urllib.error.URLError, TimeoutError) as e:
         print(f"[FEHLER] Nicht erreichbar: {e}", file=sys.stderr)
         return 1
@@ -291,7 +291,7 @@ def main(argv=None) -> int:
     for hint in hints:
         print(f"[WARNUNG] {hint}", file=sys.stderr)
 
-    catalog = build_catalog(spieldaten)
+    catalog = build_catalog(game_data)
     print(_summary(catalog))
     if args.show:
         return 0

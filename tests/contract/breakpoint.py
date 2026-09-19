@@ -59,28 +59,28 @@ def _state():
 
 
 _stop = _STEP(x=100, y=200, delay_before=0, name="Halt hier", breakpoint=True)
-_frei = _STEP(x=100, y=200, delay_before=0, name="Laeuft durch")
+_free = _STEP(x=100, y=200, delay_before=0, name="Laeuft durch")
 _orig_read = _dbg.read_command
 _orig_cursor = _dbg.set_cursor_pos
 _dbg.set_cursor_pos = lambda *a, **k: None
 try:
     # Ohne Haltepunkt und ohne Schrittmodus fragt niemand — und liest auch keine Taste.
-    _gefragt = []
-    _dbg.read_command = lambda *a, **k: _gefragt.append(1) or "w"
+    _asked = []
+    _dbg.read_command = lambda *a, **k: _asked.append(1) or "w"
     _st = _state()
     check("ein Block ohne Haltepunkt laeuft ungefragt durch",
-          _dbg.step_gate(_st, _frei, "LOOP", 1, 2) == _dbg.GATE_RUN and not _gefragt)
+          _dbg.step_gate(_st, _free, "LOOP", 1, 2) == _dbg.GATE_RUN and not _asked)
 
     # Mit Haltepunkt haelt das Gate — dieselben Tasten wie im manuellen Modus.
-    _ergebnis = {}
+    _result = {}
     for _key in ("w", "s", "q"):
         _st = _state()
         _dbg.read_command = (lambda *a, _t=_key, **k: _t)
-        _ergebnis[_key] = (_dbg.step_gate(_st, _stop, "LOOP", 1, 2), _st.step_mode)
+        _result[_key] = (_dbg.step_gate(_st, _stop, "LOOP", 1, 2), _st.step_mode)
     check("'w' laesst den Block laufen — und der Lauf bleibt normal",
-          _ergebnis["w"] == (_dbg.GATE_RUN, False))
-    check("'s' ueberspringt ihn", _ergebnis["s"][0] == _dbg.GATE_SKIP)
-    check("'q' bricht ab", _ergebnis["q"][0] == _dbg.GATE_STOP)
+          _result["w"] == (_dbg.GATE_RUN, False))
+    check("'s' ueberspringt ihn", _result["s"][0] == _dbg.GATE_SKIP)
+    check("'q' bricht ab", _result["q"][0] == _dbg.GATE_STOP)
 
     # 'm' ist neu und gibt es nur am Haltepunkt: ab hier Schritt fuer Schritt.
     _st = _state()
@@ -104,12 +104,12 @@ try:
     _st = _state()
     _st.is_running = True
     _dbg.read_command = lambda *a, **k: ""
-    _erg = {}
-    _t = threading.Thread(target=lambda: _erg.setdefault(
+    _res = {}
+    _t = threading.Thread(target=lambda: _res.setdefault(
         "value", _dbg.step_gate(_st, _stop, "LOOP", 1, 2)))
     _t.start()
-    _frist = time.time() + 1.0
-    while not _st.gate_waiting and time.time() < _frist:
+    _deadline = time.time() + 1.0
+    while not _st.gate_waiting and time.time() < _deadline:
         time.sleep(0.01)
     check("waehrend das Gate wartet, ist es als wartend markiert", _st.gate_waiting is True)
     # Auch ein Lauf aus der Konsole zeigt dem Studio, warum er steht.
@@ -118,7 +118,7 @@ try:
     _hnd.handle_pause(_st)
     _t.join(1.5)
     check("CTRL+ALT+G laesst den Block laufen statt zu pausieren",
-          _erg.get("value") == _dbg.GATE_RUN and not _st.pause_event.is_set())
+          _res.get("value") == _dbg.GATE_RUN and not _st.pause_event.is_set())
     check("und der Lauf bleibt danach normal", _st.step_mode is False)
 
     # Ohne wartendes Gate bleibt CTRL+ALT+G die Pause, die es immer war.
@@ -156,27 +156,27 @@ try:
     _st = _state()
     _st.run_from_studio = True
     _st.is_running = True
-    _t, _erg = _studio_gate(_st, _stop)
-    _tafel = _status._state.get("manual") or {}
+    _t, _res = _studio_gate(_st, _stop)
+    _panel = _status._state.get("manual") or {}
     check("die Tafel im Live-Run sagt, dass es ein Haltepunkt ist",
-          _tafel.get("active") is True and _tafel.get("breakpoint") is True
-          and _tafel.get("block") == 1)
+          _panel.get("active") is True and _panel.get("breakpoint") is True
+          and _panel.get("block") == 1)
     # Die Antwort kommt als Briefkasten-Befehl — auch ohne Schrittmodus.
     _hnd.command_manual_action(_st, {"action": "step"})
     _t.join(1.5)
     check("'ab hier schrittweise' aus dem Studio fuehrt aus und schaltet um",
-          _erg.get("value") == _dbg.GATE_RUN and _st.step_mode is True
+          _res.get("value") == _dbg.GATE_RUN and _st.step_mode is True
           and _st.step_via_studio is True)
     check("und raeumt die Tafel weg", _status._state.get("manual") is None)
 
     # Im Schrittmodus meldet die Tafel KEINEN Haltepunkt — es ist das normale Gate.
-    _t, _erg = _studio_gate(_st, _stop)
+    _t, _res = _studio_gate(_st, _stop)
     check("im Schrittmodus traegt die Tafel keine Haltepunkt-Marke",
           (_status._state.get("manual") or {}).get("breakpoint") is False)
     _hnd.command_manual_action(_st, {"action": "continue"})
     _t.join(1.5)
     check("'Normal weiter' schaltet den Schrittmodus wieder aus",
-          _erg.get("value") == _dbg.GATE_RUN and _st.step_mode is False)
+          _res.get("value") == _dbg.GATE_RUN and _st.step_mode is False)
 
     # Ein Befehl ohne wartendes Gate wird nicht vorgemerkt — er feuerte sonst
     # beim naechsten Halt nach.
@@ -201,12 +201,12 @@ section("Haltepunkt: der Start merkt sich, wer gefragt wird")
 # braeuchte eine Sequenz, ein Fenster und einen Bildschirm.
 import inspect as _inspect
 _source = _inspect.getsource(_hnd)
-check("command_start startet mit aus_studio=True",
-      "handle_toggle(state, aus_studio=True)" in _source)
+check("command_start startet mit from_studio=True",
+      "handle_toggle(state, from_studio=True)" in _source)
 check("der Countdown laesst die Herkunft stehen",
-      _source.count("handle_toggle(state, aus_studio=None)") >= 2)
+      _source.count("handle_toggle(state, from_studio=None)") >= 2)
 check("handle_toggle schreibt die Herkunft an den Lauf",
-      "state.run_from_studio = bool(aus_studio)" in _source)
+      "state.run_from_studio = bool(from_studio)" in _source)
 
 
 # =============================================================================
@@ -221,9 +221,9 @@ _seq = _SEQ(name="H", loop_phases=[_PHASE(name="Loop", repeat=1, steps=[_step_lo
 _b = _SB(_seq, Path("sequences/H.json"), "sequences")
 _b.select({"phase": 1, "row": 0})
 _b.block_set({"field": "breakpoint", "value": True})
-_karte = _b.snapshot()["phases"][1]["blocks"][0]
+_card = _b.snapshot()["phases"][1]["blocks"][0]
 check("der Schalter setzt das Feld am Schritt", _step_local.breakpoint is True)
-check("die Karte traegt die Marke", _karte.get("breakpoint") is True)
+check("die Karte traegt die Marke", _card.get("breakpoint") is True)
 check("der Inspektor zeigt den Zustand", _b.snapshot()["block"]["breakpoint"] is True)
 check("und das Speichern nimmt ihn mit",
       _b2s(_b.board).loop_phases[0].steps[0].breakpoint is True)

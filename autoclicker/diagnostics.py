@@ -44,23 +44,23 @@ class Finding:
 
 @dataclass
 class CheckReport:
-    befunde: list[Finding] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
 
     def add_finding(self, level: str, area: str, text: str, tip: str = "") -> None:
-        self.befunde.append(Finding(level, area, text, tip))
+        self.findings.append(Finding(level, area, text, tip))
 
     @property
     def errors(self) -> list[Finding]:
-        return [b for b in self.befunde if b.level == LEVEL_ERROR]
+        return [b for b in self.findings if b.level == LEVEL_ERROR]
 
     @property
     def hints(self) -> list[Finding]:
-        return [b for b in self.befunde if b.level == LEVEL_HINT]
+        return [b for b in self.findings if b.level == LEVEL_HINT]
 
     def __bool__(self) -> bool:
         """True = es gibt etwas zu melden."""
-        return bool(self.befunde)
+        return bool(self.findings)
 
 
 # ---------------------------------------------------------------------------
@@ -86,13 +86,13 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
         sources += [(f"Icon-Scan '{c.name}'", c.template)
                     for c in state.icon_scans.values()]
 
-    template_ordner = sequence_templates_dir(owner) if owner else Path("sequences")
+    template_folder = sequence_templates_dir(owner) if owner else Path("sequences")
     missing = [(who, tpl) for who, tpl in sources
-               if tpl and not (template_ordner / tpl).exists()]
+               if tpl and not (template_folder / tpl).exists()]
     report.checked.append(f"{sum(1 for _, t in sources if t)} Template-Verweise")
     for who, tpl in missing:
         report.add_finding(LEVEL_ERROR, who,
-                      f"Template '{tpl}' fehlt in {template_ordner}/",
+                      f"Template '{tpl}' fehlt in {template_folder}/",
                       "Template neu aufnehmen oder den Verweis entfernen")
 
 
@@ -162,15 +162,15 @@ def _check_llm_ocr(state: AutoClickerState, report: CheckReport) -> None:
     """Ein Scan mit use_llm/use_ocr nützt nichts, wenn es global aus ist."""
     with state.lock:
         scans = list(state.boss_scans.values())
-        llm_an = state.config.llm_enabled
-        ocr_an = state.config.ocr_enabled
+        llm_on = state.config.llm_enabled
+        ocr_on = state.config.ocr_enabled
 
     for cfg in scans:
-        if cfg.use_llm and not llm_an:
+        if cfg.use_llm and not llm_on:
             report.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           "use_llm ist an, llm_enabled global aus — LLM wird ignoriert",
                           "llm_enabled in config.json setzen oder use_llm abschalten")
-        if cfg.use_ocr and not ocr_an:
+        if cfg.use_ocr and not ocr_on:
             report.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           "use_ocr ist an, ocr_enabled global aus — OCR wird ignoriert",
                           "ocr_enabled in config.json setzen oder use_ocr abschalten")
@@ -214,7 +214,7 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
 
         from .persistence import (list_available_item_scans, list_available_boss_scans,
                                   list_available_icon_scans)
-        punkt_ids = {p.id for p in seq.points}
+        point_ids = {p.id for p in seq.points}
         known = {
             "item_scan": {n for n, _ in list_available_item_scans(seq.name)},
             "boss_scan": {n for n, _ in list_available_boss_scans(seq.name)},
@@ -225,21 +225,21 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
         phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
         phases.append(("END", seq.end_steps))
 
-        tote_refs, tote_scans = [], []
+        dead_refs, dead_scans = [], []
         for phase, steps in phases:
             for i, step in enumerate(steps, 1):
-                if step.point_id is not None and step.point_id not in punkt_ids:
-                    tote_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
+                if step.point_id is not None and step.point_id not in point_ids:
+                    dead_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
                 for attr, names in known.items():
-                    verweis = getattr(step, attr, None)
-                    if verweis and verweis not in names:
-                        tote_scans.append(f"{phase}[{i}] → {attr} '{verweis}'")
+                    ref = getattr(step, attr, None)
+                    if ref and ref not in names:
+                        dead_scans.append(f"{phase}[{i}] → {attr} '{ref}'")
 
-        for entry in _truncated(tote_refs):
+        for entry in _truncated(dead_refs):
             report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
                           f"{entry} gibt es nicht mehr",
                           "Punkt im Punkte-Editor dieser Sequenz neu setzen")
-        for entry in _truncated(tote_scans):
+        for entry in _truncated(dead_scans):
             report.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
                           f"{entry} existiert nicht")
 
@@ -276,10 +276,10 @@ def check_setup(state: AutoClickerState, with_sequences: bool = True) -> CheckRe
     return report
 
 
-def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
-    """Gibt den Bericht aus. `still_wenn_sauber` unterdrückt die Erfolgsmeldung."""
+def print_report(report: CheckReport, quiet_when_clean: bool = False) -> None:
+    """Gibt den Bericht aus. `quiet_when_clean` unterdrückt die Erfolgsmeldung."""
     if not report:
-        if not still_wenn_sauber:
+        if not quiet_when_clean:
             print(f"\n{ok('Setup-Prüfung: nichts zu beanstanden.')}")
             if report.checked:
                 print(f"       {hint('Geprüft: ' + ', '.join(report.checked))}")
@@ -289,14 +289,14 @@ def print_report(report: CheckReport, still_wenn_sauber: bool = False) -> None:
     print(col("  SETUP-PRÜFUNG", "bold"))
     print(col("=" * 60, "cyan"))
 
-    for heading, listing, stil in (
+    for heading, listing, style in (
         (f"{len(report.errors)} Fehler — so läuft es nicht:", report.errors, err),
         (f"{len(report.hints)} Hinweis(e) — läuft, ist aber evtl. nicht gewollt:",
          report.hints, warn),
     ):
         if not listing:
             continue
-        print(f"\n{stil(heading)}")
+        print(f"\n{style(heading)}")
         for b in listing:
             print(f"  {col(b.area, 'cyan')}: {b.text}")
             if b.tip:

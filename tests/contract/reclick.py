@@ -39,7 +39,7 @@ def _point(pid, x, y, color=None, name=""):
     return _CP(id=pid, x=x, y=y, name=name or f"P{pid}", color=color)
 
 
-def _aktiv(state, seq, points, target_window=""):
+def _active(state, seq, points, target_window=""):
     """Bindet den sequenz-eigenen Pool zugleich als Laufzeit-Arbeitsansicht."""
     seq.points = points
     state.active_sequence = seq
@@ -72,7 +72,7 @@ _seq = _SEQ(
     ],
     end_steps=[_STEP(point_id=8, verify_condition=_WAIT(point_id=9))],
 )
-_clicks, _sonstige = _klickpunkte(_seq)
+_clicks, _others = _klickpunkte(_seq)
 check("die Klick-Punkte stehen in der Reihenfolge des Laufs",
       _clicks == [1, 2, 3, 5, 8])
 check("ein Punkt kommt nur EINMAL vor, auch wenn zweimal geklickt",
@@ -81,16 +81,16 @@ check("ein Wait-only-Schritt klickt nicht", 4 not in _clicks)
 check("ein Rad-Schritt auch nicht", 7 not in _clicks)
 # **Was eine Runde nicht erreicht, wird gesagt.** Es zu verschweigen wäre die
 # schlimmere Hälfte: man hielte die Sequenz für repariert.
-check("beobachtete Stellen stehen als unerreichbar da", 4 in _sonstige)
-check("ELSE-Klicks ebenso", 6 in _sonstige)
-check("Nachprüfungen ebenso", 9 in _sonstige)
-check("und der Rad-Schritt", 7 in _sonstige)
+check("beobachtete Stellen stehen als unerreichbar da", 4 in _others)
+check("ELSE-Klicks ebenso", 6 in _others)
+check("Nachprüfungen ebenso", 9 in _others)
+check("und der Rad-Schritt", 7 in _others)
 check("eine Stelle steht in genau einer der beiden Listen",
-      not (set(_clicks) & set(_sonstige)))
+      not (set(_clicks) & set(_others)))
 # Der Trigger-Punkt eines Farb-Trigger-Klicks IST der Klickpunkt — er darf nicht
 # zusätzlich als unerreichbar gelten, sonst zählte die Meldung ihn doppelt.
 check("der Trigger am eigenen Klick zählt nicht als unerreichbar",
-      2 not in _sonstige)
+      2 not in _others)
 
 # **Wer beides ist, ist ein Klick.** Eine Stelle, die ein frueher Schritt nur
 # BEOBACHTET und ein spaeterer klickt, landete in einem Durchgang unter
@@ -120,12 +120,12 @@ try:
     _step_local = _STEP(point_id=2, delay_before=7.5,
                      wait_condition=_WAIT(point_id=2, color=(1, 2, 3)),
                      else_config=_ELSE(action="skip"))
-    _aktiv(_s, _SEQ(name="Klein", init_steps=[_STEP(point_id=1)],
+    _active(_s, _SEQ(name="Klein", init_steps=[_STEP(point_id=1)],
                     loop_phases=[_PHASE(name="A", steps=[_step_local,
                                                          _STEP(point_id=3)])]),
            _points_s)
-    _erg = _ruesten(_s)
-    check("die Runde lässt sich rüsten", _erg is not None)
+    _res = _ruesten(_s)
+    check("die Runde lässt sich rüsten", _res is not None)
     check("und kennt ihre drei Punkte", _s.reclick_points == [1, 2, 3])
     check("sie fängt beim ersten an", _s.reclick_index == 0)
 
@@ -215,56 +215,56 @@ section("Nachklicken: der Zeiger steht auf der Stelle, bevor man klickt")
 # als Zahlenpaar in der Konsole, und man musste sie auf dem Schirm suchen.
 import autoclicker.editors.reclick as _nk
 
-_gesprungen = []
-_echt_springe = _nk._jump
-_nk._jump = lambda x, y, delayed=False: _gesprungen.append((x, y, delayed))
+_jumped = []
+_real_jump = _nk._jump
+_nk._jump = lambda x, y, delayed=False: _jumped.append((x, y, delayed))
 try:
     _s2 = _ST()
-    _aktiv(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s2, _SEQ(name="Zeiger", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
            [_point(1, 100, 100), _point(2, 222, 333), _point(3, 300, 300)])
     _ruesten(_s2)
 
-    _gesprungen.clear()
+    _jumped.clear()
     _nk._show_current(_s2)
-    check("der erste Punkt wird angefahren", _gesprungen == [(100, 100, False)])
+    check("der erste Punkt wird angefahren", _jumped == [(100, 100, False)])
 
     # Der Fall, um den es geht: NACH einem echten Klick muss der Zeiger auf den
     # naechsten Punkt springen. Genau das tat er vorher nicht.
-    _gesprungen.clear()
+    _jumped.clear()
     _click(_s2, 111, 112, None)
     check("nach einem Klick steht der Zeiger auf dem NÄCHSTEN Punkt",
-          [(x, y) for x, y, _v in _gesprungen] == [(222, 333)])
+          [(x, y) for x, y, _v in _jumped] == [(222, 333)])
     # **Und zwar erst nach kurzer Frist.** Der Hook meldet den DRUCK; sofort zu
     # springen zoege die Maus zwischen Druck und Loslassen weg und machte aus
     # dem Klick ein Ziehen.
     check("und zwar verzögert, damit aus dem Klick kein Ziehen wird",
-          _gesprungen[0][2] is True)
+          _jumped[0][2] is True)
 
     # Überspringen und Zurück sind keine Klicks — dort darf er sofort springen.
-    _gesprungen.clear()
+    _jumped.clear()
     _skip(_s2)
     check("beim Überspringen springt er sofort",
-          _gesprungen and _gesprungen[0][2] is False)
-    _gesprungen.clear()
+          _jumped and _jumped[0][2] is False)
+    _jumped.clear()
     _returned(_s2)
     check("beim Zurückgehen ebenso",
-          _gesprungen and _gesprungen[0][2] is False)
+          _jumped and _jumped[0][2] is False)
     _stop(_s2, "Test")
 finally:
-    _nk._jump = _echt_springe
+    _nk._jump = _real_jump
 
 # Die Frist selbst: ohne sie waere die Trennung oben eine Behauptung.
 check("die Sprung-Frist ist gesetzt und kurz",
       0 < _nk.JUMP_DELAY <= 1.0)
-_gesetzt = []
-_echt_cursor = _nk.set_cursor_pos
-_nk.set_cursor_pos = lambda x, y: _gesetzt.append((x, y))
+_set_ones = []
+_real_cursor = _nk.set_cursor_pos
+_nk.set_cursor_pos = lambda x, y: _set_ones.append((x, y))
 try:
     _nk._jump(5, 6)
-    check("ohne Frist setzt _jump den Zeiger direkt", _gesetzt == [(5, 6)])
+    check("ohne Frist setzt _jump den Zeiger direkt", _set_ones == [(5, 6)])
 finally:
-    _nk.set_cursor_pos = _echt_cursor
+    _nk.set_cursor_pos = _real_cursor
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ section("Nachklicken: es läuft nichts von selbst")
 # sie die Punkte der Runde selbst und schrieb ihre eigenen Ziele hinein — von
 # aussen sah es aus, als sei die Sequenz „von allein weitergelaufen".
 _s3 = _ST()
-_aktiv(_s3, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+_active(_s3, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s3)
@@ -295,30 +295,30 @@ _stop(_s3, "Test")
 # zurück, ein gestarteter Lauf wäre also je nach Zeitpunkt unsichtbar.
 import autoclicker.handlers as _hd
 
-_gestartet = []
-_echt_worker = _hd.sequence_worker
-_hd.sequence_worker = lambda *a, **k: _gestartet.append(a)
+_started = []
+_real_worker = _hd.sequence_worker
+_hd.sequence_worker = lambda *a, **k: _started.append(a)
 try:
     _s4 = _ST()
-    _aktiv(_s4, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s4, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1)])]), [_point(1, 10, 10)])
     _ruesten(_s4)
     _hd.handle_toggle(_s4)
-    check("ein Start während der Runde startet keinen Worker", _gestartet == [])
+    check("ein Start während der Runde startet keinen Worker", _started == [])
     _stop(_s4, "Test")
 
     # Gegenprobe: ohne laufende Runde startet derselbe Griff sehr wohl.
     _hd.handle_toggle(_s4)
     _s4.stop_event.set()
-    check("ohne Runde startet er", len(_gestartet) == 1)
+    check("ohne Runde startet er", len(_started) == 1)
 finally:
-    _hd.sequence_worker = _echt_worker
+    _hd.sequence_worker = _real_worker
     _s4.is_running = False
 
 # Umgekehrt: ein gestellter Countdown ist ein Start mit Verzoegerung und wuerde
 # mitten in die Runde feuern. Deshalb faengt sie gar nicht erst an.
 _s5 = _ST()
-_aktiv(_s5, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
+_active(_s5, _SEQ(name="Ruhig", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1)])]), [_point(1, 10, 10)])
 _s5.countdown_active = True
 check("mit gestelltem Countdown startet keine Runde", _ruesten(_s5) is None)
@@ -345,16 +345,16 @@ _clicked = [None]          # None = dieselbe Antwort wie der Vordergrund
 # Die Frage „welches Fenster hat den Klick" beantwortet `_click_window` —
 # fuer die Runde UND die Aufnahme. Gestubbt wird deshalb dort.
 import autoclicker.editors._click_window as _kf
-_echt_titel = _kf.get_foreground_window_title
-_echt_unter = _kf.get_window_title_at
-_echt_rect = _nk.get_client_rect_by_title
+_real_title = _kf.get_foreground_window_title
+_real_under = _kf.get_window_title_at
+_real_rect = _nk.get_client_rect_by_title
 _kf.get_foreground_window_title = lambda: _foreground[0]
 _kf.get_window_title_at = lambda x, y: (
     _foreground[0] if _clicked[0] is None else _clicked[0])
 _nk.get_client_rect_by_title = lambda t: (0, 0, 800, 600)
 try:
     _s6 = _ST()
-    _aktiv(_s6, _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s6, _SEQ(name="Fokus", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
            [_point(1, 100, 100), _point(2, 200, 200)], "Idle Clans")
     _ruesten(_s6)
@@ -398,7 +398,7 @@ try:
     # wegwirft, sieht aus wie ein kaputter Hook.
     _nk.get_client_rect_by_title = lambda t: None
     _s7 = _ST()
-    _aktiv(_s7, _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s7, _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1)])]), [_point(1, 100, 100)], "Gibt Es Nicht")
     _ruesten(_s7)
     check("ohne auffindbares Fenster wird nicht gefiltert", _s7.reclick_target == "")
@@ -407,9 +407,9 @@ try:
     # Der einzige Punkt beendet die Runde, also ist er danach schon geschrieben.
     check("und jeder Klick zählt", (_s7.points[0].x, _s7.points[0].y) == (55, 66))
 finally:
-    _kf.get_foreground_window_title = _echt_titel
-    _kf.get_window_title_at = _echt_unter
-    _nk.get_client_rect_by_title = _echt_rect
+    _kf.get_foreground_window_title = _real_title
+    _kf.get_window_title_at = _real_under
+    _nk.get_client_rect_by_title = _real_rect
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +420,7 @@ section("Nachklicken: ein Pixel Abweichung ist keine Korrektur")
 # Ohne Toleranz schriebe jede Bestätigung den Punkt um einen Pixel um und zählte
 # als Änderung: Rauschen in genau der Liste, die sagen soll, was sich geändert hat.
 _s8 = _ST()
-_aktiv(_s8, _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
+_active(_s8, _SEQ(name="Pixel", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
        [_point(1, 6233, 412, (33, 140, 116)), _point(2, 200, 200)])
 _ruesten(_s8)
@@ -454,7 +454,7 @@ _os.chdir(_sandbox2)
 try:
     Path("sequences").mkdir()
     _s9 = _ST()
-    _aktiv(_s9, _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s9, _SEQ(name="Weg", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
            [_point(1, 100, 100, (1, 2, 3)), _point(2, 200, 200)])
     _ruesten(_s9)
@@ -481,7 +481,7 @@ finally:
 # Das Beenden des Programms ist kein Übernehmen — sonst schriebe genau der
 # Ausgang, den man nimmt, wenn etwas schiefgelaufen ist.
 _s10 = _ST()
-_aktiv(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
+_active(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s10)
@@ -494,7 +494,7 @@ check("und lässt die Punkte stehen", (_s10.points[0].x, _s10.points[0].y) == (1
 from autoclicker.handlers import command_reclick_stop as _bns
 
 _s11 = _ST()
-_aktiv(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
+_active(_s11, _SEQ(name="Studio", loop_phases=[_PHASE(name="A", steps=[
     _STEP(point_id=1), _STEP(point_id=2)])]),
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s11)
@@ -512,9 +512,9 @@ import io as _io_nk
 import contextlib as _cl_nk
 
 
-def _verwerf_text(reason):
+def _discard_text(reason):
     st = _ST()
-    _aktiv(st, _SEQ(name="Grund", loop_phases=[_PHASE(name="A", steps=[
+    _active(st, _SEQ(name="Grund", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
            [_point(1, 10, 10), _point(2, 20, 20)])
     _ruesten(st)
@@ -524,14 +524,14 @@ def _verwerf_text(reason):
     return buffer.getvalue()
 
 
-_txt_knopf = _verwerf_text("button")
-_txt_window = _verwerf_text("window")
+_txt_button = _discard_text("button")
+_txt_window = _discard_text("window")
 check("der Verwerfen-Knopf behauptet kein geschlossenes Fenster",
-      "geschlossen" not in _txt_knopf and "verworfen" in _txt_knopf.lower())
+      "geschlossen" not in _txt_button and "verworfen" in _txt_button.lower())
 check("das geschlossene Fenster sagt genau das",
       "Studio geschlossen" in _txt_window)
 check("ohne Grund gilt der Knopf, nicht das Fenster",
-      "geschlossen" not in _verwerf_text(None))
+      "geschlossen" not in _discard_text(None))
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +565,7 @@ _os.chdir(_sandbox_st)
 try:
     Path("sequences").mkdir()
     _s12 = _ST()
-    _aktiv(_s12, _SEQ(name="Sicht", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s12, _SEQ(name="Sicht", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2), _STEP(point_id=3)])]),
            [_point(1, 100, 100, (10, 20, 30)), _point(2, 200, 200),
             _point(3, 300, 300)])
@@ -636,7 +636,7 @@ _os.chdir(_sandbox_zk)
 try:
     Path("sequences").mkdir()
     _s13 = _ST()
-    _aktiv(_s13, _SEQ(name="Zurueck", loop_phases=[_PHASE(name="A", steps=[
+    _active(_s13, _SEQ(name="Zurueck", loop_phases=[_PHASE(name="A", steps=[
         _STEP(point_id=1), _STEP(point_id=2)])]),
            [_point(1, 100, 100), _point(2, 200, 200)])
     _ruesten(_s13)
