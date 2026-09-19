@@ -1,5 +1,5 @@
 """
-API-Check fuer analyse.py
+API-Check fuer analysis.py
 
 Prueft die Annahmen, die die Gold/h-Analyse ueber die Idle-Clans-API trifft, gegen die
 echte API - alles, was ohne Live-Zugriff nicht verifizierbar ist:
@@ -43,7 +43,7 @@ MARKET_ALL_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/late
 GAME_URL = "https://query.idleclans.com/api/Configuration/game-data"
 COMPREHENSIVE_URL_TEMPLATE = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/comprehensive/{item_id}"
 
-# Erwartungen, die analyse.py/config.py fest verdrahtet hat:
+# Erwartungen, die analysis.py/config.py fest verdrahtet hat:
 EXPECTED_MARKET_FIELDS = ["itemId", "highestBuyPrice", "lowestSellPrice",
                           "highestPriceVolume", "lowestPriceVolume", "dailyAveragePrice"]
 EXPECTED_RECIPE_FIELDS = ["Name", "BaseTime", "ItemReward", "ItemAmount", "ExpReward",
@@ -59,7 +59,7 @@ KNOWN_SKILL_NAMES = [
     "Combat", "Enchanting", "Invocation", "ItemCreation",
 ]
 
-# Fuer Punkt 7: so rechnet analyse.py aktuell (multiplikativ).
+# Fuer Punkt 7: so rechnet analysis.py aktuell (multiplikativ).
 SPEED_CHECK_SKILLS = ["Mining", "Fishing", "Woodcutting", "Smithing"]
 SPEED_CHECK_EQUIP_BOOST = 0.55 + 0.06
 SPEED_CHECK_CLAN_BOOST = 0.05
@@ -185,11 +185,11 @@ def load_game():
     if resp is None:
         report["game_data"] = {"error": "nicht erreichbar"}
         return None
-    # Dieselbe Uebersetzung wie in analyse.py - und genau das ist hier die
+    # Dieselbe Uebersetzung wie in analysis.py - und genau das ist hier die
     # Pruefung: kennt sie alle Konstrukte, die die API heute schickt? Ein
     # unbekanntes ist kein Abbruch, sondern ein Befund (siehe extended_json.py).
     try:
-        game, hinweise = extended_json_laden(resp.text)
+        game, hints = extended_json_laden(resp.text)
     except json.JSONDecodeError as exc:
         bad(f"Kein gueltiges JSON nach der Extended-JSON-Uebersetzung: {exc}")
         # Kontext um die Fehlerstelle, damit man sieht, welches Konstrukt stoert
@@ -197,14 +197,14 @@ def load_game():
         info(f"Kontext: ...{resp.text[start:exc.pos + 200]}...")
         report["game_data"] = {"error": f"JSONDecodeError: {exc}"}
         return None
-    for hinweis in hinweise:
-        bad(hinweis)
-    konstrukte = sorted(set(re.findall(r"\b([A-Z][A-Za-z0-9]+)\s*\(", resp.text)))
-    info(f"Extended-JSON-Konstrukte in der Antwort: {konstrukte or 'keine'}")
+    for hint in hints:
+        bad(hint)
+    constructs = sorted(set(re.findall(r"\b([A-Z][A-Za-z0-9]+)\s*\(", resp.text)))
+    info(f"Extended-JSON-Konstrukte in der Antwort: {constructs or 'keine'}")
     ok(f"geladen, Top-Level-Keys: {sorted(game.keys())}")
     report["game_data"] = {"top_level_keys": sorted(game.keys()),
-                           "extended_json_konstrukte": konstrukte,
-                           "extended_json_unbekannt": hinweise}
+                           "extended_json_konstrukte": constructs,
+                           "extended_json_unbekannt": hints}
     return game
 
 
@@ -244,13 +244,13 @@ def check_items(game: dict):
         if it is None:
             info(f"    {name:<24} nicht in der Items-Liste gefunden")
             continue
-        handelbar = not it.get("CanNotBeTraded", False)
+        tradeable = not it.get("CanNotBeTraded", False)
         npc = not it.get("CanNotBeSoldToGameShop", False)
         flag_rows.append({"name": name, "item_id": it.get("ItemId"),
                           "base_value": it.get("BaseValue"),
-                          "handelbar": handelbar, "npc_verkauf": npc})
+                          "tradeable": tradeable, "npc_verkauf": npc})
         print(f"    {name:<24} ID {str(it.get('ItemId')):<5} BaseValue {str(it.get('BaseValue')):<8}"
-              f" Player-Markt: {'ja' if handelbar else 'NEIN'}   NPC: {'ja' if npc else 'NEIN'}")
+              f" Player-Markt: {'ja' if tradeable else 'NEIN'}   NPC: {'ja' if npc else 'NEIN'}")
     report_flags = flag_rows
 
     sample = next((it for it in items if it.get("ItemId") is not None), items[0])
@@ -345,7 +345,7 @@ def check_base_time_unit(recipes):
         ok(f"Median {median} -> plausibel als MILLISEKUNDEN ({median / 1000:.1f}s pro Aktion). "
            "Annahme im Script stimmt.")
     else:
-        bad(f"Median {median} sieht nach SEKUNDEN aus. Dann rechnet analyse.py mit "
+        bad(f"Median {median} sieht nach SEKUNDEN aus. Dann rechnet analysis.py mit "
             "3_600_000ms/h um Faktor 1000 falsch - dort auf 3600 umstellen!")
     report["base_time"] = {"min": times[0], "median": median, "max": times[-1], "count": len(times)}
 
@@ -392,7 +392,7 @@ def check_speed_formula(recipes):
     head("6. SPEED-FORMEL: MULTIPLIKATIV vs. ADDITIV (Stoppuhr-Abgleich)")
     print("  Starte die genannte Aktion ingame und vergleiche die angezeigte/gestoppte")
     print("  Aktionsdauer mit den beiden Spalten. Passt 'additiv' besser, in")
-    print("  analyse.py normalize_recipe() die Formel umstellen.\n")
+    print("  analysis.py normalize_recipe() die Formel umstellen.\n")
     print(f"  (angenommen: Equipment {SPEED_CHECK_EQUIP_BOOST:.0%}, Clan-Gatherers "
           f"{SPEED_CHECK_CLAN_BOOST:.0%} wo zutreffend)\n")
     rows = []
@@ -500,7 +500,7 @@ def check_comprehensive(market_data):
 # ------------------------------------------------------------------
 
 def main():
-    print("API-Check fuer analyse.py - reines Lesen, aendert nichts.\n")
+    print("API-Check fuer analysis.py - reines Lesen, aendert nichts.\n")
     market_data = check_market()
     game = load_game()
     recipes = []

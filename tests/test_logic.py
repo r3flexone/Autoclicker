@@ -4214,7 +4214,7 @@ except ImportError:
     _pd6 = None
 if _pd6 is not None:
     import importlib.util as _ilu6
-    _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analyse.py")
+    _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analysis.py")
     # Der direkte Skriptmodus lädt seine Nachbarmodule ohne Paketpräfix; dafür
     # muss der Ordner wie beim echten Aufruf im Suchpfad stehen.
     sys.path.insert(0, str(_ma_dir))

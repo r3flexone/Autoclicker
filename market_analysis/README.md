@@ -6,7 +6,7 @@ Excel. Läuft eigenständig – kein Import aus `autoclicker/`, kein Windows nö
 
 ```bash
 pip install -r market_analysis/requirements.txt
-python market_analysis/analyse.py
+python market_analysis/analysis.py
 ```
 
 `matplotlib` ist optional (nur für den Chart). Alles Generierte landet in
@@ -16,7 +16,7 @@ python market_analysis/analyse.py
 
 | Datei | Zweck |
 |---|---|
-| `analyse.py` | Hauptlauf: API → Rechnung → Excel + Chart |
+| `analysis.py` | Hauptlauf: API → Rechnung → Excel + Chart |
 | `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten – die rechnende Schicht |
 | `recipes.py` | Reine, separat getestete Rezept-Normalisierung |
 | `orderbook.py` | Reine Orderbuch-, Geduld- und Trendberechnungen |
@@ -30,7 +30,7 @@ Dateien musst du normalerweise nicht anfassen.
 
 **Warum `pricing.py` und `history.py` eigene Module sind:** dort stehen die
 Entscheidungen, an denen der ganze Lauf hängt – an wen wird verkauft, was kostet eine
-Zutat, was kostet eine Kette. Solange sie in `analyse.py` zwischen DataFrames und
+Zutat, was kostet eine Kette. Solange sie in `analysis.py` zwischen DataFrames und
 Excel-Formatierung lagen, waren sie nur prüfbar, wenn pandas installiert ist; die CI
 installiert es nicht, also lief genau der rechnende Teil in keinem Test. Beide Module
 kommen ohne pandas, Excel und Netz aus und stehen deshalb in `test_market_analysis.py`.
@@ -126,7 +126,7 @@ Weicht das Orderbuch stark vom Listenpreis ab, sagt die Bewertung das dazu: Bulk
 und Orderbuch sind zwei Momentaufnahmen.
 
 Gemessen werden die besten `REASON_CANDIDATES` (30) der nach Papier-Gold/h vorsortierten
-Liste – parallel (`ORDERBUCH_PARALLEL`), ein paar Sekunden. Alle Items zu messen (`0`) geht,
+Liste – parallel (`ORDERBOOK_PARALLEL`), ein paar Sekunden. Alle Items zu messen (`0`) geht,
 bringt aber nichts: ein Papier-Wert ist eine Obergrenze, das Buch kann ihn nur drücken, und
 Platz 80 wird dadurch nicht zu Platz 5. Abschalten mit `SHOW_REASON_ANALYSIS = False`.
 
@@ -236,7 +236,7 @@ wäre kürzer und liesse sich für den eigenen Account nicht mehr richtig einste
 | Ore Storage | `ORE_STORAGE_ACTIVE` | 10 % | Erz-Zeile der `*_bar`-Rezepte |
 | Smelting Magic | `SMELTING_MAGIC_ACTIVE` | 30 % | Erz-Zeile der `*_bar`-Rezepte |
 
-**Kombiniert wird multiplikativ** (`spar_faktor`): zwei Upgrades, die je 10 % sparen,
+**Kombiniert wird multiplikativ** (`saving_factor`): zwei Upgrades, die je 10 % sparen,
 sparen zusammen 19 %, nicht 20 % – jedes greift auf das, was nach dem vorigen noch
 übrig ist. Dieselbe Regel wie bei Clan- und Equipment-Boost auf der Zeitseite, und dort
 per Stoppuhr bestätigt.
@@ -247,7 +247,7 @@ per Stoppuhr bestätigt.
 **Wo Smelting Magic nicht greift, greift das Lager trotzdem.** Astronomical ore ist vom
 Perk ausgenommen, und im Worst Case wirkt er womöglich nur auf die erste Kostenzeile –
 Ore Storage ist ein eigenes Upgrade und hört dort nicht auf zu wirken
-(`ORE_STORAGE_COST_MULTIPLIER`, siehe `kosten_faktor` in `recipes.py`).
+(`ORE_STORAGE_COST_MULTIPLIER`, siehe `cost_factor` in `recipes.py`).
 
 ### „Better fisherman" / „Better lumberjack"
 
@@ -377,9 +377,9 @@ schlägt das Schreiben fehl, kostet das nur die Historie – die Excel-Datei ste
 
 ```python
 from market_analysis import history
-conn = history.oeffne()
-history.verlauf(conn, "yew_log")      # Preise und Gold/h über die Zeit
-history.letzte_laeufe(conn, 5)        # wann, mit welchem Code, welcher Config
+conn = history.open_db()
+history.trend_rows(conn, "yew_log")      # Preise und Gold/h über die Zeit
+history.last_runs(conn, 5)        # wann, mit welchem Code, welcher Config
 ```
 
 ## Offene Punkte
@@ -501,7 +501,7 @@ das sie nie liest. `extended_json.py` übersetzt seither alle bekannten Hüllen,
 ein unbekanntes `Name(…)` als seinen Wert (bzw. als Text, wenn mehrere Argumente
 darin stehen) und meldet es mit `⚠` – neue Items, Skills oder Felder brauchen gar
 nichts: Items kommen aus der API, unbekannte Skills bekommen `DEFAULT_SKILL_CONFIG`.
-Taucht die Meldung auf, trägt man den Namen in `ZAHL_HUELLEN` oder `TEXT_HUELLEN` ein;
+Taucht die Meldung auf, trägt man den Namen in `NUMBER_WRAPPERS` oder `TEXT_WRAPPERS` ein;
 `apicheck.py` listet alle Konstrukte der aktuellen Antwort auf. Dasselbe Modul liegt
 als Kopie in `tools/catalog.py` (der Katalog-Knopf des Autoclickers liest dieselbe
 API) – die beiden Teile importieren einander bewusst nicht.
