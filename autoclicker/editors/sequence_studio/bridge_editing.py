@@ -113,7 +113,7 @@ class BridgeEditingMixin:
         self.sel_anchor = row
 
     def select(self, data: dict) -> dict:
-        """Klick auf eine Karte. `mode`: einzeln / dazu / bereich.
+        """Klick auf eine Karte. `mode`: single / add / area.
 
         Die Auswahl fängt in einer anderen Phase immer neu an — siehe
         Klassen-Docstring: Sammelaktionen brauchen genau eine Phase.
@@ -127,8 +127,8 @@ class BridgeEditingMixin:
         if not (0 <= row < len(lane.steps)):
             self._selection_clear()
             return self.snapshot()
-        mode = data.get("mode") or "einzeln"
-        if mode == "dazu" and self.sel_lane is lane:
+        mode = data.get("mode") or "single"
+        if mode == "add" and self.sel_lane is lane:
             self.sel_rows.symmetric_difference_update({row})
             if not self.sel_rows:
                 self._selection_clear()

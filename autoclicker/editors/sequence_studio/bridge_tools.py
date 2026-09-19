@@ -357,7 +357,7 @@ class BridgeToolsMixin:
 
         self._calib[f"ref{number}"] = {
             "point_id": point.id, "name": point.name or f"Punkt #{point.id}",
-            "alt": [point.x, point.y], "neu": [x, y],
+            "old": [point.x, point.y], "new": [x, y],
         }
         if number == 1:
             # Ein neuer erster Punkt macht den zweiten bedeutungslos: er wurde
@@ -512,11 +512,11 @@ class BridgeToolsMixin:
         ref2 = self._calib.get("ref2")
         if ref2:
             self._calib["transform"] = compute_transform(
-                tuple(ref1["alt"]), tuple(ref2["alt"]),
-                tuple(ref1["neu"]), tuple(ref2["neu"]))
+                tuple(ref1["old"]), tuple(ref2["old"]),
+                tuple(ref1["new"]), tuple(ref2["new"]))
         else:
             self._calib["transform"] = transform_from_offset(
-                tuple(ref1["alt"]), tuple(ref1["neu"]))
+                tuple(ref1["old"]), tuple(ref1["new"]))
         self._calib_preview()
 
     def _calib_preview(self) -> None:

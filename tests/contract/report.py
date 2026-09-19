@@ -217,7 +217,7 @@ _buttons = set(re.findall(r'data-view="(\w+)"', _web))
 # ueberall gleich (der Reiter „einstellungen" wohnt in `view-settings`), und ein
 # Test auf die Id meldete genau diesen Reiter als nicht verdrahtet.
 _switched = {b for _, b in re.findall(
-    r'\$\("view-([\w-]+)"\)\.hidden = neu !== "(\w+)"', _web)}
+    r'\$\("view-([\w-]+)"\)\.hidden = next !== "(\w+)"', _web)}
 # Der Editor liegt als `editor-body` im Dokument, nicht als `view-editor`.
 _open = (_buttons - _switched) - {"editor"}
 check("jeder Reiter-Knopf hat seine Umschalt-Zeile", _open == set())
@@ -229,7 +229,7 @@ check("und keine Umschalt-Zeile ohne Knopf", _orphaned == set())
 # **Die Kopfleiste blendet ihre Sequenz-Knoepfe in JEDEM fremden Reiter aus.**
 # Der Bericht liest `logs/`, nicht die offene Sequenz — bliebe „Speichern"
 # stehen, staenden zwei Speichern-Bedeutungen in einer Leiste.
-_list = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(neu\)', _web)
+_list = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(next\)', _web)
 check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
       _list is not None and '"report"' in _list.group(1))
 

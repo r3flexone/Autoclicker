@@ -1994,7 +1994,7 @@ class _FakeSeq:
         self.init_steps = []
 
 
-class _EinTick:
+class _OneTick:
     """stop_event-Ersatz, der genau EINEN Schleifendurchlauf zulaesst.
 
     Der Watcher prueft `while not stop_event.is_set()` VOR dem Rumpf und wartet
@@ -2019,7 +2019,7 @@ def _watcher_tick(phases, h, m, pending=None, last=None):
     _WK.datetime = _FixedTime
     try:
         with _cl2.redirect_stdout(_io2.StringIO()):
-            _sw(phases, pending, last, _EinTick(), _th.Lock(), _th.Event())
+            _sw(phases, pending, last, _OneTick(), _th.Lock(), _th.Event())
     finally:
         _WK.datetime = orig_dt
     return pending
@@ -3735,7 +3735,7 @@ try:
     from autoclicker.persistence.icon_scans import (save_icon_scan as _svc5,
                                                     load_icon_scan_file as _ldc5)
     from autoclicker.persistence.sequences import sequence_dir as _seqdir5
-    _besitzer5 = "ProbeSeq"
+    _owner5 = "ProbeSeq"
     with _cl2.redirect_stdout(_io2.StringIO()):
         _init5()
         for _label5, _kls5, _save5, _load5, _dir5 in (
@@ -3749,15 +3749,15 @@ try:
                 _w5 = _probe_value(_f5)
                 if _w5 is None:
                     continue
-                _cfg5 = _kls5(name="Probe", owner_sequence=_besitzer5)
+                _cfg5 = _kls5(name="Probe", owner_sequence=_owner5)
                 setattr(_cfg5, _f5.name, _w5)
                 _save5(_cfg5)
                 # Der Dateiname folgt dem SANITISIERTEN Namen ("probe.json"), nicht
                 # dem eingetippten. Auf Windows faellt das nicht auf - dort ist das
                 # Dateisystem gross/klein-blind -, auf Linux war jede Pruefung hier
                 # "Datei nicht ladbar" und der Abschnitt dauerhaft rot.
-                _to5 = _load5(_seqdir5(_besitzer5) / _dir5
-                               / f"{_san5('Probe')}.json", _besitzer5)
+                _to5 = _load5(_seqdir5(_owner5) / _dir5
+                               / f"{_san5('Probe')}.json", _owner5)
                 if _to5 is None:
                     _scan_holes.append(f"{_label5}.{_f5.name}: Datei nicht ladbar")
                 elif getattr(_to5, _f5.name, "<fehlt>") != _w5:
@@ -3785,9 +3785,9 @@ import shutil as _sh11
 from autoclicker.models import AutoClickerState as _ST11
 
 _old_cwd11 = _os.getcwd()
-_sand11 = tempfile.mkdtemp(prefix="punkte_nach_")
+_sandbox11 = tempfile.mkdtemp(prefix="punkte_nach_")
 try:
-    _os.chdir(_sand11)
+    _os.chdir(_sandbox11)
     from autoclicker.persistence import (ensure_sequences_dir as _esd11,
                                          load_sequence_file as _lsf11,
                                          sequence_file as _sf11)
@@ -3833,11 +3833,11 @@ try:
 
     _other11.write_text("{kein json", encoding="utf-8")
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _kaputt11 = _lsf11(_other11)
-    check("eine unlesbare sequence.json wird sicher abgelehnt", _kaputt11 is None)
+        _broken11 = _lsf11(_other11)
+    check("eine unlesbare sequence.json wird sicher abgelehnt", _broken11 is None)
 finally:
     _os.chdir(_old_cwd11)
-    _sh11.rmtree(_sand11, ignore_errors=True)
+    _sh11.rmtree(_sandbox11, ignore_errors=True)
 
 # Der Weg, den der Nutzer wirklich geht: CTRL+ALT+L bzw. der Studio-Startbefehl.
 # Beide müssen die vollständige Sequenzdatei laden; ein separates Nachladen von
@@ -3845,18 +3845,18 @@ finally:
 import ast as _ast11
 
 _wrong_reload11 = []
-for _pfad11, _funktion11 in (
+for _path11, _function11 in (
         ("autoclicker/handlers.py", "command_start"),
         ("autoclicker/handlers.py", "handle_switch"),
         ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
-    _tree11 = _ast11.parse(Path(_pfad11).read_text(encoding="utf-8"))
+    _tree11 = _ast11.parse(Path(_path11).read_text(encoding="utf-8"))
     for _k11 in _ast11.walk(_tree11):
-        if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _funktion11:
-            _namen11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
+        if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _function11:
+            _names11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
                         if isinstance(_n11, _ast11.Call)
                         and isinstance(_n11.func, _ast11.Name)}
-            if "load_sequence_file" in _namen11 and "reload_points" in _namen11:
-                _wrong_reload11.append(f"{_pfad11}:{_funktion11}")
+            if "load_sequence_file" in _names11 and "reload_points" in _names11:
+                _wrong_reload11.append(f"{_path11}:{_function11}")
 check("kein Ladeweg mischt einen separaten Punkte-Pool hinein",
       _wrong_reload11 == [])
 if _wrong_reload11:
@@ -3913,12 +3913,12 @@ for _edge12 in (16, 32):
     # Maskenzeilen sind auf 4 Byte aufgefuellt - bei 16 px sind das 4, nicht 2.
     if len(_bits12) != 40 + _edge12 * _edge12 * 4 + 4 * _edge12:
         _symbol_holes12.append(f"{_edge12}: Laenge passt nicht zum Kopf")
-    _ecken12 = [_symbolpixel12(_bits12, _edge12, x, y)[3]
+    _corners12 = [_symbolpixel12(_bits12, _edge12, x, y)[3]
                 for x in (0, _edge12 - 1) for y in (0, _edge12 - 1)]
     # Der gelieferte Radius ist bei 16 px nur gut einen Pixel gross. Der
     # Eckpixel ist deshalb kantengeglaettet, nicht zwingend komplett leer.
-    if any(a >= 255 for a in _ecken12):
-        _symbol_holes12.append(f"{_edge12}: Ecken nicht abgerundet ({_ecken12})")
+    if any(a >= 255 for a in _corners12):
+        _symbol_holes12.append(f"{_edge12}: Ecken nicht abgerundet ({_corners12})")
     _innen12 = [_symbolpixel12(_bits12, _edge12, x, y)[3]
                 for y in range(2, _edge12 - 2) for x in range(2, _edge12 - 2)]
     # Das neue Motiv hat absichtlich auch in der Mitte transparente Aussparungen.
@@ -3938,10 +3938,10 @@ if _symbol_holes12:
 # Orientierungshilfe festzuschreiben, wird jedes Pixel mit der kanonischen
 # SVG-Rasterung verglichen. Das deckt Umdrehen, Kanalreihenfolge und Alpha ab.
 _bits12 = _sb12(32)
-_soll12 = list(_sym12.pixel_rows(32))
+_expected12 = list(_sym12.pixel_rows(32))
 check("die Zeilen stehen von unten nach oben in der Datei",
       all(_symbolpixel12(_bits12, 32, x, y)
-          == (_soll12[y][x][2], _soll12[y][x][1], _soll12[y][x][0], _soll12[y][x][3])
+          == (_expected12[y][x][2], _expected12[y][x][1], _expected12[y][x][0], _expected12[y][x][3])
           for y in range(32) for x in range(32)))
 
 # --- Ein gewaehltes Fenster wird DIREKT abgebildet ---
@@ -4078,8 +4078,8 @@ check("die Stuecke stehen in der Reihenfolge, die das Format verlangt",
       _png12.index(b"IHDR") < _png12.index(b"IDAT") < _png12.index(b"IEND"))
 
 _ico12 = _werk12.ico_bytes((16, 32, 256))
-_typ12, _art12, _cnt12 = _struct12.unpack("<HHH", _ico12[:6])
-check("das ICO hat einen Verzeichniskopf", (_typ12, _art12, _cnt12) == (0, 1, 3))
+_type12, _art12, _cnt12 = _struct12.unpack("<HHH", _ico12[:6])
+check("das ICO hat einen Verzeichniskopf", (_type12, _art12, _cnt12) == (0, 1, 3))
 _entries12 = [_struct12.unpack("<BBBBHHII", _ico12[6 + i * 16:22 + i * 16])
                 for i in range(_cnt12)]
 # 256 steht als 0 im Verzeichnis: ein Byte fasst nur bis 255.
@@ -4097,11 +4097,11 @@ from autoclicker.platforms.windows import set_app_id as _said12, APP_ID as _AID1
 
 check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
 if sys.platform == "win32":
-    _puffer12 = ctypes.c_wchar_p()
+    _buffer12 = ctypes.c_wchar_p()
     _hr12 = ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(
-        ctypes.byref(_puffer12))
+        ctypes.byref(_buffer12))
     check("und Windows gibt danach genau sie zurueck",
-          _hr12 == 0 and _puffer12.value == _AID12)
+          _hr12 == 0 and _buffer12.value == _AID12)
 else:
     # Ohne Windows bleibt nur die Form pruefbar - die Schnittstelle verlangt eine
     # punktgetrennte Kennung ohne Leerzeichen.
@@ -4145,7 +4145,7 @@ from autoclicker.models import ItemProfile as _IP6
 # stehen, woher die Datei kommt - eine Abhaengigkeit ist erst ein import.
 import ast as _ast6
 
-def _importierte_module(folder: Path, pattern: str) -> list[str]:
+def _imported_modules(folder: Path, pattern: str) -> list[str]:
     match = []
     for _p in sorted(folder.rglob("*.py")):
         try:
@@ -4162,23 +4162,23 @@ def _importierte_module(folder: Path, pattern: str) -> list[str]:
                 match.append(f"{_p.name}:{_n.lineno}")
     return match
 
-_wurzel6 = Path(__file__).resolve().parent.parent
-_ma_dir = _wurzel6 / "market_analysis"
+_root6 = Path(__file__).resolve().parent.parent
+_ma_dir = _root6 / "market_analysis"
 check("der Autoclicker importiert nichts aus market_analysis",
-      _importierte_module(_wurzel6 / "autoclicker", "market_analysis") == [])
+      _imported_modules(_root6 / "autoclicker", "market_analysis") == [])
 check("und market_analysis importiert nichts aus dem Autoclicker",
-      _importierte_module(_ma_dir, "autoclicker") == [])
+      _imported_modules(_ma_dir, "autoclicker") == [])
 
 # Leerer Pfad = aus. Das ist der Standard und muss ohne Datei funktionieren.
 check("ohne konfigurierten Pfad bleibt alles wie bisher", _lmw("") == {})
 check("ein Pfad ins Leere kippt nicht um", _lmw("gibt/es/nicht.json") == {})
 
-_fd6, _pfad6 = _tf6.mkstemp(suffix=".json")
+_fd6, _path6 = _tf6.mkstemp(suffix=".json")
 _os6.close(_fd6)
 try:
-    Path(_pfad6).write_text(_js6.dumps({"Kohle": 12.5, "Gold": 900, "Murks": "keine Zahl"}),
+    Path(_path6).write_text(_js6.dumps({"Kohle": 12.5, "Gold": 900, "Murks": "keine Zahl"}),
                             encoding="utf-8")
-    _w6 = _lmw(_pfad6)
+    _w6 = _lmw(_path6)
     check("Werte werden gelesen", _w6.get("Kohle") == 12.5 and _w6.get("Gold") == 900.0)
     check("unbrauchbare Eintraege fliegen einzeln raus, nicht die ganze Datei",
           "Murks" not in _w6 and len(_w6) == 2)
@@ -4199,13 +4199,13 @@ try:
 
     # Neu gerechnete Analyse muss ohne Neustart greifen (Cache am mtime)
     _mwc.clear()
-    _lmw(_pfad6)
-    Path(_pfad6).write_text(_js6.dumps({"Kohle": 999.0}), encoding="utf-8")
-    _os6.utime(_pfad6, (0, 0))            # mtime sicher veraendern
+    _lmw(_path6)
+    Path(_path6).write_text(_js6.dumps({"Kohle": 999.0}), encoding="utf-8")
+    _os6.utime(_path6, (0, 0))            # mtime sicher veraendern
     check("eine neu geschriebene Wertetabelle greift ohne Neustart",
-          _lmw(_pfad6).get("Kohle") == 999.0)
+          _lmw(_path6).get("Kohle") == 999.0)
 finally:
-    _os6.unlink(_pfad6)
+    _os6.unlink(_path6)
 
 # Die Schreibseite: market_analysis baut die Datei aus seinem DataFrame
 try:
@@ -4226,18 +4226,18 @@ if _pd6 is not None:
             {"Item": "Kohle", "Gold pro Stück": 30.0},   # zweites Rezept, besserer Wert
             {"Item": "Murks", "Gold pro Stück": float("nan")},
         ])
-        _fd7, _pfad7 = _tf6.mkstemp(suffix=".json")
+        _fd7, _path7 = _tf6.mkstemp(suffix=".json")
         _os6.close(_fd7)
         try:
-            _n6 = _ma6.export_market_values(_df6, _pfad7)
-            _out6 = _js6.loads(Path(_pfad7).read_text(encoding="utf-8"))
+            _n6 = _ma6.export_market_values(_df6, _path7)
+            _out6 = _js6.loads(Path(_path7).read_text(encoding="utf-8"))
             check("die Analyse schreibt Name -> Wert", _n6 == 1 and "Kohle" in _out6)
             check("bei mehreren Rezepten gewinnt der beste Wert", _out6["Kohle"] == 30.0)
             check("NaN landet nicht in der Datei", "Murks" not in _out6)
             check("und der Autoclicker liest genau das wieder",
-                  _lmw(_pfad7).get("Kohle") == 30.0)
+                  _lmw(_path7).get("Kohle") == 30.0)
         finally:
-            _os6.unlink(_pfad7)
+            _os6.unlink(_path7)
     except Exception as _e6:               # pandas/openpyxl fehlt o.ae. - kein Testfehler
         print(f"  {'-':>4}  Schreibseite uebersprungen ({type(_e6).__name__})")
     finally:
@@ -4276,16 +4276,16 @@ def _bridge8():
     return _SB8(seq, Path("sequences/T.json"), "sequences")
 
 
-def _namen8(b, phase):
+def _names8(b, phase):
     return [s.name for s in b.board.lanes[phase].steps]
 
 
 def _choose8(b, phase, *lines):
     for i, line in enumerate(lines):
-        b.select({"phase": phase, "row": line, "mode": "einzeln" if i == 0 else "dazu"})
+        b.select({"phase": phase, "row": line, "mode": "single" if i == 0 else "add"})
 
 
-def _zieh8(b, from_phase, from_row, to_phase, to_row):
+def _drag8(b, from_phase, from_row, to_phase, to_row):
     b.drag({"from_phase": from_phase, "from_row": from_row,
               "to_phase": to_phase, "to_row": to_row})
 
@@ -4295,73 +4295,73 @@ INIT8, LOOP8, END8 = 0, 1, 2
 # --- Ziehen innerhalb einer Phase ---
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0)
-_zieh8(_b8, LOOP8, 0, LOOP8, 3)              # "1" vor Position 3
+_drag8(_b8, LOOP8, 0, LOOP8, 3)              # "1" vor Position 3
 check("Ziehen nach hinten setzt an die richtige Stelle",
-      _namen8(_b8, LOOP8) == ["2", "3", "1", "4", "5"])
+      _names8(_b8, LOOP8) == ["2", "3", "1", "4", "5"])
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 4)
-_zieh8(_b8, LOOP8, 4, LOOP8, 0)              # "5" ganz nach vorne
-check("Ziehen nach vorne ebenso", _namen8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
+_drag8(_b8, LOOP8, 4, LOOP8, 0)              # "5" ganz nach vorne
+check("Ziehen nach vorne ebenso", _names8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
 # Auf sich selbst gezogen darf nichts passieren
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 2)
-_zieh8(_b8, LOOP8, 2, LOOP8, 2)
+_drag8(_b8, LOOP8, 2, LOOP8, 2)
 check("auf die eigene Position gezogen aendert nichts",
-      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+      _names8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
 
 # --- Mehrere auf einmal: die Auswahl wandert als Block ---
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 1)
-_zieh8(_b8, LOOP8, 0, LOOP8, 4)
+_drag8(_b8, LOOP8, 0, LOOP8, 4)
 check("eine mehrfache Auswahl wandert zusammenhaengend",
-      _namen8(_b8, LOOP8) == ["3", "4", "1", "2", "5"])
+      _names8(_b8, LOOP8) == ["3", "4", "1", "2", "5"])
 check("und bleibt danach ausgewaehlt", sorted(_b8.sel_rows) == [2, 3])
 # Ein Schritt AUSSERHALB der Auswahl zieht nur sich selbst
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 1)
-_zieh8(_b8, LOOP8, 4, LOOP8, 0)
+_drag8(_b8, LOOP8, 4, LOOP8, 0)
 check("ein Schritt ausserhalb der Auswahl zieht nur sich selbst",
-      _namen8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
+      _names8(_b8, LOOP8) == ["5", "1", "2", "3", "4"])
 
 # --- Ueber die Phasengrenze: das kann der Konsolen-Editor bis heute nicht ---
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 1)
-_zieh8(_b8, LOOP8, 0, INIT8, 1)
+_drag8(_b8, LOOP8, 0, INIT8, 1)
 check("Schritte lassen sich in eine andere Phase ziehen",
-      _namen8(_b8, INIT8) == ["A", "1", "2"] and _namen8(_b8, LOOP8) == ["3", "4", "5"])
+      _names8(_b8, INIT8) == ["A", "1", "2"] and _names8(_b8, LOOP8) == ["3", "4", "5"])
 check("die Auswahl folgt in die Zielphase",
       _b8.sel_lane is _b8.board.lanes[INIT8] and sorted(_b8.sel_rows) == [1, 2])
 # Ans Ende einer Phase (die Ablage unter der Liste liefert at == len)
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 2)
-_zieh8(_b8, LOOP8, 2, END8, len(_b8.board.lanes[END8].steps))
-check("Ziehen ans Ende einer Phase haengt an", _namen8(_b8, END8) == ["Z", "3"])
+_drag8(_b8, LOOP8, 2, END8, len(_b8.board.lanes[END8].steps))
+check("Ziehen ans Ende einer Phase haengt an", _names8(_b8, END8) == ["Z", "3"])
 
 # --- Sammel-Verschieben mit den Pfeilen ---
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 1, 2)
 _b8.selection_move({"delta": 1})
 check("Pfeil runter schiebt die ganze Auswahl",
-      _namen8(_b8, LOOP8) == ["1", "4", "2", "3", "5"] and sorted(_b8.sel_rows) == [2, 3])
+      _names8(_b8, LOOP8) == ["1", "4", "2", "3", "5"] and sorted(_b8.sel_rows) == [2, 3])
 _b8.selection_move({"delta": -1})
 check("Pfeil hoch bringt sie zurueck",
-      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"] and sorted(_b8.sel_rows) == [1, 2])
+      _names8(_b8, LOOP8) == ["1", "2", "3", "4", "5"] and sorted(_b8.sel_rows) == [1, 2])
 # An den Raendern passiert nichts (und es wird nichts verschluckt)
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 1)
 _b8.selection_move({"delta": -1})
 check("am oberen Rand bleibt die Reihenfolge stehen",
-      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+      _names8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
 _choose8(_b8, LOOP8, 3, 4)
 _b8.selection_move({"delta": 1})
-check("am unteren Rand ebenso", _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
+check("am unteren Rand ebenso", _names8(_b8, LOOP8) == ["1", "2", "3", "4", "5"])
 
 # --- Sammel-Loeschen ---
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 2, 4)
 _b8.selection_delete()
 check("Sammel-Loeschen trifft genau die ausgewaehlten Schritte",
-      _namen8(_b8, LOOP8) == ["2", "4"])
+      _names8(_b8, LOOP8) == ["2", "4"])
 check("und leert die Auswahl", _b8.sel_lane is None and _b8.sel_rows == set())
 
 # --- Duplizieren ---
@@ -4370,7 +4370,7 @@ _b8 = _bridge8()
 _choose8(_b8, LOOP8, 1)
 _b8.selection_duplicate()
 check("die Kopie liegt direkt hinter dem Original",
-      _namen8(_b8, LOOP8) == ["1", "2", "2", "3", "4", "5"])
+      _names8(_b8, LOOP8) == ["1", "2", "2", "3", "4", "5"])
 check("und ist die neue Auswahl", sorted(_b8.sel_rows) == [2])
 # Die Kopie zeigt auf DENSELBEN Punkt: ein Duplikat ist erst mal derselbe Klick,
 # und ein zweiter Punkt an derselben Stelle waere genau die Doppelung, die
@@ -4396,36 +4396,36 @@ _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 2)
 _b8.selection_duplicate()
 check("eine Mehrfachauswahl bleibt als Block beisammen",
-      _namen8(_b8, LOOP8) == ["1", "2", "3", "1", "3", "4", "5"])
+      _names8(_b8, LOOP8) == ["1", "2", "3", "1", "3", "4", "5"])
 check("und die Kopien sind zusammenhaengend gewaehlt", sorted(_b8.sel_rows) == [3, 4])
 
 _b8 = _bridge8()
 _z8 = _b8.selection_duplicate()
 check("ohne Auswahl passiert nichts - mit Ansage",
-      _namen8(_b8, LOOP8) == ["1", "2", "3", "4", "5"]
+      _names8(_b8, LOOP8) == ["1", "2", "3", "4", "5"]
       and _z8["status"]["kind"] == "warn")
 
 # --- Kein Schritt geht je verloren ---
 _b8 = _bridge8()
-_before8 = sorted(_namen8(_b8, INIT8) + _namen8(_b8, LOOP8) + _namen8(_b8, END8))
+_before8 = sorted(_names8(_b8, INIT8) + _names8(_b8, LOOP8) + _names8(_b8, END8))
 _choose8(_b8, LOOP8, 1, 3)
-_zieh8(_b8, LOOP8, 1, END8, 0)
-_zieh8(_b8, END8, 0, INIT8, 0)
+_drag8(_b8, LOOP8, 1, END8, 0)
+_drag8(_b8, END8, 0, INIT8, 0)
 check("ueber mehrere Phasenwechsel bleibt der Bestand vollstaendig",
-      sorted(_namen8(_b8, INIT8) + _namen8(_b8, LOOP8) + _namen8(_b8, END8)) == _before8)
+      sorted(_names8(_b8, INIT8) + _names8(_b8, LOOP8) + _names8(_b8, END8)) == _before8)
 
 # --- Die Auswahl lebt in genau EINER Phase ---
 # Sonst haette "eine Position hoch" keine Bedeutung und die Sammelaktionen waeren
 # nicht mehr eindeutig - deshalb faengt ein Klick in einer anderen Spalte neu an.
 _b8 = _bridge8()
 _choose8(_b8, LOOP8, 0, 1)
-_b8.select({"phase": INIT8, "row": 0, "mode": "dazu"})
+_b8.select({"phase": INIT8, "row": 0, "mode": "add"})
 check("ein Klick in einer anderen Phase faengt die Auswahl neu an",
       _b8.sel_lane is _b8.board.lanes[INIT8] and _b8.sel_rows == {0})
 
 # --- Auswahl muss sich ebenso leicht wieder abwählen lassen ---
 _b8 = _bridge8()
-_b8.select({"phase": LOOP8, "row": 1, "mode": "einzeln"})
+_b8.select({"phase": LOOP8, "row": 1, "mode": "single"})
 _b8.select({"phase": LOOP8, "row": 3, "mode": "area"})
 check("Umschalt-Klick waehlt den Bereich ab dem festen Anker",
       _b8.sel_rows == {1, 2, 3})
@@ -4561,10 +4561,10 @@ _seq10 = _SEQ8(name="T", loop_phases=[_LP8(name="Loop", repeat=1, steps=[
     _SS(delay_before=0, boss_watcher="w"),                      # Boss-Watcher
 ])])
 _b10 = _SB8(_seq10, Path("sequences/T.json"), "sequences")
-_error10, _typen10 = [], []
+_error10, _types10 = [], []
 for _r10 in range(len(_seq10.loop_phases[0].steps)):
     try:
-        _typen10.append(_b10.select({"phase": 1, "row": _r10})["block"]["type"])
+        _types10.append(_b10.select({"phase": 1, "row": _r10})["block"]["type"])
     except Exception as _e10:                                    # noqa: BLE001
         _error10.append(f"Zeile {_r10}: {type(_e10).__name__} {_e10}")
 check("jeder Block-Typ laesst sich anzeigen", _error10 == [])
@@ -4572,7 +4572,7 @@ if _error10:
     for _z10 in _error10:
         print("        " + _z10)
 check("und wird als das erkannt, was er ist",
-      _typen10 == ["click", "key", "screenshot", "wait", "item_scan", "boss_scan",
+      _types10 == ["click", "key", "screenshot", "wait", "item_scan", "boss_scan",
                    "icon_scan", "boss_watcher"])
 # Umschalten in jeden Typ und zurueck - set_block_type raeumt die Diskriminatoren
 _b10.select({"phase": 1, "row": 0})
@@ -4650,11 +4650,11 @@ try:
     check("ohne Briefkasten kommt nichts zurueck", _bf13.fetch_command() is None)
 
     _bf13.send_command("start", file="sequences/x.json", sequence="X")
-    _auftrag13 = _bf13.fetch_command()
+    _job13 = _bf13.fetch_command()
     check("ein gesendeter Befehl kommt an",
-          _auftrag13 is not None and _auftrag13["command"] == "start")
+          _job13 is not None and _job13["command"] == "start")
     check("mit seinen Argumenten",
-          _auftrag13["arguments"] == {"file": "sequences/x.json", "sequence": "X"})
+          _job13["arguments"] == {"file": "sequences/x.json", "sequence": "X"})
     check("und der Briefkasten ist danach leer",
           not _bf13.COMMAND_PATH.exists() and _bf13.fetch_command() is None)
 
@@ -4711,10 +4711,10 @@ try:
     _state14 = _b14.run_command({"command": "start"})
     check("der Start speichert die offene Sequenz zuerst",
           _b14._dirty is False and Path("sequences/lauf/sequence.json").exists())
-    _auftrag14 = _bf13.fetch_command()
+    _job14 = _bf13.fetch_command()
     check("und schickt genau diese Datei mit",
-          _auftrag14 is not None
-          and Path(_auftrag14["arguments"]["file"]) == Path("sequences/lauf/sequence.json"))
+          _job14 is not None
+          and Path(_job14["arguments"]["file"]) == Path("sequences/lauf/sequence.json"))
     check("die Aenderung steht in der Datei, nicht nur im Speicher",
           json.loads(Path("sequences/lauf/sequence.json").read_text(encoding="utf-8"))
           .get("total_cycles") == 7)
@@ -4821,17 +4821,17 @@ check("der Chip KLICK laesst den Trigger bewusst fallen", _s13.wait_condition is
 # ausmachte: ein zweites Bedienelement fuer denselben Zustand.
 import re as _re13b
 
-_seite13 = _H.studio_web_source()
-_toggles13 = _re13b.findall(r'toggle\(\s*"([^"]*)"', _seite13)
+_page13 = _H.studio_web_source()
+_toggles13 = _re13b.findall(r'toggle\(\s*"([^"]*)"', _page13)
 check("die Ansicht hat ueberhaupt Schalter", len(_toggles13) >= 2)
 check("aber keinen zweiten fuer 'nur warten' neben dem Typ-Chip",
       not any("nur warten" in s for s in _toggles13))
 check("und keinen anderen, der wait_only setzt",
-      'field: "wait_only"' not in _seite13)
-_aktion13 = _seite13[_seite13.index("function buildAction"):
-                     _seite13.index("function buildPosition")]
+      'field: "wait_only"' not in _page13)
+_action13 = _page13[_page13.index("function buildAction"):
+                     _page13.index("function buildPosition")]
 check("die automatisch wechselnde Typ-Kachel wird nicht nochmals als 'ergibt' gezeigt",
-      '"ergibt"' not in _aktion13 and "card-type" not in _aktion13)
+      '"ergibt"' not in _action13 and "card-type" not in _action13)
 
 # --- Tastendruck-Erkennung fuer Fenster-Prozesse ---
 # Das Sequenz-Studio hat keine Konsole, in die man tippen koennte. Auf ENTER zu
@@ -4879,7 +4879,7 @@ _b15 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
     Path("sequences/S.json"), "sequences")
 _b15.select({"phase": 1, "row": 0})
 
-_echt15 = (_io15.wait_for_global_key, _wa15.get_cursor_pos)
+_real15 = (_io15.wait_for_global_key, _wa15.get_cursor_pos)
 try:
     # Beide Ecken in EINEM Aufruf: zwischendurch zum Fenster zurueckzufahren ist
     # genau der Weg, den die Maus-Aufnahme ersparen soll. Hier kommt Ecke 1 unten
@@ -4916,7 +4916,7 @@ try:
           _z15["status"]["kind"] == "warn"
           and _z15["block"]["screenshot_region"] == _before15)
 finally:
-    _io15.wait_for_global_key, _wa15.get_cursor_pos = _echt15
+    _io15.wait_for_global_key, _wa15.get_cursor_pos = _real15
 
 
 # --- Die Scan-Konfigurationen kommen zur Auswahl, statt getippt zu werden ---
@@ -4940,13 +4940,13 @@ try:
     _b14 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(delay_before=0, item_scan="")])]),
         Path("sequences/s/sequence.json"), "sequences")
-    _namen14 = _b14.snapshot()["scan_names"]
+    _names14 = _b14.snapshot()["scan_names"]
     check("die Momentaufnahme nennt die vorhandenen Item-Scans",
-          _namen14["item_scan"] == ["amboss", "beutel"])
+          _names14["item_scan"] == ["amboss", "beutel"])
     check("ein leerer Ordner ergibt eine leere Liste, keinen Fehler",
-          _namen14["icon_scan"] == [])
+          _names14["icon_scan"] == [])
     check("der Boss-Watcher bekommt dieselben Konfigurationen wie der Boss-Scan",
-          _namen14["boss_watcher"] == _namen14["boss_scan"] == ["hoehle"])
+          _names14["boss_watcher"] == _names14["boss_scan"] == ["hoehle"])
 
     # Neu angelegte Konfigurationen tauchen ohne Neustart auf: gelesen wird bei
     # jeder Momentaufnahme. Zwischen Haupt- und Studio-Prozess ist die Datei der
@@ -4991,9 +4991,9 @@ try:
 
     # Der leere Name muss die Datei ueberleben - sonst waere der Block beim
     # naechsten Oeffnen ein Klick-Block und die Stelle im Ablauf falsch.
-    _roh12 = json.loads(_b12.filepath.read_text(encoding="utf-8"))
+    _raw12 = json.loads(_b12.filepath.read_text(encoding="utf-8"))
     check("der leere Scan-Name steht in der Datei",
-          _roh12["loop_phases"][0]["steps"][0].get("item_scan") == "")
+          _raw12["loop_phases"][0]["steps"][0].get("item_scan") == "")
 
     # Der Sequenz-Name ist etwas anderes: er IST der Dateiname.
     _b12.board.name = ""
@@ -5054,9 +5054,9 @@ _html13 = _H.studio_web_source()
 # Umbenennen der Bruecken-Methode `neu` -> `new` war genau dieser Aufruf
 # (`switchSequence("neu")`) der eine, den kein Muster sah: der Knopf „Neu"
 # rief eine Methode, die es nicht mehr gab.
-_HELFER13 = ("call", "callScan", "callShare", "callTool", "ask", "switchSequence")
+_HELPERS13 = ("call", "callScan", "callShare", "callTool", "ask", "switchSequence")
 _called13 = set(_re13.findall(
-    r'\b(?:' + "|".join(_HELFER13) + r')\("([a-z_]+)"', _html13))
+    r'\b(?:' + "|".join(_HELPERS13) + r')\("([a-z_]+)"', _html13))
 # `withWait()` ist der sechste Kanal und der einzige, bei dem der Methodenname
 # NICHT das erste Argument ist: davor steht, welcher Helfer darunter laeuft
 # ("call" / "ask" / "tool"). Ohne diese Zeile faellt jede blockierende
@@ -5081,7 +5081,7 @@ check("und der Werkzeuge-Reiter (callTool)",
 # Jeder Helfer, den die Seite benutzt, muss im Muster stehen. Sonst waechst ein
 # vierter Kanal heran, den dieser Test nicht ansieht - genau so war es bei
 # `callTool`, und der Reiter haette ungeprueft ausgeliefert werden koennen.
-_BEKANNT13 = _HELFER13 + ("withWait", "withWork")
+_KNOWN13 = _HELPERS13 + ("withWait", "withWork")
 # Gefunden wird JEDE async-Funktion, die einen Bruecken-Namen weiterreicht —
 # nicht nur die mit `call` im Namen. `withWait` heisst nicht so und waere unter
 # dem alten Muster still durchgerutscht.
@@ -5089,10 +5089,10 @@ _helper_present13 = sorted(set(_re13.findall(
     r'\basync function (\w+)\(', _html13)))
 _helper_present13 = [h for h in _helper_present13
                if h.startswith("call") or h in ("withWait", "withWork", "switchSequence")]
-if not all(h in _BEKANNT13 for h in _helper_present13):
-    print(f"    ungeprueft: {[h for h in _helper_present13 if h not in _BEKANNT13]}")
+if not all(h in _KNOWN13 for h in _helper_present13):
+    print(f"    ungeprueft: {[h for h in _helper_present13 if h not in _KNOWN13]}")
 check("und kein Aufruf-Helfer bleibt ungeprueft",
-      all(h in _BEKANNT13 for h in _helper_present13))
+      all(h in _KNOWN13 for h in _helper_present13))
 
 _missing13 = [n for n in _called13 if not callable(getattr(_SB8, n, None))]
 check("jede gerufene Methode gibt es in der Bruecke", _missing13 == [])
@@ -5146,9 +5146,9 @@ _time_source13 = _inspect13.getsource(_act13._wait_loop)
 _time_fields13 = set(_re13.findall(r'"(\w+)":', _time_source13))
 _box13 = _html13[_html13.index("function waitBox("):]
 _box13 = _box13[:_box13.index("\nfunction ")]
-_gelesen13 = set(_re13.findall(r"\bw\.([a-z_]+)", _box13))
-check("der Warte-Kasten liest ueberhaupt Felder", len(_gelesen13) >= 6)
-_unknown13 = sorted(_gelesen13 - _color_fields13 - _time_fields13)
+_read13 = set(_re13.findall(r"\bw\.([a-z_]+)", _box13))
+check("der Warte-Kasten liest ueberhaupt Felder", len(_read13) >= 6)
+_unknown13 = sorted(_read13 - _color_fields13 - _time_fields13)
 check("und jedes davon schreibt die Laufzeit auch", _unknown13 == [])
 if _unknown13:
     print("        liest, was niemand schreibt: " + ", ".join(_unknown13))
@@ -5181,12 +5181,12 @@ try:
         """
         return len(seq.loop_phases[0].steps) if seq.loop_phases else 0
 
-    _seq14, _pfad14 = _rs14("all dayli")            # ueber den Namen
+    _seq14, _path14 = _rs14("all dayli")            # ueber den Namen
     check("der Name in der Datei findet die Sequenz", _steps14(_seq14) == 1)
 
-    _seq14b, _pfad14b = _rs14("all_dayli")          # ueber den Dateinamen
+    _seq14b, _path14b = _rs14("all_dayli")          # ueber den Dateinamen
     check("der Dateiname findet sie auch",
-          _steps14(_seq14b) == 1 and _pfad14b == _pfad14)
+          _steps14(_seq14b) == 1 and _path14b == _path14)
 
     # --- Ohne Namen: die zuletzt bearbeitete Sequenz, kein leeres Fenster ---
     # Das Studio startet ohne Namen, wenn im Hauptprozess keine Sequenz aktiv ist
@@ -5210,33 +5210,33 @@ try:
     check("die zuletzt geaenderte Datei wird gefunden",
           _zb14() == _all14)
 
-    _seq14d, _pfad14d = _rs14("")
+    _seq14d, _path14d = _rs14("")
     check("ohne Namen kommt genau die",
-          _pfad14d == _all14
+          _path14d == _all14
           and _steps14(_seq14d) == 1)
 
     check("eine geöffnete Sequenz wird gemerkt", _mz14(_old14))
-    _seq14offen, _pfad14offen = _rs14("")
+    _seq14open, _path14open = _rs14("")
     check("zuletzt geöffnet schlägt die ältere Dateizeit",
-          _pfad14offen == _old14)
+          _path14open == _old14)
 
     # Speichert danach ein anderer Programmteil eine Sequenz, ist dieses Ereignis
     # neuer als das Öffnen und muss wieder gewinnen.
     _marker14 = Path(".studio-sequence.json")
     _after_marker14 = _marker14.stat().st_mtime_ns + 1_000_000_000
     _os.utime(_all14, ns=(_after_marker14, _after_marker14))
-    _seq14e, _pfad14e = _rs14("")
+    _seq14e, _path14e = _rs14("")
     check("eine danach gespeicherte Sequenz gewinnt wieder",
-          _pfad14e == _all14)
+          _path14e == _all14)
 
     # Kaputte Datei: nicht ladbar heisst nicht ueberschreibbar.
-    _kaputt14 = Path("sequences") / "kaputt" / "sequence.json"
-    _kaputt14.parent.mkdir(parents=True)
-    _kaputt14.write_text("{kein json", encoding="utf-8")
-    _os.utime(_kaputt14, (_time14 - 100, _time14 - 100))
-    _seq14c, _pfad14c = _rs14("kaputt")
+    _broken14 = Path("sequences") / "kaputt" / "sequence.json"
+    _broken14.parent.mkdir(parents=True)
+    _broken14.write_text("{kein json", encoding="utf-8")
+    _os.utime(_broken14, (_time14 - 100, _time14 - 100))
+    _seq14c, _path14c = _rs14("kaputt")
     check("eine unlesbare Datei wird nicht als Ziel uebernommen",
-          _pfad14c != _kaputt14 and _seq14c.loop_phases == [])
+          _path14c != _broken14 and _seq14c.loop_phases == [])
 finally:
     _os.chdir(_st_cwd)
 
@@ -5274,9 +5274,9 @@ try:
     _write16("klein.json", {
         "name": "klein", "schema_version": 4, "total_cycles": 0,
         "init_steps": [], "end_steps": [], "loop_phases": []})
-    _kaputt16 = Path("sequences") / "kaputt" / "sequence.json"
-    _kaputt16.parent.mkdir(parents=True)
-    _kaputt16.write_text("{kein json", encoding="utf-8")
+    _broken16 = Path("sequences") / "kaputt" / "sequence.json"
+    _broken16.parent.mkdir(parents=True)
+    _broken16.write_text("{kein json", encoding="utf-8")
 
     _b16 = _SB8(_SEQ8(name="gross"),
                 Path("sequences") / "gross" / "sequence.json", "sequences")
@@ -5301,7 +5301,7 @@ try:
           and "ITEM-SCAN" in _after16["gross"]["warnings"][0])
     check("und eine saubere Sequenz meldet nichts", _after16["klein"]["warnings"] == [])
     check("eine kaputte Datei bringt die Uebersicht nicht um",
-          Path(_after16["kaputt"]["file"]) == _kaputt16)
+          Path(_after16["kaputt"]["file"]) == _broken16)
 
     # Gegenprobe zur Wiederverwendung: Speichern und Uebersicht duerfen nicht zwei
     # getrennte Regeln haben. Beide fragen scan_warnings() - der Test misst das,
@@ -5333,9 +5333,9 @@ try:
     # Hauptprozess soll nicht ewig als "laeuft" in der Oberflaeche stehen.
     Path(_rsf16).write_text(json.dumps(
         {"active": True, "sequence": "S", "stamp": _time16.time() - 60}), encoding="utf-8")
-    _verwaist16 = _b16.run_status()
+    _orphaned16 = _b16.run_status()
     check("ein alter Stand gilt als verwaist",
-          _verwaist16 == {"active": False, "orphaned": True})
+          _orphaned16 == {"active": False, "orphaned": True})
 
     # --- Die Phasen-Uebersicht: alle Phasen, nicht nur die laufende ---
     # Die Liste steht im Laufstatus, weil die Ansicht sie sonst aus der GEOEFFNETEN
@@ -5390,12 +5390,12 @@ try:
                    _PP8(id=3, x=33, y=33, name="C", color=None)]
     _lane20 = next(i for i, ln in enumerate(_b20.board.lanes) if ln.steps)
     _b20.select({"phase": _lane20, "row": 0})
-    for _welche20, _soll20 in (("click", 11), ("trigger", 22), ("else", 33)):
+    for _which20, _expected20 in (("click", 11), ("trigger", 22), ("else", 33)):
         _bf19.discard_command()
-        _b20.point_show({"which": _welche20})
-        _auftrag20 = _bf19.fetch_command()
-        check(f"'{_welche20}' zeigt auf die richtige Stelle",
-              (_auftrag20 or {}).get("arguments", {}).get("x") == _soll20)
+        _b20.point_show({"which": _which20})
+        _job20 = _bf19.fetch_command()
+        check(f"'{_which20}' zeigt auf die richtige Stelle",
+              (_job20 or {}).get("arguments", {}).get("x") == _expected20)
     _bf19.discard_command()
 
     # --- Stelle mit der Maus setzen ---
@@ -5483,11 +5483,11 @@ try:
     _running16 = _b16.run_status()
     _b16c = _SB8(_SEQ8(name="F", loop_phases=[_LP8(name="L", repeat=1, steps=[
         _SS(delay_before=0, boss_scan="drache")])]), Path("sequences/F.json"), "sequences")
-    _karte16 = [b for p in _b16c.snapshot()["phases"] for b in p["blocks"]][0]
+    _card16 = [b for p in _b16c.snapshot()["phases"] for b in p["blocks"]][0]
     check("die Live-Ansicht faerbt wie das Board",
-          _running16.get("block_color") == _karte16["color"] is not None)
+          _running16.get("block_color") == _card16["color"] is not None)
     check("und traegt dieselbe Marke",
-          _running16.get("block_badge") == _karte16["label"] == "BOSS-SCAN")
+          _running16.get("block_badge") == _card16["label"] == "BOSS-SCAN")
 
     # Ohne Typ wird keine Farbe erfunden - eine Statusdatei aus einer aelteren
     # Fassung hat das Feld nicht.
@@ -5993,10 +5993,10 @@ check(f"jeder Slot-Zustand hat Umriss und Fuellung ({_missing18 or 'vollstaendig
       not _missing18)
 # Und jede benutzte Farbvariable ist auch definiert - ein Tippfehler in einem
 # var(--slot-...) faellt sonst nur auf, wenn man genau hinsieht.
-_benutzt18 = set(_re13.findall(r"var\((--slot-[\w-]+)\)", _html18))
+_used18 = set(_re13.findall(r"var\((--slot-[\w-]+)\)", _html18))
 _definiert18 = set(_re13.findall(r"(--slot-[\w-]+)\s*:", _html18))
-check(f"jede --slot-Farbe ist definiert ({sorted(_benutzt18 - _definiert18) or 'alle'})",
-      _benutzt18 and not (_benutzt18 - _definiert18))
+check(f"jede --slot-Farbe ist definiert ({sorted(_used18 - _definiert18) or 'alle'})",
+      _used18 and not (_used18 - _definiert18))
 # Die JS-Seite liest dieselben Variablen aus, statt Hexwerte zu wiederholen.
 check("und SLOT_COLOR deckt genau die Zustaende ab",
       sorted(_re13.findall(r"\"?([\w-]+)\"?:\s*s\.getPropertyValue", _html18))
@@ -6052,7 +6052,7 @@ check("und der Detailteil wiederholt ihn nicht",
 # darueber zusammen hoeher sind als das Fenster, bleibt fuer den letzten nichts
 # uebrig. Im Scans-Reiter war das die Liste (Scans/Slots/Items) - auf wenige
 # Pixel gequetscht und unerreichbar, obwohl die Spalte scrollte.
-def _css_regel18(choice: str) -> str:
+def _css_rule18(choice: str) -> str:
     position = _html18.index("\n" + choice + "{")
     return _html18[position + len(choice) + 2:_html18.index("}", position)]
 
@@ -6068,13 +6068,13 @@ check("es gibt keine globale Mitgliedschaft mehr zu schalten",
 check("und der Mischzustand ist ersatzlos weg",
       "indeterminate" not in _html18 and "unbestimmt" not in _html18)
 
-check("die Spalte scrollt selbst", "overflow-y:auto" in _css_regel18(".page"))
+check("die Spalte scrollt selbst", "overflow-y:auto" in _css_rule18(".page"))
 check("und der wachsende Abschnitt darin nicht nochmal",
-      "overflow" not in _css_regel18(".section.growing"))
+      "overflow" not in _css_rule18(".section.growing"))
 # `1 0 auto` und nicht `1`: waechst in den freien Platz, schrumpft aber nie
 # unter seinen Inhalt - genau das war der Fehler.
 check("er darf auch nicht unter seinen Inhalt schrumpfen",
-      "flex:1 0 auto" in _css_regel18(".section.growing"))
+      "flex:1 0 auto" in _css_rule18(".section.growing"))
 
 # --- Das Dear-PyGui-Fenster ist wirklich weg ---
 # Geprueft wird der CODE, nicht der Text: dass in zwei Modul-Docstrings steht,
@@ -6116,18 +6116,18 @@ from autoclicker.config import (
 )
 from autoclicker.config_meta import CONTROLS as _ARTEN17, META as _META17
 
-_namen17 = [f.name for f in _felder17(_AC17)]
+_names17 = [f.name for f in _felder17(_AC17)]
 
 # --- Das Schema deckt die Dataclass ab, in beide Richtungen ---
 # Ohne diesen Test ist die Tabelle in drei Wochen unvollstaendig: ein neues Feld
 # in AppConfig faellt nirgends auf, es waere im Fenster einfach nicht da - und
 # damit nur in der Datei einstellbar, also genau dort, wo es nicht mehr sein soll.
 check("jedes Config-Feld hat eine Beschreibung",
-      sorted(_META17) == sorted(_namen17))
-_too_many17 = sorted(set(_META17) - set(_namen17))
+      sorted(_META17) == sorted(_names17))
+_too_many17 = sorted(set(_META17) - set(_names17))
 if _too_many17:
     print("        beschrieben, aber nicht vorhanden: " + ", ".join(_too_many17))
-_missing17 = sorted(set(_namen17) - set(_META17))
+_missing17 = sorted(set(_names17) - set(_META17))
 if _missing17:
     print("        vorhanden, aber unbeschrieben: " + ", ".join(_missing17))
 
@@ -6136,18 +6136,18 @@ if _missing17:
 # (dieselbe Regel wie bei den Kacheln des Teilen-Reiters). Geprueft wird auch,
 # dass die Ansicht ihn ueberhaupt zeichnet: eine Meta-Angabe, die niemand liest,
 # ist ein Knopf, den niemand sieht.
-_aktionen17 = {k: m.action for k, m in _META17.items() if m.action}
-_tote17 = [f"{k} -> {a[0]}" for k, a in _aktionen17.items()
+_actions17 = {k: m.action for k, m in _META17.items() if m.action}
+_dead17 = [f"{k} -> {a[0]}" for k, a in _actions17.items()
            if not callable(getattr(_SB8, a[0], None))]
-check("jeder Feld-Knopf zeigt auf eine Bruecken-Methode", _tote17 == [])
-if _tote17:
-    print("        fehlt in der Bruecke: " + ", ".join(_tote17))
+check("jeder Feld-Knopf zeigt auf eine Bruecken-Methode", _dead17 == [])
+if _dead17:
+    print("        fehlt in der Bruecke: " + ", ".join(_dead17))
 check("und die Ansicht zeichnet ihn", "cfgAction(" in _H.studio_web_source())
 # Der Katalog ist der Fall, fuer den es das gibt: bis dahin konnte ihn nur
 # `python tools/catalog.py` anlegen — ausgerechnet die Datei, ohne die das LLM
 # frei raet und die Kategorie leer bleibt.
 check("und der Katalog laesst sich im Fenster holen",
-      _aktionen17.get("scan_catalog_file", ("",))[0] == "catalog_fetch")
+      _actions17.get("scan_catalog_file", ("",))[0] == "catalog_fetch")
 
 check("jede Art gibt es auch als Bedienelement",
       all(m.kind in _ARTEN17 for m in _META17.values()))
@@ -6158,15 +6158,15 @@ check("Kacheln nur bei enum - und enum nie ohne Kacheln",
 # Ein `dep` ins Leere macht das Feld dauerhaft blass: es waere sichtbar,
 # unbedienbar und ohne Erklaerung, warum.
 _bools17 = {f.name for f in _felder17(_AC17) if isinstance(f.default, bool)}
-_kaputt17 = []
+_broken17 = []
 for _k17, _m17 in _META17.items():
-    for _field17, _erwartet17 in ((_m17.dep, _bools17), (_m17.dep_not, _bools17),
-                                 (_m17.dep_min, set(_namen17) - _bools17)):
-        if _field17 and _field17 not in _erwartet17:
-            _kaputt17.append(f"{_k17} -> {_field17}")
-check("jede Abhaengigkeit zeigt auf ein passendes Feld", _kaputt17 == [])
-if _kaputt17:
-    print("        " + ", ".join(_kaputt17))
+    for _field17, _expected17 in ((_m17.dep, _bools17), (_m17.dep_not, _bools17),
+                                 (_m17.dep_min, set(_names17) - _bools17)):
+        if _field17 and _field17 not in _expected17:
+            _broken17.append(f"{_k17} -> {_field17}")
+check("jede Abhaengigkeit zeigt auf ein passendes Feld", _broken17 == [])
+if _broken17:
+    print("        " + ", ".join(_broken17))
 
 # --- Jede angebotene Auswahl ueberlebt die Validierung ---
 # Der eigentliche Test des Schemas: `__post_init__` wirft unbekannte Werte auf
@@ -6186,13 +6186,13 @@ if _unfit17:
 # `config_sections()` haengt Nichtzugeordnetes hinten an (damit nichts
 # unsichtbar wird). Genau das darf aber nie noetig sein - sonst steht ein Feld
 # in der Datei woanders als in seiner Gruppe.
-_gruppen17 = _abs17()
+_groups17 = _abs17()
 check("die Abschnitte decken jedes Feld ab",
-      sorted(k for _, keys in _gruppen17 for k in keys) == sorted(_namen17))
+      sorted(k for _, keys in _groups17 for k in keys) == sorted(_names17))
 check("kein Feld faellt in den Nachzuegler-Abschnitt",
-      "SONSTIGE" not in [t for t, _ in _gruppen17])
+      "SONSTIGE" not in [t for t, _ in _groups17])
 check("und keines steht doppelt",
-      len([k for _, keys in _gruppen17 for k in keys]) == len(_namen17))
+      len([k for _, keys in _groups17 for k in keys]) == len(_names17))
 
 # --- Optional heisst: leeres Feld ist `null`, nicht 0 ---
 _defaults17 = {f.name: f.default for f in _felder17(_AC17)}
@@ -6218,12 +6218,12 @@ try:
     _b17 = _SB8(_SEQ8(name="S"), Path("sequences/S.json"), "sequences")
 
     # Ohne Datei: Standardwerte, kein Fehler, und der Pfad ist absolut.
-    _gelesen17 = _b17.config_read()
+    _read17 = _b17.config_read()
     check("ohne config.json kommen die Standardwerte",
-          _gelesen17["values"]["click_per_point"] == 1 and not _gelesen17["error"])
-    check("der Pfad steht absolut dabei", _os.path.isabs(_gelesen17["path"]))
+          _read17["values"]["click_per_point"] == 1 and not _read17["error"])
+    check("der Pfad steht absolut dabei", _os.path.isabs(_read17["path"]))
     check("die Beschreibungen kommen mit",
-          _gelesen17["meta"]["click_per_point"]["label"] == "Klicks pro Punkt")
+          _read17["meta"]["click_per_point"]["label"] == "Klicks pro Punkt")
 
     # Eine Datei mit einem von Hand gesetzten Wert - der muss ein Speichern
     # ueberleben, das ihn gar nicht anfasst. Das ist der Grund, warum nur die
@@ -6240,14 +6240,14 @@ try:
           and _file17["scan_marker_count"] == 9)
     check("nichts wurde korrigiert", _answer17["corrections"] == [])
     check("die Reihenfolge in der Datei folgt den Abschnitten",
-          list(_file17) == [k for _, keys in _gruppen17 for k in keys])
+          list(_file17) == [k for _, keys in _groups17 for k in keys])
 
     # Der Hauptprozess erfaehrt davon - sonst gaelte die Einstellung erst nach
     # einem Neustart, obwohl die Datei schon neu ist.
     import autoclicker.mailbox as _bf17
-    _auftrag17 = _bf17.fetch_command()
+    _job17 = _bf17.fetch_command()
     check("der Hauptprozess bekommt Bescheid",
-          _auftrag17 is not None and _auftrag17["command"] == "config")
+          _job17 is not None and _job17["command"] == "config")
 
     # Eine Korrektur wird gemeldet statt still hingenommen.
     _answer17 = _b17.config_write({"values": {"scan_min_confidence": 1.5}})
@@ -6283,11 +6283,11 @@ finally:
 # die saehen ab da dauerhaft die Werte vom Programmstart. Deshalb wird
 # hineingeschrieben, und deshalb prueft der Test die QUELLE: eine Zuweisung an
 # `.config` ist ausserhalb von main.py ein Fehler.
-_ziel17, _source17 = _AC17(), _AC17(click_per_point=7, llm_model="x")
-_ueb17(_ziel17, _source17)
+_target17, _source17 = _AC17(), _AC17(click_per_point=7, llm_model="x")
+_ueb17(_target17, _source17)
 check("apply_config() traegt alle Werte ueber",
-      _ziel17.click_per_point == 7 and _ziel17.llm_model == "x")
-check("und laesst das Objekt in Ruhe", _ziel17 is not _source17)
+      _target17.click_per_point == 7 and _target17.llm_model == "x")
+check("und laesst das Objekt in Ruhe", _target17 is not _source17)
 
 _assignments17 = []
 for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.py"]:
@@ -6300,11 +6300,11 @@ for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.
             _assignments17.append(f"{_pf17.name}:{_nr17}: {_row17.strip()}")
 # Ohne Zeilennummer: die waere bei jeder Einfuegung in main.py falsch, und der
 # Test soll die Regel pinnen, nicht die Zeile.
-_erlaubt17 = ["main.py: state.config = CONFIG"]
-_gefunden17 = [f"{z.split(':')[0]}: {z.split(': ', 1)[1]}" for z in _assignments17]
+_allowed17 = ["main.py: state.config = CONFIG"]
+_found17 = [f"{z.split(':')[0]}: {z.split(': ', 1)[1]}" for z in _assignments17]
 check("nur main.py setzt state.config - und zwar auf CONFIG selbst",
-      _gefunden17 == _erlaubt17)
-if _gefunden17 != _erlaubt17:
+      _found17 == _allowed17)
+if _found17 != _allowed17:
     for _z17 in _assignments17:
         print("        " + _z17)
 
@@ -6318,26 +6318,26 @@ section("Was der Code kann, steht auch in der Doku")
 # Aufnahme-Hotkeys und sechs Config-Felder monatelang unauffindbar.
 import re as _re15
 
-_wurzel15 = Path(__file__).resolve().parent.parent
-_winapi15 = (_wurzel15 / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
+_root15 = Path(__file__).resolve().parent.parent
+_winapi15 = (_root15 / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _table15 = _re15.search(r"_HOTKEY_DEFINITIONS = \[(.*?)\n\]", _winapi15, _re15.S).group(1)
 _hotkeys15 = set(_re15.findall(r'"(CTRL\+ALT\+(?:SHIFT\+)?\w)\s', _table15))
-_hilfe15 = set(_re15.findall(r"col\('(CTRL\+ALT\+(?:SHIFT\+)?\w)'",
-                             (_wurzel15 / "main.py").read_text(encoding="utf-8")))
-_readme15 = (_wurzel15 / "README.md").read_text(encoding="utf-8")
+_help15 = set(_re15.findall(r"col\('(CTRL\+ALT\+(?:SHIFT\+)?\w)'",
+                             (_root15 / "main.py").read_text(encoding="utf-8")))
+_readme15 = (_root15 / "README.md").read_text(encoding="utf-8")
 _tab15 = set(_re15.findall(r"\| `(CTRL\+ALT\+(?:SHIFT\+)?\w)` \|", _readme15))
 
 check("der Test findet ueberhaupt Hotkeys", len(_hotkeys15) > 20)
 check("jeder registrierte Hotkey steht in print_help()",
-      sorted(_hotkeys15 - _hilfe15) == [])
-if _hotkeys15 - _hilfe15:
-    print("        fehlt in der Hilfe: " + ", ".join(sorted(_hotkeys15 - _hilfe15)))
+      sorted(_hotkeys15 - _help15) == [])
+if _hotkeys15 - _help15:
+    print("        fehlt in der Hilfe: " + ", ".join(sorted(_hotkeys15 - _help15)))
 check("und in der Hotkey-Tabelle der README",
       sorted(_hotkeys15 - _tab15) == [])
 if _hotkeys15 - _tab15:
     print("        fehlt in der README: " + ", ".join(sorted(_hotkeys15 - _tab15)))
 check("und die Hilfe erfindet keine, die es nicht gibt",
-      sorted(_hilfe15 - _hotkeys15) == [])
+      sorted(_help15 - _hotkeys15) == [])
 
 # Config: jedes Feld der Dataclass muss in der README vorkommen. Ein Wert, den man
 # nur durch Lesen von config.py findet, ist kein eingestellter, sondern ein
@@ -6363,7 +6363,7 @@ section("CLAUDE.md zeigt auf Dateien, die es wirklich gibt")
 # `item_scans/bilder/`, weil CLAUDE.md es an zwei Stellen so schrieb. Der Code
 # legt es daneben ab (`sequences/<name>/bilder/`). Pfade mit Platzhaltern kann
 # kein Test pruefen, Dateinamen sehr wohl.
-_claude16 = (_wurzel15 / "CLAUDE.md").read_text(encoding="utf-8")
+_claude16 = (_root15 / "CLAUDE.md").read_text(encoding="utf-8")
 _named16 = sorted(set(_re15.findall(r"`([\w/\.]+\.py)`", _claude16)))
 check("der Test findet ueberhaupt Dateinamen", len(_named16) > 50)
 
@@ -6371,14 +6371,14 @@ check("der Test findet ueberhaupt Dateinamen", len(_named16) > 50)
 # Begruendung, WARUM etwas nicht mehr so gebaut ist, ist laut CLAUDE.md selbst
 # keine Altlast — sie verhindert, dass jemand den alten Weg noch einmal
 # einschlaegt.
-_GELOESCHT16 = {
+_DELETED16 = {
     "autoclicker/scan_studio.py",    # das zweite Fenster in Dear PyGui
     "execution.py",                  # Weiterleitung ohne Inhalt
     "tools/sync_json.py",            # pflegte Felder nach, die heute fehlen sollen
 }
 _missing16 = [d for d in _named16
-            if d not in _GELOESCHT16
-            and not list(_wurzel15.rglob(d.split("/")[-1]))]
+            if d not in _DELETED16
+            and not list(_root15.rglob(d.split("/")[-1]))]
 check("jede genannte .py-Datei existiert", _missing16 == [])
 if _missing16:
     print("        gibt es nicht: " + ", ".join(_missing16))
@@ -6386,8 +6386,8 @@ if _missing16:
 # Und die Ausnahmeliste bleibt ehrlich: taucht eine der drei wieder auf, gehoert
 # sie da nicht mehr hin. Dieselbe Regel wie bei `PLATTFORM_MODULE` — eine Liste,
 # die niemand prueft, waechst zur Fiktion.
-_wieder16 = sorted(d for d in _GELOESCHT16
-                   if list(_wurzel15.rglob(d.split("/")[-1])))
+_wieder16 = sorted(d for d in _DELETED16
+                   if list(_root15.rglob(d.split("/")[-1])))
 check("und keine der drei Ausnahmen ist heimlich zurueck", _wieder16 == [])
 if _wieder16:
     print("        wieder da: " + ", ".join(_wieder16))
@@ -6402,13 +6402,13 @@ section("Jedes Modul ist importierbar (kein Import zeigt ins Leere)")
 # einmal - der billigste Beweis, dass die Importe aufgehen.
 import importlib as _il10
 
-_wurzel10 = Path(__file__).resolve().parent.parent
+_root10 = Path(__file__).resolve().parent.parent
 
-_kaputt10, _checked10 = [], 0
-for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
+_broken10, _checked10 = [], 0
+for _pf10 in sorted((_root10 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf10.parts:
         continue
-    _rel10 = _pf10.relative_to(_wurzel10).with_suffix("")
+    _rel10 = _pf10.relative_to(_root10).with_suffix("")
     _mod10 = ".".join(_rel10.parts)
     if _mod10.endswith(".__init__"):
         _mod10 = _mod10[: -len(".__init__")]
@@ -6417,11 +6417,11 @@ for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
             _il10.import_module(_mod10)
         _checked10 += 1
     except Exception as _e10:
-        _kaputt10.append(f"{_mod10}: {type(_e10).__name__} {_e10}")
+        _broken10.append(f"{_mod10}: {type(_e10).__name__} {_e10}")
 
-check("jedes Modul laesst sich importieren", _kaputt10 == [])
-if _kaputt10:
-    for _z10 in _kaputt10:
+check("jedes Modul laesst sich importieren", _broken10 == [])
+if _broken10:
+    for _z10 in _broken10:
         print("        " + _z10)
 check("und der Test hat wirklich etwas geprueft", _checked10 >= 50)
 
@@ -6434,8 +6434,8 @@ check("und der Test hat wirklich etwas geprueft", _checked10 >= 50)
 # auf eine Datei zeigen, die es gibt.
 import ast as _ast10
 
-_tote10 = []
-for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
+_dead10 = []
+for _pf10 in sorted((_root10 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf10.parts:
         continue
     try:
@@ -6449,13 +6449,13 @@ for _pf10 in sorted((_wurzel10 / "autoclicker").rglob("*.py")):
         _base10 = _pf10.parent
         for _ in range(_k10.level - 1):
             _base10 = _base10.parent
-        _ziel10 = _base10.joinpath(*_k10.module.split("."))
-        if not (_ziel10.with_suffix(".py").exists() or (_ziel10 / "__init__.py").exists()):
-            _tote10.append(f"{_pf10.name}:{_k10.lineno} from {'.' * _k10.level}{_k10.module}")
+        _target10 = _base10.joinpath(*_k10.module.split("."))
+        if not (_target10.with_suffix(".py").exists() or (_target10 / "__init__.py").exists()):
+            _dead10.append(f"{_pf10.name}:{_k10.lineno} from {'.' * _k10.level}{_k10.module}")
 check("auch Importe INNERHALB von Funktionen zeigen auf existierende Module",
-      _tote10 == [])
-if _tote10:
-    for _z10 in _tote10:
+      _dead10 == [])
+if _dead10:
+    for _z10 in _dead10:
         print("        " + _z10)
 
 

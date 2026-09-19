@@ -41,7 +41,7 @@ KIND_BOSS = "boss"
 KIND_ICON_SCAN = "icon_scan"
 # Die globale Boss-Bibliothek ist keine Datei unter vielen, sondern EIN Eintrag
 # am Ende der Liste. Sie gilt zusätzlich in jedem Boss-Scan.
-KIND_LIBRARY = "bibliothek"
+KIND_LIBRARY = "library"
 
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
 # Oberflächenzustand (`scanKind` in app.js) — die Brücke bekommt bei jedem Befehl

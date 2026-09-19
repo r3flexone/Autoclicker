@@ -78,7 +78,7 @@ check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
       and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
 check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
       'class: "info-glyph"' in _app
-      and '"data-hilfe": schluessel || text}, "i")' not in _app
+      and '"data-help": key || text}, "i")' not in _app
       and 'r: "6.5"' in _app and ".info-glyph{" in _css
       and 'styles.css?v=' in (_web / "index.html").read_text(encoding="utf-8")
       and 'app.js?v=' in (_web / "index.html").read_text(encoding="utf-8"))
@@ -364,8 +364,8 @@ check("die gewählte Blockkarte ist sichtbar markiert",
       '" selected"' in _app and '.card.selected{' in _css)
 check("Mehrfachauswahl ist erreichbar und benannt",
       '"phase_selection"' in _app
-      and 'e.ctrlKey || e.metaKey ? "dazu"' in _app
-      and 'e.shiftKey ? "area" : "einzeln"' in _app
+      and 'e.ctrlKey || e.metaKey ? "add"' in _app
+      and 'e.shiftKey ? "area" : "single"' in _app
       and "STRG+Klick" in _app)
 check("kein Auswahl-Kästchen auf der Karte — der Ring sagt es schon",
       "karte-auswahl" not in _app and "karte-auswahl" not in _css)
@@ -500,9 +500,9 @@ try:
           "Dunkelrot (123,51,65)" in _live[-1]["color_text"])
     _live_state = _State(recording_active=True, recording_events=_live_events)
     _rec._write_status(_live_state)
-    _gelesen = _b.recording_status()
+    _read_value = _b.recording_status()
     check("die Bruecke liefert denselben ueberschriebenen Live-Stand",
-          _gelesen["count"] == 4 and len(_gelesen["events"]) == 3)
+          _read_value["count"] == 4 and len(_read_value["events"]) == 3)
 finally:
     _os.chdir(_cwd)
 

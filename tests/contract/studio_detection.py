@@ -394,11 +394,11 @@ section("Slot-Farben, ELSE und die Werkzeugleiste")
 
 # **Amber gehoert der Auswahl.** „Nichts erkannt" stand auf #FF9500 und war
 # damit kaum vom Akzent #F59E0B zu unterscheiden — „hier ist zu tun" und
-# „gewaehlt" sahen gleich aus. Und --slot-ok/--slot-fremd lagen als
+# „gewaehlt" sahen gleich aus. Und --slot-ok/--slot-foreign lagen als
 # #00FF9C/#2DD4BF so dicht beieinander, dass man sie im Bild nicht trennen
 # konnte. Die drei Familien stehen hier fest, damit sie nicht zurueckwandern.
-_expected_colors = {"--slot-ok": "#00E58A", "--slot-fremd": "#22D3EE",
-                "--slot-offen": "#F43F5E"}
+_expected_colors = {"--slot-ok": "#00E58A", "--slot-foreign": "#22D3EE",
+                "--slot-empty": "#F43F5E"}
 for _var, _value in _expected_colors.items():
     _matches = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
     check(f"{_var} ist {_value}",
@@ -446,8 +446,8 @@ check("und die Ansicht verweist dafuer auf den Block",
 # Die beiden Werkzeuge stehen in derselben Leiste wie „Auswaehlen": sie
 # beantworten dieselbe Frage — was tut ein Klick jetzt.
 check("die Werkzeugleiste kennt das Region-Werkzeug",
-      'data-erk-tool="region"' in _web)
-check("und den Klickpunkt", 'data-erk-tool="aktion"' in _web)
+      'data-det-tool="region"' in _web)
+check("und den Klickpunkt", 'data-det-tool="action"' in _web)
 check("beide sind bei der Item-Art versteckt statt umgedeutet",
       "button.hidden = item;" in _web)
 

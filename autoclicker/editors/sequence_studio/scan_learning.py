@@ -618,8 +618,8 @@ class ScanLearningMixin:
         Ein leerer Zielname nimmt die Kategorie weg; ein leerer Quellname
         meint die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
         """
-        old = self._category_normalize((data or {}).get("alt")) or None
-        new = self._category_normalize((data or {}).get("neu")) or None
+        old = self._category_normalize((data or {}).get("old")) or None
+        new = self._category_normalize((data or {}).get("new")) or None
         if old == new:
             return self.scan_data()
         affected = [i for i in self.items.values() if (i.category or None) == old]

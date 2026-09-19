@@ -169,7 +169,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("bereits in diesem Scan eingerichtet", js)
         self.assertIn("wird nicht gelernt oder geändert", js)
         self.assertNotIn("wird aus diesem Scan entfernt", js)
-        self.assertIn("as_other: n.dataset.alsAnderes", js)
+        self.assertIn("as_other: n.dataset.asOther", js)
         self.assertIn("cat.lock(existingOne && !normalMatch)", js)
         self.assertIn('name.value = z.new_name || "Item"', js)
 

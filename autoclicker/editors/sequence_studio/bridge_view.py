@@ -260,7 +260,7 @@ class BridgeViewMixin:
 
     def _trigger_text(self, wc: WaitCondition) -> str:
         what = "prüft" if wc.check_only else "wartet bis"
-        where_to = "weg" if wc.until_gone else "present"
+        where_to = "weg" if wc.until_gone else "da"
         return f"{what} RGB{tuple(wc.color)} {where_to}"
 
     def _else_text(self, step: SequenceStep) -> str:

@@ -111,8 +111,8 @@ def _status_data(state: AutoClickerState) -> dict:
     data["history"] = [
         {"id": pid, "kind": kind,
          "name": (points[pid].name or f"Punkt {pid}") if pid in points else f"Punkt {pid}",
-         "alt": list(placed[pid][1]) if pid in placed else None,
-         "neu": list(placed[pid][2]) if pid in placed else None}
+         "old": list(placed[pid][1]) if pid in placed else None,
+         "new": list(placed[pid][2]) if pid in placed else None}
         for pid, kind in history]
     data["changed"] = len(placed)
     data["stamp"] = time.time()

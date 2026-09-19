@@ -1399,7 +1399,7 @@ class _PhaseEditor:
         delay_max = None
         wait_pixel = None
         wait_color = None
-        wait_punkt_id = None
+        wait_pt_id = None
         wait_until_gone = False
         check_only = False
 
@@ -1410,7 +1410,7 @@ class _PhaseEditor:
                 # <Nr> checkcolor / <Nr> checkgone - einmal pruefen, sonst ueberspringen
                 check_only = True
                 wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[arg]
-                wait_pixel, wait_color, wait_punkt_id, _ = \
+                wait_pixel, wait_color, wait_pt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
@@ -1418,7 +1418,7 @@ class _PhaseEditor:
             elif arg in _WAIT_POINT_TRIGGER_ALIASES:
                 # <Nr> color / <Nr> colorgone
                 wait_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[arg] == "gone")
-                wait_pixel, wait_color, wait_punkt_id, _ = \
+                wait_pixel, wait_color, wait_pt_id, _ = \
                     self._resolve_trigger_color(wait_until_gone, point)
                 if wait_color is None:
                     # Keine Farbe lesbar — Farb-Trigger gewünscht, kann aber
@@ -1449,14 +1449,14 @@ class _PhaseEditor:
                     if opt in _CHECK_POINT_TRIGGER_ALIASES:
                         check_only = True
                         wait_until_gone = _CHECK_POINT_TRIGGER_ALIASES[opt]
-                        wait_pixel, wait_color, wait_punkt_id, _ = \
+                        wait_pixel, wait_color, wait_pt_id, _ = \
                             self._resolve_trigger_color(wait_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar - Farbpruefung nicht erstellt.')}")
                             return False, 0, None
                     elif opt in _WAIT_POINT_TRIGGER_ALIASES:
                         opt_until_gone = (_WAIT_POINT_TRIGGER_ALIASES[opt] == "gone")
-                        wait_pixel, wait_color, wait_punkt_id, wait_until_gone = \
+                        wait_pixel, wait_color, wait_pt_id, wait_until_gone = \
                             self._resolve_trigger_color(opt_until_gone, point)
                         if wait_color is None:
                             print(f"  -> {err('Keine Farbe lesbar — Farb-Trigger nicht erstellt.')}")
@@ -1464,7 +1464,7 @@ class _PhaseEditor:
 
         wait_cond = None
         if wait_pixel and wait_color:
-            wait_cond = WaitCondition(point_id=wait_punkt_id,
+            wait_cond = WaitCondition(point_id=wait_pt_id,
                                       pixel=wait_pixel, color=wait_color,
                                       until_gone=wait_until_gone,
                                       check_only=check_only)

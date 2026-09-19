@@ -350,7 +350,7 @@ try:
             # auch keine Korrelation. Echte Item-Symbole haben beides.)
             import random as _rnd18
             _gitter18 = _PILImage18.new("RGB", (400, 300), (20, 24, 30))
-            def _zelle18(ox, oy, seed):
+            def _cell18(ox, oy, seed):
                 for _px18 in range(60):
                     for _py18 in range(60):
                         _gitter18.putpixel((ox + _px18, oy + _py18), (48, 54, 68))
@@ -362,8 +362,8 @@ try:
                                             r.randrange(120, 256)))
             for _gy18 in range(2):
                 for _gx18 in range(3):
-                    _zelle18(40 + _gx18 * 80, 40 + _gy18 * 80, _gy18 * 3 + _gx18)
-            _zelle18(320, 220, 99)
+                    _cell18(40 + _gx18 * 80, 40 + _gy18 * 80, _gy18 * 3 + _gx18)
+            _cell18(320, 220, 99)
             _slots_before18 = dict(_b18.slots)
             _b18.slots.clear()
             _b18._sync_objects()
@@ -446,9 +446,9 @@ try:
 
                 # Ein Item aus genau einem dieser Slots lernen, dann nochmal
                 # finden: der eine Slot muss gruen sein, die anderen nicht.
-                _erster18 = sorted(_b18.slots.values(),
+                _first18 = sorted(_b18.slots.values(),
                                    key=lambda s: (s.scan_region[1], s.scan_region[0]))[0]
-                _b18.scan_item_learn({"slot": _erster18.name})
+                _b18.scan_item_learn({"slot": _first18.name})
                 _b18.slots.clear()
                 _b18._sync_objects()
                 # Ein Slot ausserhalb des Bildes kann nie einen Treffer haben -
@@ -479,11 +479,11 @@ try:
                 # gehoeren immer genau einem Spiel; Items koennen geteilt sein,
                 # und ein Item ein zweites Mal zu lernen ist genau das, was man
                 # vermeiden will. Deshalb: dabei ODER gerade erkannt.
-                _erk18 = [i for i in _z18["items"] if i["detected"]]
+                _recog18 = [i for i in _z18["items"] if i["detected"]]
                 check("ein erkanntes Item ist als solches markiert",
-                      len(_erk18) >= 1)
+                      len(_recog18) >= 1)
                 check("und es ist genau das, was in einem Slot steht",
-                      {i["name"] for i in _erk18}
+                      {i["name"] for i in _recog18}
                       == {s["match"]["name"] for s in _z18["slots"]
                           if s["match"] and s["match"]["name"]})
                 # Ein Item, das nirgends erkannt wird, traegt das Merkmal nicht -
@@ -661,19 +661,19 @@ finally:
 _html18 = studio_web_source()
 _block18 = _html18[_html18.index("const SCAN_MODES = ["):]
 _block18 = _block18[:_block18.index("];")]
-_kacheln18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
-check("jeder Modus der Bruecke hat eine Kachel", sorted(_kacheln18) == sorted(_MODI18))
+_tiles18 = _re13.findall(r'key:\s*"(\w+)"', _block18)
+check("jeder Modus der Bruecke hat eine Kachel", sorted(_tiles18) == sorted(_MODI18))
 # Zug um Zug, nicht als Menge: **die Reihenfolge ist die Rangfolge.** „Slots
 # finden" steht direkt hinter „Auswaehlen", weil es das ist, was man ZUERST
 # macht - das Automatische ist der Normalfall, das Aufziehen von Hand der
 # Ausweichweg. Als vorletzte Kachel stand es da, wo man den Notnagel sucht.
 check("und die Kacheln stehen in der Reihenfolge von MODI",
-      _kacheln18 == list(_MODI18))
+      _tiles18 == list(_MODI18))
 check("Slots finden steht gleich hinter Auswaehlen",
-      _kacheln18[:2] == [_MW18, _MF18])
+      _tiles18[:2] == [_MW18, _MF18])
 _keys18 = _re13.findall(r'shortcut:\s*"(\w)"', _block18)
 check("und jede Kachel eine eigene Taste",
-      len(_keys18) == len(_kacheln18) == len(set(_keys18)))
+      len(_keys18) == len(_tiles18) == len(set(_keys18)))
 
 # --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
 # Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`collapsed`) muessen
@@ -681,14 +681,14 @@ check("und jede Kachel eine eigene Taste",
 # den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
 # oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
 # Defekt, gegen die hier sonst auch gemessen wird.
-_klapp18 = sorted(set(_re13.findall(r'data-klapp="(\w+)"', _html18)))
-check("es gibt ueberhaupt Klapp-Koepfe", len(_klapp18) >= 1)
+_collapse18 = sorted(set(_re13.findall(r'data-collapse="(\w+)"', _html18)))
+check("es gibt ueberhaupt Klapp-Koepfe", len(_collapse18) >= 1)
 check("jeder Kopf sitzt in einem Abschnitt mit passender id",
-      all(f'id="sec-{_k18}"' in _html18 for _k18 in _klapp18))
+      all(f'id="sec-{_k18}"' in _html18 for _k18 in _collapse18))
 _state18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
 check("und jeder hat einen Zustand in collapsed",
       _state18 is not None
-      and sorted(_re13.findall(r'(\w+):', _state18.group(1))) == _klapp18)
+      and sorted(_re13.findall(r'(\w+):', _state18.group(1))) == _collapse18)
 # Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
@@ -698,11 +698,11 @@ check("jeder klappbare Abschnitt hat auch einen Rumpf",
 # einen eigenen Assistenten: genau drei feste Karten, von denen jede ueber ihren
 # Kopf erneut erreichbar bleibt. So verschwindet die Aufnahmequelle nicht,
 # sobald bereits ein Bild vorhanden ist.
-_assistent18 = sorted(set(_re13.findall(r'data-scan-schritt="(\d+)"', _html18)))
+_wizard18 = sorted(set(_re13.findall(r'data-scan-step="(\d+)"', _html18)))
 check("der Scan-Assistent hat genau drei erreichbare Schritte",
-      _assistent18 == ["1", "2", "3"])
+      _wizard18 == ["1", "2", "3"])
 check("jeder Assistent-Schritt hat einen Inhalt",
-      all(f'id="scan-step-{_n18}-body"' in _html18 for _n18 in _assistent18))
+      all(f'id="scan-step-{_n18}-body"' in _html18 for _n18 in _wizard18))
 check("die Fensterliste hat einen sichtbaren Aktualisieren-Knopf",
       'id="scan-window-capture"' in _html18
       and '$("scan-window-capture").addEventListener("click", scanMaintainWindows)' in _html18)
@@ -719,7 +719,7 @@ check("und begrenzt sie auf die vorhandenen Bildpixel",
       and 'by = Math.max(0, Math.min(SC.photo.height, by));' in _html18)
 check("Aufnahmequelle und Bildwerkzeuge bleiben bis zum Scan gesperrt",
       "function scanConfigOpen()" in _html18
-      and "neu.disabled = !SC.pillow || !ready" in _html18
+      and "next.disabled = !SC.pillow || !ready" in _html18
       and "choice.disabled = !ready" in _html18
       and "Zuerst einen Scan anlegen oder auswählen" in _html18)
 check("jeder Screenshot nennt der Bruecke seine Scan-Art",
@@ -855,11 +855,11 @@ check("Vorlage, Marker und Konfidenz baut EINE Funktion",
 check("die Maske klappt sie beim Gewaehlten auf",
       "(boxEl) => scanItemDetails(boxEl, i)" in _html18)
 # Dasselbe fuer Slot und Scan: EIN Detailteil je Art, gerufen aus der Bauform.
-for _kind18, _bau18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
+for _kind18, _build18 in (("scanSlotDetails", "s"), ("scanScanDetails", "c")):
     check(f"{_kind18} gibt es genau einmal",
           _html18.count(f"function {_kind18}(") == 1)
     check(f"und die Maske klappt {_kind18} auf",
-          f"(boxEl) => {_kind18}(boxEl, {_bau18})" in _html18)
+          f"(boxEl) => {_kind18}(boxEl, {_build18})" in _html18)
 
 # **Waehlen ist der Normalfall, tippen die Ausnahme.** Ein freies Textfeld
 # allein macht aus „Helme" und „helme" zwei Kategorien - und Items derselben
@@ -1275,25 +1275,25 @@ section("Der Fokus ueberlebt ein Umbenennen")
 check("wer umbenennt, sagt die neue id an",
       "function focusRename(fromName, toName)" in _html18)
 check("und cardName() tut es fuer alle drei Arten",
-      "focusRename(cardId(kind, name), cardId(kind, neu));" in _html18)
+      "focusRename(cardId(kind, name), cardId(kind, next));" in _html18)
 # **Umbenennen aendert den Namen, nicht den Rang.** Die gemerkte Reihenfolge
 # haengt am Namen — ohne das Nachziehen galt ein gerade umbenanntes Item als
 # neu und rutschte ans Ende seiner Gruppe. Genau beim Namen tippt man aber.
 check("und der Rang wird ebenfalls nachgezogen",
-      "scanOrderRename(kind, name, neu);" in _html18
-      and "function scanOrderRename(kind, alt, neu)" in _html18)
+      "scanOrderRename(kind, name, next);" in _html18
+      and "function scanOrderRename(kind, old, next)" in _html18)
 # Lehnt die Bruecke den neuen Namen ab, heisst das Item weiter wie vorher —
 # und behaelt trotzdem seinen Platz.
 check("beide Namen stehen dafuer im Merkposten",
-      "memo.splice(i, 1, {name: neu, group: memo[i].group}, memo[i]);" in _html18)
+      "memo.splice(i, 1, {name: next, group: memo[i].group}, memo[i]);" in _html18)
 check("rememberFocus loest den Hinweis genau einmal ein",
       "const renamed = focusRenamed;" in _html18
       and "focusRenamed = null;" in _html18)
 # Lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst die Maske
 # danach weiter wie vorher — und der Fokus soll trotzdem stehen bleiben.
 check("und die alte id bleibt als Rueckfall",
-      "alt: boxEl.id" in _html18
-      and "document.getElementById(memo.id)\n              || document.getElementById(memo.alt)" in _html18)
+      "old: boxEl.id" in _html18
+      and "document.getElementById(memo.id)\n              || document.getElementById(memo.old)" in _html18)
 
 
 # ============================================================================
@@ -1400,11 +1400,11 @@ check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
 # Der Phasen-Papierkorb stand früher in einer zu breiten Werkzeugzeile und lief
 # optisch unter END. Loop-Phasen werden wie Blöcke ausgewählt und mit Entf
 # gelöscht; ein zweiter Löschweg in der Kachel wäre nur wieder uneindeutig.
-_phase_funktion18 = _html18[_html18.index("function renderPhase("):
+_phase_function18 = _html18[_html18.index("function renderPhase("):
                             _html18.index("function dropZone(")]
 check("Loop-Phasen lassen sich im Kopf auswählen",
-      "selectedPhase = phase.index" in _phase_funktion18
-      and '" selected"' in _phase_funktion18)
+      "selectedPhase = phase.index" in _phase_function18
+      and '" selected"' in _phase_function18)
 check("der Phasen-Papierkorb ist vollständig entfernt",
       "papierkorb()" not in _html18 and "phase-loeschen" not in _html18)
 check("Entf löscht die ausgewählte Loop-Phase",
@@ -1568,7 +1568,7 @@ try:
         print("  ----  Bild-Teil uebersprungen (Pillow nicht installiert)")
     else:
         _image19 = _PILImage18.new("RGB", (200, 150), (20, 24, 30))
-        _echt19 = _img18.take_screenshot
+        _real19 = _img18.take_screenshot
         _echtorg19 = _win18.get_virtual_origin
         _img18.take_screenshot = lambda region=None: (
             _image19.copy() if not region else _image19.crop(tuple(region)))
@@ -1616,7 +1616,7 @@ try:
             check("ohne Erkennungslauf steht dort nichts",
                   _item19["detected"] is False and _item19["detected_in"] == [])
         finally:
-            _img18.take_screenshot = _echt19
+            _img18.take_screenshot = _real19
             _win18.get_virtual_origin = _echtorg19
 finally:
     _os.chdir(_cwd19)
@@ -1944,7 +1944,7 @@ try:
         return _b
 
     _bk1 = _build_cat()
-    _res_cat = _bk1.scan_category_rename({"alt": "Bow", "neu": "Fernkampf"})
+    _res_cat = _bk1.scan_category_rename({"old": "Bow", "new": "Fernkampf"})
     check("alle Items der Gruppe ziehen mit",
           [_bk1.items[n].category for n in ("Bogen A", "Bogen B")] == ["Fernkampf"] * 2)
     check("und andere Kategorien bleiben unberuehrt",
@@ -1955,7 +1955,7 @@ try:
     # Kategorie sind eine Rangfolge, die der Zufall entscheidet — in Modus
     # `all` gewinnt eines und das andere wird nie geklickt.
     _bk2 = _build_cat()
-    _res_extra = _bk2.scan_category_rename({"alt": "Crossbow", "neu": "Bow"})
+    _res_extra = _bk2.scan_category_rename({"old": "Crossbow", "new": "Bow"})
     _ranks = sorted(i.priority for i in _bk2.items.values() if i.category == "Bow")
     check("beim Zusammenlegen werden die Raenge dicht", _ranks == [1, 2, 3])
     check("und es wird gesagt", "Rang" in _res_extra["status"]["text"])
@@ -1973,11 +1973,11 @@ try:
     # Ein leerer Zielname nimmt die Kategorie weg, ein leerer Quellname meint
     # die Gruppe „ohne Kategorie". Beides ist dieselbe Bewegung.
     _bk3 = _build_cat()
-    _bk3.scan_category_rename({"alt": "Bow", "neu": ""})
+    _bk3.scan_category_rename({"old": "Bow", "new": ""})
     check("ein leerer Zielname nimmt die Kategorie weg",
           _bk3.items["Bogen A"].category is None)
     _bk4 = _build_cat()
-    _bk4.scan_category_rename({"alt": "", "neu": "Sonstiges"})
+    _bk4.scan_category_rename({"old": "", "new": "Sonstiges"})
     check("und ein leerer Quellname meint 'ohne Kategorie'",
           _bk4.items["Stein"].category == "Sonstiges"
           and _bk4.items["Bogen A"].category == "Bow")
@@ -1986,18 +1986,18 @@ try:
     # zurueckdreht, ist eins, dem man danach nicht mehr traut.
     _bk5 = _build_cat()
     _depth_before = _bk5.scan_data()["undo"]["depth"]
-    _res_empty_cat = _bk5.scan_category_rename({"alt": "Gibtsnicht", "neu": "X"})
+    _res_empty_cat = _bk5.scan_category_rename({"old": "Gibtsnicht", "new": "X"})
     check("eine leere Gruppe aendert nichts",
           _res_empty_cat["status"]["kind"] == "warn"
           and _bk5.scan_data()["undo"]["depth"] == _depth_before)
     _bk6 = _build_cat()
-    _bk6.scan_category_rename({"alt": "Bow", "neu": "Bow"})
+    _bk6.scan_category_rename({"old": "Bow", "new": "Bow"})
     check("und derselbe Name auch nicht",
           _bk6.scan_data()["undo"]["depth"] == _depth_before)
 
     # STRG+Z holt den ganzen Durchgang zurueck.
     _bk7 = _build_cat()
-    _bk7.scan_category_rename({"alt": "Bow", "neu": "Fernkampf"})
+    _bk7.scan_category_rename({"old": "Bow", "new": "Fernkampf"})
     _bk7.scan_undo()
     check("STRG+Z stellt die alte Kategorie wieder her",
           _bk7.items["Bogen A"].category == "Bow")

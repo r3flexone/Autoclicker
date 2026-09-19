@@ -592,8 +592,8 @@ try:
     check("und der erledigte im Verlauf",
           [v["kind"] for v in _st1["history"]] == ["placed"])
     check("mit alter und neuer Stelle",
-          _st1["history"][0]["alt"] == [100, 100]
-          and _st1["history"][0]["neu"] == [150, 160])
+          _st1["history"][0]["old"] == [100, 100]
+          and _st1["history"][0]["new"] == [150, 160])
 
     # **Das ist der Grund fuer `reclick_history`**: ein bestaetigter Punkt
     # (innerhalb MATCH_TOLERANCE) landet bewusst NICHT in `reclick_set`.

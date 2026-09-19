@@ -287,7 +287,7 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             profit_per_hour = profit_per_hour_avg = None
             gold_per_unit = gold_per_xp = None
             cost_per_hour = None
-            missing_flag = ", ".join(costs_value.missing_ones[:3]) or "unknown"
+            missing_flag = ", ".join(costs_value.missing_ones[:3]) or "unbekannt"
             reason = f"Zutatenpreis unbekannt ({missing_flag})"
             exclusion_reason = f"{exclusion_reason} + {reason}" if exclusion_reason else reason
 
@@ -698,7 +698,7 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
               "Sell1\n(billigster)", "Sell2", "Sell3", "Sell4", "Sell5\n(teuerster)"]
 
     fig, ax = plt.subplots(figsize=(12, 7))
-    rot_x, rot_y = [], []
+    red_x, red_y = [], []
     colors_list = PRICE_SENSITIVITY_SERIES_COLORS
     styles = PRICE_SENSITIVITY_SERIES_STYLES
     # Das Aussehen haengt am ITEM-NAMEN, nicht an der Rangposition. Gezeichnet (und in der
@@ -722,15 +722,15 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
         if pd.notna(npc):
             for x, y in zip(xs, ys):
                 if y <= npc:
-                    rot_x.append(x)
-                    rot_y.append(y)
+                    red_x.append(x)
+                    red_y.append(y)
 
-    if rot_x:
+    if red_x:
         # Weisser Ring statt dunkelrotem: die Punkte liegen AUF den Linien, und der Ring
         # in Hintergrundfarbe trennt sie davon ab. Keine Serienfarbe liegt naeher als
         # Delta-E 16.8 an diesem Rot - die Punkte sind also auch als Farbe eindeutig,
         # nicht nur durch ihre Form.
-        ax.scatter(rot_x, rot_y, color=NPC_MARKER_COLOR, s=70, zorder=5,
+        ax.scatter(red_x, red_y, color=NPC_MARKER_COLOR, s=70, zorder=5,
                    edgecolors="white", linewidths=1.2,
                    label="NPC-Verkauf gleich gut oder besser")
 

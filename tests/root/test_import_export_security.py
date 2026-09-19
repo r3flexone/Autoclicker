@@ -146,14 +146,14 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
         state.points = [ClickPoint(5, 5, "Alt", 1)]
-        echtes_copytree = module_name.shutil.copytree
+        real_copytree = module_name.shutil.copytree
         mutated = []
 
         def kopieren(source, target, *args, **kwargs):
             if Path(target).name == "broken":
                 mutated.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
-            return echtes_copytree(source, target, *args, **kwargs)
+            return real_copytree(source, target, *args, **kwargs)
 
         with patch.object(module_name.shutil, "copytree", side_effect=kopieren):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)

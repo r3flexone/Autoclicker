@@ -64,14 +64,14 @@ function info(text, key) {
     svgEl("circle", {cx: "8", cy: "5", r: ".8", fill: "currentColor"}),
     svgEl("path", {d: "M8 7.5v4", fill: "none", stroke: "currentColor",
       "stroke-width": "1.3", "stroke-linecap": "round"}));
-  const glyph = el("span", {class: "info", "data-hilfe": key || text}, image);
+  const glyph = el("span", {class: "info", "data-help": key || text}, image);
   glyph._text = text;
   glyph.addEventListener("click", (e) => {
     // Das ⓘ steckt in einem <label>; ohne das hier wuerde der Klick das Feld
     // fokussieren bzw. den Schalter umlegen.
     e.preventDefault();
     e.stopPropagation();
-    const helpId = glyph.getAttribute("data-hilfe");
+    const helpId = glyph.getAttribute("data-help");
     if (openHelps.has(helpId)) openHelps.delete(helpId);
     else openHelps.add(helpId);
     renderHelp(glyph);
@@ -81,7 +81,7 @@ function info(text, key) {
 
 /** Bringt EIN ⓘ auf den Stand von `openHelps` — auf- oder zugeklappt. */
 function renderHelp(glyph) {
-  const open = openHelps.has(glyph.getAttribute("data-hilfe"));
+  const open = openHelps.has(glyph.getAttribute("data-help"));
   const host = glyph.closest("label") || glyph.parentNode;
   const sibling = host.nextElementSibling;
   const present = sibling && sibling.classList.contains("help-text") ? sibling : null;
@@ -116,10 +116,10 @@ function field(caption, value, onSet, extra, help, key) {
  *  Browser-Liste anklicken, das Feld bleibt aber frei beschreibbar. Ein <select>
  *  waere hier zu streng, weil neue Kategorien ohne einen zweiten Bedienweg
  *  angelegt werden koennen sollen. */
-function categoryValues(zusatz) {
+function categoryValues(extra) {
   const values = [];
   const seen = new Set();
-  for (const raw of SC.categories.concat(zusatz || [])) {
+  for (const raw of SC.categories.concat(extra || [])) {
     const value = String(raw || "").trim();
     const key = value.toLocaleLowerCase("de");
     if (value && !seen.has(key)) {
@@ -157,7 +157,7 @@ function categoryNote() {
 /** Zieht die Auswahllisten aller Kategorie-Bedienelemente nach. */
 function refreshCategoryOptions() {
   for (const n of document.querySelectorAll(".category-chooser")) {
-    if (n.optionenNeu) n.optionenNeu();
+    if (n.refreshOptions) n.refreshOptions();
   }
 }
 
@@ -186,12 +186,12 @@ function categoryChooser(value, onSet, opts) {
     const s = el("select", {title: opts.title
       || "Vorhandene Kategorie wählen — oder unten eine neue anlegen"});
     s.rebuildOptions = () => {
-      const alt = current;
+      const old = current;
       s.replaceChildren(
         el("option", {value: ""}, opts.empty || "— ohne Kategorie —"),
         ...values().map((k) => el("option", {value: k}, k)),
         el("option", {value: CATEGORY_NEW}, "＋ neue Kategorie …"));
-      s.value = alt;
+      s.value = old;
     };
     s.rebuildOptions();
     s.addEventListener("change", () => {
@@ -220,13 +220,13 @@ function categoryChooser(value, onSet, opts) {
       if (free) categoryFree.add(key);
       else categoryFree.delete(key);
     }
-    const neu = free ? textEl(default_value === undefined ? current : default_value)
+    const next = free ? textEl(default_value === undefined ? current : default_value)
                      : selectEl();
-    neu.disabled = locked;
-    wrapper.replaceChildren(neu);
-    wrapper.value = () => (free ? neu.value.trim() : neu.value);
-    wrapper.optionenNeu = free ? null : neu.rebuildOptions;
-    if (free && remember !== false) neu.focus();
+    next.disabled = locked;
+    wrapper.replaceChildren(next);
+    wrapper.value = () => (free ? next.value.trim() : next.value);
+    wrapper.refreshOptions = free ? null : next.rebuildOptions;
+    if (free && remember !== false) next.focus();
   }
 
   // **Getippt wird nur, wenn es nichts zu waehlen gibt** — oder wenn der
@@ -249,7 +249,7 @@ function categoryChooser(value, onSet, opts) {
     current = String(v || "");
     const present = categoryValues(categoryNote());
     swap(!!current && !present.some((k) => k === current), current);
-    if (wrapper.optionenNeu) wrapper.optionenNeu();
+    if (wrapper.refreshOptions) wrapper.refreshOptions();
     onSet(current);
   };
   return wrapper;
@@ -289,9 +289,9 @@ function priorityAllocation(category) {
     ranks.sort((a, b) => a - b);
     return ranks.map((p) => ({rank: p, names: taken.get(p) || []}));
   }
-  const alle = [];
-  for (let p = 1; p <= highestRank + 1; p += 1) alle.push({rank: p, names: taken.get(p) || []});
-  return alle;
+  const all = [];
+  for (let p = 1; p <= highestRank + 1; p += 1) all.push({rank: p, names: taken.get(p) || []});
+  return all;
 }
 
 /** Die Prioritaet, die dieses Item bekaeme, wenn niemand etwas einstellt:
@@ -445,7 +445,7 @@ function rememberFocus() {
   // Zahl- und Farbfelder haben keine Auswahl - dann bleibt nur der Fokus.
   let start = null, end = null;
   try { start = a.selectionStart; end = a.selectionEnd; } catch (e) { /* egal */ }
-  const neu = renamed && renamed.fromName === boxEl.id ? renamed.toName : boxEl.id;
+  const next = renamed && renamed.fromName === boxEl.id ? renamed.toName : boxEl.id;
   // Beide ids: lehnt die Bruecke den neuen Namen ab (schon vergeben), heisst
   // die Maske danach weiter wie vorher — und der Fokus soll trotzdem stehen.
   //
@@ -458,7 +458,7 @@ function rememberFocus() {
   // zu retten waere nicht nur ueberfluessig, sondern falsch: bei einem
   // abgelehnten Namen (schon vergeben) stuende danach der abgelehnte Text im
   // Feld, waehrend die Daten den alten tragen.
-  return {id: neu, alt: boxEl.id, i: i, start: start, end: end};
+  return {id: next, old: boxEl.id, i: i, start: start, end: end};
 }
 
 /** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
@@ -470,7 +470,7 @@ let focusRenamed = null;
 function restoreFocus(memo) {
   if (!memo) return;
   const boxEl = document.getElementById(memo.id)
-              || document.getElementById(memo.alt);
+              || document.getElementById(memo.old);
   if (!boxEl) return;
   const target = [...boxEl.querySelectorAll("input, select, textarea")][memo.i];
   if (!target) return;
@@ -547,9 +547,9 @@ async function ask(name, data_reload) {
   }
 }
 
-function adopt(neu) {
-  if (!neu) return;
-  S = neu;
+function adopt(next) {
+  if (!next) return;
+  S = next;
   render();
   if (S.question) showQuestion(S.question);
 }
@@ -564,36 +564,36 @@ let view = "editor";
  * Momentaufnahme steht er auch nicht — er ändert ja nichts an der Sequenz.
  * Der Editor bleibt dabei im Dokument stehen (nur `hidden`), damit
  * Scrollstand und ungespeicherte Eingaben den Ausflug überleben. */
-function setView(neu) {
-  view = neu;
+function setView(next) {
+  view = next;
   for (const t of document.querySelectorAll(".tab"))
-    t.classList.toggle("on", t.dataset.view === neu);
-  $("editor-body").hidden = neu !== "editor";
-  $("view-sequences").hidden = neu !== "sequences";
-  $("view-run").hidden = neu !== "run";
-  $("view-settings").hidden = neu !== "settings";
-  $("view-scans").hidden = neu !== "scans";
-  $("view-share").hidden = neu !== "share";
-  $("view-tools").hidden = neu !== "tools";
-  $("view-report").hidden = neu !== "report";
+    t.classList.toggle("on", t.dataset.view === next);
+  $("editor-body").hidden = next !== "editor";
+  $("view-sequences").hidden = next !== "sequences";
+  $("view-run").hidden = next !== "run";
+  $("view-settings").hidden = next !== "settings";
+  $("view-scans").hidden = next !== "scans";
+  $("view-share").hidden = next !== "share";
+  $("view-tools").hidden = next !== "tools";
+  $("view-report").hidden = next !== "report";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
-  for (const n of document.querySelectorAll("[data-sequenz]"))
+  for (const n of document.querySelectorAll("[data-sequence]"))
     n.hidden = ["settings", "scans", "share", "tools",
-                "report"].includes(neu);
-  if (neu === "scans") renderScans(!SC);
-  if (neu === "sequences") renderSequenceList();
-  if (neu === "share") renderShare();
+                "report"].includes(next);
+  if (next === "scans") renderScans(!SC);
+  if (next === "sequences") renderSequenceList();
+  if (next === "share") renderShare();
   // Frisch beim Oeffnen: der Bericht der letzten Sitzung beschriebe einen Stand,
   // den es nach einem Speichern nicht mehr gibt.
-  if (neu === "tools") renderTools(true);
+  if (next === "tools") renderTools(true);
   // Bei jedem Oeffnen frisch: waehrend das Fenster offensteht, schreibt ein
   // Lauf im Hauptprozess weiter in dieselbe CSV.
-  if (neu === "report") renderReport();
+  if (next === "report") renderReport();
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
-  if (neu === "settings") renderSettings(true);
-  setRunPolling(neu === "run");
+  if (next === "settings") renderSettings(true);
+  setRunPolling(next === "run");
 }
 
 /* ------------------------------------------------------------------ Zeichnen */
@@ -605,7 +605,7 @@ function render() {
   $("footer-points").textContent = S.points.length + " Punkte";
   $("dirty-dot").hidden = !S.dirty;
   $("footer-lamp").classList.toggle("open", !!S.dirty);
-  $("footer-lamp").title = S.dirty ? "ungespeicherte Änderungen" : "saved";
+  $("footer-lamp").title = S.dirty ? "ungespeicherte Änderungen" : "gespeichert";
   // Der Fenstertitel bleibt schlicht: in der Titelleiste steht sonst der
   // Sequenzname doppelt (er steht schon im Kopf der Seite), und das Fenster
   // findet sich in der Taskleiste besser über einen gleichbleibenden Namen.
@@ -705,17 +705,17 @@ function renderPhases() {
 
   const hiddenOne = S.phases.filter((phase) => phase.kind !== "loop" &&
     !phase.blocks.length && !openSpecialPhases.has(phase.kind));
-  const werkzeuge = el("div", {class: "phase phases-create"},
+  const creator = el("div", {class: "phase phases-create"},
     el("button", {class: "empty-zone", onclick: () => call("phase_append")}, "+ Phase"));
   for (const phase of hiddenOne) {
     const title = phase.kind === "init" ? "+ Startphase (einmal davor)"
                                        : "+ Abschlussphase (einmal danach)";
-    werkzeuge.appendChild(el("button", {class: "empty-zone", onclick: () => {
+    creator.appendChild(el("button", {class: "empty-zone", onclick: () => {
       openSpecialPhases.add(phase.kind);
       renderPhases();
     }}, title));
   }
-  target.appendChild(werkzeuge);
+  target.appendChild(creator);
 }
 
 function renderPhase(phase) {
@@ -785,7 +785,7 @@ function renderPhase(phase) {
   // es selbst jeden Block darin ändert. Ohne Blöcke hatte es ausserdem nichts
   // zu tun und stand trotzdem da.
   if (phase.blocks.length) {
-    const alle = S.selection.phase === phase.index &&
+    const all = S.selection.phase === phase.index &&
                  S.selection.rows.length === phase.blocks.length;
     // `knopfpaar`, nicht `series` mit `wachse`: für „mehrere Knöpfe teilen sich
     // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
@@ -793,7 +793,7 @@ function renderPhase(phase) {
     const bulk = el("div", {class: "button-pair phase-all"},
       el("button", {class: "btn quiet",
         onclick: () => call("phase_selection", {phase: phase.index})},
-        alle ? "Auswahl aufheben" : "Alle Blöcke wählen"));
+        all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
     if (phase.kind === "loop") {
       bulk.appendChild(el("button", {
         class: "btn quiet",
@@ -853,7 +853,7 @@ function drop(e, phase, row) {
   if (!what) return;
   if (what.kind === "point") call("point_insert", {phase: phase, row: row, point: what.point});
   else call("drag", {from_phase: what.phase, from_row: what.row,
-                      nach_phase: phase, to_row: row});
+                      to_phase: phase, to_row: row});
 }
 
 function renderCard(phase, block) {
@@ -901,7 +901,7 @@ function renderCard(phase, block) {
       selectedPhase = null;
       return call("select", {
         phase: phase.index, row: block.row,
-        mode: e.ctrlKey || e.metaKey ? "dazu" : (e.shiftKey ? "area" : "einzeln")});
+        mode: e.ctrlKey || e.metaKey ? "add" : (e.shiftKey ? "area" : "single")});
     },
     ondragstart: (e) => { drag = {kind: "block", phase: phase.index, row: block.row};
                           e.dataTransfer.effectAllowed = "move"; },
@@ -1010,7 +1010,7 @@ function seqCard(s) {
                                   (s.broken ? " broken" : "")});
   cardEl.appendChild(el("div", {class: "seq-header"},
     el("span", {class: "seq-name"}, s.name),
-    s.open ? el("span", {class: "num", style: "color:var(--accent)"}, "open") : null));
+    s.open ? el("span", {class: "num", style: "color:var(--accent)"}, "offen") : null));
 
   // Zeile 2: Notiz bzw. Warnung. Eine defekte Datei hat weder Balken noch
   // Kennzahlen — die Zeilen bleiben trotzdem stehen, damit die Nachbarkarten
@@ -1437,15 +1437,15 @@ function manualControls(m) {
     class: "btn" + (cls ? " " + cls : ""),
     onclick: () => sendRun("manual_action", {action: action}),
   }, text);
-  const halt = !!m.breakpoint;
+  const atBreakpoint = !!m.breakpoint;
   return el("section", {class: "panel manual-panel"},
-    el("span", {class: "heading"}, halt ? "⏸ HALTEPUNKT" : "MANUELLER SCHRITTMODUS"),
+    el("span", {class: "heading"}, atBreakpoint ? "⏸ HALTEPUNKT" : "MANUELLER SCHRITTMODUS"),
     el("b", {}, m.title || "Aktueller Block"),
     el("p", {class: "hint"}, m.action || ""),
     el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-      button(halt ? "▶ Weiter" : "▶ Ausführen", "run", "primary"),
+      button(atBreakpoint ? "▶ Weiter" : "▶ Ausführen", "run", "primary"),
       button("↷ Überspringen", "skip"),
-      halt ? button("Ab hier schrittweise", "step") : button("Normal weiter", "continue"),
+      atBreakpoint ? button("Ab hier schrittweise", "step") : button("Normal weiter", "continue"),
       button("■ Stoppen", "stop", "danger")));
 }
 
@@ -1532,7 +1532,7 @@ function renderInspector() {
   target.appendChild(heading("BLOCK-TYP",
     "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
     "ist zugleich die Legende dazu.", "blocktyp"));
-  target.appendChild(el("div", {class: "gitter3"}, S.types.map((t) =>
+  target.appendChild(el("div", {class: "grid3"}, S.types.map((t) =>
     el("button", {
       class: "type-chip",
       style: "border-color:" + t.color +
@@ -1556,7 +1556,7 @@ function renderInspector() {
     if (b.point_id === null || b.point_id === undefined) {
       target.appendChild(field("Name", b.name, (v) => call("block_set", {field: "name", value: v})));
     }
-    target.appendChild(el("div", {class: "gitter2"},
+    target.appendChild(el("div", {class: "grid2"},
       numberField("Wartezeit (s)", b.delay_before,
                (v) => call("block_set", {field: "delay_before", value: v}),
                {step: "0.1", min: "0"}),
@@ -1577,7 +1577,7 @@ function renderInspector() {
   // Ein Warte-Block ohne Trigger beobachtet nichts — dann gibt es auch keine
   // Stelle zu zeigen.
   if (b.type === "click" || b.type === "wait_click" ||
-      (b.type === "wait" && b.trigger !== "kein")) buildPosition(target, b);
+      (b.type === "wait" && b.trigger !== "none")) buildPosition(target, b);
   if (b.type === "key") {
     target.appendChild(field("Taste", b.key_press,
       (v) => call("block_set", {field: "key_press", value: v}), {placeholder: "enter, space, f1"}));
@@ -1592,7 +1592,7 @@ function renderInspector() {
   // sonst waere sie unerreichbar.
   const withTrigger = b.type === "click" || b.type === "wait_click" ||
                      b.type === "wait" || b.type === "key";
-  if (withTrigger || b.trigger !== "kein") buildTrigger(target, b, withTrigger);
+  if (withTrigger || b.trigger !== "none") buildTrigger(target, b, withTrigger);
   buildVerification(target, b);
   buildElse(target, b);
   buildProbe(target, b);
@@ -1615,9 +1615,9 @@ function buildProbe(target, b) {
   const positions = [];
   if (b.point_id !== null && b.point_id !== undefined)
     positions.push(["click", "Stelle", b.point_id]);
-  if (b.trigger !== "kein" && b.trigger_point !== null && b.trigger_point !== undefined)
+  if (b.trigger !== "none" && b.trigger_point !== null && b.trigger_point !== undefined)
     positions.push(["trigger", "Prüf-Pixel", b.trigger_point]);
-  if (b.verify !== "kein" && b.verify_point !== null && b.verify_point !== undefined)
+  if (b.verify !== "none" && b.verify_point !== null && b.verify_point !== undefined)
     positions.push(["verify", "Nachprüf-Pixel", b.verify_point]);
   if (b.else_action === "click" && b.else_point !== null && b.else_point !== undefined)
     positions.push(["else", "ELSE-Klick", b.else_point]);
@@ -1658,7 +1658,7 @@ function renderBulkEditor(count) {
     el("div", {class: "row bulk-quick"}, [0, 0.5, 1].map((seconds) =>
       el("button", {class: "btn quiet", onclick: () => call("selection_set",
         {field: "delay_before", value: seconds})}, String(seconds).replace(".", ",") + " s"))),
-    el("div", {class: "gitter2"},
+    el("div", {class: "grid2"},
       timeField("Wartezeit (s)", "delay_before", S.selection.delay_before,
                S.selection.delay_before_mixed),
       timeField("bis (0 = fest)", "delay_max", S.selection.delay_max,
@@ -1669,9 +1669,9 @@ function renderBulkEditor(count) {
 
 function buildAction(target, b) {
   const clicks = b.type === "click" || b.type === "wait_click";
-  const color = b.trigger !== "kein";
+  const color = b.trigger !== "none";
 
-  // Der Schluessel bleibt "aktion" und haengt bewusst NICHT am Block-Typ: der
+  // Der Schluessel bleibt "action" und haengt bewusst NICHT am Block-Typ: der
   // wechselt hier ja gerade, und eine Erklaerung, die man aufklappt und die beim
   // ersten Schalten verschwindet, ist keine.
   target.appendChild(heading("AKTION",
@@ -1683,7 +1683,7 @@ function buildAction(target, b) {
     // Bei einem Warte-Block aendert die Farbe den Typ nicht — WARTEN heisst mit
     // und ohne Trigger WARTEN. Bei den Klick-Typen ist sie der Unterschied
     // zwischen KLICK und FARBE+KLICK, laeuft dort also ueber den Typ.
-    if (!clicks) call("block_trigger", {choice: on ? "present" : "kein"});
+    if (!clicks) call("block_trigger", {choice: on ? "present" : "none"});
     else call("block_set_type", {type: on ? "wait_click" : "click"});
   }));
 }
@@ -1733,7 +1733,7 @@ function buildPosition(target, b) {
       }, "⧉ Eigenen Punkt für diesen Block"));
     }
   }
-  target.appendChild(el("div", {class: "gitter2"},
+  target.appendChild(el("div", {class: "grid2"},
     numberField("X", b.x, (v) => setPosition(b, v, b.y), {step: "1"}),
     numberField("Y", b.y, (v) => setPosition(b, b.x, v), {step: "1"})));
   // Die Stelle anfahren statt sie zu tippen — derselbe Weg wie beim
@@ -1831,7 +1831,7 @@ function buildScreenshot(target, b) {
     withWait("call", "area_capture");
   }}, "Bereich mit der Maus aufnehmen ⌖"));
 
-  target.appendChild(el("div", {class: "gitter2"},
+  target.appendChild(el("div", {class: "grid2"},
     numberField("X1", r[0], setter(0)), numberField("Y1", r[1], setter(1)),
     numberField("X2", r[2], setter(2)), numberField("Y2", r[3], setter(3))));
   target.appendChild(el("p", {class: "hint"},
@@ -1841,8 +1841,8 @@ function buildScreenshot(target, b) {
 // Richtungen einer Farb-Bedingung. Das Aus steht nur dort mit im Segment, wo es
 // kein eigenes Bedienelement dafuer gibt — bei den Klick-/Warte-Typen macht das
 // der Schalter im Abschnitt AKTION, und zwei Wege zum selben Aus waeren einer zu viel.
-const DIRECTION_OFF = {value: "kein", text: "kein"};
-const DIRECTIONS = [{value: "present", text: "bis Farbe DA"}, {value: "weg", text: "bis Farbe WEG"}];
+const DIRECTION_OFF = {value: "none", text: "kein"};
+const DIRECTIONS = [{value: "present", text: "bis Farbe DA"}, {value: "gone", text: "bis Farbe WEG"}];
 
 function buildTrigger(target, b, withTrigger) {
   // Bei TASTE gibt es keine Aktions-Schalter, dort bleibt das Aus im Segment.
@@ -1853,7 +1853,7 @@ function buildTrigger(target, b, withTrigger) {
   // wie ein Stück Oberfläche, das nicht geladen hat — also gar nichts zeigen.
   // Ausnahme: fehlt dem Block der Punkt, bleibt der Hinweis unten stehen. Der
   // erklärt, warum sich der Trigger nicht einschalten lässt.
-  if (withoutOff && b.trigger === "kein"
+  if (withoutOff && b.trigger === "none"
       && b.point_id !== null && b.point_id !== undefined) return;
   target.appendChild(heading("FARB-TRIGGER (VOR DEM SCHRITT)",
     withTrigger
@@ -1861,11 +1861,11 @@ function buildTrigger(target, b, withTrigger) {
       : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
         "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
     "trigger-an"));
-  if (!(withoutOff && b.trigger === "kein")) {
+  if (!(withoutOff && b.trigger === "none")) {
     target.appendChild(segment(withoutOff ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
       b.trigger, (w) => call("block_trigger", {choice: w})));
   }
-  if (b.trigger !== "kein") {
+  if (b.trigger !== "none") {
     target.appendChild(selection("Geprüfte Stelle", pointList(b.trigger_point), b.trigger_point,
       (v) => v && call("block_trigger", {choice: b.trigger, point: Number(v)}),
       "Farbe und Stelle kommen aus dem Punkt. Soll an derselben Stelle auf eine " +
@@ -1887,7 +1887,7 @@ function buildVerification(target, b) {
     "wiederholt (verify_retries), danach greift ELSE.", "verify"));
   target.appendChild(segment(directions, b.verify,
     (w) => call("block_trigger", {which: "verify", choice: w})));
-  if (b.verify !== "kein") {
+  if (b.verify !== "none") {
     target.appendChild(selection("Geprüfte Stelle", pointList(b.verify_point), b.verify_point,
       (v) => v && call("block_trigger", {which: "verify", choice: b.verify, point: Number(v)})));
   }
@@ -1953,7 +1953,7 @@ function buildElse(target, b) {
       "Ausgelöst wird es von einem Farb-Trigger (Timeout oder „nur prüfen“), " +
       "einer Nachprüfung ohne Wirkung oder einem Scan, der nichts findet."));
   }
-  target.appendChild(el("div", {class: "gitter3"}, S.else_actions.map((a) =>
+  target.appendChild(el("div", {class: "grid3"}, S.else_actions.map((a) =>
     el("button", {
       // Eigene Klasse trotz gleicher Form: eine Typ-Kachel schaltet den Block-Typ,
       // eine ELSE-Kachel die Ersatzaktion. Wer eine davon später anders gestalten
@@ -2090,8 +2090,8 @@ let scanNudgeTime = 0;
 const SLOT_COLOR = (() => {
   const s = getComputedStyle(document.documentElement);
   return {match: s.getPropertyValue("--slot-ok").trim(),
-          "foreign-item": s.getPropertyValue("--slot-fremd").trim(),
-          empty: s.getPropertyValue("--slot-offen").trim()};
+          "foreign-item": s.getPropertyValue("--slot-foreign").trim(),
+          empty: s.getPropertyValue("--slot-empty").trim()};
 })();
 
 const SCAN_MODES = [
@@ -2202,8 +2202,8 @@ function scanCanvasTools() {
   $("scan-pin").classList.toggle("on", !!SC.tool_pinned);
   $("scan-pin").hidden = SC.mode === "choice";
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.tool_pinned));
-  $("scan-pin-lang").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
-  $("scan-pin-kurz").textContent = SC.tool_pinned ? "Pin ✓" : "Pin";
+  $("scan-pin-long").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
+  $("scan-pin-short").textContent = SC.tool_pinned ? "Pin ✓" : "Pin";
   const stamp = $("scan-save-state");
   stamp.textContent = SC.dirty ? "Wird gespeichert …" : "✓ Gespeichert";
   stamp.classList.toggle("open", !!SC.dirty);
@@ -2469,9 +2469,9 @@ let scanWindows = [];
 /** Die offenen Fenster zur Auswahl — nur nachgeholt, wenn Pillow da ist. */
 async function scanMaintainWindows() {
   const choice = $("scan-window");
-  const neu = $("scan-window-capture");
+  const next = $("scan-window-capture");
   const ready = scanConfigOpen();
-  neu.disabled = !SC.pillow || !ready;
+  next.disabled = !SC.pillow || !ready;
   if (!SC.pillow) { choice.hidden = true; return; }
   choice.disabled = !ready;
   scanWindows = (await ask("scan_windows")) || [];
@@ -2591,13 +2591,13 @@ function scanListBlock(tabs, filter, target) {
     // die in jedem gelten. Sie zusammenzuwerfen hiesse, den Unterschied zu
     // verlieren, an dem alles haengt.
     for (const [key, text, number] of [["bosses", "Bosse", detBosses().length],
-                                     ["bibliothek", "Bibliothek",
+                                     ["library", "Bibliothek",
                                       SC.global_bosses.length]]) {
       on(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
         onclick: () => { scanList = key; renderScans(); }}, text + " " + number));
     }
     if (!target) return undefined;
-    return open === "bibliothek" ? detListLibrary(target) : detListBosses(target);
+    return open === "library" ? detListLibrary(target) : detListBosses(target);
   }
   // Die Zahl am Reiter ist die der SICHTBAREN Eintraege — sonst stuende dort 40,
   // waehrend zwei in der Liste stehen, und man sucht den Rest.
@@ -2691,11 +2691,11 @@ function scanOrderGroup(kind) {
  * — schon vergeben —, heisst das Item weiter wie vorher und behaelt trotzdem
  * seinen Platz; die Raenge verschieben sich dabei gleichmaessig, verglichen
  * werden sie ohnehin nur gegeneinander. */
-function scanOrderRename(kind, alt, neu) {
+function scanOrderRename(kind, old, next) {
   const memo = scanOrder[kind];
-  if (!memo || !neu || alt === neu) return;
-  const i = memo.findIndex((e) => e.name === alt);
-  if (i >= 0) memo.splice(i, 1, {name: neu, group: memo[i].group}, memo[i]);
+  if (!memo || !next || old === next) return;
+  const i = memo.findIndex((e) => e.name === old);
+  if (i >= 0) memo.splice(i, 1, {name: next, group: memo[i].group}, memo[i]);
 }
 
 /** Die gemerkte Vorschau auf den neuen Namen mitnehmen.
@@ -2712,10 +2712,10 @@ function scanOrderRename(kind, alt, neu) {
  * leer), zeigt die Maske weiter unter dem alten Namen — und braucht dort ihr
  * Bild.
  */
-function scanPreviewRename(kind, alt, neu) {
-  if (kind !== "item" || !neu || alt === neu) return;
-  const image = scanPreviews.get(alt);
-  if (image) scanPreviews.set(neu, image);
+function scanPreviewRename(kind, old, next) {
+  if (kind !== "item" || !next || old === next) return;
+  const image = scanPreviews.get(old);
+  if (image) scanPreviews.set(next, image);
 }
 
 /** Die gemerkte Reihenfolge als Rang je Name; unbekannt = ans Ende. */
@@ -2747,14 +2747,14 @@ function scanVisible(entries, withCategory, kind) {
 function cardName(kind, name, title, setter) {
   const field = el("input", {value: name, autocomplete: "off", title: title});
   field.addEventListener("change", () => {
-    const neu = field.value.trim();
+    const next = field.value.trim();
     // DREI Dinge haengen am Namen: der Anker fuer den Fokus, der Rang in der
     // Liste und die gemerkte Vorschau. Wer umbenennt, sagt allen dreien vorher
     // Bescheid — wer eines vergisst, sieht es sofort: der Fokus springt weg,
     // die Zeile wandert, oder das Bild blinkt.
-    focusRename(cardId(kind, name), cardId(kind, neu));
-    scanOrderRename(kind, name, neu);
-    scanPreviewRename(kind, name, neu);
+    focusRename(cardId(kind, name), cardId(kind, next));
+    scanOrderRename(kind, name, next);
+    scanPreviewRename(kind, name, next);
     setter(field.value);
   });
   field.addEventListener("keydown", (e) => { if (e.key === "Enter") field.blur(); });
@@ -2872,13 +2872,13 @@ function scanSlotState(s) {
       title: "Zu klein zum Erkennen — hier auswählen und löschen"}, "⚠ zu klein"));
   } else if (s.match && s.match.name) {
     parts.push(el("span", {class: "small",
-      style: "color:var(" + (s.match.foreign ? "--slot-fremd" : "--slot-ok") + ")",
+      style: "color:var(" + (s.match.foreign ? "--slot-foreign" : "--slot-ok") + ")",
       title: s.match.foreign
         ? "erkannt, gehört aber noch nicht zu diesem Scan" : ""}, s.match.name));
   } else if (s.match) {
     // Nichts erkannt = hier ist noch zu lernen. Dieselbe Farbe wie sein
     // Rechteck im Bild, damit Liste und Bild zusammengehen.
-    parts.push(el("span", {class: "small", style: "color:var(--slot-offen)"},
+    parts.push(el("span", {class: "small", style: "color:var(--slot-empty)"},
                   "unbekannt"));
   }
   return el("div", {class: "scan-card-state"}, parts);
@@ -2948,7 +2948,7 @@ function scanCategoryHeader(category, listEl) {
            + "entfernen. Gleicher Name wie eine andere Gruppe = zusammenlegen."});
   field.addEventListener("change", () => {
     if (field.value.trim() === value) return;
-    callScan("scan_category_rename", {alt: value, neu: field.value.trim()});
+    callScan("scan_category_rename", {old: value, new: field.value.trim()});
   });
   field.addEventListener("keydown", (e) => { if (e.key === "Enter") field.blur(); });
   return el("div", {class: "scan-category-header"}, field,
@@ -3052,7 +3052,7 @@ function scanItemState(i, frozen) {
   }
   if (i.silent) {
     parts.push(el("span", {style: "color:var(--err)",
-      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "silent"));
+      title: "Weder Template noch Marker — dieses Item wird nie erkannt"}, "stumm"));
   } else if (!(i.templates || []).length) {
     parts.push(el("span", {class: "mono"}, i.marker.length + " Marker"));
   }
@@ -3098,7 +3098,7 @@ function scanScanCard(c) {
   const stamp = el("div", {class: "scan-card-state"},
     el("span", {class: "small mono"},
        c.slots.length + " Slots · " + c.items.length + " Items"),
-    open ? el("span", {class: "small", style: "color:var(--slot-ok)"}, "open") : null,
+    open ? el("span", {class: "small", style: "color:var(--slot-ok)"}, "offen") : null,
     c.missing_items.length
       ? el("span", {class: "small", style: "color:var(--err)",
                     title: "Zeigt ins Leere: " + c.missing_items.join(", ")},
@@ -3125,11 +3125,11 @@ async function scanFetchPreviews(names) {
   for (const n of missing_items) scanPreviews.set(n, "");
   const answer = await ask("scan_preview", {names: missing_items});
   if (!answer) return;
-  let neu = false;
+  let next = false;
   for (const [name, url] of Object.entries(answer)) {
-    if (url) { scanPreviews.set(name, url); neu = true; }
+    if (url) { scanPreviews.set(name, url); next = true; }
   }
-  if (neu && view === "scans") scanInspector();
+  if (next && view === "scans") scanInspector();
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -3508,7 +3508,7 @@ function scanReview(target) {
     const checkbox = el("input", {type: "checkbox", class: "scan-review-check"});
     const defaultChoice = !!z.ticked;
     const existingName = String(z.existing || "");
-    let alsAnderes = false;
+    let asOther = false;
     let previousChoice = defaultChoice;
     checkbox.checked = defaultChoice;
     checkbox.title = "Angehakt: im aktuellen Scan verwenden · abgehakt: auslassen oder entfernen";
@@ -3533,18 +3533,18 @@ function scanReview(target) {
     let row;
     const sync = () => {
       const existingOne = knownNames.has(name.value.trim());
-      const normalMatch = !!existingName && !alsAnderes;
+      const normalMatch = !!existingName && !asOther;
       name.disabled = normalMatch;
       // Kategorie und Priorität des erkannten Profils sind direkt änderbar.
       // Wird ein anderer vorhandener Name gewählt, schützen wir dagegen dessen
       // Werte vor den leeren Standards der Aktion „Als anderes Item lernen“.
       cat.lock(existingOne && !normalMatch);
       rank.disabled = existingOne && !normalMatch;
-      row.dataset.alsAnderes = alsAnderes ? "true" : "false";
+      row.dataset.asOther = asOther ? "true" : "false";
       row.classList.toggle("skip", !checkbox.checked);
       if (!checkbox.checked) {
         status.textContent = z.slot + " · wird nicht gelernt oder geändert";
-      } else if (alsAnderes) {
+      } else if (asOther) {
         status.textContent = z.slot + (existingOne
           ? " · vorhandenes „" + name.value.trim() + "“ gewählt · Vorlage ergänzen"
           : " · wird als neues Item gelernt");
@@ -3563,7 +3563,7 @@ function scanReview(target) {
     row = el("div", {class: "scan-review-row" +
         (z.variant ? " variant" : z.duplicate ? " duplicate done" : ""),
       "data-slot": z.slot, "data-existing": existingName,
-      "data-als-anderes": "false"}, checkbox, status,
+      "data-as-other": "false"}, checkbox, status,
       z.image ? el("img", {class: "scan-review-image", src: z.image, alt: ""})
              : el("span", {class: "scan-review-image empty"}),
       el("div", {class: "fields"},
@@ -3572,7 +3572,7 @@ function scanReview(target) {
         switched));
     row._reviewSynchronisieren = sync;
     const setSameChoice = () => {
-      if (!existingName || alsAnderes) {
+      if (!existingName || asOther) {
         sync();
         return;
       }
@@ -3580,7 +3580,7 @@ function scanReview(target) {
       // Item-Zuordnung, deshalb bewegen sich alle Vorkommen gemeinsam.
       for (const other of document.querySelectorAll(".scan-review-row")) {
         if (other.dataset.existing !== existingName ||
-            other.dataset.alsAnderes === "true") continue;
+            other.dataset.asOther === "true") continue;
         const otherCheckbox = other.querySelector('input[type="checkbox"]');
         if (otherCheckbox) otherCheckbox.checked = checkbox.checked;
         if (other._reviewSynchronisieren) other._reviewSynchronisieren();
@@ -3588,8 +3588,8 @@ function scanReview(target) {
     };
     checkbox.addEventListener("change", setSameChoice);
     if (switched) switched.addEventListener("click", () => {
-      alsAnderes = !alsAnderes;
-      if (alsAnderes) {
+      asOther = !asOther;
+      if (asOther) {
         previousChoice = checkbox.checked;
         name.value = z.new_name || "Item";
         cat.value = "";
@@ -3603,9 +3603,9 @@ function scanReview(target) {
         checkbox.checked = previousChoice;
         switched.textContent = "Als anderes Item lernen";
       }
-      row.classList.toggle("other", alsAnderes);
+      row.classList.toggle("other", asOther);
       sync();
-      if (!alsAnderes) setSameChoice();
+      if (!asOther) setSameChoice();
       scanReviewRefreshCategories();
     });
     sync();
@@ -3629,7 +3629,7 @@ function scanReviewApply() {
     slot: n.dataset.slot,
     ticked: n.querySelector(".scan-review-check").checked,
     existing: n.dataset.existing || "",
-    as_other: n.dataset.alsAnderes === "true",
+    as_other: n.dataset.asOther === "true",
     name: n.querySelector(".scan-review-name").value.trim(),
     category: n.querySelector(".scan-review-category").value(),
     priority: Number(n.querySelector(".scan-review-prio").value),
@@ -3661,14 +3661,14 @@ function scanSlotDetails(target, s) {
   advanced.appendChild(heading("FLÄCHE",
     "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
     "im Bild anklicken — oder den Slot im Bild ziehen.", "flaeche"));
-  advanced.appendChild(el("div", {class: "gitter2"},
+  advanced.appendChild(el("div", {class: "grid2"},
     numberField("Links", s.region[0], (v) => setter("x1", v)),
     numberField("Oben", s.region[1], (v) => setter("y1", v)),
     numberField("Rechts", s.region[2], (v) => setter("x2", v)),
     numberField("Unten", s.region[3], (v) => setter("y2", v))));
   advanced.appendChild(heading("KLICKPUNKT",
     "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
-  advanced.appendChild(el("div", {class: "gitter2"},
+  advanced.appendChild(el("div", {class: "grid2"},
     numberField("X", s.click_pos[0], (v) => setter("kx", v)),
     numberField("Y", s.click_pos[1], (v) => setter("ky", v))));
   advanced.appendChild(color_swatch("Hintergrund", s.color, (v) => setter("color", v),
@@ -3961,7 +3961,7 @@ function detBoss() {
 }
 
 /** Steht die Bibliothek statt eines Scans im Vordergrund? */
-function detLibrary() { return scanKind === "boss" && scanActiveList() === "bibliothek"; }
+function detLibrary() { return scanKind === "boss" && scanActiveList() === "library"; }
 
 function scanSetKind(kind) {
   if (!SCAN_KINDS.includes(kind) || kind === scanKind) return;
@@ -3983,10 +3983,10 @@ function scanMaintainKind() {
   $("sec-modes").hidden = !item;
   $("sec-det-choice").hidden = item;
   $("sec-det-steps").hidden = item;
-  for (const button of document.querySelectorAll("[data-erk-tool]")) {
+  for (const button of document.querySelectorAll("[data-det-tool]")) {
     button.hidden = item;
     button.disabled = !SC.pillow || !detScan();
-    button.classList.toggle("on", SC.mode === button.dataset.erkTool);
+    button.classList.toggle("on", SC.mode === button.dataset.detTool);
   }
   // **Die Aufnahme-Karte wandert, also muss sie auch zurueck.** Sie gehoert
   // allen drei Arten und existiert deshalb nur EINMAL im Dokument; blieb sie
@@ -4119,9 +4119,9 @@ function detRegionStep(c) {
   const placed = (r[2] - r[0]) > 0 && (r[3] - r[1]) > 0
     && !(r[0] === 0 && r[1] === 0 && r[2] === 100 && r[3] === 100);
   const setter = (i, v) => {
-    const neu = r.slice();
-    neu[i] = Number(v) || 0;
-    detField("region", neu);
+    const next = r.slice();
+    next[i] = Number(v) || 0;
+    detField("region", next);
   };
   return detCard(2, "Region", placed
     ? "(" + r[0] + "," + r[1] + ") → (" + r[2] + "," + r[3] + ")  ·  "
@@ -4131,7 +4131,7 @@ function detRegionStep(c) {
       ? "Der Bereich, in dem der Boss-Name bzw. sein Bild erscheint. Eng genug, "
         + "dass nichts Wechselndes mit hineinfällt."
       : "Eng um das Symbol herum. Was mit im Rechteck liegt, wird mitgelernt."),
-    el("div", {class: "gitter2"},
+    el("div", {class: "grid2"},
       numberField("Links", r[0], (v) => setter(0, v), {step: 1}),
       numberField("Oben", r[1], (v) => setter(1, v), {step: 1}),
       numberField("Rechts", r[2], (v) => setter(2, v), {step: 1}),
@@ -4288,11 +4288,11 @@ function detDetectionFields(obj, kind, name) {
       obj.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h,
                                            title: h})),
       el("span", {class: "scan-color-swatch empty", title: "noch Platz"})) : null,
-    !template ? el("div", {class: "gitter2"},
+    !template ? el("div", {class: "grid2"},
       numberField("Toleranz", obj.tolerance === undefined ? 30 : obj.tolerance,
         (v) => setter("tolerance", v), {min: 0, step: 1},
         "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
-      el("div", {class: "field-quiet"}, "measured",
+      el("div", {class: "field-quiet"}, "gemessen",
         el("span", {class: "mono"}, obj.marker.length + " Farben"))) : null,
     !template ? el("button", {class: "btn scan-wizard-main", disabled: !photoPresent(),
       onclick: () => callScan("marker_measure", Object.assign(
@@ -4313,7 +4313,7 @@ function detActionTiles(values, current, onSet) {
   // Dasselbe Raster wie beim Block-Typ im Sequenz-Editor — die Kacheln sollen
   // sich gleich anfuehlen. Auf der Kachel steht das Schlagwort, im Tooltip der
   // Satz: „Zyklus abbrechen" ist auf 9,5 px zweizeilig und unlesbar.
-  return el("div", {class: "gitter3"}, values.map((a) =>
+  return el("div", {class: "grid3"}, values.map((a) =>
     el("button", {class: "type-chip" + (a.value === current ? " on" : ""),
       title: a.text, onclick: () => onSet(a.value)}, a.short)));
 }
@@ -4432,7 +4432,7 @@ function detListBosses(target) {
     }
   }
   target.appendChild(el("button", {class: "empty-zone",
-    onclick: () => { scanList = "bibliothek"; renderScans(); }},
+    onclick: () => { scanList = "library"; renderScans(); }},
     "Boss-Bibliothek (global) · " + SC.global_bosses.length));
 }
 
@@ -4455,7 +4455,7 @@ function detBossRow(b, global, covered) {
            "⚠ keine Vorlage")
       : (test
           ? el("span", {class: "small", style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
-               test.ok ? "detected" : "nein")
+               test.ok ? "erkannt" : "nein")
           : el("span", {class: "small mono"},
                (SC.actions.boss.find((a) => a.value === b.action) || {}).text || b.action)));
 }
@@ -4480,7 +4480,7 @@ function detListIcons(target) {
         ? el("span", {class: "small", style: "color:var(--accent)"}, "⚠ ohne Erkennung")
         : (test ? el("span", {class: "small",
                               style: "color:var(" + (test.ok ? "--slot-ok" : "--err") + ")"},
-                     test.ok ? "detected" : "nein")
+                     test.ok ? "erkannt" : "nein")
                 : el("span", {class: "small mono"},
                      (c.region[2] - c.region[0]) + "×" + (c.region[3] - c.region[1])))));
   }
@@ -4601,7 +4601,7 @@ function detInspBossScan(target, c) {
         el("span", {}, name),
         el("span", {class: "mono small",
                     style: "color:var(" + (t.ok ? "--ok" : "--dim") + ")"},
-           t.ok ? "detected" : "nein"),
+           t.ok ? "erkannt" : "nein"),
         el("span", {class: "reason"}, t.reason)));
     }
   }
@@ -4938,14 +4938,14 @@ function repNumber(n, positions) {
  * zum groessten Wert der Liste. VIER Listen benutzen sie (Timeouts, Items,
  * Erkanntes, Nachpruefung) — eine Bauform fuer alle, sonst hat dieselbe Sache
  * vier Gestalten. */
-function repRank(name, value, share_pct, zusatz, kind) {
+function repRank(name, value, share_pct, extra, kind) {
   const row = el("div", {class: "rep-rank" + (kind ? " " + kind : "")},
     el("span", {class: "rep-rank-name", title: name}, name),
     el("span", {class: "rep-rank-value mono"}, value),
     el("div", {class: "rep-bar"},
       el("div", {class: "rep-bar-fill",
         style: "width:" + Math.max(2, Math.round(share_pct * 100)) + "%"})));
-  if (zusatz) row.appendChild(el("span", {class: "rep-rank-extra"}, zusatz));
+  if (extra) row.appendChild(el("span", {class: "rep-rank-extra"}, extra));
   return row;
 }
 
@@ -5259,8 +5259,8 @@ function hideWait() {
   workLine = null;
   if (workEsc) document.removeEventListener("keydown", workEsc);
   workEsc = null;
-  const alt = $("wait-shell");
-  if (alt) alt.remove();
+  const old = $("wait-shell");
+  if (old) old.remove();
 }
 
 /** Zeigt, dass ein langer Aufruf LAEUFT — mit hochzaehlender Uhr.
@@ -5640,7 +5640,7 @@ function wzBuildPoints() {
   const point = points.find(p => p.id === wzPointId);
   const newName = el("input", {placeholder: "Name des neuen Punkts", value: "Neuer Punkt",
     autocomplete: "off"});
-  out.push(el("div", {class: "wz-action gitter2"}, newName,
+  out.push(el("div", {class: "wz-action grid2"}, newName,
     el("button", {class: "btn primary", onclick: async () => {
       setStatus({kind: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
       const a = await withWait("tool", "tool_point_capture",
@@ -5657,7 +5657,7 @@ function wzBuildPoints() {
   const setter = (field, value) => callTool("tool_point_set",
     {point_id: point.id, field: field, value: value});
   out.push(field("Name", point.name, (v) => setter("name", v)));
-  out.push(el("div", {class: "gitter2"},
+  out.push(el("div", {class: "grid2"},
     numberField("X", point.x, (v) => setter("x", v), {step: "1"}),
     numberField("Y", point.y, (v) => setter("y", v), {step: "1"})));
   out.push(color_swatch("Gespeicherte Farbe", point.color ? hexColor(point.color) : "",
@@ -5695,7 +5695,7 @@ function wzBuildColors() {
     wzColorAnalysis = await withWait("tool", "tool_colors", {kind: kind});
     wzRenderMiddle(); wzRenderRight();
   };
-  out.push(el("div", {class: "gitter3 wz-action"},
+  out.push(el("div", {class: "grid3 wz-action"},
     el("button", {class: "btn primary", onclick: () => startBtn("point")}, "Pixel unter Maus"),
     el("button", {class: "btn", onclick: () => startBtn("region")}, "Bereich analysieren"),
     el("button", {class: "btn", onclick: () => startBtn("fullscreen")}, "Vollbild analysieren")));
@@ -5856,13 +5856,13 @@ async function wzStopRecording() {
 function wzWatchRecording(quick = false) {
   const number = ++wzRecordingPoll;
   let attempts = 0;
-  const pruefen = async () => {
+  const poll = async () => {
     if (number !== wzRecordingPoll || !wzRecordingStarted) return;
     if (!quick) {
       // Laeuft sie noch, gibt es nichts zu holen: billig warten statt fragen.
       if (wzRecordingLive && wzRecordingLive.active) {
         attempts = 0;
-        return void setTimeout(pruefen, 1000);
+        return void setTimeout(poll, 1000);
       }
       // Der Zaehler steht nur still, solange die Aufnahme laeuft (oben auf 0
       // gesetzt). Eine Minute Suchen ohne laufende Aufnahme heisst also
@@ -5894,9 +5894,9 @@ function wzWatchRecording(quick = false) {
       setStatus({text: "Keine gespeicherte Aufnahme gefunden — wurde etwas aufgezeichnet?", kind: "warn"});
       return;
     }
-    setTimeout(pruefen, quick ? 350 : 1000);
+    setTimeout(poll, quick ? 350 : 1000);
   };
-  setTimeout(pruefen, quick ? 350 : 1000);
+  setTimeout(poll, quick ? 350 : 1000);
 }
 
 function wzMetric(value, label, kind) {
@@ -6023,7 +6023,7 @@ function wzBuildColorQuestion() {
   const boxEl = el("div", {class: "wz-color-question"});
   boxEl.appendChild(el("div", {class: "kind-warn"}, f.message));
   const series = el("div", {class: "wz-color-series"});
-  series.append(el("span", {class: "hint"}, "saved"), wzColor(f.expected),
+  series.append(el("span", {class: "hint"}, "gespeichert"), wzColor(f.expected),
                el("span", {class: "hint"}, "dort gemessen"), wzColor(f.measured),
                el("span", {class: "hint"},
                   "(" + f.position[0] + ", " + f.position[1] + ")"));
@@ -6064,7 +6064,7 @@ function wzFarthestPoint(ref1) {
   let best = W.points[0], wide = -1;
   for (const p of W.points) {
     if (ref1 && p.id === ref1.point_id) continue;
-    const d = Math.hypot(p.x - (ref1 ? ref1.alt[0] : 0), p.y - (ref1 ? ref1.alt[1] : 0));
+    const d = Math.hypot(p.x - (ref1 ? ref1.old[0] : 0), p.y - (ref1 ? ref1.old[1] : 0));
     if (d > wide) { wide = d; best = p; }
   }
   return best.id;
@@ -6105,8 +6105,8 @@ function wzRefRow(number, placed) {
     boxEl.appendChild(wzBuildColorQuestion());
   if (placed)
     boxEl.appendChild(el("div", {class: "hint"},
-      "(" + placed.alt[0] + ", " + placed.alt[1] + ") → ("
-      + placed.neu[0] + ", " + placed.neu[1] + ")"));
+      "(" + placed.old[0] + ", " + placed.old[1] + ") → ("
+      + placed.new[0] + ", " + placed.new[1] + ")"));
   return boxEl;
 }
 
@@ -6258,8 +6258,8 @@ function wzFillReclickOutput(target) {
         el("span", {class: "rc-kind " + cls, title: what}, glyph),
         el("span", {class: "num"}, "#" + v.id),
         el("span", {class: "rc-name"}, v.name || ""),
-        el("span", {class: "rc-target"}, v.alt && v.neu
-          ? "(" + v.alt[0] + ", " + v.alt[1] + ") → (" + v.neu[0] + ", " + v.neu[1] + ")"
+        el("span", {class: "rc-target"}, v.old && v.new
+          ? "(" + v.old[0] + ", " + v.old[1] + ") → (" + v.new[0] + ", " + v.new[1] + ")"
           : what)));
     }
   }
@@ -6652,10 +6652,10 @@ function cfgNumber(key, m, value) {
   field.addEventListener("keydown", (e) => { if (e.key === "Enter") field.blur(); });
   // Ein Prozentwert liest sich als Prozent, nicht als 0.8 — die Datei traegt
   // trotzdem die Zahl, mit der der Vergleich rechnet.
-  const zusatz = m.kind === "ratio" ? "= " + Math.round((Number(value) || 0) * 100) + " %"
+  const extra = m.kind === "ratio" ? "= " + Math.round((Number(value) || 0) * 100) + " %"
                                    : (m.unit || "");
-  if (!zusatz) return field;
-  return el("div", {class: "cfg-unit"}, field, el("span", {class: "unit"}, zusatz));
+  if (!extra) return field;
+  return el("div", {class: "cfg-unit"}, field, el("span", {class: "unit"}, extra));
 }
 
 /** Feste kurze Auswahl als Kacheln — dieselbe Regel wie beim Block-Typ. */
@@ -6670,9 +6670,9 @@ function cfgPosition(key, m, value) {
   const on = Array.isArray(value);
   const xy = on ? value : [0, 0];
   const setXY = (i, v) => {
-    const neu = [Number(xy[0]) || 0, Number(xy[1]) || 0];
-    neu[i] = Math.round(Number(v) || 0);
-    cfgSet(key, neu);
+    const next = [Number(xy[0]) || 0, Number(xy[1]) || 0];
+    next[i] = Math.round(Number(v) || 0);
+    cfgSet(key, next);
   };
   const number = (i) => {
     const f = el("input", {type: "number", step: "1", value: xy[i], disabled: !on});
@@ -6681,7 +6681,7 @@ function cfgPosition(key, m, value) {
   };
   return el("div", {class: "column", style: "gap:6px"},
     toggle(on ? "parken" : "aus", on, (v) => cfgSet(key, v ? [xy[0], xy[1]] : false)),
-    on ? el("div", {class: "gitter2"}, number(0), number(1)) : null,
+    on ? el("div", {class: "grid2"}, number(0), number(1)) : null,
     // Eine Stelle faehrt man an, statt sie zu tippen — derselbe Weg wie beim
     // Klick-Block. Messen kann das nur ein Prozess auf demselben Rechner, und
     // das ist dieser hier.
@@ -6873,9 +6873,9 @@ function wire() {
 
   for (const button of document.querySelectorAll("[data-scan-kind]"))
     button.addEventListener("click", () => scanSetKind(button.dataset.scanKind));
-  for (const button of document.querySelectorAll("[data-erk-tool]"))
+  for (const button of document.querySelectorAll("[data-det-tool]"))
     button.addEventListener("click", () => callScan("region_mode",
-      {kind: scanKind, mode: button.dataset.erkTool}));
+      {kind: scanKind, mode: button.dataset.detTool}));
 
   $("scan-open").addEventListener("change", (e) => {
     scanWizardStep = null;
@@ -6896,9 +6896,9 @@ function wire() {
     scanGuided = !scanGuided;
     renderScans();
   });
-  document.querySelectorAll("[data-scan-schritt]").forEach((button) =>
+  document.querySelectorAll("[data-scan-step]").forEach((button) =>
     button.addEventListener("click", () => {
-      scanWizardStep = Number(button.dataset.scanSchritt);
+      scanWizardStep = Number(button.dataset.scanStep);
       scanSteps();
     }));
   $("scan-slots-find").addEventListener("click", () =>
@@ -6939,7 +6939,7 @@ function wire() {
   });
   for (const head of document.querySelectorAll(".collapse-header")) {
     head.addEventListener("click", () => {
-      const s = head.dataset.klapp;
+      const s = head.dataset.collapse;
       // Beim ersten Griff die Vorgabe uebernehmen und umdrehen — sonst taete der
       // erste Klick auf einen automatisch zugeklappten Abschnitt nichts.
       collapsed[s] = !(collapsed[s] === null ? collapseDefault(s) : collapsed[s]);

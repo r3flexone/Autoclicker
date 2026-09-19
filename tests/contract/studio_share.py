@@ -36,8 +36,8 @@ if _missing:
 
 check("die Seite hat einen Reiter dafuer", 'data-view="share"' in _web)
 check("und ruft die Bruecke ueber einen eigenen Kanal", "callShare(" in _web)
-_gerufen = sorted(set(re.findall(r'callShare\("([a-z_]+)"', _web)))
-_without = [n for n in _gerufen if not callable(getattr(_SB, n, None))]
+_called = sorted(set(re.findall(r'callShare\("([a-z_]+)"', _web)))
+_without = [n for n in _called if not callable(getattr(_SB, n, None))]
 check("jeden gerufenen Namen gibt es in der Bruecke", _without == [])
 
 _sandbox = tempfile.mkdtemp(prefix="teilen_")

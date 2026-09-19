@@ -907,13 +907,13 @@ hinterlassen bzw. vermissen lassen, und die Fehler sind spiegelbildlich:
 
 | wo | was fehlte | was man sah |
 |---|---|---|
-| `neu()` (Studio) | `self.points` wurde nicht geleert | eine frisch angelegte Sequenz kam mit dem **ganzen Punktebestand der vorher offenen** auf die Platte — `save()` schreibt `self.points` |
+| `new()` (Studio) | `self.points` wurde nicht geleert | eine frisch angelegte Sequenz kam mit dem **ganzen Punktebestand der vorher offenen** auf die Platte — `save()` schreibt `self.points` |
 | `edit_sequence()` (Konsole) | `new_sequence.points` wurde nicht gefüllt | die gespeicherte Sequenz hatte **gar keine Punkte**, während jeder Schritt weiter seine `point_id` trug |
 
 Beides ist derselbe Denkfehler aus der Zeit des globalen Bestands: dort war
 `state.points` die eine Liste für alles, und ein Sequenzwechsel liess sie
 zurecht in Ruhe. Seither ist die Frage bei **jedem** Wechsel des Gegenstands zu
-beantworten — `load()`, `neu()`, Import, Kalibrierung und der Konsolen-Editor
+beantworten — `load()`, `new()`, Import, Kalibrierung und der Konsolen-Editor
 tun es heute alle. Regel beim Erweitern: **wer `self.board` bzw.
 `state.active_sequence` setzt, setzt in derselben Zeilengruppe die Punkte.**
 Zwei Tests messen beide Richtungen bis auf die **Platte** — einer, der nur die
@@ -1720,14 +1720,14 @@ Sechs Regeln, an denen der Reiter hängt:
   hängt es an seine eigene Meldung). Zwei Erkennungen wären zwei Ergebnisse.
 - **Die Slot-Zustände liegen auf einem SPIELBILD, nicht auf dem Panel.** Deshalb
   haben sie eine eigene, grellere Farbfamilie (`--slot-ok` `#00E58A` =
-  erkannt und im Scan, `--slot-fremd` `#22D3EE` = erkannt, aber nicht in diesem
-  Scan, `--slot-offen` `#F43F5E` = nichts erkannt, hier ist zu tun) und
+  erkannt und im Scan, `--slot-foreign` `#22D3EE` = erkannt, aber nicht in diesem
+  Scan, `--slot-empty` `#F43F5E` = nichts erkannt, hier ist zu tun) und
   **jeweils eine Füllung** dazu (Suffix `-f`).
 
   Die drei Werte sind gemessen, nicht geraten, und stehen in einem Test fest.
-  `--slot-offen` war `#FF9500` und damit fast der Akzent `#F59E0B`: „zu tun" und
+  `--slot-empty` war `#FF9500` und damit fast der Akzent `#F59E0B`: „zu tun" und
   „gewählt" sahen gleich aus — **Amber gehört der Auswahl**, sonst markiert die
-  Markierung nichts. `--slot-ok`/`--slot-fremd` lagen als `#00FF9C`/`#2DD4BF` zu
+  Markierung nichts. `--slot-ok`/`--slot-foreign` lagen als `#00FF9C`/`#2DD4BF` zu
   dicht beieinander, um sie im Bild zu trennen. Die Klassenlogik
   (`.scan-slot.match` / `.foreign-item` / `.empty`, `SLOT_COLOR` in `app.js`)
   blieb dabei unverändert — nur die Variablen. Ein 1,5-px-Umriss in `var(--dim)` verschwindet
@@ -1746,7 +1746,7 @@ Sechs Regeln, an denen der Reiter hängt:
   *anderen* Spiel durfte nicht grün werden, denn dieser Scan sah das Item gar
   nicht an. Seit der Scan seine Items selbst besitzt, gibt es nichts mehr, was
   erkannt und trotzdem fremd wäre: `_detect_run()` meldet `foreign` immer als
-  `False`. Farbe (`--slot-fremd`) und Klasse (`.foreign-item`) stehen noch in
+  `False`. Farbe (`--slot-foreign`) und Klasse (`.foreign-item`) stehen noch in
   Stylesheet und `SLOT_COLOR`, haben aber keinen Auslöser mehr.
 
 - **Scan, Slot und Item sind Masken — dieselbe Bauform** (`buildCard()`, dazu
@@ -1894,8 +1894,8 @@ Sechs Regeln, an denen der Reiter hängt:
   in der CSS-Datei keine einzige Variante — ein Präfix hätte einen toten Zweig
   gepflegt.
 - **Eine Klasse, die das Layout setzt, darf keine andere überschreiben.**
-  `.wz-action{display:flex}` steht später im Stylesheet als `.gitter2`/
-  `.gitter3` und gewann bei gleicher Spezifität: die beiden Stellen, die
+  `.wz-action{display:flex}` steht später im Stylesheet als `.grid2`/
+  `.grid3` und gewann bei gleicher Spezifität: die beiden Stellen, die
   ausdrücklich `wz-action gitter2` bzw. `gitter3 wz-action` schreiben, bekamen
   nie ihre gleichen Spalten, und die Knopfreihen standen in Textbreite da. Die
   Klasse trägt jetzt nur noch ihren Abstand; wer eine Reihe will, schreibt
@@ -3755,8 +3755,8 @@ prüft es, ob der neue Name schon als Bezeichner existiert, und bricht dann ab:
 zwei Dinge unter einem Namen sind der Fehler, den man hinterher nicht mehr
 findet. `--dry-run` zeigt jede Zeile, bevor etwas geschrieben wird.
 
-**Drei Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
-Suite laufen lassen, sie findet alle drei:**
+**Vier Fallen, die das Werkzeug nicht sehen kann — nach jedem Durchgang die
+Suite laufen lassen, sie findet drei davon:**
 
 - **Keyword-Argumente, die zu JSON-Schlüsseln werden, sind Strings in
   Verkleidung.** `send_command("zeigen", punkt=…)` schreibt `{"punkt": …}` in
@@ -3784,6 +3784,20 @@ Suite laufen lassen, sie findet alle drei:**
   einen Tab sieht danach aus wie ein Klick ins Leere (alle acht Rauchtests rot,
   kein einziger `pageerror`). Nach einem JS-Durchgang deshalb `dataset.*` gegen
   die `data-*`-Attribute und `S.*` gegen die Momentaufnahme halten.
+
+- **`--strings` und `--keys` treffen auch den Text, der zufällig so heisst
+  wie der Schlüssel.** `offen` war ein Feld der Momentaufnahme UND das Wort,
+  das die Übersicht neben eine Sequenz schreibt; `gespeichert` ein Zustand
+  UND der Titel der Fusszeilen-Lampe. Nach einem solchen Lauf stand „open"
+  und „saved" im Fenster — und keine Suite sieht das, weil kein Test einen
+  angezeigten Text prüft. Gegenprobe deshalb von Hand: die String-Literale
+  von vorher und nachher nebeneinander (`git show main:… | tokenize`), und
+  jede Stelle, an der ein deutsches Wort zu seinem englischen wurde, danach
+  fragen, ob sie angezeigt wird. Beim Abschluss-Durchgang waren es neun
+  Stellen in `app.js`, drei in `utils/console.py` (die Lage „oben rechts")
+  und eine in `market_analysis/analysis.py`. Umgekehrt genauso: ein JS-Lauf
+  benennt Objekt-Schlüssel um, und `{alt: …, neu: …}` in einem `call()` IST
+  das Protokoll — `scan_category_rename` bekam danach `next` statt `neu`.
 
 Aus demselben Grund gibt es `--python-only`: Lokale wie `point`, `value`,
 `category` sind zugleich JSON-Schlüssel der Brücke, und der JS-Lexer würde

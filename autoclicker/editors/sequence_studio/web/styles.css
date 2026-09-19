@@ -15,12 +15,12 @@
      auf dem Panel — deshalb greller als der Rest der Palette. Jeweils Strich
      und Fuellung (Suffix -f), damit beides aus einer Quelle kommt. */
   --slot-ok:#00E58A;     --slot-ok-f:#00E58A26;      /* erkannt und im Scan */
-  --slot-fremd:#22D3EE;  --slot-fremd-f:#22D3EE26;   /* erkannt, nicht im Scan */
+  --slot-foreign:#22D3EE;  --slot-foreign-f:#22D3EE26;   /* erkannt, nicht im Scan */
   /* „Nichts erkannt" war #FF9500 und damit fast der Akzent #F59E0B: „hier ist
      zu tun" und „gewaehlt" sahen gleich aus, und Amber gehoert der Auswahl.
-     --slot-ok und --slot-fremd lagen als #00FF9C/#2DD4BF ausserdem zu dicht
+     --slot-ok und --slot-foreign lagen als #00FF9C/#2DD4BF ausserdem zu dicht
      beieinander, um sie im Bild auseinanderzuhalten. */
-  --slot-offen:#F43F5E;  --slot-offen-f:#F43F5E1F;   /* nichts erkannt: zu tun */
+  --slot-empty:#F43F5E;  --slot-empty-f:#F43F5E1F;   /* nichts erkannt: zu tun */
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -132,8 +132,8 @@ label.on input[type=checkbox]::after{
 label.on input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
 label.on input[type=checkbox]:checked::after{transform:translateX(14px);background:var(--bg)}
 label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.gitter2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.gitter3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 
 /* Das Ziel einer Scan-Aufnahme ist Arbeitskontext, kein Hilfetext. Die
    Akzentkante bindet die Kachel an die eine Sequenz, deren Ordner die Scans,
@@ -433,7 +433,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-warn{font-size:11.5px;color:var(--accent);line-height:1.5}
 
 /* ---------------------------------------------------------------- Live-Run */
-.lauf{flex:1;min-height:0;overflow-y:auto;padding:24px 28px;display:flex;
+.run{flex:1;min-height:0;overflow-y:auto;padding:24px 28px;display:flex;
   flex-direction:column;gap:18px;align-items:stretch}
 .run-header{display:flex;align-items:center;gap:12px}
 .lamp{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
@@ -633,7 +633,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    plus eine Fuellung — die Flaeche traegt die Aussage, der Strich schaerft sie.
    Eigene Variablen, damit Umriss, Fuellung, Marke und Liste nicht auseinander
    laufen; ein Test haelt sie gegen die Klassenliste. */
-.scan-slot{fill:none;stroke:var(--slot-offen);stroke-width:2;vector-effect:non-scaling-stroke}
+.scan-slot{fill:none;stroke:var(--slot-empty);stroke-width:2;vector-effect:non-scaling-stroke}
 .scan-slot.selected{stroke:#fff;stroke-width:3}
 /* Erkannt UND im Scan: erledigt, kuemmere dich um den Rest. */
 .scan-slot.match{stroke:var(--slot-ok)}
@@ -641,14 +641,14 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    „passt" und deshalb eine andere Farbe. Gruen zu faerben hiesse behaupten,
    der Scan finde es — er sieht dieses Item gar nicht an. Verwandt zum Gruen
    (erkannt ist erkannt), aber klar unterscheidbar. */
-.scan-slot.foreign-item{stroke:var(--slot-fremd)}
+.scan-slot.foreign-item{stroke:var(--slot-foreign)}
 /* Nichts erkannt = hier ist zu tun. Das ist der haeufigste Zustand vor dem
    Lernen und muss deshalb der auffaelligste sein, nicht der blasseste. */
-.scan-slot.empty{stroke:var(--slot-offen)}
-.scan-fill{fill:var(--slot-offen-f);stroke:none}
+.scan-slot.empty{stroke:var(--slot-empty)}
+.scan-fill{fill:var(--slot-empty-f);stroke:none}
 .scan-fill.match{fill:var(--slot-ok-f)}
-.scan-fill.foreign-item{fill:var(--slot-fremd-f)}
-.scan-fill.empty{fill:var(--slot-offen-f)}
+.scan-fill.foreign-item{fill:var(--slot-foreign-f)}
+.scan-fill.empty{fill:var(--slot-empty-f)}
 .scan-fill.selected{fill:#FFFFFF2E}
 .scan-slot.off{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
 .scan-fill.off{fill:#64748B12}
@@ -939,7 +939,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-undo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ------------------------------------------------------------------- Teilen */
-.teilen{flex:1;display:flex;min-height:0}
+.share{flex:1;display:flex;min-height:0}
 .share-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
   padding:12px 14px;margin-bottom:12px;max-width:720px}
 .share-card h3{font-size:12.5px;font-weight:600;margin-bottom:8px}
@@ -1087,7 +1087,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wz-info-compact + .help-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
   border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
 /* NUR der Abstand. Vorher stand hier zusaetzlich `display:flex` — und weil die
-   Regel weiter unten steht als `.gitter2`/`.gitter3`, gewann sie bei gleicher
+   Regel weiter unten steht als `.grid2`/`.grid3`, gewann sie bei gleicher
    Spezifitaet: die beiden Stellen, die ausdruecklich `wz-action gitter2` bzw.
    `gitter3 wz-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
    war das als Knopfreihe in Textbreite — genau die Ungleichheit, die die
@@ -1292,7 +1292,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .rc-kind.rc-fits{color:var(--slot-ok)}
 .rc-kind.rc-set{color:var(--accent)}
 .rc-kind.rc-skip{color:var(--dim)}
-.rc-kind.rc-missing{color:var(--slot-offen)}
+.rc-kind.rc-missing{color:var(--slot-empty)}
 
 /* --- „Worauf warte ich gerade?" ---------------------------------------- */
 /* Diese Griffe blockieren die Bruecke bis zu einer Minute (globales Warten auf

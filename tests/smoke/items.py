@@ -61,7 +61,7 @@ def run():
         # Die Suchregion darf mit der zweiten Ecke aus dem Bild heraus in die
         # mittlere Buehne gezogen werden. Gespeichert wird der Bildrand, denn
         # nur innerhalb davon gibt es Pixel fuer die Erkennung.
-        f.click('[data-scan-schritt="2"]')
+        f.click('[data-scan-step="2"]')
         f.click("#scan-slots-find")
         image_edge = f.page.locator("#scan-overlay").bounding_box()
         stage_edge = f.page.locator("#scan-stage").bounding_box()
