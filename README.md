@@ -844,7 +844,7 @@ Für einen anderen Bildschirm gibt es die zwei Wege, die wirklich rechnen:
 
 Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
 hilft kein Versatz: dann die **Klick-Runde** nehmen (Studio → Werkzeuge oder
-Punkte-Menü → `klick`) und die Sequenz einmal von Hand nachklicken.
+Punkte-Menü → `reclick`) und die Sequenz einmal von Hand nachklicken.
 
 ## Laufzeit-Steuerung
 

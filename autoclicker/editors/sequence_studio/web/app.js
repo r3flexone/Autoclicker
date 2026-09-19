@@ -5406,7 +5406,7 @@ const WZ_TOOLS = [
    short: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
   {key: "calibrate", name: "Kalibrieren", command: "fix", scopeKind: "inventory",
    short: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
-  {key: "reclick", name: "Punkte nachklicken", command: "klick", scopeKind: "sequence",
+  {key: "reclick", name: "Punkte nachklicken", command: "reclick", scopeKind: "sequence",
    short: "Alle Klickstellen geführt im Spiel kontrollieren"},
 ];
 

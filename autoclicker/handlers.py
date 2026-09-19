@@ -387,7 +387,7 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('del <Nr>', 'yellow')}    - Punkt löschen")
     print(f"  {col('walk / w', 'yellow')}    - alle Punkte durchgehen; dort 'n' = Punkt auf die "
           f"Mausposition neu setzen {hint('(repariert Sequenzen ohne sie anzufassen)')}")
-    print(f"  {col('klick / k', 'yellow')}   - Sequenz einmal von Hand NACHKLICKEN; jeder Klick "
+    print(f"  {col('reclick / k', 'yellow')}   - Sequenz einmal von Hand NACHKLICKEN; jeder Klick "
           f"setzt den nächsten Punkt {hint('(nur die Stellen, nicht die Zeiten)')}")
     print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
     print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
@@ -411,7 +411,7 @@ def handle_show(state: AutoClickerState) -> None:
                 walk_points(state)
                 continue
 
-            if user_input.lower() in ("klick", "k", "nachklicken"):
+            if user_input.lower() in ("reclick", "k", "klick", "nachklicken"):
                 # **Der Editor schliesst sich dabei.** Die Runde laeuft aus dem
                 # Maus-Hook, und der braucht die Message-Pump des Main-Threads;
                 # ein blockierendes input() hier bekaeme keinen einzigen Klick zu

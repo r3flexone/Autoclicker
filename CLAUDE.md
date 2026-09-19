@@ -2548,7 +2548,7 @@ Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
 Briefkasten-Befehl `data_reload`, der Hauptprozess.
 
 **Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_tools.py`).
-Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`klick`) lagen im
+Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`reclick`) lagen im
 Punkte-Menü — also ausgerechnet die Handgriffe, die man nach einem Bildschirm-Umbau
 braucht, und die man dann in einem Fenster sucht, das schon offen ist.
 
@@ -3538,11 +3538,11 @@ gehen:
 | Runde | wo | wie |
 |---|---|---|
 | `walk` | Punkte-Menü | Zeiger springt hin, `n` setzt auf die Mausposition — **ohne Klick** |
-| `klick` | Punkte-Menü **oder** Studio → Werkzeuge | die Sequenz einmal von Hand **nachklicken** (`editors/reclick.py`) |
+| `reclick` | Punkte-Menü **oder** Studio → Werkzeuge | die Sequenz einmal von Hand **nachklicken** (`editors/reclick.py`) |
 
 **Der Unterschied ist der Klick, und er entscheidet.** `walk` fasst nichts an —
 also bleibt das Spiel stehen, wo es steht, und ein Punkt im dritten Untermenü
-ist gar nicht sichtbar: man sieht den Desktop und rät. Bei `klick` geht jeder
+ist gar nicht sichtbar: man sieht den Desktop und rät. Bei `reclick` geht jeder
 Klick ans Spiel, die Oberfläche öffnet sich genau wie im Lauf, und **der nächste
 Punkt liegt dann vor einem**. Man spielt die Sequenz einmal von Hand durch, und
 hinter jedem Klick steht die neue Stelle im Punkt.
