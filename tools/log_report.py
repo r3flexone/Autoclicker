@@ -85,14 +85,14 @@ def evaluate(paths: list[Path]) -> dict:
     bei einer Nacht voller Logs liest man dann jede Datei doppelt.
     """
     gesamt_events = Counter()
-    timeouts_je_schritt = Counter()
+    timeouts_per_step = Counter()
     items = Counter()
     detected = Counter()
     verify_miss = Counter()
     verify_ok = Counter()
     sessions = []
     nicht_lesbar = []
-    gesamt_dauer = 0.0
+    total_duration = 0.0
 
     for path in paths:
         lines, error = _lies(path)
@@ -102,15 +102,15 @@ def evaluate(paths: list[Path]) -> dict:
         if not lines:
             continue
         duration = _duration(lines)
-        gesamt_dauer += duration
-        eigen = Counter()
+        total_duration += duration
+        own = Counter()
         for z in lines:
             ev = z.get("event", "")
             gesamt_events[ev] += 1
-            eigen[ev] += 1
+            own[ev] += 1
             detail = (z.get("detail") or "").strip()
             if ev == "timeout":
-                timeouts_je_schritt[detail or "(ohne Namen)"] += 1
+                timeouts_per_step[detail or "(ohne Namen)"] += 1
             elif ev == "item_found":
                 items[detail] += 1
             elif ev == "detected":
@@ -123,10 +123,10 @@ def evaluate(paths: list[Path]) -> dict:
             "file": path.name,
             "begin": (lines[0].get("timestamp") or "").strip(),
             "duration": duration,
-            "clicks": eigen.get("click", 0),
-            "timeouts": eigen.get("timeout", 0),
-            "items": eigen.get("item_found", 0),
-            "verify_miss": eigen.get("verify_miss", 0),
+            "clicks": own.get("click", 0),
+            "timeouts": own.get("timeout", 0),
+            "items": own.get("item_found", 0),
+            "verify_miss": own.get("verify_miss", 0),
         })
 
     disturbances = {k: v for k, v in gesamt_events.items()
@@ -135,9 +135,9 @@ def evaluate(paths: list[Path]) -> dict:
     return {
         "sessions": sessions,
         "unreadable": nicht_lesbar,
-        "duration": gesamt_dauer,
+        "duration": total_duration,
         "events": dict(gesamt_events),
-        "timeouts": _rank(timeouts_je_schritt),
+        "timeouts": _rank(timeouts_per_step),
         "items": _rank(items),
         "detected": _rank(detected),
         "verify_miss": _rank(verify_miss),
@@ -158,26 +158,26 @@ def report(paths: list[Path]) -> None:
         return
 
     gesamt_events = data["events"]
-    timeouts_je_schritt = data["timeouts"]
+    timeouts_per_step = data["timeouts"]
     verify_miss = data["verify_miss"]
     verify_ok = data["verify_ok"]
-    gesamt_dauer = data["duration"]
+    total_duration = data["duration"]
 
     print("=" * 66)
-    print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_duration(gesamt_dauer)}")
+    print(f"  {sessions} Session(s)  |  Laufzeit gesamt: {_fmt_duration(total_duration)}")
     print("=" * 66)
 
     clicks = gesamt_events.get("click", 0)
     print(f"\nAktionen: {clicks} Klick(s), {gesamt_events.get('key', 0)} Taste(n), "
           f"{gesamt_events.get('scroll', 0)} Scroll(s)")
-    if gesamt_dauer > 0 and clicks:
-        print(f"          {clicks / (gesamt_dauer / 3600):.0f} Klicks/Stunde")
+    if total_duration > 0 and clicks:
+        print(f"          {clicks / (total_duration / 3600):.0f} Klicks/Stunde")
 
     # DIE Frage, fuer die es das Werkzeug gibt
-    if timeouts_je_schritt:
+    if timeouts_per_step:
         print(f"\n{'-' * 66}\nTIMEOUTS — wo die Sequenz haengt "
-              f"({sum(n for _, n in timeouts_je_schritt)} gesamt):")
-        for name, n in timeouts_je_schritt[:10]:
+              f"({sum(n for _, n in timeouts_per_step)} gesamt):")
+        for name, n in timeouts_per_step[:10]:
             print(f"  {n:>5}x  {name}")
         print("       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.")
     else:

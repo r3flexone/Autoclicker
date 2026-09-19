@@ -37,14 +37,14 @@ def png_bytes(edge: int) -> bytes:
         for r, g, b, a in line:
             raw += bytes((r, g, b, a))
 
-    def stueck(kind: bytes, data: bytes) -> bytes:
+    def piece(kind: bytes, data: bytes) -> bytes:
         return (struct.pack(">I", len(data)) + kind + data
                 + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
 
     return (b"\x89PNG\r\n\x1a\n"
-            + stueck(b"IHDR", struct.pack(">IIBBBBB", edge, edge, 8, 6, 0, 0, 0))
-            + stueck(b"IDAT", zlib.compress(bytes(raw), 9))
-            + stueck(b"IEND", b""))
+            + piece(b"IHDR", struct.pack(">IIBBBBB", edge, edge, 8, 6, 0, 0, 0))
+            + piece(b"IDAT", zlib.compress(bytes(raw), 9))
+            + piece(b"IEND", b""))
 
 
 def ico_bytes(sizes=SIZES) -> bytes:
@@ -54,15 +54,15 @@ def ico_bytes(sizes=SIZES) -> bytes:
     doppelten Höhe und der Maske. 256 steht im Verzeichnis als **0** — ein Byte
     fasst nur bis 255, und 0 heisst dort „256".
     """
-    bilder = [png_bytes(k) for k in sizes]
-    kopf = struct.pack("<HHH", 0, 1, len(bilder))
-    versatz = len(kopf) + 16 * len(bilder)
+    images = [png_bytes(k) for k in sizes]
+    head = struct.pack("<HHH", 0, 1, len(images))
+    offset = len(head) + 16 * len(images)
     directory = b""
-    for edge, image in zip(sizes, bilder):
+    for edge, image in zip(sizes, images):
         directory += struct.pack("<BBBBHHII", edge % 256, edge % 256, 0, 0,
-                                   1, 32, len(image), versatz)
-        versatz += len(image)
-    return kopf + directory + b"".join(bilder)
+                                   1, 32, len(image), offset)
+        offset += len(image)
+    return head + directory + b"".join(images)
 
 
 def main() -> int:

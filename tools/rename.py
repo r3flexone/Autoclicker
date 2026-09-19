@@ -76,7 +76,7 @@ class Renamer:
         self.strings = strings
         self.keys = keys
         # `--keys --no-py-idents`: ein JSON-Schluessel heisst in Python oft auch
-        # als Lokale so (`treffer`, `target`) — die gehoeren zu ihrer eigenen Phase.
+        # als Lokale so (`treffer`, `ziel`) — die gehoeren zu ihrer eigenen Phase.
         self.py_idents = py_idents
         # Drei Sorten Eintrag: `.karte=.card` ist eine Klasse OHNE Bindestrich
         # (nur in Selektoren und Klassenlisten, denn `karte` ist auch ein Wort),
@@ -93,13 +93,13 @@ class Renamer:
     def _compile(self) -> None:
         """Ein Muster je Regel statt eines je Name — 200 Namen mal 10.000 Token
         waren sonst zwei Millionen Regex-Laeufe."""
-        def alternation(namen):
-            return "(?:" + "|".join(re.escape(n) for n in sorted(namen, key=len, reverse=True)) + ")"
-        mit = [a for a in self.ident if "_" in a]
-        ohne = [a for a in self.ident if "_" not in a]
-        self._re_underscore = re.compile(r"(?<!\w)" + alternation(mit) + r"\b") if mit else None
-        self._re_backtick = (re.compile(r"`" + alternation(ohne) + r"(?=[`(.])|\b" + alternation(ohne) + r"(?=\()")
-                             if ohne else None)
+        def alternation(names):
+            return "(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + ")"
+        with_underscore = [a for a in self.ident if "_" in a]
+        without_underscore = [a for a in self.ident if "_" not in a]
+        self._re_underscore = re.compile(r"(?<!\w)" + alternation(with_underscore) + r"\b") if with_underscore else None
+        self._re_backtick = (re.compile(r"`" + alternation(without_underscore) + r"(?=[`(.])|\b" + alternation(without_underscore) + r"(?=\()")
+                             if without_underscore else None)
         self._re_ident = re.compile(r"(?<![\w$])" + alternation(self.ident) + r"(?![\w$])") if self.ident else None
         self._re_css = re.compile(r"(?<![\w-])" + alternation(self.css_table) + r"(?![\w-])") if self.css_table else None
         if self.css_words:
@@ -117,24 +117,24 @@ class Renamer:
                 lambda m: m.group(0).replace(m.group(0).lstrip("`"), self.ident[m.group(0).lstrip("`")]), text)
         return text
 
-    def _string_rule(self, inhalt: str, class_context: bool = False) -> str:
+    def _string_rule(self, content: str, class_context: bool = False) -> str:
         """String-Inhalt: Verweis-Regel, mit --strings zusaetzlich Pfad-Glieder,
         mit --keys nur der String, der GENAU der Schluessel ist."""
-        if self.keys and inhalt in self.ident:
-            return self.ident[inhalt]
-        neu = self._doc_rule(inhalt)
-        if self.strings and self._re_ident is not None and neu.strip() == neu and " " not in neu and neu:
-            neu = self._re_ident.sub(lambda m: self.ident[m.group(0)], neu)
+        if self.keys and content in self.ident:
+            return self.ident[content]
+        new = self._doc_rule(content)
+        if self.strings and self._re_ident is not None and new.strip() == new and " " not in new and new:
+            new = self._re_ident.sub(lambda m: self.ident[m.group(0)], new)
         # CSS-Klassen leben in Strings — in Python genauso wie in JavaScript
         # (Selektoren der Rauchtests, zitierter Quelltext der Vertragssuite).
-        return self._class_rule(self._css_rule(neu), class_context)
+        return self._class_rule(self._css_rule(new), class_context)
 
     def _css_rule(self, text: str) -> str:
         if self._re_css is not None:
             text = self._re_css.sub(lambda m: self.css_table[m.group(0)], text)
         return text
 
-    def _class_rule(self, inhalt: str, class_context: bool = False) -> str:
+    def _class_rule(self, content: str, class_context: bool = False) -> str:
         """String-Inhalt: Klassen ohne Bindestrich nur dort, wo eine Klasse
         steht — als Selektor (`.karte`, `"#x .karte"`), in einem zitierten
         Klassen-Attribut (`class: "feld"`) oder, wenn der Aufrufer weiss, dass
@@ -143,13 +143,13 @@ class Renamer:
         bleibt `"karte"` ein Wort: `"die karte ist zahl"` sieht einer
         Klassenliste zum Verwechseln aehnlich."""
         if self._re_cls is None:
-            return inhalt
-        ersatz = lambda m: self.css_words[m.group(0)]   # noqa: E731
-        inhalt = self._re_cls_sel.sub(ersatz, inhalt)
-        if class_context and _CLASS_LIST.match(inhalt):
-            return self._re_cls.sub(ersatz, inhalt)
-        return _CLASS_ATTR.sub(lambda m: m.group(1) + self._re_cls.sub(ersatz, m.group(2)) + m.group(3),
-                               inhalt)
+            return content
+        replacement = lambda m: self.css_words[m.group(0)]   # noqa: E731
+        content = self._re_cls_sel.sub(replacement, content)
+        if class_context and _CLASS_LIST.match(content):
+            return self._re_cls.sub(replacement, content)
+        return _CLASS_ATTR.sub(lambda m: m.group(1) + self._re_cls.sub(replacement, m.group(2)) + m.group(3),
+                               content)
 
     # Was VOR einem String steht, wenn er eine Klassenliste ist: `class:`,
     # `class=`, `className =`, `classList.add(` — auf derselben Zeile, und
@@ -159,13 +159,13 @@ class Renamer:
 
     @classmethod
     def _in_class_context(cls, line_before: str) -> bool:
-        treffer = None
-        for treffer in cls._CLASS_CTX.finditer(line_before):
+        match = None
+        for match in cls._CLASS_CTX.finditer(line_before):
             pass
-        if treffer is None:
+        if match is None:
             return False
         depth = 0
-        for ch in line_before[treffer.end():]:
+        for ch in line_before[match.end():]:
             if ch in "([{":
                 depth += 1
             elif ch in ")]}":
@@ -191,19 +191,19 @@ class Renamer:
             if tok.type == tokenize.NAME and tok.string in self.ident and self.py_idents:
                 edits.append((r1, c1, r2, c2, self.ident[tok.string]))
             elif tok.type == tokenize.COMMENT:
-                neu = self._doc_rule(tok.string)
-                if neu != tok.string:
-                    edits.append((r1, c1, r2, c2, neu))
+                new = self._doc_rule(tok.string)
+                if new != tok.string:
+                    edits.append((r1, c1, r2, c2, new))
             elif tok.type == tokenize.STRING:
-                neu = self._rewrite_string_token(tok.string)
-                if neu != tok.string:
-                    edits.append((r1, c1, r2, c2, neu))
+                new = self._rewrite_string_token(tok.string)
+                if new != tok.string:
+                    edits.append((r1, c1, r2, c2, new))
             elif tok.type == getattr(tokenize, "FSTRING_MIDDLE", -1):
                 # Dieselben Regeln wie fuer den Text eines f-Strings vor 3.12
                 # (`_fstring_rule`) — sonst hinge das Ergebnis an der Python-Version.
-                neu = self._class_rule(self._css_rule(self._doc_rule(tok.string)))
-                if neu != tok.string:
-                    edits.append((r1, c1, r2, c2, neu))
+                new = self._class_rule(self._css_rule(self._doc_rule(tok.string)))
+                if new != tok.string:
+                    edits.append((r1, c1, r2, c2, new))
         return self._apply(lines, edits)
 
     def _rewrite_string_token(self, literal: str) -> str:
@@ -211,47 +211,47 @@ class Renamer:
         if not m:
             return literal
         prefix, quote = m.group(1), m.group(2)
-        inhalt = literal[len(prefix) + len(quote):-len(quote)]
+        content = literal[len(prefix) + len(quote):-len(quote)]
         if "f" in prefix.lower():
-            neu = self._fstring_rule(inhalt)
-        elif "\n" in inhalt or len(inhalt) > 200:
-            neu = self._doc_rule(inhalt)           # Docstring / langer Text
+            new = self._fstring_rule(content)
+        elif "\n" in content or len(content) > 200:
+            new = self._doc_rule(content)           # Docstring / langer Text
         else:
-            return prefix + quote + self._string_rule(inhalt) + quote
+            return prefix + quote + self._string_rule(content) + quote
         # Auch ein langer String traegt Klassen: die JS-Schnipsel der Rauchtests
         # (`evaluate("""…""")`) und f-String-Selektoren (`f".karte.{name}"`).
-        return prefix + quote + self._class_rule(self._css_rule(neu)) + quote
+        return prefix + quote + self._class_rule(self._css_rule(new)) + quote
 
     # Ein `{…}`-Feld eines f-Strings, eine Klammerebene tief (`{x:{breite}}`);
     # `{{` und `}}` sind Text.
     _FSTRING_FELD = re.compile(r"(?<!\{)\{(?!\{)((?:[^{}]|\{[^{}]*\})*)\}")
 
-    def _fstring_rule(self, inhalt: str) -> str:
+    def _fstring_rule(self, content: str) -> str:
         """Vor Python 3.12 ist ein f-String EIN Token: der Text darin folgt der
         Verweis-Regel, die Ausdruecke in `{…}` sind Code. Ab 3.12 liefert
         `tokenize` beides getrennt (FSTRING_MIDDLE + NAME), und dieser Weg
         wird gar nicht erst betreten — auf beiden Wegen kommt dasselbe heraus."""
         out, pos = [], 0
-        for feld in self._FSTRING_FELD.finditer(inhalt):
-            out.append(self._doc_rule(inhalt[pos:feld.start()]))
-            ausdruck = feld.group(1)
+        for field in self._FSTRING_FELD.finditer(content):
+            out.append(self._doc_rule(content[pos:field.start()]))
+            expression = field.group(1)
             if self._re_ident is not None:
-                ausdruck = self._re_ident.sub(lambda m: self.ident[m.group(0)], ausdruck)
-            out.append("{" + ausdruck + "}")
-            pos = feld.end()
-        out.append(self._doc_rule(inhalt[pos:]))
+                expression = self._re_ident.sub(lambda m: self.ident[m.group(0)], expression)
+            out.append("{" + expression + "}")
+            pos = field.end()
+        out.append(self._doc_rule(content[pos:]))
         return "".join(out)
 
     @staticmethod
     def _apply(lines: list, edits: list) -> str:
-        for r1, c1, r2, c2, neu in sorted(edits, reverse=True):
+        for r1, c1, r2, c2, new in sorted(edits, reverse=True):
             if r1 == r2:
-                zeile = lines[r1 - 1]
-                lines[r1 - 1] = zeile[:c1] + neu + zeile[c2:]
+                line = lines[r1 - 1]
+                lines[r1 - 1] = line[:c1] + new + line[c2:]
             else:
-                kopf = lines[r1 - 1][:c1]
-                schwanz = lines[r2 - 1][c2:]
-                lines[r1 - 1:r2] = [kopf + neu + schwanz]
+                head = lines[r1 - 1][:c1]
+                tail = lines[r2 - 1][c2:]
+                lines[r1 - 1:r2] = [head + new + tail]
         return "".join(lines)
 
     # --------------------------------------------------------- JavaScript
@@ -285,9 +285,9 @@ class Renamer:
                 out.append(self._doc_rule(src[i:j])); i = j; continue
             if ch in "\"'":
                 j = self._js_string_end(src, i, ch)
-                zeile_davor = src[src.rfind("\n", 0, i) + 1:i]
+                line_before = src[src.rfind("\n", 0, i) + 1:i]
                 out.append(ch + self._string_rule(src[i + 1:j - 1],
-                                                  self._in_class_context(zeile_davor)) + ch)
+                                                  self._in_class_context(line_before)) + ch)
                 i = j; last_sig = "str"; continue
             if ch == "`":
                 j, text = self._js_template(src, i)
@@ -449,7 +449,7 @@ def scope_name_sets(src: str) -> list:
 
     SCOPE_KNOTEN = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
-    def eigene_namen(scope) -> set:
+    def own_names(scope) -> set:
         """Die Namen im Rumpf dieses Scopes — an einer verschachtelten Funktion
         bleibt nur ihr Name, ihr Rumpf gehoert ihr selbst. Ein `try`/`with`
         dazwischen aendert daran nichts: abgestiegen wird ueberall, nur nicht
@@ -479,7 +479,7 @@ def scope_name_sets(src: str) -> list:
     scopes = [("<modul>", baum)] + [
         (getattr(k, "name", "<lambda>"), k) for k in ast.walk(baum)
         if isinstance(k, SCOPE_KNOTEN)]
-    return [(bezeichnung, eigene_namen(knoten)) for bezeichnung, knoten in scopes]
+    return [(designation, own_names(knoten)) for designation, knoten in scopes]
 
 
 def identifiers_in(path: Path, src: str) -> set:
@@ -505,59 +505,59 @@ def run(root: Path, table: dict, strings: bool, dry_run: bool, force: bool,
     renamer = Renamer(table, strings=strings, keys=keys, py_idents=py_idents)
     # newline="" laesst CRLF unangetastet — sonst schriebe der Durchgang jede
     # CRLF-Datei still auf LF um, und der Diff zeigte die ganze Datei.
-    quellen = [(f, _read(f)) for f in files(root, python_only, js_only)]
+    sources = [(f, _read(f)) for f in files(root, python_only, js_only)]
 
     # Zwei Stufen. Ein neuer Name, der irgendwo im Repo schon vorkommt, ist ein
     # HINWEIS (`f.write` neben `status.schreibe -> write` ist kein Problem). Ein
     # neuer Name, der im SELBEN Python-Scope wie der alte als nackter Name steht,
     # ist ein STOPP: `wert = 1; value = 2; use(wert)` wuerde nach dem Umbenennen
     # still `value = 2` benutzen, und das faengt kein Linter.
-    hinweise, stopps = {}, []
-    for f, src in quellen:
+    hints, stops = {}, []
+    for f, src in sources:
         for name in identifiers_in(f, src) & set(renamer.ident.values()):
-            hinweise.setdefault(name, []).append(f.relative_to(root).as_posix())
+            hints.setdefault(name, []).append(f.relative_to(root).as_posix())
         if f.suffix == ".py":
-            for scope, namen in scope_name_sets(src):
-                for alt, neu in renamer.ident.items():
-                    if alt in namen and neu in namen:
-                        stopps.append(f"{f.relative_to(root).as_posix()}:{scope}  {alt} und {neu}")
+            for scope, names in scope_name_sets(src):
+                for old, new in renamer.ident.items():
+                    if old in names and new in names:
+                        stops.append(f"{f.relative_to(root).as_posix()}:{scope}  {old} und {new}")
         elif f.suffix == ".js":
             probe = Renamer({})
             probe.javascript(src)
-            for scope, namen in probe.js_scopes:
-                for alt, neu in renamer.ident.items():
-                    if alt in namen and neu in namen:
-                        stopps.append(f"{f.relative_to(root).as_posix()}:{scope}()  {alt} und {neu}")
-    for name, wo in sorted(hinweise.items()):
+            for scope, names in probe.js_scopes:
+                for old, new in renamer.ident.items():
+                    if old in names and new in names:
+                        stops.append(f"{f.relative_to(root).as_posix()}:{scope}()  {old} und {new}")
+    for name, wo in sorted(hints.items()):
         print(f"[HINWEIS] '{name}' kommt schon vor in: "
               + ", ".join(wo[:4]) + (" ..." if len(wo) > 4 else ""), file=out)
-    if stopps and not force:
-        for s in stopps:
+    if stops and not force:
+        for s in stops:
             print(f"[STOPP] alt und neu im selben Scope: {s}", file=out)
         print("Ein Rename wuerde hier still ueberschatten — von Hand aufloesen oder --force.",
               file=out)
         return 2
 
     gesamt = 0
-    for f, src in quellen:
+    for f, src in sources:
         try:
-            neu = renamer.rewrite(f, src)
+            new = renamer.rewrite(f, src)
         except ValueError as e:
             print(f"[WARNUNG] {f.relative_to(root).as_posix()}: {e}", file=out)
             continue
-        if neu == src:
+        if new == src:
             continue
-        alt_zeilen, neu_zeilen = src.splitlines(), neu.splitlines()
-        anzahl = sum(1 for a, b in zip(alt_zeilen, neu_zeilen) if a != b) + abs(len(alt_zeilen) - len(neu_zeilen))
-        gesamt += anzahl
+        old_lines, new_lines = src.splitlines(), new.splitlines()
+        count = sum(1 for a, b in zip(old_lines, new_lines) if a != b) + abs(len(old_lines) - len(new_lines))
+        gesamt += count
         rel = f.relative_to(root).as_posix()
-        print(f"{rel}: {anzahl} Zeile(n)", file=out)
+        print(f"{rel}: {count} Zeile(n)", file=out)
         if dry_run:
-            for nr, (a, b) in enumerate(zip(alt_zeilen, neu_zeilen), 1):
+            for nr, (a, b) in enumerate(zip(old_lines, new_lines), 1):
                 if a != b:
                     print(f"  {nr}: {b.strip()[:110]}", file=out)
         else:
-            f.write_text(neu, encoding="utf-8", newline="")
+            f.write_text(new, encoding="utf-8", newline="")
     print(f"\n{gesamt} geaenderte Zeile(n)" + (" (nicht geschrieben)" if dry_run else ""),
           file=out)
     return 0
@@ -587,27 +587,27 @@ def main(argv=None) -> int:
     p.add_argument("--root", default=".", help="Repo-Wurzel (Standard: .)")
     args = p.parse_args(argv)
 
-    paare = list(args.pairs)
+    pairs = list(args.pairs)
     if args.table:
-        for zeile in Path(args.table).read_text(encoding="utf-8").splitlines():
-            zeile = zeile.split("#", 1)[0].strip()
-            if zeile:
-                paare.append(zeile)
-    if not paare:
+        for line in Path(args.table).read_text(encoding="utf-8").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line:
+                pairs.append(line)
+    if not pairs:
         p.error("keine Umbenennung angegeben (alt=neu oder --table DATEI)")
     table = {}
-    for paar in paare:
-        if "=" not in paar:
-            p.error(f"'{paar}' ist kein alt=neu")
-        alt, neu = paar.split("=", 1)
-        if not alt or not neu or alt == neu:
-            p.error(f"'{paar}': beide Seiten muessen gesetzt und verschieden sein")
-        if alt.startswith("."):
-            if not re.fullmatch(r"\.[A-Za-z][\w-]*", neu):
-                p.error(f"'{paar}': eine Klasse (.alt) braucht auch rechts eine Klasse (.neu)")
-        elif "-" not in alt and not re.fullmatch(r"[A-Za-z_$][\w$]*", neu):
-            p.error(f"'{neu}' ist kein gueltiger Bezeichner")
-        table[alt] = neu
+    for pair in pairs:
+        if "=" not in pair:
+            p.error(f"'{pair}' ist kein alt=neu")
+        old, new = pair.split("=", 1)
+        if not old or not new or old == new:
+            p.error(f"'{pair}': beide Seiten muessen gesetzt und verschieden sein")
+        if old.startswith("."):
+            if not re.fullmatch(r"\.[A-Za-z][\w-]*", new):
+                p.error(f"'{pair}': eine Klasse (.alt) braucht auch rechts eine Klasse (.neu)")
+        elif "-" not in old and not re.fullmatch(r"[A-Za-z_$][\w$]*", new):
+            p.error(f"'{new}' ist kein gueltiger Bezeichner")
+        table[old] = new
     return run(Path(args.root), table, args.strings, args.dry_run, args.force,
                python_only=args.python_only, keys=args.keys,
                py_idents=not args.no_py_idents, js_only=args.js_only)

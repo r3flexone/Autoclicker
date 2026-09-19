@@ -115,7 +115,7 @@ def _string_end(text: str, start: int) -> int:
 
 def _argument_end(text: str, start: int) -> int:
     """Index hinter der schliessenden Klammer; -1, wenn sie nie zugeht."""
-    tiefe = 1
+    depth = 1
     i = start
     n = len(text)
     while i < n:
@@ -124,10 +124,10 @@ def _argument_end(text: str, start: int) -> int:
             i = _string_end(text, i)
             continue
         if c == "(":
-            tiefe += 1
+            depth += 1
         elif c == ")":
-            tiefe -= 1
-            if tiefe == 0:
+            depth -= 1
+            if depth == 0:
                 return i + 1
         i += 1
     return -1
@@ -143,7 +143,7 @@ def _as_number(inneres: str):
     return None
 
 
-def _ersatz(name: str, inneres: str, unbekannt: dict) -> str:
+def _replacement(name: str, inneres: str, unbekannt: dict) -> str:
     """Der JSON-Text, der fuer `Name(inneres)` an dieselbe Stelle kommt."""
     inneres = inneres.strip()
     if name in ZAHL_HUELLEN:
@@ -173,22 +173,22 @@ def clean_extended_json(text: str) -> tuple:
     while i < n:
         c = text[i]
         if c == '"':
-            ende = _string_end(text, i)
-            parts.append(text[i:ende])
-            i = ende
+            end = _string_end(text, i)
+            parts.append(text[i:end])
+            i = end
             continue
         match = _AUFRUF.match(text, i)
         if match is None:
             parts.append(c)
             i += 1
             continue
-        ende = _argument_end(text, match.end())
-        if ende < 0:
+        end = _argument_end(text, match.end())
+        if end < 0:
             parts.append(text[i:match.end()])
             i = match.end()
             continue
-        parts.append(_ersatz(match.group(1), text[match.end():ende - 1], unbekannt))
-        i = ende
+        parts.append(_replacement(match.group(1), text[match.end():end - 1], unbekannt))
+        i = end
     return "".join(parts), unbekannt
 
 
@@ -200,20 +200,20 @@ def extended_json_hints(unbekannt: dict) -> list:
             for name, count in sorted(unbekannt.items())]
 
 
-def fetch_game_data(url: str = GAME_URL, timeout: int = 60, hinweise: list = None) -> dict:
+def fetch_game_data(url: str = GAME_URL, timeout: int = 60, hints: list = None) -> dict:
     """Laedt game-data und macht daraus gueltiges JSON.
 
     Der Endpunkt liefert MongoDB-Shell-JSON (`ObjectId("…")`, `NumberLong(0)`);
     `clean_extended_json` uebersetzt es. Was dabei unbekannt war, landet als
-    Meldung in `hinweise` (falls uebergeben) — der Aufrufer entscheidet, wo sie
+    Meldung in `hints` (falls uebergeben) — der Aufrufer entscheidet, wo sie
     hingehoert: die Kommandozeile auf stderr, das Studio in seine Statuszeile.
     """
     req = urllib.request.Request(url, headers={"User-Agent": "autoclicker-catalog"})
-    with urllib.request.urlopen(req, timeout=timeout) as antwort:
-        raw = antwort.read().decode("utf-8")
+    with urllib.request.urlopen(req, timeout=timeout) as answer:
+        raw = answer.read().decode("utf-8")
     cleaned, unbekannt = clean_extended_json(raw)
-    if hinweise is not None:
-        hinweise.extend(extended_json_hints(unbekannt))
+    if hints is not None:
+        hints.extend(extended_json_hints(unbekannt))
     return json.loads(cleaned)
 
 
@@ -236,8 +236,8 @@ def build_catalog(spieldaten: dict) -> dict:
 
     def sammle(knoten) -> None:
         if isinstance(knoten, dict):
-            for feld in ("EnemyName", "MonsterName", "BossNameLocalizationKey"):
-                value = knoten.get(feld)
+            for field in ("EnemyName", "MonsterName", "BossNameLocalizationKey"):
+                value = knoten.get(field)
                 if isinstance(value, str) and value:
                     gegner.add(display_name(value))
             for value in knoten.values():
@@ -260,11 +260,11 @@ def _summary(catalog: dict) -> str:
     kategorien = {}
     for entry in catalog["items"].values():
         kategorien[entry["kategorie"]] = kategorien.get(entry["kategorie"], 0) + 1
-    gross = sorted(kategorien.items(), key=lambda kv: -kv[1])[:8]
+    big = sorted(kategorien.items(), key=lambda kv: -kv[1])[:8]
     return (f"{len(catalog['items'])} Items in {len(kategorien)} Kategorien, "
             f"{len(catalog['gegner'])} Gegner\n"
             "  groesste Kategorien: "
-            + ", ".join(f"{name} ({count})" for name, count in gross))
+            + ", ".join(f"{name} ({count})" for name, count in big))
 
 
 def main(argv=None) -> int:
@@ -276,9 +276,9 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     print(f"Lade {GAME_URL} ...")
-    hinweise: list = []
+    hints: list = []
     try:
-        spieldaten = fetch_game_data(hinweise=hinweise)
+        spieldaten = fetch_game_data(hints=hints)
     except (urllib.error.URLError, TimeoutError) as e:
         print(f"[FEHLER] Nicht erreichbar: {e}", file=sys.stderr)
         return 1
@@ -288,8 +288,8 @@ def main(argv=None) -> int:
         return 1
     # Ein Hinweis, kein Abbruch: der Katalog braucht Namen, Slots und Werte —
     # ein neues Konstrukt in einem fremden Feld aendert daran nichts.
-    for hinweis in hinweise:
-        print(f"[WARNUNG] {hinweis}", file=sys.stderr)
+    for hint in hints:
+        print(f"[WARNUNG] {hint}", file=sys.stderr)
 
     catalog = build_catalog(spieldaten)
     print(_summary(catalog))

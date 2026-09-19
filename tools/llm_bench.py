@@ -129,9 +129,9 @@ def lade_foto(path: Path):
 def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> list:
     """`(Wahrheit, Bild)` je Item mit Vorlage, dessen Name im Katalog steht."""
     from PIL import Image
-    proben = []
+    samples = []
     for name, entry in scan["items"].items():
-        if len(proben) >= limit:
+        if len(samples) >= limit:
             break
         file = entry.get("template")
         if not file or not catalog.match(name):
@@ -142,8 +142,8 @@ def samples_from_templates(scan: dict, catalog, reason: bool, limit: int) -> lis
                 image = raw.copy()
         except (OSError, ValueError):
             continue
-        proben.append((catalog.match(name), auf_grund(image) if reason else image))
-    return proben
+        samples.append((catalog.match(name), auf_grund(image) if reason else image))
+    return samples
 
 
 def auf_grund(image, color=NEUTRAL):
@@ -151,9 +151,9 @@ def auf_grund(image, color=NEUTRAL):
     from PIL import Image
     if image.mode != "RGBA":
         return image.convert("RGB")
-    flaeche = Image.new("RGB", image.size, color)
-    flaeche.paste(image, mask=image.getchannel("A"))
-    return flaeche
+    surface = Image.new("RGB", image.size, color)
+    surface.paste(image, mask=image.getchannel("A"))
+    return surface
 
 
 def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
@@ -176,9 +176,9 @@ def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
     image, left, top = photo
     profile = [_item_from_dict(e, n) for n, e in scan["items"].items()]
     stellvertreter = NurConfig(config)
-    proben = []
+    samples = []
     for slot in scan["slots"].values():
-        if len(proben) >= limit:
+        if len(samples) >= limit:
             break
         region = slot.get("scan_region")
         if not region or len(region) != 4:
@@ -189,16 +189,16 @@ def samples_from_slots(scan: dict, catalog, config, limit: int) -> list:
             continue
         if kasten[2] > image.width or kasten[3] > image.height:
             continue
-        ausschnitt = image.crop(kasten).convert("RGB")
+        crop = image.crop(kasten).convert("RGB")
         for item in profile:
             if not catalog.match(item.name):
                 continue
-            if _check_profile_match(item, ausschnitt, scan["tolerance"],
+            if _check_profile_match(item, crop, scan["tolerance"],
                                     stellvertreter, False,
                                     template_root=scan["templates"]):
-                proben.append((catalog.match(item.name), ausschnitt))
+                samples.append((catalog.match(item.name), crop))
                 break
-    return proben
+    return samples
 
 
 # ---------------------------------------------------------------- Fragen
@@ -225,14 +225,14 @@ def ask_two_stage(image, catalog, config, model: str) -> tuple:
               "icon.\nAnswer with exactly one word copied verbatim from the "
               "CATEGORIES list below. No explanation.\n\nCATEGORIES:\n"
               + "\n".join(categories))
-    ok, antwort, _ms = analyze_image(
+    ok, answer, _ms = analyze_image(
         img=image, provider=config.llm_provider, endpoint=config.llm_endpoint,
         model=model, prompt="Which category is this item?",
         system_prompt=system, timeout=max(config.llm_timeout, 120),
         max_tokens=16)
     if not ok:
-        return None, (TIMEOUT if str(antwort).startswith("Timeout") else str(antwort))
-    kind = clean_boss_name(antwort)
+        return None, (TIMEOUT if str(answer).startswith("Timeout") else str(answer))
+    kind = clean_boss_name(answer)
     passend = {k.casefold(): k for k in categories}.get(kind.casefold())
     if passend is None:
         # Eine erfundene Art ist kein Ergebnis: die zweite Frage haette dann
@@ -242,7 +242,7 @@ def ask_two_stage(image, catalog, config, model: str) -> tuple:
     return ask_single_stage(image, eng, config, model)
 
 
-def with_votes(frage, votes: int) -> tuple:
+def with_votes(ask_fn, votes: int) -> tuple:
     """Mehrfach fragen und die Mehrheit nehmen.
 
     Bei `temperature 0` kommt zwar immer dasselbe heraus — die Bildkodierung
@@ -250,15 +250,15 @@ def with_votes(frage, votes: int) -> tuple:
     schwankt, ist eine andere Auskunft als eines, das konsequent danebenliegt.
     Genau das misst dieser Schalter.
     """
-    names, gruende = [], []
+    names, reasons = [], []
     for _ in range(votes):
-        name, reason = frage()
+        name, reason = ask_fn()
         if name:
             names.append(name)
         else:
-            gruende.append(reason)
+            reasons.append(reason)
     if not names:
-        return None, (gruende[0] if gruende else "")
+        return None, (reasons[0] if reasons else "")
     return Counter(names).most_common(1)[0][0], ""
 
 
@@ -273,36 +273,36 @@ def warm_up(image, config, model: str) -> float:
     return time.time() - start
 
 
-def lauf(proben: list, catalog, config, args, model: str) -> dict:
+def run(samples: list, catalog, config, args, model: str) -> dict:
     """Eine Variante ueber alle Proben. Gibt Zahlen zurueck, druckt Zeilen."""
     candidates = catalog.names()
-    match, remaining, zeiten, fehler = 0, 0, [], []
-    for truth, image in proben:
+    match, remaining, times, error = 0, 0, [], []
+    for truth, image in samples:
         start = time.time()
         if args.two_stage:
-            def einmal():
+            def once():
                 return ask_two_stage(image, catalog, config, model)
         else:
-            def einmal():
+            def once():
                 return ask_single_stage(image, candidates, config, model)
         if args.votes > 1:
-            name, reason = with_votes(einmal, args.votes)
+            name, reason = with_votes(once, args.votes)
         else:
-            name, reason = einmal()
+            name, reason = once()
         duration = time.time() - start
-        zeiten.append(duration)
+        times.append(duration)
         richtig = bool(name) and name.casefold() == truth.casefold()
         match += 1 if richtig else 0
         if not name:
             remaining += 1
         if not richtig:
-            fehler.append((truth, name or f"— ({reason})"))
+            error.append((truth, name or f"— ({reason})"))
         marke = "OK " if richtig else "-- "
         print(f"    {marke} {truth:<26} -> {str(name):<26} ({duration:.1f}s)")
     return {
-        "match": match, "total": len(proben), "without": remaining,
-        "seconds": sum(zeiten) / len(zeiten) if zeiten else 0.0,
-        "error": fehler,
+        "match": match, "total": len(samples), "without": remaining,
+        "seconds": sum(times) / len(times) if times else 0.0,
+        "error": error,
     }
 
 
@@ -315,8 +315,8 @@ def geladene_modelle(config) -> list:
         target = chat_endpoint(config.llm_provider).replace(
             "/chat/completions", "/models")
     try:
-        with urllib.request.urlopen(target, timeout=10) as antwort:
-            raw = _json.loads(antwort.read().decode("utf-8"))
+        with urllib.request.urlopen(target, timeout=10) as answer:
+            raw = _json.loads(answer.read().decode("utf-8"))
     except Exception as e:                       # noqa: BLE001 — Auskunft, kein Absturz
         print(f"[WARN] Modell-Liste nicht lesbar: {e}")
         return []
@@ -354,15 +354,15 @@ def main(argv=None) -> int:
 
     scan = load_scan(find_scan(args.scan))
     if args.image == "slot":
-        proben = samples_from_slots(scan, catalog, config, args.limit)
+        samples = samples_from_slots(scan, catalog, config, args.limit)
     else:
-        proben = samples_from_templates(scan, catalog, args.image == "reason", args.limit)
-    if not proben:
+        samples = samples_from_templates(scan, catalog, args.image == "reason", args.limit)
+    if not samples:
         raise SystemExit(
             "Keine Proben: kein Item dieses Scans traegt einen Namen aus dem "
             "Katalog. Erst benennen (Studio → Scans → „Alle … benennen“).")
 
-    print(f"Scan '{scan['name']}' · {len(proben)} Proben · Bild: {args.image}"
+    print(f"Scan '{scan['name']}' · {len(samples)} Proben · Bild: {args.image}"
           + (" · zweistufig" if args.two_stage else "")
           + (f" · {args.votes} Stimmen" if args.votes > 1 else "")
           + (" · Reasoning" if args.reasoning else ""))
@@ -378,9 +378,9 @@ def main(argv=None) -> int:
     for model in modelle:
         print(f"\n=== {model} ===")
         if not args.no_warmup:
-            print(f"  \033[90maufwaermen … {warm_up(proben[0][1], config, model):.0f}s"
+            print(f"  \033[90maufwaermen … {warm_up(samples[0][1], config, model):.0f}s"
                   "\033[0m")
-        ergebnisse[model] = lauf(proben, catalog, config, args, model)
+        ergebnisse[model] = run(samples, catalog, config, args, model)
         e = ergebnisse[model]
         print(f"  {e['match']}/{e['total']} richtig, "
               f"{e['seconds']:.1f}s je Item"
