@@ -20,7 +20,7 @@ class StartupEditorTest(unittest.TestCase):
 
         with patch.object(main_module, "handle_sequence_studio",
                           return_value=True) as open_mock:
-            self.assertTrue(main_module._studio_beim_start_oeffnen(state))
+            self.assertTrue(main_module._studio_opens_on_start(state))
 
         open_mock.assert_called_once_with(state, quit_with_window=True)
 
@@ -29,7 +29,7 @@ class StartupEditorTest(unittest.TestCase):
             config=AppConfig(studio_open_on_start=False))
 
         with patch.object(main_module, "handle_sequence_studio") as open_mock:
-            self.assertFalse(main_module._studio_beim_start_oeffnen(state))
+            self.assertFalse(main_module._studio_opens_on_start(state))
 
         open_mock.assert_not_called()
 
@@ -37,15 +37,15 @@ class StartupEditorTest(unittest.TestCase):
         studio = SimpleNamespace(config=AppConfig(studio_open_on_start=True))
         tui = SimpleNamespace(config=AppConfig(studio_open_on_start=False))
 
-        self.assertFalse(main_module._tui_ist_startoberflaeche(studio))
-        self.assertTrue(main_module._tui_ist_startoberflaeche(tui))
+        self.assertFalse(main_module._tui_is_start_surface(studio))
+        self.assertTrue(main_module._tui_is_start_surface(tui))
 
     def test_failed_studio_start_is_reported_to_the_caller(self):
         state = SimpleNamespace(config=AppConfig(studio_open_on_start=True))
 
         with patch.object(main_module, "handle_sequence_studio",
                           return_value=False):
-            self.assertFalse(main_module._studio_beim_start_oeffnen(state))
+            self.assertFalse(main_module._studio_opens_on_start(state))
 
     def test_normal_start_does_not_override_last_opened_sequence(self):
         state = SimpleNamespace(

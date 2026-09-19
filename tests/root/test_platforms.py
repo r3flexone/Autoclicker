@@ -60,11 +60,11 @@ class LinuxBackendTests(unittest.TestCase):
         with patch.object(app, "environment_warnings",
                           return_value=["Wayland erkannt"]), \
                 contextlib.redirect_stdout(output):
-            self.assertFalse(app._plattform_bereit())
+            self.assertFalse(app._platform_ready())
         self.assertIn("Start abgebrochen", output.getvalue())
 
         with patch.object(app, "print_banner"), patch.object(
-                app, "_plattform_bereit", return_value=False):
+                app, "_platform_ready", return_value=False):
             self.assertEqual(2, app.main())
 
     def test_headless_start_liefert_klare_warnung(self):

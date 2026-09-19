@@ -2801,7 +2801,7 @@ Regeln für die Ansicht:
 **Start, Pause und Stopp gehen über einen Briefkasten** (`mailbox.py`), nicht direkt:
 dieser Subprozess hat keinen Zugriff auf `state.stop_event`. Er legt eine Datei ab,
 und der Hauptprozess holt sie **im Main-Thread, in derselben Schleife, in der auch
-seine Hotkeys ankommen** (`_pruefe_befehle` in `main.py`, alle 250 ms im Leerlauf).
+seine Hotkeys ankommen** (`_check_commands` in `main.py`, alle 250 ms im Leerlauf).
 Damit ist ein Studio-Knopf exakt so viel wert wie ein Tastendruck: dieselbe
 Reihenfolge, dieselben Sperren, kein zweiter nebenläufiger Pfad. Ein Watcher-Thread
 hätte genau den gebracht — für eine Datei, die niemand eilig braucht.
