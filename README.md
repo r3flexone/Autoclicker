@@ -857,6 +857,16 @@ Während eine Sequenz läuft:
 - **CTRL+ALT+SHIFT+K** - Überspringt den ganzen Block, samt Klick/Taste/Scan
   (dasselbe wie „Block überspringen" im Live-Run des Studios)
 
+### Ab einem Block starten
+
+Im Studio einen Block wählen und im Inspektor **„Ab hier starten"** drücken: die
+Sequenz läuft ab genau diesem Block — alles davor wird übersprungen, bei einem
+Block in einer Loop-Phase auch INIT. Danach läuft sie wie ein normaler Start
+weiter: die restlichen Durchläufe der Phase und alle folgenden Phasen vollständig,
+der nächste Zyklus wieder von vorn. Der Einstieg gilt für diesen einen Start; der
+Live-Run zeigt ihn im Kopf („ab Loop 'X' · Block 3"). Wer nur EINEN Block sehen
+will, nimmt daneben „Block einmal testen" — das führt ihn aus und hört auf.
+
 ### Haltepunkte
 
 Ein Block kann einen **Haltepunkt** tragen (Studio: Schalter „Haltepunkt" im

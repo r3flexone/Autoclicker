@@ -1669,6 +1669,10 @@ async function renderRun() {
     el("span", {class: "lamp on"}),
     el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
     paused ? el("span", {class: "num summary-warn"}, "PAUSIERT") : null,
+    // Ein Lauf, der mitten in der Sequenz eingestiegen ist, sagt es — sonst
+    // sucht man die uebersprungenen Bloecke im Log.
+    z.started_from ? el("span", {class: "num", title: "Alles davor wurde übersprungen"},
+                        "ab " + z.started_from) : null,
     el("span", {class: "num"},
        "Zyklus " + (z.cycle || 0) + " / " + (z.cycles ? z.cycles : "∞")),
     el("span", {class: "num"}, "läuft " + duration(now - (z.start || now)))));
@@ -1943,6 +1947,16 @@ function buildProbe(target, b) {
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
     onclick: () => call("block_test"),
   }, icon("play"), "Block einmal testen"));
+  // Der Einstieg mitten in der Sequenz: alles davor wird uebersprungen (bei
+  // einem Loop-Block auch INIT), ab hier laeuft sie wie ein normaler Start —
+  // der zweite Zyklus wieder von vorn. Derselbe Nachlauf wie beim Start-Knopf:
+  // die Lampe soll kippen, und ein fehlender Hauptprozess soll sich melden.
+  footer.appendChild(el("button", {
+    class: "btn wide launch",
+    title: "Startet die Sequenz bei diesem Block — alles davor wird übersprungen, "
+      + "danach läuft sie normal weiter (nächster Zyklus wieder von vorn)",
+    onclick: async () => { await call("block_start"); runFollowUp(); mailboxFollowUp(); },
+  }, icon("play"), "Ab hier starten"));
   for (const [which, text, point] of positions) {
     footer.appendChild(el("button", {
       class: "btn wide",

@@ -359,7 +359,7 @@ class BridgeServicesMixin:
     ALL_COMMANDS = RUN_COMMANDS + ("show", "config", "data_reload", "recording",
                                    "recording_stop",
                                    "quit_program",
-                                   "reclick", "reclick_stop", "block_test")
+                                   "reclick", "reclick_stop", "block_test", "start_from")
 
     def recording_start(self, data: Optional[dict] = None) -> dict:
         """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
@@ -505,27 +505,58 @@ class BridgeServicesMixin:
             return self._report("Befehl konnte nicht abgelegt werden.", "err")
         return self._report(f"Maus zu #{point.id} ({point.x},{point.y}) — im Spiel nachsehen.")
 
-    def block_test(self, data: Optional[dict] = None) -> dict:
-        """Führt den gewählten Block einmal im Hauptprozess aus.
+    def _selected_position(self) -> Optional[dict]:
+        """Datei und Position des einen gewählten Blocks — nach dem Speichern.
 
         Gesendet werden nur Datei und Position, nicht ein frei konstruierter
-        Schritt. Der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
-        die auch ein echter Lauf verwenden würde.
+        Schritt: der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
+        die auch ein echter Lauf verwenden würde. `None` heisst „keine
+        eindeutige Auswahl"; ein Dict mit `snapshot` heisst „nicht geschrieben"
+        (Fehler oder Rückfrage, s. `run_command`).
         """
         lane, row, step = self._single()
         if step is None or lane is None or row is None:
-            return self._report("Bitte genau einen Block wählen.", "warn")
+            return None
         if self._dirty:
             state_value = self.save()
-            if self._dirty:     # nicht geschrieben — Fehler oder Rueckfrage, s. run_command
-                return state_value
+            if self._dirty:
+                return {"snapshot": state_value}
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)
+        return {"file": str(self.filepath), "phase": lane.kind,
+                "phase_index": loop_index, "block": int(row)}
+
+    def block_test(self, data: Optional[dict] = None) -> dict:
+        """Führt den gewählten Block einmal im Hauptprozess aus."""
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
         from ...mailbox import send_command
-        if not send_command("block_test", file=str(self.filepath), phase=lane.kind,
-                     phase_index=loop_index, block=int(row)):
+        if not send_command("block_test", **position):
             return self._report("Block-Test konnte nicht gesendet werden.", "err")
         return self._report("Block-Test geschickt — echter Klick/Tastendruck möglich.", "warn")
+
+    def block_start(self, data: Optional[dict] = None) -> dict:
+        """Startet die Sequenz beim gewählten Block — alles davor wird übersprungen.
+
+        Derselbe Weg wie `block_test`, nur dass der Hauptprozess danach
+        weiterläuft: ab dem Block wie ein normaler Lauf, INIT eingeschlossen
+        übersprungen, wenn der Block in einer Loop-Phase liegt. Der Einstieg
+        gilt für diesen einen Start.
+        """
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
+        from ...mailbox import send_command
+        if not send_command("start_from", sequence=self.board.name, **position):
+            return self._report("Start konnte nicht gesendet werden.", "err")
+        lane, row, _step = self._single()
+        return self._report(f"'{self.board.name}' gestartet ab {lane.name} · Block {row + 1} "
+                            f"— alles davor wird übersprungen.")
 
     # ------------------------------------------------------------ Einstellungen
 

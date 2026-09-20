@@ -6510,6 +6510,7 @@ import tests.contract.sequence_context      # noqa: F401,E402
 import tests.contract.pause_and_skip        # noqa: F401,E402
 import tests.contract.pixel_fallback        # noqa: F401,E402
 import tests.contract.import_config         # noqa: F401,E402
+import tests.contract.start_from            # noqa: F401,E402
 
 
 import shutil as _shD

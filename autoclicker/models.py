@@ -818,6 +818,12 @@ class AutoClickerState:
     # oder Haltepunkt). Daran erkennen CTRL+ALT+G und der Briefkasten, dass ein
     # "weiter" gerade das Gate meint und nicht die Pause.
     gate_waiting: bool = False
+    # Einstieg mitten in der Sequenz: `(Art, Phasen-Index, Block)` mit Art
+    # "init"/"loop"/"end", Block 0-basiert. Gilt fuer den EINEN naechsten
+    # Start und wird vom Worker beim Lesen verbraucht — alles davor wird
+    # uebersprungen, ab dort laeuft die Sequenz normal (auch der zweite Zyklus
+    # von vorn). Ein Neustart (`restart_event`) faengt wieder bei INIT an.
+    start_from: Optional[tuple] = None
 
     # Hier stand `sequences: dict[str, Sequence]` — ein Cache, den nur ein Teil
     # der Ladewege pflegte (Konsolen-Editor, Aufnahme, Import), und den

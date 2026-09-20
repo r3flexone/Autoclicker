@@ -2854,6 +2854,24 @@ Zwei Dinge bleiben trotzdem beim Hauptprozess: die **Sequenz kommt von Platte**
 etwas anderes als das Angezeigte), und **`handle_toggle()` wird nicht für „stopp"
 benutzt** — es ist ein Umschalter und würde starten, wenn gerade nichts läuft.
 
+**„Ab hier starten" ist ein Start mit Einstieg, kein zweiter Lauf-Modus**
+(`block_start` → Briefkasten `start_from` → `command_start_from`). Geschickt
+werden Datei und Position — derselbe Helfer wie beim Block-Test
+(`_selected_position()` im Studio, `_locate_step()` im Hauptprozess) —, der
+Handler legt `state.start_from = (Art, Phasen-Index, Block)` ab und ruft dann
+`command_start`, also denselben Weg wie der Start-Knopf. Der Worker holt den
+Einstieg **einmal** ab (`_take_start_from`, verbraucht ihn und prüft, ob es den
+Block noch gibt — sonst Meldung und Start von vorn) und reicht ihn an
+`_run_main_loop`/`_run_loop_phases`/`_run_end_phase`: alles davor wird
+übersprungen, bei einem Loop-Block auch INIT; eine zeitgesteuerte Einstiegsphase
+läuft sofort (wer dort einsteigt, meint jetzt). Ab dort ist es ein normaler Lauf
+— die weiteren Durchläufe der Phase, alle folgenden Phasen und der nächste
+Zyklus vollständig, ein Neustart bei INIT. Drei Regeln: **ein abgelehnter Start
+räumt den Einstieg weg** (sonst spränge der nächste Hotkey-Druck mitten in die
+Sequenz), **der Laufstatus sagt, wo eingestiegen wurde** (`started_from`, im
+Kopf des Live-Runs), und ein Einstieg in END lässt INIT und alle Zyklen aus —
+`_run_main_loop` gibt dann 0 Zyklen zurück.
+
 **Die Phasen stehen alle nebeneinander**, die laufende breit (`_phase_overview()`
 im Worker, Feld `phases`). Sie aus der geöffneten Sequenz zu holen wäre geraten —
 laufen kann eine ganz andere —, deshalb schreibt der Worker sie einmal beim Start

@@ -657,6 +657,58 @@ def command_start(state: AutoClickerState, arguments: dict) -> None:
     handle_toggle(state, from_studio=True)
 
 
+def _locate_step(arguments: dict) -> tuple:
+    """`(Sequenz, Schrittliste, Block)` aus Datei und Position — oder `(None, None, -1)`.
+
+    Der gemeinsame Teil von Block-Test und Einstieg: gesendet wird nur die
+    gespeicherte Position, geladen die Datei von Platte — dieselbe Fassung, die
+    auch ein echter Lauf verwenden wuerde.
+    """
+    path = Path(str(arguments.get("file") or ""))
+    seq = load_sequence_file(path) if str(path) else None
+    if seq is None:
+        print(f"\n{err('Keine lesbare Sequenz — ignoriert.')}")
+        return None, None, -1
+    kind = str(arguments.get("phase") or "")
+    try:
+        block = int(arguments.get("block"))
+        phase_index = int(arguments.get("phase_index", -1))
+        steps_list = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
+                    else seq.loop_phases[phase_index].steps)
+        steps_list[block]
+        if block < 0:
+            raise IndexError(block)
+    except (TypeError, ValueError, IndexError):
+        print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
+        return None, None, -1
+    return seq, steps_list, block
+
+
+def command_start_from(state: AutoClickerState, arguments: dict) -> None:
+    """Startet wie `start`, steigt aber beim gewählten Block ein.
+
+    Alles davor wird uebersprungen — INIT eingeschlossen, wenn der Block in
+    einer Loop-Phase liegt —, ab dort laeuft die Sequenz normal weiter. Der
+    Einstieg gilt fuer diesen einen Start (`state.start_from`, vom Worker
+    verbraucht); ein abgelehnter Start darf ihn nicht fuer den naechsten
+    Hotkey-Druck liegen lassen.
+    """
+    with state.lock:
+        if state.is_running or state.countdown_active:
+            print(f"\n{info('Läuft bereits — der Einstieg wird ignoriert.')}")
+            return
+    seq, _steps, block = _locate_step(arguments)
+    if seq is None:
+        return
+    kind = str(arguments.get("phase") or "")
+    with state.lock:
+        state.start_from = (kind, int(arguments.get("phase_index", -1)), block)
+    command_start(state, arguments)
+    with state.lock:
+        if not state.is_running:
+            state.start_from = None
+
+
 def command_start_manual(state: AutoClickerState, arguments: dict) -> None:
     """Lädt und startet wie `start`, hält aber vor jedem Block im Studio."""
     with state.lock:
@@ -1027,21 +1079,10 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
     """Führt genau einen gespeicherten Block ohne Wartezeit/Trigger aus."""
     if _block_if_recording(state) or _block_if_running(state):
         return
-    path = Path(str(arguments.get("file") or ""))
-    seq = load_sequence_file(path) if str(path) else None
+    seq, steps_list, block = _locate_step(arguments)
     if seq is None:
-        print(f"\n{err('Block-Test ohne lesbare Sequenz — ignoriert.')}")
         return
-    kind = str(arguments.get("phase") or "")
-    try:
-        block = int(arguments.get("block"))
-        phase_index = int(arguments.get("phase_index", -1))
-        steps_list = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
-                    else seq.loop_phases[phase_index].steps)
-        step = steps_list[block]
-    except (TypeError, ValueError, IndexError):
-        print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
-        return
+    step = steps_list[block]
     activate_sequence(state, seq)
     probe = copy.deepcopy(step)
     probe.delay_before = 0.0
@@ -1072,6 +1113,7 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
 COMMANDS = {
     "start": command_start,
     "start_manual": command_start_manual,
+    "start_from": command_start_from,
     "stop": command_stop,
     "pause": command_pause,
     "skip": command_skip,
