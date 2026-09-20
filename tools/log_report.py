@@ -31,7 +31,7 @@ _FRAME = {"session_start", "session_end"}
 # einfuehrt, traegt sie hier ein; bis dahin meldet der Bericht sie als "nicht
 # ausgewertet", statt sie stillschweigend zu verschlucken.
 EVALUATED = {
-    "click", "key", "scroll", "timeout", "item_found", "detected",
+    "click", "key", "timeout", "item_found", "detected",
     "verify_ok", "verify_miss",
 }
 
@@ -168,8 +168,7 @@ def report(paths: list[Path]) -> None:
     print("=" * 66)
 
     clicks = total_events.get("click", 0)
-    print(f"\nAktionen: {clicks} Klick(s), {total_events.get('key', 0)} Taste(n), "
-          f"{total_events.get('scroll', 0)} Scroll(s)")
+    print(f"\nAktionen: {clicks} Klick(s), {total_events.get('key', 0)} Taste(n)")
     if total_duration > 0 and clicks:
         print(f"          {clicks / (total_duration / 3600):.0f} Klicks/Stunde")
 

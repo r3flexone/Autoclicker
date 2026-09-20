@@ -25,14 +25,10 @@ from ..editors.scan_services import (
     crop_screen_region, map_point_between_rects, map_region_between_rects,
 )
 from ..session_log import log_event
-from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
+from ..utils import col, err, dbg, warn, sanitize_filename
 from ..winapi import set_cursor_pos, get_screen_center, resolve_window
-from .actions import safe_click
+from .actions import safe_click, wait_while_paused
 from .debug import is_log_debug
-
-# Windows GetSystemMetrics-Indizes für den virtuellen Desktop (Multi-Monitor-Spannweite).
-# https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
-# Fallback-Indizes für den Primärbildschirm (wenn Virtual-Screen-Abfrage fehlschlägt)
 
 # Settle-Zeit nach Maus-Park bevor der Scan beginnt — verhindert dass ein noch
 # sichtbarer Hover-Tooltip die Erkennung verfälscht.
@@ -348,16 +344,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
         candidates = []
         for order, item in enumerate(items_snapshot):
-            result = _check_profile_match(
+            fits, quality = _check_profile_match(
                 item, img, color_tolerance, state, debug, "gefunden!",
                 return_score=True,
             )
-            # Kompatibel mit Tests/Erweiterungen, die den internen Bool-Helfer
-            # ersetzen: ein einfaches True ist ein vollwertiger Treffer.
-            if isinstance(result, tuple):
-                fits, quality = result
-            else:
-                fits, quality = bool(result), 1.0 if result else 0.0
             if fits:
                 candidates.append((quality, -order, item))
 

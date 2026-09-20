@@ -19,7 +19,7 @@ getrennt. Einstiegspunkt der Anwendung ist weiterhin `main.py` im Projektwurzelo
 
 `runtime/` enthält ausschließlich die Ausführung:
 
-- `actions.py`: einzige Grenze für Klick, Taste und Scrollen; Fokusprüfung,
+- `actions.py`: einzige Grenze für Klick und Taste; Fokusprüfung,
   Humanisierung und Logging werden hier gebündelt.
 - `worker.py`: Sequenz-, Phasen- und Zeitsteuerung.
 - `steps.py`: Dispatcher für Sequenzschritte, Trigger und Verifikation.

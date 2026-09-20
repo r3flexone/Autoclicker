@@ -39,16 +39,15 @@ _cwd = _os.getcwd()
 _os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
 
     def _bridge(steps, points):
         st = _ST()
         seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=steps)],
                    points=points)
-        st.sequences["Farm"] = seq
         st.active_sequence = seq
         st.points = seq.points
-        save_data(st)
+        save_sequence_file(seq, sequence_file(seq.name))
         return _SB(seq, dict(list_available_sequences())["Farm"], "sequences")
 
     def _choose(b, *rows):
@@ -210,10 +209,9 @@ try:
     _seq = _SEQ(name="Konsole",
                 loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                 points=[_CP(id=1, x=11, y=22, name="Bank")])
-    _st.sequences["Konsole"] = _seq
     _st.active_sequence = _seq
     _st.points = _seq.points
-    save_data(_st)
+    save_sequence_file(_seq, sequence_file(_seq.name))
 
     _old = (_ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input)
     _ED.safe_input = _LOOPS.safe_input = _STEPS.safe_input = _next
@@ -258,9 +256,8 @@ try:
         _STEP(icon_scan="lupe", name="Icon:lupe"),
         _STEP(boss_scan="wache", name="Mein eigener Name"),
     ])])
-    _st_ref.sequences["Ref"] = _seq_ref
     _st_ref.active_sequence = _seq_ref
-    save_data(_st_ref)
+    save_sequence_file(_seq_ref, sequence_file(_seq_ref.name))
     _br = _SB(_seq_ref, dict(list_available_sequences())["Ref"], "sequences")
     with _cl_ref.redirect_stdout(_io_ref.StringIO()):
         _br._scan_load()
@@ -458,3 +455,69 @@ check("ein zweites Abtrennen tut nichts und sagt es",
 _web_gp = _web_src()
 check("die Ansicht zeigt die Verwendungen und den Abtrennen-Knopf",
       "b.point_others" in _web_gp and 'call("point_detach")' in _web_gp)
+
+
+# =============================================================================
+section("Laden aendert keine Daten: tote Nachpruefung und toter Else-Klick bleiben")
+# =============================================================================
+# `resolve()` setzte beim LADEN `verify_condition = None` bzw. `else.action =
+# skip` — Modellzustand, den das naechste Speichern in die Datei schrieb. Ein
+# Aufraeumer, der ungefragt an fremden Daten arbeitet, ist stiller
+# Datenverlust; `point_id` und die Vorbedingung behandelte derselbe Code
+# richtig (nur ein Flag). Jetzt gilt das fuer alle vier Referenzen.
+import contextlib as _cl_r
+import io as _io_r
+from autoclicker.persistence import resolve as _resolve
+from autoclicker.persistence.serialization import _step_to_dict as _s2d_r
+import autoclicker.runtime.steps as _stp_r
+import autoclicker.runtime.actions as _act_r
+
+_seq_r = _SEQ("r", points=[_CP(5, 5, "P1", 1)], loop_phases=[_PHASE("L", steps=[
+    _STEP(point_id=1, delay_before=0,
+          verify_condition=_WAIT(point_id=99),
+          else_config=_ELSE(action="click", point_id=98))])])
+_step_r = _seq_r.loop_phases[0].steps[0]
+_messages_r = _resolve({p.id: p for p in _seq_r.points}, _seq_r, quiet=True)
+check("beide toten Referenzen werden gemeldet",
+      any("#99" in m for m in _messages_r) and any("#98" in m for m in _messages_r))
+check("die Nachpruefung bleibt am Schritt — als unaufgeloest markiert",
+      _step_r.verify_condition is not None and _step_r.verify_condition.unresolved is True)
+check("der Else-Klick bleibt ein Klick auf #98 — als unaufgeloest markiert",
+      _step_r.else_config.action == "click" and _step_r.else_config.point_id == 98
+      and _step_r.else_config.unresolved is True)
+_saved_r = _s2d_r(_step_r)
+check("und das Speichern schreibt beide unveraendert zurueck",
+      _saved_r.get("verify_point_id") == 99 and _saved_r.get("else_point_id") == 98
+      and _saved_r.get("else_action") == "click" and "unresolved" not in str(_saved_r))
+check("der Schritt selbst laeuft weiter (Zusatz, keine Vorbedingung)",
+      _step_r.unresolved is False)
+
+# Zur Laufzeit: nicht geprueft, nicht geklickt — aber auch nicht abgebrochen.
+_st_r = _ST()
+_st_r.is_running = True
+_calls_r = []
+_orig_r = (_act_r.send_click, _stp_r.check_failsafe, _stp_r.take_screenshot)
+try:
+    _act_r.send_click = lambda x, y, *a: _calls_r.append(("click", x, y)) or True
+    _stp_r.check_failsafe = lambda s: False
+    _stp_r.take_screenshot = lambda *a, **k: _calls_r.append(("shot",)) or None
+    with _cl_r.redirect_stdout(_io_r.StringIO()):
+        _ok_r = _stp_r.execute_step(_st_r, _step_r, 1, 1, "Loop")
+    check("der Klick laeuft, die tote Nachpruefung macht keinen Screenshot",
+          _ok_r is True and _calls_r == [("click", 5, 5)])
+    _calls_r.clear()
+    _else_step = _STEP(point_id=1, delay_before=0,
+                       else_config=_ELSE(action="click", point_id=98, unresolved=True))
+    with _cl_r.redirect_stdout(_io_r.StringIO()):
+        _ok_r = _act_r.execute_else_action(_st_r, _else_step, "Loop", 1, 1)
+    check("ein toter Else-Klick wirkt wie skip statt auf (0, 0) zu klicken",
+          _ok_r is True and _calls_r == [])
+finally:
+    _act_r.send_click, _stp_r.check_failsafe, _stp_r.take_screenshot = _orig_r
+
+# Kommt der Punkt zurueck (Studio: Rueckgaengig), ist die Referenz wieder scharf.
+_seq_r.points.append(_CP(7, 7, "P99", 99))
+_resolve({p.id: p for p in _seq_r.points}, _seq_r, quiet=True)
+check("taucht der Punkt wieder auf, ist die Nachpruefung wieder aktiv",
+      _step_r.verify_condition.unresolved is False
+      and _step_r.verify_condition.pixel == (7, 7))

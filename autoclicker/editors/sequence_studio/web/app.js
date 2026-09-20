@@ -58,6 +58,14 @@ const ICONS = {
   arrow: '<path d="M3 8h10M9 4l4 4-4 4"/>',
   drop: '<path d="M8 2v9M4.5 7.5L8 11l3.5-3.5"/><path d="M3 13.5h10"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
+  // Vier Knoepfe trugen ihr Symbol bis hierher als Unicode-Zeichen (◷ ◎ ⧉ ✛):
+  // aus der Systemschrift, je nach Fenster verschieden gross und hoch. Dieselbe
+  // Regel wie beim ⓘ — Symbole sind SVG.
+  clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 4.5V8l2.5 1.5"/>',
+  target: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/>',
+  detach: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>',
+  crosshair: '<path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/>',
+  spark: '<path d="M8 2l1.6 4.4L14 8l-4.4 1.6L8 14l-1.6-4.4L2 8l4.4-1.6z" fill="currentColor" stroke="none"/>',
 };
 
 function icon(name, size) {
@@ -1653,9 +1661,14 @@ async function renderRun() {
   }
 
   const now = Date.now() / 1000;
+  // Die Pause steht im Warte-Zustand (`kind: pause`) — der Worker schreibt sie
+  // von dort, wo er wartet. Vorher stand sie nirgends, und weil in der Pause
+  // kein Lebenszeichen kam, hiess der Lauf nach fuenf Sekunden „KEIN HAUPTPROZESS".
+  const paused = !!(z.waiting && z.waiting.kind === "pause");
   target.appendChild(el("div", {class: "run-header"},
     el("span", {class: "lamp on"}),
     el("span", {class: "run-name"}, z.sequence || "(ohne Namen)"),
+    paused ? el("span", {class: "num summary-warn"}, "PAUSIERT") : null,
     el("span", {class: "num"},
        "Zyklus " + (z.cycle || 0) + " / " + (z.cycles ? z.cycles : "∞")),
     el("span", {class: "num"}, "läuft " + duration(now - (z.start || now)))));
@@ -1786,7 +1799,7 @@ function controls(running, stamp) {
         return;
       }
       sendRun("schedule", {time: time.value.trim()});
-    }}, "◷ Start planen");
+    }}, icon("clock"), "Start planen");
     row.append(el("span", {class: "divider"}), time, plan);
   }
   return row;
@@ -1934,7 +1947,7 @@ function buildProbe(target, b) {
     footer.appendChild(el("button", {
       class: "btn wide",
       onclick: () => call("point_show", {which: which}),
-    }, "◎ " + text + " zeigen (#" + point + ")"));
+    }, icon("target"), text + " zeigen (#" + point + ")"));
   }
   target.appendChild(footer);
 }
@@ -2033,7 +2046,7 @@ function buildPosition(target, b) {
         title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
                + b.point_id + ". Danach lässt sich seine Stelle ändern, ohne die anderen zu verstellen.",
         onclick: () => call("point_detach"),
-      }, "⧉ Eigenen Punkt für diesen Block"));
+      }, icon("detach"), "Eigenen Punkt für diesen Block"));
     }
   }
   target.appendChild(el("div", {class: "grid2"},
@@ -2046,7 +2059,7 @@ function buildPosition(target, b) {
     class: "btn wide",
     title: "Maus an die Stelle bewegen und ENTER drücken (ESC bricht ab)",
     onclick: () => withWait("call", "point_capture"),
-  }, "✛ Stelle mit der Maus setzen"));
+  }, icon("crosshair"), "Stelle mit der Maus setzen"));
   // Hier stand ein Schalter "nur warten (kein Klick)". Er setzte `wait_only` —
   // also genau das, was der Typ-Chip WARTEN oben schon setzt: ein Zustand, zwei
   // Bedienelemente. Das rächte sich, weil er sich bei "warten" selbst ausblendete
@@ -2054,10 +2067,6 @@ function buildPosition(target, b) {
   // WARTEN hin, FARBE+KLICK verlustfrei zurueck (der Trigger bleibt), KLICK
   // zurueck ohne Trigger — und das ist keine Nebenwirkung, sondern die Bedeutung
   // von KLICK. Was seine Beschriftung erklaerte, steht am ⓘ der Ueberschrift.
-  if (b.scroll) {
-    target.appendChild(numberField("Mausrad (Stufen, 0 = kein Rad)", b.scroll,
-      (v) => call("block_set", {field: "scroll", value: v}), {step: "1"}));
-  }
 }
 
 function setPosition(b, x, y) {
@@ -3794,7 +3803,7 @@ function scanBuildInspector() {
                     + "Vorschläge, keine echten Item-Namen.")
                + " Das dauert; STRG+Z nimmt den ganzen Durchgang zurück.",
         onclick: () => scanAutonameRun({all_items: true})},
-        SC.catalog_on ? "✦ Alle aus Katalog benennen" : "✦ Alle mit LLM benennen"));
+        icon("spark"), SC.catalog_on ? "Alle aus Katalog benennen" : "Alle mit LLM benennen"));
     }
   }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
@@ -4183,7 +4192,7 @@ function scanItemDetails(target, i) {
         : "Fragt das LLM nach einem freien Namensvorschlag. Mit eingeschaltetem "
           + "Item-Katalog wählt es stattdessen aus den echten Namen des Spiels.",
       onclick: () => scanAutonameRun({names: [i.name]})},
-      SC.catalog_on ? "✦ Aus Katalog benennen" : "✦ Mit LLM benennen"));
+      icon("spark"), SC.catalog_on ? "Aus Katalog benennen" : "Mit LLM benennen"));
   }
   target.appendChild(scanItemConfirmation(i));
   if (i.silent) {
@@ -4612,12 +4621,15 @@ function detOrder(c) {
 
 /** Schritt 5 (Boss): was passiert, wenn KEIN Boss erkannt wird. */
 function detFallbackStep(c) {
-  const text = (SC.actions.boss.find((a) => a.value === c.default_action) || {}).text
+  const text = (SC.actions.boss_default.find((a) => a.value === c.default_action) || {}).text
     || c.default_action;
   return detCard(5, "Fallback", "wenn kein Boss erkannt: " + text, true, [
     el("p", {class: "hint"}, "Greift, wenn keiner der Bosse passt — und auch "
       + "dann, wenn OCR und LLM nichts finden."),
-    detActionTiles(SC.actions.boss, c.default_action,
+    // Nur, was die Laufzeit ohne erkannten Boss ausfuehren kann: kein Klick,
+    // keine Taste — die haetten keinen Punkt. Die Kachel dafuer gab es, und
+    // sie speicherte einen Wert, der zur Laufzeit nichts tat.
+    detActionTiles(SC.actions.boss_default, c.default_action,
                       (v) => detField("default_action", v)),
     c.default_action === "item_scan"
       ? selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
@@ -4976,7 +4988,7 @@ function detInspBossScan(target, c) {
     "Gilt für die Marker-Farben aller Bosse dieses Scans.", "bosstoleranz"));
   target.appendChild(heading("WENN KEIN BOSS ERKANNT",
     "Greift auch dann, wenn OCR und LLM nichts finden.", "bossfallback"));
-  target.appendChild(detActionTiles(SC.actions.boss, c.default_action,
+  target.appendChild(detActionTiles(SC.actions.boss_default, c.default_action,
     (v) => detField("default_action", v)));
   if (c.default_action === "item_scan") {
     target.appendChild(selection("Item-Scan", [{value: "", text: "— keiner —"}].concat(
@@ -6068,9 +6080,9 @@ function wzBuildPoints() {
     (v) => setter("color", v)));
   out.push(el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
     el("button", {class: "btn", onclick: () => callTool("tool_point_show",
-      {point_id: point.id})}, "◎ Zeigen & Farbe prüfen"),
+      {point_id: point.id})}, icon("target"), "Zeigen & Farbe prüfen"),
     el("button", {class: "btn", onclick: () => withWait("tool",
-      "tool_point_capture", {point_id: point.id})}, "✛ Neu messen"),
+      "tool_point_capture", {point_id: point.id})}, icon("crosshair"), "Neu messen"),
     // Ausdruecklich ein Boolean, nicht die Anzahl: die Absicht ist „gesperrt,
     // SOLANGE er benutzt wird" — als Zahl gelesen hiess sie das Gegenteil.
     el("button", {class: "btn danger", disabled: point.usages.length > 0,
@@ -6221,6 +6233,13 @@ function wzFillRecordingOutput(target) {
     });
   }
   target.appendChild(rows);
+  // Gezaehlt, nicht aufgezeichnet: wer im Spiel rechts geklickt hat, soll es
+  // hier sehen und nicht erst an der Sequenz merken, dass ein Schritt fehlt.
+  if (data_reload.right_clicks) {
+    target.appendChild(el("div", {class: "hint rc-hint"},
+      data_reload.right_clicks + " Rechtsklick(s) nicht aufgezeichnet — der Autoclicker "
+      + "kann keine ausführen."));
+  }
 }
 
 function wzStartRecordingLive() {
@@ -7099,7 +7118,7 @@ function cfgPosition(key, m, value) {
     // Klick-Block. Messen kann das nur ein Prozess auf demselben Rechner, und
     // das ist dieser hier.
     on ? el("button", {class: "btn quiet", onclick: () => cfgCapturePosition(key)},
-            "✛ mit der Maus setzen") : null,
+            icon("crosshair"), "mit der Maus setzen") : null,
     on ? el("p", {class: "hint"}, "Maus im Spiel an die Stelle, dann ENTER.") : null);
 }
 

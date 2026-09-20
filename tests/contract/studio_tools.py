@@ -15,7 +15,7 @@ from autoclicker.models import (
     SequenceStep as _SS,
 )
 from autoclicker.persistence import (
-    list_available_item_scans, list_available_sequences, save_data, save_item_scan,
+    list_available_item_scans, list_available_sequences, save_sequence_file, sequence_file, save_item_scan,
 )
 import autoclicker.mailbox as _bf
 
@@ -32,17 +32,16 @@ def _sandbox_dir():
               _CP(id=3, x=400, y=300, name="Menue")]
     seq = _SEQ(name="Farm", loop_phases=[_LP(name="A", steps=[
         _SS(point_id=1, delay_before=3.0), _SS(point_id=2)])], points=points)
-    st.sequences["Farm"] = seq
     st.active_sequence = seq
     st.points = seq.points
-    save_data(st)
+    save_sequence_file(seq, sequence_file(seq.name))
     save_item_scan(_ISC(
         name="Inventar", owner_sequence="Farm",
         slots=[_IS(name="Slot 1", scan_region=(10, 20, 70, 80),
                    click_pos=(40, 50))],
         items=[_IP(name="Bekannt", marker_colors=[(20, 40, 60)])],
     ))
-    # Den Pfad NICHT von Hand bauen: `save_data` bereinigt den Namen (klein, ohne
+    # Den Pfad NICHT von Hand bauen: `sequence_file` bereinigt den Namen (klein, ohne
     # Sonderzeichen), und die App holt ihn ueber `list_available_sequences()`. Ein
     # getippter Pfad geht daran vorbei - und genau der Unterschied entscheidet,
     # ob die Klick-Runde ihre Datei findet.
@@ -76,6 +75,15 @@ check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
       'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
       and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
+# **Symbole sind SVG** (`ICONS`/`icon()`), keine Unicode-Zeichen: die kommen aus
+# der Systemschrift und stehen je nach Fenster verschieden gross und hoch. Vier
+# Knoepfe trugen ihr Zeichen bis zuletzt im Text (◷ ◎ ⧉ ✛).
+import re as _re_glyph
+_glyph_buttons = _re_glyph.findall(r'"[⌀-⏿■-➿⤀-⯿][^"]*"', _app)
+check("kein Knopf traegt sein Symbol als Unicode-Zeichen im Text",
+      _glyph_buttons == [] and all(f"{n}:" in _app for n in ("clock", "target", "detach", "crosshair")))
+if _glyph_buttons:
+    print("        " + ", ".join(_glyph_buttons[:6]))
 check("das i ist eine einzelne SVG-Glyphe statt doppelt gerendertem Text",
       'class: "info-glyph"' in _app
       and '"data-help": key || text}, "i")' not in _app
@@ -236,8 +244,8 @@ try:
     # wohl in die Liste - sonst raeumte der Fix zu viel weg.
     from autoclicker.import_export import collect_click_positions
     _st = _ST()
-    _st.sequences["S"] = _SEQ(name="S", points=[_CP(id=1, x=10, y=10, name="A")],
-                              loop_phases=[_LP(name="L", steps=[
+    _st.active_sequence = _SEQ(name="S", points=[_CP(id=1, x=10, y=10, name="A")],
+                               loop_phases=[_LP(name="L", steps=[
         _SS(x=70, y=80, point_id=None), _SS(x=10, y=10, point_id=1)])])
     _labels = [lb for lb, _, _ in collect_click_positions(_st)]
     check("ein Schritt ohne point_id bleibt sichtbar",
@@ -503,6 +511,67 @@ try:
     _read_value = _b.recording_status()
     check("die Bruecke liefert denselben ueberschriebenen Live-Stand",
           _read_value["count"] == 4 and len(_read_value["events"]) == 3)
+
+    # Rechtsklicks werden GEZAEHLT, nicht aufgezeichnet: der Autoclicker kann
+    # keinen ausfuehren, aber eine Sequenz, der stumm ein Schritt fehlt, ist
+    # der schlechtere Fehler. Dieselben Regeln wie beim Linksklick - nicht
+    # pausiert, nicht im Studio-Fenster - und gesagt wird es beim Stoppen.
+    import contextlib as _cl
+    import inspect as _insp
+    import io as _io
+    from autoclicker import winapi as _winapi
+    check("der Maus-Hook nimmt einen Rechtsklick-Callback entgegen",
+          "on_rbutton_down" in _insp.signature(_winapi.install_mouse_hook).parameters)
+    _right_state = _State(recording_active=True)
+    _right_fn = _rec._on_right_click_factory(_right_state)
+    _old_front, _old_below = _kf.get_foreground_window_title, _kf.get_window_title_at
+    _kf.get_foreground_window_title = lambda: "Idle Clans"
+    _kf.get_window_title_at = lambda x, y: "Sequenz-Studio" if x < 0 else "Idle Clans"
+    try:
+        with _cl.redirect_stdout(_io.StringIO()):
+            _right_fn(10, 20)
+            _right_fn(11, 21)
+            _right_fn(-1, 5)                       # im Studio-Fenster
+            _right_state.recording_paused = True
+            _right_fn(12, 22)                      # pausiert
+            _right_state.recording_paused = False
+    finally:
+        _kf.get_foreground_window_title = _old_front
+        _kf.get_window_title_at = _old_below
+    check("gezaehlt werden nur Rechtsklicks im Spiel bei laufender Aufnahme",
+          _right_state.recording_right_clicks == 2
+          and _right_state.recording_events == [])
+    check("und der Live-Stand traegt den Zaehler fuer das Studio",
+          _b.recording_status().get("right_clicks") == 2)
+    _rec.remove_mouse_hook = lambda: None
+    _rec.remove_keyboard_hook = lambda: None
+    _out = _io.StringIO()
+    try:
+        with _cl.redirect_stdout(_out):
+            _saved = _rec.stop_recording(_right_state)
+    finally:
+        _rec.remove_mouse_hook = _old_mouse_gone
+        _rec.remove_keyboard_hook = _old_keys_gone
+    check("beim Stoppen steht, wie viele Rechtsklicks fehlen - auch ohne Ereignisse",
+          _saved is None and "2 Rechtsklick(s) nicht aufgezeichnet" in _out.getvalue())
+    check("die Zusammenfassung behaelt den Zaehler bis zum naechsten Start",
+          _b.recording_status().get("right_clicks") == 2)
+    _old_hooks = (_rec.install_mouse_hook, _rec.install_keyboard_hook,
+                  _rec.remove_mouse_hook, _rec.remove_keyboard_hook)
+    _rec.install_mouse_hook = lambda *a, **k: True
+    _rec.install_keyboard_hook = lambda *a, **k: True
+    _rec.remove_mouse_hook = lambda: None
+    _rec.remove_keyboard_hook = lambda: None
+    try:
+        with _cl.redirect_stdout(_io.StringIO()):
+            _rec.start_recording(_right_state, name="x")
+            _rec.stop_recording(_right_state)
+    finally:
+        (_rec.install_mouse_hook, _rec.install_keyboard_hook,
+         _rec.remove_mouse_hook, _rec.remove_keyboard_hook) = _old_hooks
+    check("ein neuer Start setzt ihn zurueck", _right_state.recording_right_clicks == 0)
+    check("die Aufnahme-Tafel im Studio zeigt den Zaehler",
+          'data_reload.right_clicks + " Rechtsklick(s) nicht aufgezeichnet' in _app)
 finally:
     _os.chdir(_cwd)
 
@@ -548,9 +617,8 @@ try:
     _foreign.points = [_CP(id=1, x=100, y=100, name="Sammeln"),
                      _CP(id=2, x=900, y=600, name="Bestaetigen"),
                      _CP(id=3, x=400, y=300, name="Menue")]
-    _st2.sequences["Fremd"] = _foreign
     _st2.active_sequence = _foreign
-    save_data(_st2)
+    save_sequence_file(_foreign, sequence_file(_foreign.name))
 
     from autoclicker.handlers import command_reclick as _bn
     import autoclicker.editors.reclick as _nk

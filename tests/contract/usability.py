@@ -30,15 +30,14 @@ _cwd = _os.getcwd()
 _os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
 
     def _saved(name, steps, points):
         st = _ST()
         seq = _SEQ(name=name, loop_phases=[_PHASE(name="A", steps=steps)], points=points)
-        st.sequences[name] = seq
         st.active_sequence = seq
         st.points = seq.points
-        save_data(st)
+        save_sequence_file(seq, sequence_file(seq.name))
         return _SB(seq, dict(list_available_sequences())[name], "sequences")
 
     _b = _saved("Farm", [
@@ -129,10 +128,9 @@ try:
         _STEP(x=1, y=1, point_id=99, delay_before=0),            # toter Punkt
         _STEP(item_scan="fehlt", delay_before=0),                # toter Scan
     ])], points=[_CP(1, 1, "p", 1)])
-    _st.sequences["Farm"] = _seq
     _st.active_sequence = _seq
     _st.points = _seq.points
-    save_data(_st)
+    save_sequence_file(_seq, sequence_file(_seq.name))
     _st.item_scans["Inventar"] = _ISC(name="Inventar")           # ohne Slots
     _rep = _cs(_st)
     _by_text = {b.text: b for b in _rep.findings}
@@ -205,6 +203,33 @@ try:
               next(s for s in _bt.sequence_list() if s["name"] == "Farm 2")["last_run"] is None)
         check("was es nicht gibt, laesst sich nicht kopieren",
               _bt.sequence_duplicate({"name": "Nix"})["ok"] is False)
+
+        # **Die Uebersicht parst nur, was sich geaendert hat.** Sie wird bei
+        # jedem Oeffnen des Reiters neu gezeichnet und lud dafuer jede Sequenz
+        # vollstaendig — samt Migration, Punkt-Aufloesung und Konsolen-Warnzeilen.
+        import autoclicker.editors.sequence_studio.bridge_services as _bsv
+        import time as _time_u
+        _loads = []
+        _orig_lsf = _bsv.load_sequence_file
+        _bsv.load_sequence_file = lambda path: _loads.append(str(path)) or _orig_lsf(path)
+        try:
+            _bt._sequence_facts_cache.clear()          # kalt anfangen, wie beim Oeffnen
+            _bt.sequence_list()
+            _first = len(_loads)
+            _bt.sequence_list()
+            check("ein zweites Zeichnen liest keine Sequenzdatei erneut",
+                  _first >= 2 and len(_loads) == _first)
+            _farm_file = Path("sequences") / "farm" / "sequence.json"
+            _time_u.sleep(0.02)
+            _farm_file.write_text(
+                _farm_file.read_text(encoding="utf-8").replace('"name": "Farm"',
+                                                               '"name": "Farm neu"'),
+                encoding="utf-8")
+            _names_after = {s["name"] for s in _bt.sequence_list()}
+            check("eine geaenderte Datei wird neu gelesen — und nur die",
+                  "Farm neu" in _names_after and len(_loads) == _first + 1)
+        finally:
+            _bsv.load_sequence_file = _orig_lsf
     finally:
         CONFIG.session_log_dir = _old_dir
     check("'1 Zyklen' gibt es nicht mehr",

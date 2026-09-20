@@ -279,10 +279,6 @@ class BridgeViewMixin:
             lines = []
         else:
             lines = [row("STELLE", _position(step))]
-        if step.scroll:
-            # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
-            # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
-            lines.append(row("RAD", f"{step.scroll:+d}"))
         if step.delay_before or step.delay_max or not lines:
             lines.append(row("WARTE", _wait_text(step)))
         return lines
@@ -352,7 +348,6 @@ class BridgeViewMixin:
             "boss_watcher": step.boss_watcher or "",
             "wait_only": step.wait_only,
             "breakpoint": bool(step.breakpoint),
-            "scroll": step.scroll or 0,
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),
             "trigger_point": wc.point_id if wc else None,

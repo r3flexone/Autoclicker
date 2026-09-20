@@ -127,7 +127,6 @@ class LinuxBackendTests(unittest.TestCase):
         with patch.object(linux_x11, "_pynput",
                           side_effect=RuntimeError("keine X11-Sitzung")):
             self.assertFalse(linux_x11.send_click(10, 20, 0, 0))
-            self.assertFalse(linux_x11.send_scroll(1, 10, 20, 0, 0))
             self.assertFalse(linux_x11.send_key("a"))
 
 

@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ...models import LoopPhase, Sequence
+from ...models import GATE_COMMANDS, LoopPhase, Sequence
 from ...persistence import (
     list_available_sequences,
     load_sequence_file,
@@ -29,6 +29,39 @@ from .model import (
 class BridgeServicesMixin:
     """Kapselt Persistenz, Laufsteuerung und Konfiguration."""
 
+    # Kennzahlen je Sequenzdatei, gemerkt am Dateistand (Groesse + mtime). Die
+    # Uebersicht wird bei jedem Oeffnen des Reiters neu gezeichnet und lud dafuer
+    # jede Sequenz vollstaendig — samt Migration, Punkt-Aufloesung und den
+    # Warnzeilen, die `load_sequence_file` dabei auf die Konsole schreibt. Mit
+    # zwanzig Sequenzen ist das bei jedem Klick auf „Sequenzen" ein halbes
+    # Dutzend Dateiparser fuer Zahlen, die sich seit dem letzten Mal nicht
+    # geaendert haben. Was vom Stand der Datei abhaengt, steht im Cache; was
+    # von der Sitzung abhaengt (`open`, `last_run`, `scope`), wird je Aufruf gerechnet.
+    _sequence_facts_cache: dict = {}
+
+    def _sequence_facts(self, path: Path, stamp) -> Optional[dict]:
+        """Was in einer Sequenzdatei steht — aus dem Cache, wenn sie sich nicht geaendert hat."""
+        key = str(path)
+        cached = self._sequence_facts_cache.get(key)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        seq = load_sequence_file(path)
+        facts = None if seq is None else {
+            "name": seq.name,
+            "description": seq.description,
+            "cycles": seq.total_cycles,
+            "init": len(seq.init_steps),
+            "end": len(seq.end_steps),
+            "phases": [{"name": lp.name, "steps": len(lp.steps),
+                        "repeat": lp.repeat,
+                        "start": lp.scheduled_start or ""}
+                       for lp in seq.loop_phases],
+            "steps": seq.total_steps(),
+            "warnings": scan_warnings(sequence_to_board(seq)),
+        }
+        self._sequence_facts_cache[key] = (stamp, facts)
+        return facts
+
     def sequence_list(self, data: Optional[dict] = None) -> list[dict]:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
 
@@ -46,11 +79,12 @@ class BridgeServicesMixin:
         for path in files:
             saved_name = path.parent.name
             try:
-                changed = path.stat().st_mtime
+                st = path.stat()
+                changed, stamp = st.st_mtime, (st.st_mtime_ns, st.st_size)
             except OSError:
-                changed = 0.0
-            seq = load_sequence_file(path)
-            if seq is None:
+                changed, stamp = 0.0, None
+            facts = self._sequence_facts(path, stamp)
+            if facts is None:
                 # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
@@ -59,23 +93,13 @@ class BridgeServicesMixin:
                              "scope": self._sequence_extent(path.parent)})
                 continue
             out.append({
-                "name": seq.name,
+                **facts,
                 "file": str(path),
                 "broken": False,
-                "description": seq.description,
-                "cycles": seq.total_cycles,
-                "init": len(seq.init_steps),
-                "end": len(seq.end_steps),
-                "phases": [{"name": lp.name, "steps": len(lp.steps),
-                            "repeat": lp.repeat,
-                            "start": lp.scheduled_start or ""}
-                           for lp in seq.loop_phases],
-                "steps": seq.total_steps(),
                 "changed": changed,
                 "open": path == self.filepath,
                 "scope": self._sequence_extent(path.parent),
-                "warnings": scan_warnings(sequence_to_board(seq)),
-                "last_run": self._last_run(seq.name),
+                "last_run": self._last_run(facts["name"]),
             })
         return out
 
@@ -202,7 +226,7 @@ class BridgeServicesMixin:
     def _sequence_folder(self, name: str) -> Optional[Path]:
         """Ordner einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
 
-        **Der Ordner heisst nicht wie die Sequenz.** `save_data()` legt ihn
+        **Der Ordner heisst nicht wie die Sequenz.** `sequence_file()` legt ihn
         unter `sanitize_filename(name)` an: aus „Raid" wird `sequences/raid`,
         aus „Mein Lauf" wird `mein_lauf`. Wer den angezeigten Namen an den Pfad
         haengt, greift deshalb ins Leere — und im schlimmeren Fall daneben:
@@ -410,8 +434,16 @@ class BridgeServicesMixin:
         if command in ("start", "start_manual", "schedule"):
             if self._dirty:
                 state_value = self.save()
-                if state_value["status"]["kind"] == "err":
-                    return state_value      # Meldung steht schon drin, Start faellt aus
+                # Gestartet wird nur, was auch auf der Platte steht. Hier stand
+                # `kind == "err"` — und die Rueckfrage „Ausserhalb geaendert" ist
+                # kein Fehler: `save()` gab die Momentaufnahme mit der Frage
+                # zurueck, der Start lief trotzdem los (mit der Datei von der
+                # Platte, also der ALTEN Fassung), und weil `snapshot()` die
+                # Frage dabei verbraucht hat, sah die Seite den Dialog nie.
+                # Massstab ist deshalb `_dirty`: solange es gesetzt ist, wurde
+                # nicht geschrieben, und die Antwort traegt Fehler oder Frage.
+                if self._dirty:
+                    return state_value
             if not self.filepath.exists():
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
             arguments = {"file": str(self.filepath), "sequence": self.board.name}
@@ -422,7 +454,11 @@ class BridgeServicesMixin:
             arguments["time"] = time_value
         if command == "manual_action":
             action = str((data or {}).get("action") or "")
-            if action not in ("run", "skip", "continue", "stop"):
+            # Gegen die EINE Liste, nicht gegen eine getippte Kopie: hier
+            # standen vier der fuenf Entscheidungen, und „ab hier schrittweise"
+            # (`step`) kam als „Unbekannte manuelle Aktion" zurueck — die Tafel
+            # im Live-Run hatte eine Kachel, die nichts tat.
+            if action not in GATE_COMMANDS:
                 return self._report("Unbekannte manuelle Aktion.", "err")
             arguments["action"] = action
 
@@ -481,7 +517,7 @@ class BridgeServicesMixin:
             return self._report("Bitte genau einen Block wählen.", "warn")
         if self._dirty:
             state_value = self.save()
-            if state_value["status"]["kind"] == "err":
+            if self._dirty:     # nicht geschrieben — Fehler oder Rueckfrage, s. run_command
                 return state_value
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)

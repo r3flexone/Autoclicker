@@ -37,7 +37,7 @@ CASES = {
         "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
         "_humanize_delay(state)",
         RUNTIME + "test_stopp_im_mikrodelay_verhindert_jede_eingabe")
-       for kind in ("click", "key", "scroll")},
+       for kind in ("click", "key")},
     "worker-run-status": (
         "autoclicker.runtime.worker", "sequence_worker",
         "state.is_running = False", "state.is_running = True",

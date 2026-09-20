@@ -8,7 +8,8 @@ Session-Statistik. `_schedule_watcher` prüft nebenher, ob Loop-Phasen mit
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
 from ..models import AutoClickerState
 from ..session_log import log_event
@@ -18,7 +19,7 @@ from ..utils import (
 )
 from ..utils.console import set_console_title
 from . import status
-from .actions import is_verbose_debug
+from .actions import is_verbose_debug, wait_while_paused
 from .boss_detection import _confirm_new_bosses
 from .steps import execute_step
 
@@ -42,6 +43,7 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
     Terminiert bei stop_event UND shutdown_event, sonst liefe der Timer als
     Geister-Thread weiter.
     """
+    reported: set = set()   # ungueltige Zeiten einmal melden, nicht alle 10 s
     while not stop_event.is_set() and not shutdown_event.is_set():
         now = datetime.now()
         current_h, current_m = now.hour, now.minute
@@ -54,7 +56,10 @@ def _schedule_watcher(loop_phases, scheduled_pending: dict, scheduled_last_execu
             try:
                 h, m = map(int, lp.scheduled_start.split(":"))
             except (ValueError, AttributeError):
-                print(col(f"\n[TIMER] Ungültige Startzeit '{lp.scheduled_start}' für '{lp.name}' — Phase wird ignoriert.", "yellow"), flush=True)
+                if idx not in reported:
+                    reported.add(idx)
+                    print(col(f"\n[TIMER] Ungültige Startzeit '{lp.scheduled_start}' für "
+                              f"'{lp.name}' — Phase wird ignoriert.", "yellow"), flush=True)
                 continue
 
             if current_h == h and current_m == m:
@@ -407,7 +412,8 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
 
             # LOOP-Phasen
             if has_loops and not state.stop_event.is_set():
-                _run_loop_phases(state, sequence, scheduled_pending, schedule_lock, cycle_str, debug)
+                ran = _run_loop_phases(state, sequence, scheduled_pending, schedule_lock,
+                                       cycle_str, debug)
 
                 if state.skip_cycle_event.is_set():
                     continue
@@ -415,6 +421,18 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                     continue
                 if state.stop_event.is_set():
                     break
+                if ran == 0:
+                    # Kein Schritt gelaufen — entweder warten alle Phasen auf
+                    # ihre Uhrzeit, oder die Sequenz hat gar keine. Beides ist
+                    # kein Zyklus: hier drehte die Schleife vorher ohne einen
+                    # einzigen Schritt mit ~270 Umlaeufen je Sekunde (jeder mit
+                    # einer Statusdatei), und `total_cycles=5` war vorbei, bevor
+                    # die Uhrzeit je erreicht wurde.
+                    cycle_count -= 1
+                    if not _wait_for_schedule(state, sequence, scheduled_pending,
+                                              schedule_lock):
+                        break
+                    continue
 
             if state.skip_cycle_event.is_set():
                 continue
@@ -430,6 +448,73 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 break
 
     return cycles_before_restart + cycle_count
+
+
+def _next_schedule(sequence, now: datetime) -> Optional[tuple[str, float]]:
+    """Die naechste faellige Phase: `(Name, Zeitstempel)` — oder None ohne Zeitplan.
+
+    Eine Uhrzeit, die heute schon vorbei ist, meint morgen. Ungueltige
+    Angaben ueberspringt die Rechnung; gemeldet hat sie der Timer-Thread.
+    """
+    best = None
+    for lp in sequence.loop_phases:
+        if not lp.scheduled_start:
+            continue
+        try:
+            h, m = map(int, lp.scheduled_start.split(":"))
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        except (ValueError, AttributeError):
+            continue
+        if target <= now:
+            target += timedelta(days=1)
+        stamp = target.timestamp()
+        if best is None or stamp < best[1]:
+            best = (lp.name, stamp)
+    return best
+
+
+def _wait_for_schedule(state: AutoClickerState, sequence, scheduled_pending: dict,
+                       schedule_lock: threading.Lock) -> bool:
+    """Schlaeft, bis eine zeitgesteuerte Phase faellig ist. False = Lauf beenden.
+
+    Gerufen, wenn ein Zyklus ohne einen einzigen Schritt durch ist. Ohne
+    Zeitplan gibt es dann nichts, worauf man warten koennte — die Sequenz hat
+    keine Schritte, und das wird gesagt statt endlos gedreht. Mit Zeitplan
+    wartet der Worker in Sekundenschritten, damit Stopp, Pause und das sanfte
+    Ende weiter greifen, und sagt der Live-Ansicht, worauf er wartet.
+    """
+    if not any(lp.scheduled_start for lp in sequence.loop_phases):
+        print(warn("Keine Phase hat Schritte — nichts auszufuehren."))
+        return False
+    upcoming = _next_schedule(sequence, datetime.now())
+    label = (f"wartet auf {upcoming[0]} um {datetime.fromtimestamp(upcoming[1]):%H:%M}"
+             if upcoming else "wartet auf den Zeitplan")
+    print(col(f"\n[TIMER] {label}.", "yellow"))
+    began = time.time()
+    # Dieselben Felder wie beim Warten auf Zeit (`_wait_loop`), damit die
+    # Live-Ansicht Restzeit und Balken ohne eigenen Zweig zeichnet.
+    waiting = {"kind": "schedule", "text": label, "since": began,
+               "until": upcoming[1] if upcoming else None,
+               "total": round(upcoming[1] - began, 2) if upcoming else None}
+    try:
+        while not state.stop_event.is_set() and not state.quit_event.is_set():
+            if state.finish_event.is_set():
+                # Sanft beenden heisst: nicht mehr auf den naechsten Termin
+                # warten. Die END-Phase laeuft danach wie sonst auch.
+                return False
+            if state.restart_event.is_set() or state.skip_cycle_event.is_set():
+                return True
+            if not wait_while_paused(state, label):
+                return False
+            with schedule_lock:
+                if any(scheduled_pending.values()):
+                    return True
+            status.waiting_for(state, waiting)
+            if state.stop_event.wait(1.0):
+                return False
+        return False
+    finally:
+        status.waiting_for(state, None)
 
 
 def _phase_overview(sequence) -> list[dict]:
@@ -471,8 +556,13 @@ def _phase_pos(sequence, kind: str, idx: int = 0) -> int:
 
 
 def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
-                     schedule_lock: threading.Lock, cycle_str: str, debug: bool) -> None:
-    """Führt alle Loop-Phasen einmal aus."""
+                     schedule_lock: threading.Lock, cycle_str: str, debug: bool) -> int:
+    """Führt alle Loop-Phasen einmal aus. Gibt zurück, wie viele davon liefen.
+
+    Null heisst: kein einziger Schritt in diesem Zyklus — alle Phasen leer oder
+    alle warten auf ihre Uhrzeit. Der Aufrufer zählt so einen Zyklus nicht.
+    """
+    ran = 0
     for idx, loop_phase in enumerate(sequence.loop_phases):
         if state.stop_event.is_set() or state.quit_event.is_set():
             break
@@ -491,6 +581,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
                     print(dbg(f"'{loop_phase.name}' übersprungen (wartet auf {loop_phase.scheduled_start})"))
                 continue
 
+        ran += 1
         print(col(f"\n[{loop_phase.name}] Starte ({loop_phase.repeat}x) | {cycle_str}", "magenta"))
         status.write_status(state, {"phase": loop_phase.name, "phase_index": idx,
                                 "phase_pos": _phase_pos(sequence, "loop", idx),
@@ -521,6 +612,7 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
 
         if not state.stop_event.is_set() and not state.skip_cycle_event.is_set():
             print(col(f"\n[{loop_phase.name}] Abgeschlossen.", "magenta"))
+    return ran
 
 
 def _run_end_phase(state: AutoClickerState, sequence) -> None:

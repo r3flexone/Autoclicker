@@ -20,8 +20,7 @@ from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences, sequence_file,
     load_sequence_file, get_next_point_id, get_point_by_id, print_points,
-    load_all_item_scans, resolve_click_references, resolve_point_references,
-    load_all_boss_scans, load_global_bosses, load_all_icon_scans,
+    activate_sequence,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
@@ -88,16 +87,15 @@ def _block_if_running(state: AutoClickerState) -> bool:
 
 
 def _load_sequence_data(state: AutoClickerState) -> None:
-    """Bindet alle Scans und TUI-Arbeitsansichten an die aktive Sequenz."""
-    load_all_item_scans(state)
-    load_all_boss_scans(state)
-    load_global_bosses(state)
-    load_all_icon_scans(state)
+    """Liest die Scans der aktiven Sequenz neu von Platte.
+
+    Fuer den Wechsel auf eine ANDERE Sequenz gibt es `activate_sequence()` —
+    die eine Stelle, die Punkte und Scans gemeinsam umstellt.
+    """
     with state.lock:
         seq = state.active_sequence
     if seq is not None:
-        resolve_point_references(state, seq)
-        resolve_click_references(state, seq)
+        activate_sequence(state, seq)
 
 
 def handle_record(state: AutoClickerState) -> None:
@@ -211,7 +209,6 @@ def handle_reset(state: AutoClickerState) -> None:
         # Speicher löschen
         with state.lock:
             state.points.clear()
-            state.sequences.clear()
             state.active_sequence = None
             state.global_slots.clear()
             state.global_items.clear()
@@ -270,11 +267,12 @@ def handle_item_scan_editor(state: AutoClickerState) -> None:
     with state.lock:
         active = state.active_sequence is not None
     if not active:
-        handle_switch(state)
+        handle_switch(state)        # aktiviert samt Scans
         with state.lock:
             if state.active_sequence is None:
                 return
-    _load_sequence_data(state)
+    else:
+        _load_sequence_data(state)  # frisch von Platte — das Studio schreibt dieselben Dateien
     from .editors.item_scan_editor import run_item_scan_menu
     run_item_scan_menu(state)
 
@@ -372,9 +370,9 @@ def handle_show(state: AutoClickerState) -> None:
     if seq is None:
         print(err("Sequenz konnte nicht geladen werden."))
         return
-    with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
+    # Mit Scans — hier stand nur die Punkte-Zuweisung, und ein Start danach
+    # lief mit den Schritten dieser Sequenz gegen die Scans der vorigen.
+    activate_sequence(state, seq)
     print_points(state)
 
     with state.lock:
@@ -654,10 +652,7 @@ def command_start(state: AutoClickerState, arguments: dict) -> None:
               f"{hint('(im Studio gespeichert?)')}")
         return
 
-    with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
-    _load_sequence_data(state)
+    activate_sequence(state, seq)
     print(f"\n{col('[STUDIO]', 'cyan')} '{seq.name}' geladen und gestartet.")
     handle_toggle(state, from_studio=True)
 
@@ -815,11 +810,9 @@ def command_schedule(state: AutoClickerState, arguments: dict) -> None:
     if seq is None:
         print(f"\n{err('Zeitplan ohne lesbare Sequenz — ignoriert.')}")
         return
+    activate_sequence(state, seq)
     with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
         state.run_from_studio = True
-    _load_sequence_data(state)
     _start_schedule(state, time_text)
 
 
@@ -902,12 +895,9 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
         path = sequence_file(active.name)
         fresh = load_sequence_file(path)
         if fresh is not None:
-            with state.lock:
-                state.sequences.pop(active.name, None)
-                state.sequences[fresh.name] = fresh
-                state.active_sequence = fresh
-                state.points = fresh.points
-        _load_sequence_data(state)
+            activate_sequence(state, fresh)
+        else:
+            _load_sequence_data(state)
     else:
         with state.lock:
             state.points.clear()
@@ -1052,10 +1042,7 @@ def command_step_test(state: AutoClickerState, arguments: dict) -> None:
     except (TypeError, ValueError, IndexError):
         print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
         return
-    with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
-    _load_sequence_data(state)
+    activate_sequence(state, seq)
     probe = copy.deepcopy(step)
     probe.delay_before = 0.0
     probe.delay_max = None
@@ -1198,10 +1185,7 @@ def handle_switch(state: AutoClickerState) -> None:
               f"{hint('(Datei beschädigt?)')}")
         return
 
-    with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
-    _load_sequence_data(state)
+    activate_sequence(state, seq)
     print(f"\n{ok(f'Gewechselt zu: {seq.name}')}")
     print(f"     Starten mit {col('CTRL+ALT+S', 'yellow')}")
 

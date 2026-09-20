@@ -24,7 +24,7 @@ from typing import Optional
 from ...imaging import PILLOW_AVAILABLE, select_region
 from ...models import ClickPoint, WaitCondition, SequenceStep, AutoClickerState
 from ...persistence import (
-    get_next_point_id, get_point_by_id, save_data,
+    get_next_point_id, get_point_by_id, save_points,
 )
 from ...utils import (
     cancel_hint, cmd_hint, col, confirm, coord_context, describe_color, hint,
@@ -51,7 +51,6 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("watcher <Scan-Name>", "Warten bis Boss erscheint → Aktion"))
         print(cmd_hint("icon <Scan-Name>", "Symbol/Icon erkennen → Aktion"))
         print(cmd_hint("key <Taste>", "Taste drücken (z.B. 'key enter')"))
-        print(cmd_hint("scroll <Punkt-Nr> <Stufen>", "Mausrad drehen (+ hoch / - runter)"))
         print(cmd_hint("wait <Sek>", "Nur warten, NICHT klicken"))
         print(cmd_hint("edit <Schritt-Nr>", "Schritt ändern (geführtes Menü)"))
         print(cmd_hint("del <Schritt-Nr>", "Schritt löschen"))
@@ -87,8 +86,6 @@ def _print_phase_help(full: bool = False) -> None:
     print(cmd_hint("key <Taste>", "Taste sofort drücken (z.B. 'key enter')"))
     print(cmd_hint("key <Sek> <Taste>", "erst <Sek> warten, dann Taste (z.B. 'key 5 space')"))
     print(cmd_hint("key <Min>-<Max> <Taste>", "zufällig warten, dann Taste (z.B. 'key 5-10 space')"))
-    print(cmd_hint("scroll <Punkt-Nr> <Stufen>", "Mausrad am Punkt drehen, + = hoch, - = runter (z.B. 'scroll 3 -5')"))
-    print(cmd_hint("scroll <Punkt-Nr> <Sek> <Stufen>", "erst <Sek> warten, dann scrollen"))
     print(cmd_hint("scan <Scan-Name>", "Item-Scan: je Kategorie das beste Item klicken (Standard)"))
     print(cmd_hint("scan <Scan-Name> best", "Item-Scan: nur EIN Item insgesamt klicken (das beste)"))
     print(cmd_hint("scan <Scan-Name> every", "Item-Scan: ALLE Treffer klicken (auch Duplikate)"))
@@ -155,7 +152,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "color", "colorgone", "checkcolor", "checkgone", "scroll", "link", "verify",
+    "color", "colorgone", "checkcolor", "checkgone", "link", "verify",
     "recolor", "noclick", "click", "time", "copy", "move", "scale", "test", "break",
 ]
 
@@ -297,10 +294,6 @@ class _PhaseEditor:
             return
         if cmd in ("link", "link all"):
             self._handle_link()
-            return
-
-        if cmd.startswith("scroll "):
-            self._handle_scroll(user_input)
             return
 
         if cmd.startswith("key "):
@@ -483,7 +476,7 @@ class _PhaseEditor:
             new_point = ClickPoint(x, y, point_name, new_id)
             self.state.points.append(new_point)
 
-        save_data(self.state)
+        save_points(self.state)
         print(f"  + Punkt #{new_id} '{point_name}' erstellt bei {coord_context(x, y)}")
 
     # ---- Step-hinzufügen ----
@@ -662,70 +655,6 @@ class _PhaseEditor:
             print("  -> Nichts zu tun.")
         elif linked:
             print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
-
-    def _handle_scroll(self, user_input: str) -> None:
-        """Format: scroll <Punkt-Nr> <Stufen> | scroll <Punkt-Nr> <Sek> <Stufen>
-
-        Gescrollt wird AN der Punkt-Position, weil Windows das Mausrad-Event an das
-        Fenster unter dem Cursor liefert - ein Punkt ist also Pflicht, kein Extra.
-        Stufen: positiv = hoch, negativ = runter, Betrag = Rasterstufen.
-        """
-        parts, else_parts = _split_main_and_else(user_input.split()[1:])
-        if len(parts) < 2:
-            print("  -> Format: scroll <Punkt-Nr> <Stufen> oder scroll <Punkt-Nr> <Sek> <Stufen>")
-            print("     Beispiel: 'scroll 3 -5' = am Punkt 3 fuenf Stufen runter")
-            return
-
-        try:
-            point_id = int(parts[0])
-        except ValueError:
-            print(f"  -> '{parts[0]}' ist keine Punkt-Nr. Format: scroll <Punkt-Nr> <Stufen>")
-            return
-        point = get_point_by_id(self.state, point_id)
-        if not point:
-            print(f"  -> Punkt #{point_id} nicht gefunden!")
-            return
-
-        delay = 0
-        delay_max = None
-        if len(parts) >= 3:
-            # Wartezeit dazwischen. Achtung: "-5" ist ein negativer Stufenwert, kein
-            # Bereich - deshalb erst pruefen, ob es ueberhaupt wie ein Bereich aussieht.
-            time_arg = parts[1]
-            if "-" in time_arg.lstrip("-") :
-                range_val, range_err = parse_non_negative_range(time_arg, "Wartezeit")
-                if range_err:
-                    print(f"  -> {range_err}")
-                    return
-                delay, delay_max = range_val
-            else:
-                delay_val, delay_err = parse_non_negative_float(time_arg, "Wartezeit")
-                if delay_err:
-                    print(f"  -> {delay_err}")
-                    return
-                delay = delay_val
-            levels_raw = parts[2]
-        else:
-            levels_raw = parts[1]
-
-        try:
-            levels = int(levels_raw)
-        except ValueError:
-            print(f"  -> '{levels_raw}' ist keine ganze Zahl. Beispiel: -5 (runter), 3 (hoch)")
-            return
-        if levels == 0:
-            print("  -> 0 Stufen waere ein Schritt ohne Wirkung.")
-            return
-
-        direction = "hoch" if levels > 0 else "runter"
-        step = SequenceStep(
-            x=point.x, y=point.y, delay_before=delay, delay_max=delay_max,
-            name=f"Scroll {direction} x{abs(levels)} @ {point.name or f'#{point_id}'}",
-            point_id=point_id,
-            scroll=levels,
-        )
-        apply_else_to_step(step, else_parts, self.state)
-        self.add_step(step)
 
     def _handle_wait(self, user_input: str) -> None:
         """Format: wait <Zeit> | wait <Min>-<Max> | wait <Punkt-Nr> color|colorgone | wait pixel|pixelgone [else ...]

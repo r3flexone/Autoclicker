@@ -29,12 +29,6 @@ def save_global_slots(state: AutoClickerState) -> bool:
         return False
 
 
-def load_global_slots(state: AutoClickerState) -> None:
-    """Bindet die Slots des aktiven Item-Scans als TUI-Arbeitsansicht."""
-    from .item_scans import bind_item_scan_context
-    bind_item_scan_context(state, state.active_item_scan)
-
-
 # =============================================================================
 # ITEMS
 # =============================================================================
@@ -54,12 +48,6 @@ def save_global_items(state: AutoClickerState) -> bool:
     except (IOError, OSError, ValueError) as e:
         print(err(f"Items konnten nicht gespeichert werden: {e}"))
         return False
-
-
-def load_global_items(state: AutoClickerState) -> None:
-    """Bindet die Items des aktiven Item-Scans als TUI-Arbeitsansicht."""
-    from .item_scans import bind_item_scan_context
-    bind_item_scan_context(state, state.active_item_scan)
 
 
 # =============================================================================

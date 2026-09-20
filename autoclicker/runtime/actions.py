@@ -18,12 +18,58 @@ from ..models import (
     ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY,
 )
 from ..session_log import log_event
-from ..utils import status_line, wait_while_paused, col, dbg
+from ..utils import status_line, col, dbg
 from ..winapi import (
-    send_click, send_key, send_scroll,
+    send_click, send_key,
     is_target_window_active, get_foreground_window_title,
 )
 from . import status
+
+
+# =============================================================================
+# PAUSE
+# =============================================================================
+
+def wait_while_paused(state: AutoClickerState, message: str) -> bool:
+    """Wartet, solange pausiert ist. False = gestoppt.
+
+    Lag in `utils/io.py` und hatte dort zwei Fehler, die man nur von hier aus
+    beheben kann: sie schlief mit `time.sleep`, also griff ein Stopp waehrend
+    der Pause bis zu `timing_pause_interval` verspaetet — und sie schrieb kein
+    Lebenszeichen. Der Laufstatus altert waehrend einer Pause, und nach fuenf
+    Sekunden erklaerte das Studio den Lauf fuer abgestuerzt („KEIN
+    HAUPTPROZESS"), waehrend er nur auf CTRL+ALT+G wartete. Die Pause stand
+    ausserdem nirgends in der Live-Ansicht.
+
+    Geschrieben wird als Warte-Zustand (`kind: pause`) UEBER dem, worauf der
+    Block gerade wartet, und danach genau dieser Zustand wieder — sonst bliebe
+    nach einer Pause mitten in einem Farb-Warten die Pause stehen oder das
+    Farb-Warten waere weg.
+    """
+    skip_step = state.skip_step_event
+
+    def paused() -> bool:
+        return (state.pause_event.is_set() and not state.stop_event.is_set()
+                and not skip_step.is_set())
+
+    if not paused():
+        return not state.stop_event.is_set()
+    pause_interval = state.config.timing_pause_interval
+    underneath = status.current_waiting()
+    began = time.time()
+    try:
+        while paused():
+            status_line(f"{col('[PAUSE]', 'yellow')} {message} | "
+                        f"Fortsetzen: {col('CTRL+ALT+G', 'yellow')}")
+            status.waiting_for(state, {"kind": "pause", "since": began, "until": None,
+                                       "text": f"Pausiert — {message}"})
+            if state.stop_event.wait(pause_interval):
+                break
+    finally:
+        # Sofort, nicht gedrosselt: die Pause hat eben erst geschrieben, und
+        # ein gedrosselter Aufruf liesse sie in der Datei stehen.
+        status.waiting_for(state, underneath, immediately=True)
+    return not state.stop_event.is_set()
 
 
 # =============================================================================
@@ -170,34 +216,6 @@ def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool
     if not successful:
         return False
     log_event(state, "click", detail=label, x=jx, y=jy)
-    return True
-
-
-def safe_scroll(state: AutoClickerState, clicks: int, x: int = None, y: int = None,
-                label: str = "") -> bool:
-    """Wrapper für send_scroll mit Window-Fokus-Check, Humanization und Logging.
-
-    Wie safe_click/safe_key: NIE send_scroll direkt aufrufen, sonst fehlen Fokus-Check,
-    Humanize-Delays und der Log-Eintrag. Der Zeiger-Jitter greift hier ebenfalls, weil
-    Windows das Rad-Event an das Fenster unter dem Cursor liefert.
-    """
-    with state.input_lock:
-        if not _input_allowed(state, label):
-            return False
-        _humanize_check_break(state)
-        if state.stop_event.is_set():
-            return False
-        _humanize_delay(state)
-        if not _input_allowed(state, label):
-            return False
-        if x is not None and y is not None:
-            x, y = _humanize_jitter(x, y, state)
-        successful = send_scroll(
-            clicks, x, y, state.config.click_move_delay,
-            state.config.click_post_delay)
-    if not successful:
-        return False
-    log_event(state, "scroll", detail=str(clicks), x=x, y=y, extra=label)
     return True
 
 
@@ -348,6 +366,12 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
         return True
 
     elif ec.action == ELSE_CLICK:
+        if ec.unresolved:
+            # Der Punkt hinter dem Else-Klick fehlt (`resolve()` hat es gemeldet).
+            # Ein Klick auf (0, 0) waere die Bildschirmecke — also wie `skip`.
+            _step_status(debug, phase, step_num, total_steps,
+                         "ELSE: Klick entfaellt — Punkt fehlt (wie skip)")
+            return True
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
                                         "ELSE: klicke in"):

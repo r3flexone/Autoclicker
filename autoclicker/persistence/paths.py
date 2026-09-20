@@ -20,12 +20,6 @@ SLOTS_DIR: str = "slots"
 ITEMS_DIR: str = "items"
 
 SEQUENCE_SCREENSHOTS_DIR: str = "screenshots"
-# Rueckfall von `_template_path()`, wenn ein Aufrufer keinen Ordner mitgibt. Der
-# Ordner existiert im heutigen Layout NICHT — der Rueckfall findet also nichts,
-# und das ist Absicht: er soll auffallen, nicht stillschweigend woandershin
-# greifen. Wer Vorlagen sucht, nimmt `active_templates_dir(state)` bzw.
-# `sequence_templates_dir(name)`.
-TEMPLATES_DIR: str = os.path.join(ITEMS_DIR, "templates")
 SLOT_PRESETS_DIR: str = os.path.join("presets", "slots")
 ITEM_PRESETS_DIR: str = os.path.join("presets", "items")
 # Sicherungen des Start-Durchgangs. Der Ordner spiegelt die Datenstruktur darunter

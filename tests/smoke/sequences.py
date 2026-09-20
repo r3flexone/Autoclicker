@@ -22,24 +22,25 @@ def _sequence(name: str, note: str, phases: int, steps_list: int):
 
 def setup():
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
-    from autoclicker.models import AutoClickerState, ClickPoint
-    from autoclicker.persistence.sequences import save_data
+    from autoclicker.models import ClickPoint
+    from autoclicker.persistence.sequences import save_sequence_file, sequence_file
 
     sandbox("rauch_sequenzen_")
-    state_value = AutoClickerState()
+    sequences = {}
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
     for name, note, phases, steps_list in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        state_value.sequences[name] = _sequence(name, note, phases, steps_list)
+        sequences[name] = _sequence(name, note, phases, steps_list)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
-    state_value.sequences["Alpha"].points = [
+    sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
     ]
-    save_data(state_value)
+    for name, seq in sequences.items():
+        save_sequence_file(seq, sequence_file(name))
     from autoclicker.persistence import list_available_sequences
-    return StudioBridge(state_value.sequences["Alpha"],
+    return StudioBridge(sequences["Alpha"],
                         dict(list_available_sequences())["Alpha"], "sequences")
 
 

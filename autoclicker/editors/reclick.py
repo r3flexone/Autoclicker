@@ -20,9 +20,8 @@ abgebrochenen Runde und einer halb überschriebenen `sequence.json`: wer das
 Fenster zumacht, das Programm beendet oder verwirft, verliert die Runde und
 nichts sonst.
 
-Was sie nicht erreicht, sagt sie am Ende: beobachtete Pixel, ELSE-Klicks und
-Rad-Schritte kommen in einem normalen Durchlauf nicht vor; dafür bleibt
-`walk`. Slots und Scan-Regionen repariert `repair` bzw. `fix`.
+Was sie nicht erreicht, sagt sie am Ende: beobachtete Pixel und ELSE-Klicks
+kommen in einem normalen Durchlauf nicht vor; dafür bleibt `walk`. Slots und Scan-Regionen repariert `repair` bzw. `fix`.
 
 Sie läuft aus dem Maus-Hook, nicht aus der Konsole — deshalb schliesst der
 Punkte-Editor beim Start, und alles Weitere sind globale Hotkeys.
@@ -162,7 +161,7 @@ def click_points(seq: Sequence) -> tuple[list, list]:
     # unter „unerreichbar" — und war damit aus der Runde draussen, obwohl man
     # sie gleich anklicken wird. Wer beides ist, ist ein Klick.
     for step in steps_list:
-        if block_type(step) in CLICK_BLOCKS and step.scroll is None:
+        if block_type(step) in CLICK_BLOCKS:
             remember(clicks, step.point_id)
     for step in steps_list:
         remember(others, step.point_id)
@@ -300,7 +299,7 @@ def start_reclick(state: AutoClickerState, seq: Sequence = None) -> bool:
         return False
     ids, others = prepared
 
-    if not install_mouse_hook(_on_click_factory(state), None):
+    if not install_mouse_hook(_on_click_factory(state)):
         with state.lock:
             state.reclick_active = False
             state.reclick_points = []
@@ -355,7 +354,7 @@ def _banner(name: str, count: int, target: str, others: list) -> None:
                "kein Scan."))
     if others:
         print(f"  {info(f'{len(others)} Stelle(n) erreicht die Runde nicht')} "
-              f"{hint('(beobachtete Pixel, ELSE, Rad) — dafür bleibt walk.')}")
+              f"{hint('(beobachtete Pixel, ELSE) — dafür bleibt walk.')}")
 
 
 def stop_reclick(state: AutoClickerState, reason: str = "beendet",

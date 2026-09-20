@@ -33,11 +33,7 @@ HOTKEY_RECORD_SCREENSHOT = 24
 HOTKEY_REC_PHASE = 25
 HOTKEY_REC_REGION = 26
 HOTKEY_REC_WATCH = 27
-
-# Einheit, auf die beide Backends ein aufgezeichnetes Mausrad-Ereignis
-# normalisieren. Der historische öffentliche Name lautet WHEEL_DELTA.
-WHEEL_STEP = 120
-WHEEL_DELTA = WHEEL_STEP
+HOTKEY_SKIP_STEP = 28
 
 KEY_NAMES = frozenset({
     "enter", "return", "tab", "space", "leertaste", "escape", "esc",
@@ -71,14 +67,18 @@ HOTKEY_BINDINGS = {
     HOTKEY_SEQUENCE_STUDIO: "<ctrl>+<alt>+b",
     HOTKEY_SCAN_STUDIO: "<ctrl>+<alt>+v",
     HOTKEY_HELP: "<ctrl>+<alt>+o",
-    # Alle Aufnahme-Marker liegen auf CTRL+ALT+SHIFT, weil diese Ebene genau
-    # das bedeutet: wirkt nur waehrend einer laufenden Aufnahme. mark_color()
-    # und mark_screenshot() pruefen als Erstes _recording_running() und lagen
-    # trotzdem auf der Basis-Ebene - eine halbe Ebene fuer eine ganze Sache.
-    # Damit werden dort M und D frei; die Basis hatte nur noch R und Y.
+    # CTRL+ALT+SHIFT ist die Ebene, die nur waehrend eines laufenden Vorgangs
+    # wirkt: die Aufnahme-Marker waehrend einer Aufnahme, das Ueberspringen
+    # eines Blocks waehrend eines Laufs. mark_color() und mark_screenshot()
+    # pruefen als Erstes _recording_running() und lagen trotzdem auf der
+    # Basis-Ebene - eine halbe Ebene fuer eine ganze Sache. Damit werden dort
+    # M und D frei; die Basis hatte nur noch R und Y. Der Buchstabe darf
+    # derselbe bleiben wie in der Basis, solange die Bedeutung verwandt ist:
+    # K ueberspringt die Wartezeit, SHIFT+K den ganzen Block.
     HOTKEY_RECORD_COLOR: "<ctrl>+<alt>+<shift>+m",
     HOTKEY_RECORD_SCREENSHOT: "<ctrl>+<alt>+<shift>+d",
     HOTKEY_REC_PHASE: "<ctrl>+<alt>+<shift>+p",
     HOTKEY_REC_REGION: "<ctrl>+<alt>+<shift>+r",
     HOTKEY_REC_WATCH: "<ctrl>+<alt>+<shift>+b",
+    HOTKEY_SKIP_STEP: "<ctrl>+<alt>+<shift>+k",
 }

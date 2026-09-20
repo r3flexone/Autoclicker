@@ -15,20 +15,21 @@ from pathlib import Path
 from ..imaging import PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name
 from ..models import (
     AutoClickerState, SequenceStep,
-    ACTION_TEXT, SCAN_MODE_ALL, TIMEOUT_TEXT, block_type,
+    ACTION_TEXT, SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY, TIMEOUT_TEXT, block_type,
     TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
     CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
+    VALID_BOSS_DEFAULT_ACTIONS,
 )
 from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
 from ..session_log import log_event
 from ..utils import (
-    clear_line, status_line, wait_while_paused, col, err, hint, info, dbg, warn,
+    clear_line, status_line, col, err, hint, info, dbg, warn,
 )
 from ..winapi import check_failsafe
 from .actions import (
-    safe_click, safe_key, safe_scroll, _step_status, _phase_color, is_verbose_debug,
-    wait_with_pause_skip, execute_else_action,
+    safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
+    wait_with_pause_skip, wait_while_paused, execute_else_action,
 )
 from . import status
 from .debug import (
@@ -55,18 +56,16 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
     """Führt einen Item-Scan Schritt aus."""
     debug = is_verbose_debug(state)
     mode = step.item_scan_mode
-    mode_str = "alle" if mode == SCAN_MODE_ALL else "bestes"
+    # Drei Modi, drei Woerter — hier stand "alle"/"bestes", und `every` hiess
+    # damit faelschlich "bestes".
+    mode_str = {SCAN_MODE_ALL: "alle", SCAN_MODE_BEST: "bestes",
+                SCAN_MODE_EVERY: "jedes"}.get(mode, mode)
     immediate = state.config.scan_click_immediate
 
-    if debug:
-        im_str = " [IMMEDIATE]" if immediate else ""
-        _step_status(debug, phase, step_num, total_steps,
-                     f"Scan '{step.item_scan}' ({mode_str})...",
-                     f"Starte Scan '{step.item_scan}' ({mode_str}{im_str})...")
-    else:
-        _step_status(debug, phase, step_num, total_steps,
-                     f"Scan '{step.item_scan}' ({mode_str})...",
-                     f"Starte Scan '{step.item_scan}' ({mode_str})...")
+    im_str = " [IMMEDIATE]" if immediate and debug else ""
+    _step_status(debug, phase, step_num, total_steps,
+                 f"Scan '{step.item_scan}' ({mode_str})...",
+                 f"Starte Scan '{step.item_scan}' ({mode_str}{im_str})...")
 
     if immediate:
         return _execute_item_scan_immediate(state, step, step_num, total_steps, phase, mode, debug)
@@ -205,6 +204,18 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                         return False
                     if not _click_scan_result(state, pos, item, priority, debug):
                         return False
+        elif config.default_action not in VALID_BOSS_DEFAULT_ACTIONS:
+            # Ein Wert aus einer alten Datei (das Studio bot einmal „Punkt
+            # klicken" als Fallback an): nichts, was hier ausfuehrbar waere —
+            # gesagt wird es, einmal je Lauf, statt still zu ueberspringen.
+            with state.lock:
+                key = f"default_action:{config.name}"
+                first = key not in state.warned_inconsistencies
+                state.warned_inconsistencies.add(key)
+            if first:
+                print(warn(f"Boss-Scan '{config.name}': Fallback '{config.default_action}' "
+                           "ist ohne erkannten Boss nicht ausfuehrbar — im Studio neu "
+                           "waehlen (skip, skip_cycle, restart oder Item-Scan)."))
 
     _step_status(debug, phase, step_num, total_steps,
                  "Kein Boss erkannt", "Kein Boss erkannt → übersprungen")
@@ -374,22 +385,6 @@ def _execute_key(state: AutoClickerState, step: SequenceStep,
 # =============================================================================
 # WAIT-FOR-COLOR STEP
 # =============================================================================
-
-def _execute_scroll(state: AutoClickerState, step: SequenceStep,
-                       step_num: int, total_steps: int, phase: str) -> bool:
-    """Dreht das Mausrad. Gewartet (Zeit oder Farb-Bedingung) hat execute_step bereits."""
-    debug = is_verbose_debug(state)
-    direction = "hoch" if step.scroll > 0 else "runter"
-    label = step.name or f"Scroll {direction}"
-    _step_status(debug, phase, step_num, total_steps,
-                 f"Scroll {direction} x{abs(step.scroll)}",
-                 f"Scroll {direction} x{abs(step.scroll)} an ({step.x}, {step.y})")
-    if not safe_scroll(state, step.scroll, step.x, step.y, label):
-        return False
-    with state.lock:
-        state.total_clicks += 1
-    return True
-
 
 def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> str:
@@ -771,11 +766,19 @@ def _execute_screenshot_step(state: AutoClickerState, step: SequenceStep,
             session_ts = session_dt.strftime("%Y-%m-%d")
             state.session_screenshots_dir = Path(SCREENSHOTS_DIR) / session_ts
         screenshots_dir = state.session_screenshots_dir
-    screenshots_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     filename = f"seq_{timestamp}.png"
     path = screenshots_dir / filename
-    img.save(path)
+    try:
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
+        img.save(path)
+    except (OSError, ValueError) as e:
+        # Ein voller Datentraeger beendete hier den ganzen Lauf mit Fehler —
+        # fuer ein Bild, das nur nebenbei entsteht. Gemeldet, nicht gerissen.
+        clear_line()
+        print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SCREENSHOT nicht "
+                  f"gespeichert: {e}", "red"))
+        return True
 
     region_str = f"({region[0]},{region[1]})→({region[2]},{region[3]})" if region else "Vollbild"
     clear_line()
@@ -820,7 +823,27 @@ def _block_skip(state: AutoClickerState, phase: str, step_num: int,
 
 def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                  total_steps: int, phase: str) -> bool:
-    """Führt einen einzelnen Schritt aus: Erst warten/prüfen, DANN klicken."""
+    """Führt einen einzelnen Schritt aus: Erst warten/prüfen, DANN klicken.
+
+    Ein Block-Skip (CTRL+ALT+K bzw. „Block überspringen" im Studio) kann zu
+    jeder Zeit kommen — auch mitten in `safe_click`, während der Humanize-
+    Pause oder beim Warten auf das Spielfenster. Dort bricht `_input_allowed`
+    ab, und die Aktion meldet `False` wie bei einem Stopp. Als Stopp
+    gelesen hiesse das: der Rest des Durchgangs faellt weg, und weil das
+    Event dabei gesetzt blieb, verschluckte `_block_skip` beim NAECHSTEN
+    Durchgang dessen ersten Block. Ein `False`, hinter dem der Skip steht,
+    heisst deshalb hier: dieser Block ist uebersprungen, weiter mit dem
+    naechsten.
+    """
+    result = _dispatch_step(state, step, step_num, total_steps, phase)
+    if result is False and _block_skip(state, phase, step_num, total_steps):
+        return True
+    return result
+
+
+def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
+                   total_steps: int, phase: str) -> bool:
+    """Der Rumpf von `execute_step`: warten/prüfen, dann die Aktion des Typs."""
     if _block_skip(state, phase, step_num, total_steps):
         return True
     if check_failsafe(state):
@@ -888,11 +911,11 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     if step.item_scan:
         return _execute_item_scan_step(state, step, step_num, total_steps, phase)
 
-    # Ab hier die Aktions-Schritte: Klick, Taste, Scroll, reines Warten. Sie
+    # Ab hier die Aktions-Schritte: Klick, Taste, reines Warten. Sie
     # unterscheiden sich NUR in der Aktion am Ende — gewartet wird davor für alle
-    # gleich, an genau einer Stelle. Vorher hatten Taste und Scroll ihre eigene
-    # Wartezeit-Behandlung und wurden VOR der Farb-Bedingung abgefertigt: ein
-    # Farb-Trigger an einem Tasten- oder Scroll-Schritt wurde dadurch stillschweigend
+    # gleich, an genau einer Stelle. Vorher hatte die Taste ihre eigene
+    # Wartezeit-Behandlung und wurde VOR der Farb-Bedingung abgefertigt: ein
+    # Farb-Trigger an einem Tasten-Schritt wurde dadurch stillschweigend
     # ignoriert (und mit ihm dessen else-Aktion).
     if step.wait_condition:
         color_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
@@ -920,8 +943,6 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.key_press:
         action = _execute_key
-    elif step.scroll:
-        action = _execute_scroll
     else:
         action = _execute_click
 
@@ -973,7 +994,9 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
     als erledigt — eine ausgebliebene Wirkung ist ein Hinweis, kein Abbruchgrund.
     """
     vc = step.verify_condition
-    if vc is None:
+    # `unresolved`: der Punkt der Nachpruefung fehlt — `resolve()` hat es gemeldet.
+    # Geprueft wird dann nicht, geloescht auch nicht.
+    if vc is None or vc.unresolved:
         return action(state, step, step_num, total_steps, phase)
 
     debug = is_verbose_debug(state)
@@ -1020,8 +1043,6 @@ def _wait_text(step: SequenceStep) -> str:
     """Beschriftung der Wartezeit-Anzeige, passend zur Aktion die danach kommt."""
     if step.key_press:
         return f"Taste '{step.key_press}' in"
-    if step.scroll:
-        return f"Scroll {'hoch' if step.scroll > 0 else 'runter'} in"
     if step.wait_only:
         return "Warten"
     return "Klicke in"

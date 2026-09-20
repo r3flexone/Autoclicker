@@ -66,7 +66,6 @@ _seq = _SEQ(
         _PHASE(name="B", steps=[
             _STEP(point_id=4, wait_only=True),              # beobachtet, klickt nicht
             _STEP(point_id=5, else_config=_ELSE(action="click", point_id=6)),
-            _STEP(point_id=7, scroll=-3),                   # Rad, kein Klick
             _STEP(item_scan="Inventar"),
         ]),
     ],
@@ -78,13 +77,11 @@ check("die Klick-Punkte stehen in der Reihenfolge des Laufs",
 check("ein Punkt kommt nur EINMAL vor, auch wenn zweimal geklickt",
       _clicks.count(2) == 1)
 check("ein Wait-only-Schritt klickt nicht", 4 not in _clicks)
-check("ein Rad-Schritt auch nicht", 7 not in _clicks)
 # **Was eine Runde nicht erreicht, wird gesagt.** Es zu verschweigen wäre die
 # schlimmere Hälfte: man hielte die Sequenz für repariert.
 check("beobachtete Stellen stehen als unerreichbar da", 4 in _others)
 check("ELSE-Klicks ebenso", 6 in _others)
 check("Nachprüfungen ebenso", 9 in _others)
-check("und der Rad-Schritt", 7 in _others)
 check("eine Stelle steht in genau einer der beiden Listen",
       not (set(_clicks) & set(_others)))
 # Der Trigger-Punkt eines Farb-Trigger-Klicks IST der Klickpunkt — er darf nicht

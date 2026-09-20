@@ -32,7 +32,7 @@ _NO_DEFAULT = object()
 _LEGACY_REPORTED: set = set()
 
 
-def _click_reference(data: dict, wo: str, what_to_do: str):
+def _click_reference(data: dict, where: str, what_to_do: str):
     """`action_point_id` lesen - und ein altes `action_x/y` melden statt es zu schlucken.
 
     Boss- und Icon-Aktionen klicken heute einen Punkt. Die alte Koordinate im Scan war
@@ -40,11 +40,11 @@ def _click_reference(data: dict, wo: str, what_to_do: str):
     Reparatur im Punkte-Menue noch einer Kalibrierung ueber die Punkte.
     """
     if data.get("action_point_id") is None and (data.get("action_x") or data.get("action_y")):
-        _legacy_reported(wo, "action_x/action_y", what_to_do)
+        _legacy_reported(where, "action_x/action_y", what_to_do)
     return data.get("action_point_id")
 
 
-def _legacy_reported(wo: str, field: str, what_to_do: str) -> None:
+def _legacy_reported(where: str, field: str, what_to_do: str) -> None:
     """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
 
     Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
@@ -53,11 +53,11 @@ def _legacy_reported(wo: str, field: str, what_to_do: str) -> None:
     verschwinden darf es trotzdem nicht.
     """
     from ..utils import hint, warn
-    key_name = f"{wo}:{field}"
+    key_name = f"{where}:{field}"
     if key_name in _LEGACY_REPORTED:
         return
     _LEGACY_REPORTED.add(key_name)
-    print(warn(f"{wo}: '{field}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
+    print(warn(f"{where}: '{field}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
                f"in sequence.json."))
     print(hint(f"       {what_to_do}."))
 
@@ -65,8 +65,8 @@ def _legacy_reported(wo: str, field: str, what_to_do: str) -> None:
 def _is_default(value, default) -> bool:
     """Trägt das Feld seinen Standardwert?
 
-    In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"scroll": 0` als
-    False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
+    In Python ist `0 == False` und `1 == True`. Ohne Typprüfung würde `"else_delay": 0`
+    als False durchgehen und `"screenshot_only": 0` als False gelten. Zahlen untereinander
     (0 vs 0.0) sollen dagegen als gleich zählen.
     """
     if isinstance(value, bool) != isinstance(default, bool):
@@ -427,7 +427,6 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "icon_scan": s.icon_scan,
             "wait_only": s.wait_only, "delay_max": s.delay_max,
             "key_press": s.key_press,
-            "scroll": s.scroll,
             "else_action": ec.action if ec else None,
             "else_point_id": ec.point_id if ec else None,
             "else_x": 0 if (ec is None or else_at_point) else ec.x,
@@ -474,7 +473,6 @@ _STEP_DEFAULTS = {
     "wait_only": False,
     "delay_max": None,
     "key_press": None,
-    "scroll": None,
     "else_action": None,
     "else_x": 0,
     "else_y": 0,
@@ -526,7 +524,8 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         wait_color = s.get("wait_color")
         if wait_color:
             wait_color = tuple(int(v) for v in wait_color)
-        # delay_after (Vorlaeufer) hebt migration._seq_v1_to_v2, bevor hier gelesen wird.
+        # `delay_after` (der Vorlaeufer) kennt der Loader nicht mehr — der
+        # Migrationsschritt dafuer ist mit seinem Altbestand geloescht.
         delay_raw = s.get("delay_before")
         if delay_raw is None:
             delay_raw = 0
@@ -607,7 +606,6 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             wait_only=s.get("wait_only", False),
             delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
             key_press=s.get("key_press"),
-            scroll=s.get("scroll"),
             else_config=else_cfg,
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,

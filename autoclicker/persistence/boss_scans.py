@@ -12,18 +12,13 @@ from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn, s
 from .migration import KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, migrate
 from .sequences import sequence_dir
 from .serialization import _boss_profile_to_dict, _boss_profile_from_dict, _boss_scan_to_dict
-from ._scan_store import ensure_dir, write_scan, list_scan_files, LOAD_EXCEPTIONS
+from ._scan_store import write_scan, list_scan_files, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
 
 def _boss_scans_dir(owner: str) -> Path:
     return sequence_dir(owner) / "boss_scans"
-
-
-def ensure_boss_scans_dir(owner: str = "") -> Path:
-    """Stellt sicher, dass der Boss-Scans-Ordner existiert."""
-    return ensure_dir(_boss_scans_dir(owner)) if owner else Path("sequences")
 
 
 def boss_scan_name_allowed(name: str) -> bool:

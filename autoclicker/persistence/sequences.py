@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import SEQUENCES_DIR
-from ..models import ClickPoint, ELSE_SKIP, LoopPhase, Sequence, AutoClickerState
+from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
 from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
-from ..utils import compact_json, sanitize_filename, save_tag, err, info, warn, hint, atomic_write, describe_color
+from ..utils import compact_json, sanitize_filename, err, info, warn, hint, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict
 
 logger = logging.getLogger("autoclicker")
@@ -75,11 +75,12 @@ def save_sequence_file(seq: Sequence, filepath: Path) -> bool:
         return False
 
 
-def load_sequence_file(filepath: Path, points: Optional[list] = None) -> Optional[Sequence]:
-    """Lädt eine einzelne Sequenz-Datei.
+def load_sequence_file(filepath: Path) -> Optional[Sequence]:
+    """Lädt eine einzelne Sequenz-Datei — samt ihrer Punkte (Feld `points`).
 
-    `points` bleibt nur vorübergehend aufrufkompatibel; die Datenquelle ist
-    ausschließlich das Feld `points` derselben Sequenzdatei.
+    Es gibt keinen zweiten Punkte-Pool mehr, den man hinterher nachladen
+    müsste: `reload_points()` stand hier dafür und ist gelöscht, kein Ladeweg
+    hat es mehr gerufen (ein Test verlangte sogar, dass keiner es tut).
     """
     filepath = Path(filepath)
     if filepath.is_dir():
@@ -196,36 +197,6 @@ def list_available_sequences() -> list[tuple[str, Path]]:
 
 
 # =============================================================================
-# SAMMEL-SAVE (Punkte + alle Sequenzen)
-# =============================================================================
-
-def save_data(state: AutoClickerState) -> bool:
-    """Speichert alle Sequenzen einschließlich ihrer Punkte.
-
-    True nur, wenn JEDE Datei geschrieben wurde. Vorher stand „Daten
-    gespeichert" auch dann da, wenn `save_sequence_file` gerade einen Fehler
-    gemeldet hatte — zwei Zeilen, die sich widersprechen, und die zweite
-    liest man.
-    """
-    ensure_sequences_dir()
-
-    # Snapshot unter Lock - damit Worker-Thread parallele Mutationen nicht stören
-    with state.lock:
-        sequences_snapshot = list(state.sequences.items())
-
-    # Sequenzen speichern
-    failed = [name for name, seq in sequences_snapshot
-              if not save_sequence_file(seq, sequence_file(name))]
-
-    if failed:
-        print(err(f"{len(failed)} von {len(sequences_snapshot)} Sequenz(en) NICHT "
-                  f"gespeichert: {', '.join(failed)}"))
-        return False
-    print(save_tag(f"Daten gespeichert in '{SEQUENCES_DIR}/'"))
-    return True
-
-
-# =============================================================================
 # PUNKTE
 # =============================================================================
 
@@ -249,28 +220,40 @@ def load_points(state: AutoClickerState) -> None:
         state.points = state.active_sequence.points if state.active_sequence else []
 
 
+def activate_sequence(state: AutoClickerState, seq: Sequence) -> list[str]:
+    """Macht `seq` zur aktiven Sequenz — samt Punkten UND ihren Scans.
+
+    Eine Sequenz ist eine Besitzeinheit: wer sie wechselt, wechselt ihre
+    Punkte, ihre Item-, Boss- und Icon-Scans und die Boss-Bibliothek mit.
+    Die drei Zeilen dafuer standen an fuenf Stellen in `handlers.py` und einmal
+    im Konsolen-Editor — und zweimal fehlte der dritte Teil: das Punkte-Menue
+    (CTRL+ALT+P) wechselte die Sequenz, liess aber die Scans der vorigen im
+    Speicher, und der Konsolen-Editor bearbeitete eine Sequenz mit den Punkten
+    einer anderen. Ein Start danach lief mit B-Schritten gegen A-Scans.
+
+    Gibt die Meldungen der Aufloesung zurueck (tote Punkt-Referenzen); wer sie
+    nicht zeigen will, laesst sie liegen — der Worker meldet sie vor dem Lauf
+    ohnehin noch einmal.
+    """
+    from .boss_scans import load_all_boss_scans, load_global_bosses
+    from .icon_scans import load_all_icon_scans
+    from .item_scans import load_all_item_scans, resolve_click_references
+    with state.lock:
+        state.active_sequence = seq
+        state.points = seq.points
+    load_all_item_scans(state)
+    load_all_boss_scans(state)
+    load_global_bosses(state)
+    load_all_icon_scans(state)
+    return resolve_point_references(state, seq) + resolve_click_references(state, seq)
+
+
 def _point_from_dict(p: dict) -> ClickPoint:
     """Ein rohes Punkt-Dict (schon migriert) als ClickPoint."""
     color = p.get("color")
     return ClickPoint(p["x"], p["y"], p.get("name", ""), p["id"],
                       color=tuple(int(v) for v in color) if color else None,
                       source=p.get("source", ""))
-
-
-def reload_points(state: AutoClickerState) -> list[ClickPoint]:
-    """Lädt den Punkt-Pool der aktiven Sequenz frisch von Platte."""
-    with state.lock:
-        seq = state.active_sequence
-    if seq is None:
-        return []
-    path = sequence_file(seq.name)
-    loaded = load_sequence_file(path)
-    if loaded is None:
-        return list(seq.points)
-    with state.lock:
-        seq.points = loaded.points
-        state.points = seq.points
-        return list(seq.points)
 
 
 # `_sichere_neue_punkte()` stand hier und ist mit der Migrationskette entfallen: es
@@ -407,7 +390,12 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     | `step.point_id`             | x, y, name, recorded_color  | Schritt uebersprungen|
     | `wait_condition.point_id`   | pixel, color                | Schritt uebersprungen|
     | `verify_condition.point_id` | pixel, color                | Pruefung entfaellt   |
-    | `else_config.point_id`      | x, y, name                  | else wird 'skip'     |
+    | `else_config.point_id`      | x, y, name                  | else wirkt wie 'skip'|
+
+    Geaendert wird dabei NIE das Modell selbst, nur das Arbeits-Flag
+    `unresolved`: was in der Datei steht, bleibt beim naechsten Speichern
+    erhalten. Ein Aufraeumer, der beim Laden Felder loescht, waere stiller
+    Datenverlust — und genau das war hier fuer Nachpruefung und Else-Klick der Fall.
 
     Klick und Vorbedingung sind der Schritt selbst, Nachpruefung und else nur
     Zusatz. Gemeldet wird beides.
@@ -466,11 +454,16 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
                     # Anders als beim Pruef-Pixel wird der Schritt NICHT uebersprungen:
                     # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
                     # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
+                    # Nur als FLAG, nicht durch Loeschen: hier stand
+                    # `step.verify_condition = None`, und das naechste Speichern
+                    # schrieb die Sequenz ohne Nachpruefung — Daten, die beim
+                    # Laden still verschwanden.
                     messages.append(
                         f"{location} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
-                        f"den es nicht mehr gibt - wird nicht mehr geprueft")
-                    step.verify_condition = None
+                        f"den es nicht mehr gibt - wird nicht geprueft")
+                    vc.unresolved = True
                 else:
+                    vc.unresolved = False
                     old = tuple(vc.pixel)
                     vc.pixel = (point.x, point.y)
                     vc.color = point.color if point.color else vc.color
@@ -483,13 +476,16 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
             if ec is not None and ec.point_id is not None:
                 point = points.get(ec.point_id)
                 if point is None:
-                    # Die else-Aktion faellt auf "skip" zurueck statt auf (0,0) zu klicken.
+                    # Die else-Aktion wirkt dann wie "skip" statt auf (0,0) zu klicken —
+                    # zur LAUFZEIT (`execute_else_action`). Das Feld bleibt: hier stand
+                    # `ec.action = ELSE_SKIP; ec.point_id = None`, und damit war der
+                    # ELSE-Klick nach dem naechsten Speichern aus der Datei verschwunden.
                     messages.append(
                         f"{location} Else-Klick zeigt auf Punkt #{ec.point_id}, "
-                        f"den es nicht mehr gibt - else wird zu 'skip'")
-                    ec.action = ELSE_SKIP
-                    ec.point_id = None
+                        f"den es nicht mehr gibt - else wirkt wie 'skip'")
+                    ec.unresolved = True
                 else:
+                    ec.unresolved = False
                     old = (ec.x, ec.y)
                     ec.x, ec.y, ec.name = point.x, point.y, point.name
                     if old != (0, 0) and old != (point.x, point.y) and not quiet:

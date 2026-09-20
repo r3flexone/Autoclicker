@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import time
 
-from ..models import AutoClickerState, SequenceStep
+from ..models import AutoClickerState, GATE_COMMANDS, SequenceStep  # noqa: F401
 from ..utils import col, dbg, describe_color, hint, read_command, warn
 from ..winapi import get_cursor_pos, set_cursor_pos
 
@@ -42,10 +42,8 @@ _KEYS_STOP = ("q", "escape")
 # Nur an einem Haltepunkt: von hier an Schritt fuer Schritt.
 _KEYS_STEP = ("m",)
 
-# Die fuenf Entscheidungen des Gates — dieselben Woerter, die der Briefkasten
-# aus dem Studio bringt (`command_manual_action`). Konsole und Studio sind zwei
-# Wege zu EINER Entscheidung, nicht zwei Gates.
-GATE_COMMANDS = ("run", "skip", "continue", "step", "stop")
+# Die fuenf Entscheidungen des Gates stehen in `models.GATE_COMMANDS` — dort,
+# weil auch die Studio-Bruecke sie kennen muss, ohne `runtime/` zu importieren.
 
 # Tasten im Punkte-Durchgang
 _KEYS_NEXT = ("w", "d", "enter", " ", "right", "down")
@@ -127,9 +125,6 @@ def describe_step(step: SequenceStep) -> str:
         return f"Icon-Scan '{step.icon_scan}'"
     if step.screenshot_only:
         return "Screenshot"
-    if step.scroll:
-        direction = "hoch" if step.scroll > 0 else "runter"
-        return f"Mausrad {direction} x{abs(step.scroll)} bei ({step.x}, {step.y})"
     if step.wait_only:
         return "nur warten, kein Klick"
     return f"Klick auf ({step.x}, {step.y})"

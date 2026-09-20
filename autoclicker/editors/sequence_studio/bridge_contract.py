@@ -79,7 +79,6 @@ _FIELDS = {
     "boss_watcher": lambda v: str(v or ""),
     "wait_only": lambda v: bool(v),
     "breakpoint": lambda v: bool(v),
-    "scroll": lambda v: (int(v) if int(v or 0) != 0 else None),
 }
 
 

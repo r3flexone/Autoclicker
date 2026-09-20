@@ -105,11 +105,8 @@ class BridgeShareMixin:
         from ...persistence import list_available_sequences, load_sequence_file
         state = AutoClickerState()
         apply_config(state.config, CONFIG)
-        for name, path in list_available_sequences():
-            seq = load_sequence_file(path)
-            if seq is not None:
-                state.sequences[seq.name or name] = seq
-        seq = state.sequences.get(self.board.name)
+        path = next((p for n, p in list_available_sequences() if n == self.board.name), None)
+        seq = load_sequence_file(path) if path is not None else None
         if seq is not None:
             state.active_sequence = seq
             state.points = seq.points
@@ -261,11 +258,7 @@ class BridgeShareMixin:
         state = self._inventory()
         success, result = import_bundle(
             state, self._share_import["path"], transform=transform,
-            import_points=parts["sequences"], import_sequences=parts["sequences"],
-            import_slots=parts["sequences"], import_items=parts["sequences"],
-            import_item_scans=parts["sequences"],
-            import_boss_scans=parts["sequences"],
-            import_icon_scans=parts["sequences"],
+            import_sequences=parts["sequences"],
             import_config=parts["config"], merge=bool(data.get("merge", True)))
         if not success:
             return self._share_report(f"Import fehlgeschlagen: {result}", "err")

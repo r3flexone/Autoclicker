@@ -8,20 +8,13 @@ IDE-Konsolen (Nummern-Eingabe). Die Erkennung selbst lebt in console.py.
 import ctypes
 import sys
 import time
-from typing import TYPE_CHECKING
 
-from .console import (
-    _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM,
-    col, status_line,
-)
+from .console import _REAL_CONSOLE, _ANSI_ENABLED, _PYCHARM
 
 try:
     import msvcrt
 except ImportError:  # Linux
     msvcrt = None
-
-if TYPE_CHECKING:
-    from ..models import AutoClickerState
 
 
 # =============================================================================
@@ -462,19 +455,3 @@ def _fallback_select(options: list[str], title: str,
             print(f"  -> Ungültig! (1-{len(options)})")
         except ValueError:
             print("  -> Bitte eine Nummer eingeben")
-
-
-# =============================================================================
-# PAUSE-HANDLING
-# =============================================================================
-
-def wait_while_paused(state: 'AutoClickerState', message: str) -> bool:
-    """Wartet solange pausiert ist. Gibt False zurück wenn gestoppt wurde."""
-    pause_interval = state.config.timing_pause_interval
-    skip_step = getattr(state, "skip_step_event", None)
-    while (state.pause_event.is_set() and not state.stop_event.is_set()
-           and not (skip_step and skip_step.is_set())):
-        status_line(f"{col('[PAUSE]', 'yellow')} {message} | "
-                    f"Fortsetzen: {col('CTRL+ALT+G', 'yellow')}")
-        time.sleep(pause_interval)
-    return not state.stop_event.is_set()

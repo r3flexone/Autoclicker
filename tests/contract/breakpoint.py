@@ -239,6 +239,39 @@ check("die Karte zeigt die Marke", "block.breakpoint" in _web)
 check("die Tafel im Live-Run kennt den Haltepunkt und 'ab hier schrittweise'",
       "m.breakpoint" in _web and '"step"' in _web)
 
+# **Und die Bruecke laesst jede der fuenf Entscheidungen durch.** Sie hielt
+# eine getippte Kopie der Liste, in der `step` fehlte: die Kachel „Ab hier
+# schrittweise" schickte `{action: "step"}`, die Bruecke antwortete
+# „Unbekannte manuelle Aktion", und das Gate wartete weiter. Der Test oben sah
+# es nicht, weil er `command_manual_action` direkt ruft — der Weg der Seite
+# fuehrt ueber `run_command`, also wird der hier gemessen, mit Briefkasten.
+import json as _json, os as _os, tempfile as _tmp, shutil as _sh
+from autoclicker.models import GATE_COMMANDS as _GC
+from autoclicker.mailbox import COMMAND_PATH as _CP
+_sandbox_g = _tmp.mkdtemp(prefix="gate_bridge_")
+_cwd_g = _os.getcwd()
+_os.chdir(_sandbox_g)
+try:
+    _bg = _SB(_SEQ("g"), Path("sequences/g/sequence.json"), "sequences")
+    _rejected = []
+    _arrived = []
+    for _cmd in _GC:
+        _res = _bg.run_command({"command": "manual_action", "action": _cmd})
+        if _res["status"]["kind"] == "err":
+            _rejected.append(_cmd)
+        try:
+            _arrived.append(_json.loads(_CP.read_text(encoding="utf-8"))["arguments"]["action"])
+        except (OSError, ValueError, KeyError):
+            _arrived.append(None)
+    check("die Bruecke nimmt alle fuenf Gate-Entscheidungen an — auch 'step'",
+          _rejected == [] and _arrived == list(_GC))
+    check("eine sechste lehnt sie weiterhin ab",
+          _bg.run_command({"command": "manual_action", "action": "explode"})
+          ["status"]["kind"] == "err")
+finally:
+    _os.chdir(_cwd_g)
+    _sh.rmtree(_sandbox_g, ignore_errors=True)
+
 # Konsolen-Editor: `break <Nr>` schaltet um.
 from autoclicker.editors.sequence_editor.steps import _PhaseEditor as _PE, _KNOWN_COMMANDS as _KC
 check("'break' ist ein bekannter Befehl", "break" in _KC)

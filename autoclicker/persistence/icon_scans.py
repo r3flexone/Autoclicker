@@ -15,7 +15,7 @@ from ..models import (
 )
 from .migration import KIND_ICON_SCAN, migrate
 from .sequences import sequence_dir
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
+from ._scan_store import write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 from .serialization import _icon_scan_to_dict, _click_reference
 
 logger = logging.getLogger("autoclicker")
@@ -23,11 +23,6 @@ logger = logging.getLogger("autoclicker")
 
 def _icon_scans_dir(owner: str) -> Path:
     return sequence_dir(owner) / "icon_scans"
-
-
-def ensure_icon_scans_dir(owner: str = "") -> Path:
-    """Stellt sicher, dass der Icon-Scans-Ordner existiert."""
-    return ensure_dir(_icon_scans_dir(owner)) if owner else Path("sequences")
 
 
 def save_icon_scan(config: IconScanConfig) -> bool:

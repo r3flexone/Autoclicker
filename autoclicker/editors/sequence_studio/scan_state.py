@@ -175,9 +175,9 @@ class ScanStateMixin:
     def _disk_track(self, *paths) -> None:
         """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
 
-        Das gemerkte Bild liegt unter `item_scans/bilder/`, und das Anlegen des
-        Unterordners dreht die Änderungszeit des Elternordners weiter — sonst meldete
-        der Reiter direkt nach der eigenen Aufnahme eine Fremdänderung.
+        Ein eigenes Schreiben (Scan-Datei, gemerktes Bild, Löschen) dreht die
+        Änderungszeit des Ordners weiter — sonst meldete der Reiter direkt nach
+        der eigenen Aktion eine Fremdänderung.
 
         Ohne Argumente der ganze Stand (nach dem Speichern), mit Argumenten nur die
         genannten Pfade — sonst verschluckt es eine fremde Änderung anderswo.

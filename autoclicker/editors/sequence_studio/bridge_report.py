@@ -187,7 +187,6 @@ class BridgeReportMixin:
             "duration": raw["duration"],
             "clicks": raw["events"].get("click", 0),
             "keys": raw["events"].get("key", 0),
-            "scrolls": raw["events"].get("scroll", 0),
             "timeouts": raw["timeouts"][:RANK_ROWS],
             "timeouts_total": sum(n for _, n in raw["timeouts"]),
             "items": raw["items"][:RANK_ROWS],

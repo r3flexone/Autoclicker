@@ -29,17 +29,16 @@ def setup():
     from autoclicker.models import (
         AutoClickerState, ClickPoint, LoopPhase, Sequence, SequenceStep,
     )
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
 
     sandbox("rauch_bericht_")
     st = AutoClickerState()
     seq = Sequence(name="Farm", loop_phases=[LoopPhase(name="A", steps=[
         SequenceStep(point_id=1)])],
         points=[ClickPoint(id=1, x=100, y=100, name="A")])
-    st.sequences["Farm"] = seq
     st.active_sequence = seq
     st.points = seq.points
-    save_data(st)
+    save_sequence_file(seq, sequence_file(seq.name))
 
     _log(Path("logs/20260101_000000_farm.csv"), [
         ("2026-01-01 00:00:00", 0, "session_start", "Farm", "", "", ""),

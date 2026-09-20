@@ -143,7 +143,6 @@ try:
     _st_r2 = _ACS_R()
     _seq_r2 = _SEQR(name="S")
     _st_r2.active_sequence = _seq_r2
-    _st_r2.sequences["S"] = _seq_r2
     Path("sequences/s/templates").mkdir(parents=True)
     Path("sequences/s/templates/alt.png").write_bytes(b"PNG")
     _st_r2.global_items = {"Alt": _IPR(name="Alt", template="alt.png",

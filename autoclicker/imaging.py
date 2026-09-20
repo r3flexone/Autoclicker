@@ -23,22 +23,43 @@ from .winapi import (
 logger = logging.getLogger("autoclicker")
 
 # Verzeichnisse (importiert aus persistence um Duplizierung zu vermeiden)
-from .persistence import ITEMS_DIR, TEMPLATES_DIR
+from .persistence import SEQUENCE_SCREENSHOTS_DIR
+
+# Vorlagenordner, wenn ein Aufrufer keinen mitgibt. Bewusst `None`: Vorlagen
+# liegen je Sequenz unter `sequences/<name>/templates/`, einen programmweiten
+# Ordner gibt es seit dem Umzug auf Besitzeinheiten nicht mehr. Hier stand als
+# Rueckfall `items/templates/` — ein Pfad, der absichtlich ins Leere zeigte,
+# „damit es auffaellt"; aufgefallen ist er als „Template nicht gefunden" im
+# Rauschen. Ohne Ordner gibt es jetzt keinen Pfad und eine Zeile, die das sagt.
+# Wer Vorlagen sucht, nimmt `active_templates_dir(state)` bzw.
+# `sequence_templates_dir(name)`; Tests setzen die Variable fuer einen Sandkasten.
+TEMPLATES_DIR: str | None = None
+_missing_root_reported = False
 
 
 def _template_path(template_name: str, template_root=None) -> str | None:
-    """Löst einen Template-Namen sicher innerhalb von ``TEMPLATES_DIR`` auf.
+    """Löst einen Template-Namen sicher innerhalb des Vorlagenordners auf.
 
     Scan-Dateien sind normale JSON-Dateien und können auch von Hand verändert
     werden. Absolute Pfade und ``..`` dürfen den Template-Ordner deshalb niemals
-    verlassen.
+    verlassen. Ohne Ordner (weder Argument noch `TEMPLATES_DIR`) gibt es keinen
+    Pfad — und einmal je Prozess eine Zeile, die den fehlenden Ordner nennt.
     """
+    global _missing_root_reported
     if not isinstance(template_name, str) or not template_name.strip():
         return None
     relative = Path(template_name)
     if relative.is_absolute():
         return None
-    root = Path(template_root or TEMPLATES_DIR).resolve()
+    base = template_root or TEMPLATES_DIR
+    if not base:
+        if not _missing_root_reported:
+            _missing_root_reported = True
+            logger.warning("Vorlage '%s' ohne Vorlagenordner angefragt — der Aufrufer "
+                           "muss `template_root` mitgeben (sequence_templates_dir).",
+                           template_name)
+        return None
+    root = Path(base).resolve()
     candidate = (root / relative).resolve()
     try:
         candidate.relative_to(root)
@@ -346,9 +367,11 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_at_size(template_path, template_cv, iw, ih)
 
-        # Debug: Scan-Bild und Template speichern zum Vergleich
+        # Debug: Scan-Bild und Template speichern zum Vergleich. Unter den
+        # Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit dem
+        # Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
         if CONFIG.debug_save_templates:
-            debug_dir = os.path.join(ITEMS_DIR, "debug")
+            debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
             os.makedirs(debug_dir, exist_ok=True)
             # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
             base_name = Path(template_path).stem

@@ -265,7 +265,7 @@ Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
-**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.sequences`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
+**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
 
 ### Aktions-Wrapper (zentral)
 Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `autoclicker/runtime/actions.py`. Diese bündeln:
@@ -380,9 +380,14 @@ Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssyste
 nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
 letzten zwei, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
 (`CTRL+ALT+SHIFT+…`), und die trägt eine Bedeutung: **was dort liegt, wirkt nur während
-einer laufenden Aufnahme.** Der Buchstabe darf derselbe bleiben wie in der Basis-Ebene,
+eines laufenden Vorgangs** — die Marker während einer Aufnahme, `SHIFT+K` während
+eines Laufs. Der Buchstabe darf derselbe bleiben wie in der Basis-Ebene,
 solange die Bedeutung verwandt ist — `M`/`SHIFT+M` sind beide „warte auf eine Farbe",
-`D`/`SHIFT+D` beide „Screenshot".
+`D`/`SHIFT+D` beide „Screenshot", `K`/`SHIFT+K` beide „überspringen" (die Wartezeit
+bzw. den ganzen Block). Der Block-Skip hatte vorher nur den Studio-Knopf und den
+Briefkasten-Befehl `skip_step`; wer aus der Konsole lief, konnte einen hängenden
+Block nur mit dem ganzen Lauf abbrechen. Der Hotkey ruft **denselben**
+`handle_skip_step()` wie der Knopf — ein Ereignis, zwei Wege.
 
 Dass die Marker nicht in der Aufnahme landen, ist kein Zufall: der Tastatur-Hook meldet
 nichts bei gedrücktem CTRL oder ALT, und beide sind hier gedrückt.
@@ -536,9 +541,18 @@ Regeln beim Erweitern:
 - **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
   die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
   Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
-- **Eine vierte Stelle** trägt man in `_REF_KEYS` (`import_export.py`) und
-  `resolve()` ein. Fehlt eine der beiden, überlebt sie den nächsten Import nicht.
-  (Der dritte Eintrag war `_STELLEN` in der Migration — mit `_seq_v3_to_v4` entfallen.)
+- **Eine fünfte Stelle** trägt man in `resolve()` ein — und in `_step_to_dict`
+  /`_parse_steps`. (`_REF_KEYS` in `import_export.py` war der dritte Ort und ist
+  gelöscht: seit Punkt-IDs sequenzlokal sind, rechnet der Import keine IDs mehr
+  um, und die Liste hatte nur noch einen Test als Leser. `_STELLEN` in der
+  Migration ging mit `_seq_v3_to_v4`.)
+- **`resolve()` ändert nie das Modell, nur das Arbeits-Flag `unresolved`.** Es
+  setzte beim Laden `verify_condition = None` bzw. `else.action = skip` — und das
+  nächste Speichern schrieb die Sequenz ohne Nachprüfung bzw. ohne Else-Klick.
+  Stiller Datenverlust, ausgerechnet durch die Regel „nur bei einer Änderung, nie
+  beim Laden". Heute tragen `WaitCondition` und `ElseConfig` ein `unresolved`;
+  `_with_verification` prüft dann nicht, `execute_else_action` klickt dann nicht
+  (wie `skip`) — und die Datei behält beides.
 
 **Die Scan-Richtung gehört zum Scan, nicht zum Programm.** Sie stand als
 `config.scan_reverse` in der Config und galt damit für *alle* Item-Scans — die
@@ -803,7 +817,7 @@ Schaden grösser:
   Umbenennen, das klont, ist kein Umbenennen.
 
 Zwei Regeln beim Erweitern: **eine sechste Stelle trägt man in `_REF_FIELDS`
-ein** (dieselbe Bauart wie `_REF_KEYS` bei den Punkten), und **die Beschriftung
+ein** (eine Tabelle, nicht drei `if`), und **die Beschriftung
 zieht nur mit, wenn sie abgeleitet ist** — `step.name == f"Boss:{alt}"` wird
 nachgezogen, ein selbst getippter Blockname nicht. Er gehört dem Nutzer, und ihn
 stillschweigend umzuschreiben wäre schlimmer als eine veraltete Beschriftung.
@@ -962,27 +976,27 @@ keinen zusätzlichen Migrationsschritt. Loader lesen das aktuelle Format, verwen
 Defaults für fehlende Felder und melden falsche JSON-Strukturen als Ladefehler
 (`TypeError` in den `_*_from_dict`-Lesern, gefangen von `LOAD_EXCEPTIONS`).
 
-Zwei Wege, je nach Dateiform:
+Versioniert (`_CHAINS`) ist nur, was ein Dict als obersten Knoten hat und
+eine Kette besitzt — heute `sequences/<name>/sequence.json`. Die trägt
+`schema_version`, die Kette hebt Schritt für Schritt (Eintrag i: Version i →
+i+1), Saver stempeln mit `stamp()`. Alle anderen Typen (Presets, Scans, die
+Boss-Bibliothek) tragen kein Versionsfeld; `migrate()` gibt sie unverändert
+zurück.
 
-- **Versioniert** (`_CHAINS`) — nur Dateien mit einem Dict als oberstem Knoten, also
-  heute `sequences/<name>/sequence.json`. Die tragen `schema_version`, die Kette hebt Schritt für
-  Schritt (Eintrag i: Version i → i+1), Saver stempeln mit `stamp()`.
-- **Normalisiert** (`_NORMALIZER`) — alles andere: `points.json` ist eine Liste,
-  `items.json`/`slots.json`/Presets sind Name→Eintrag-Dicts. Da ist kein Platz für ein
-  `schema_version` ohne Struktur-Umbau (ein Key „schema_version" zwischen lauter
-  Item-Namen wäre ein Fremdkörper). Statt einer Kette gibt es eine **idempotente**
-  Funktion: erkennt die Altform, hebt sie, zweiter Lauf ändert nichts.
+**Die Normalisierer sind Geschichte.** Es gab einen zweiten Weg (`_NORMALIZER`,
+idempotente Funktionen für Dateien ohne Versionsfeld); `_norm_points` hob
+eine `points.json`, die es seit den sequenzlokalen Punkten gar nicht mehr gibt,
+und die übrigen waren No-ops mit der Begründung „damit der Haken sitzt". Ein
+Modul voller Haken für Dateien, die niemand mehr schreibt, ist genau das
+Anwachsen, das hier vermieden werden soll — sie sind samt `KIND_POINTS` gelöscht.
+Dasselbe Ende hat `AppConfig._FIELD_MIGRATION` (die Tabelle alter Config-Schlüssel)
+genommen: der Start-Durchgang schreibt `config.json` seit langem im aktuellen
+Format, die Tabelle war nach dem ersten Start wirkungslos. Ein alter Schlüssel ist
+heute ein unbekannter — er fällt weg, das Feld bekommt seinen Default.
 
-Beide Wege haben denselben Zweck und dasselbe Ende: Loader lesen nur das aktuelle Format,
-und sobald keine Altbestände mehr existieren, wird der Schritt bzw. Normalisierer
-**ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das Modul soll schrumpfen,
-nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
-
-Genau das ist mit `_norm_items` passiert (steht heute als `_norm_noop`): es hob
-`confirm_point` von `[x, y]` auf `{x, y}` — ein Feld, das der Loader seit der Umstellung
-auf `confirm_point_id` gar nicht mehr liest. Einen Normalisierer zu pflegen, der ein
-totes Feld in ein anderes totes Format bringt, ist das Anwachsen, das hier vermieden
-werden soll.
+Loader lesen nur das aktuelle Format, und sobald keine Altbestände mehr existieren,
+wird ein Schritt **ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das
+Modul soll schrumpfen, nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
 
 Regeln beim Format-Ändern:
 1. Dataclass, Loader und Serializer gemeinsam anpassen; fehlende Felder bekommen Defaults.
@@ -1269,8 +1283,8 @@ es die Marker-Farben.
   und sammelt die Fehlschläge (`_detection_save()` macht es vor). Ein `try/except`
   allein reicht nicht: die Ausnahme wird eine Ebene tiefer schon gefangen.
 
-  Das gilt seit dem Audit für **alle** Saver, auch `save_config()`, `save_data()`
-  und `save_points()` — die gaben `None` zurück, und genau dort stand es wieder:
+  Das gilt seit dem Audit für **alle** Saver, auch `save_config()` und
+  `save_points()` — die gaben `None` zurück, und genau dort stand es wieder:
   `config_write()` im Studio meldete `ok: True`, übernahm den Wert in den eigenen
   Prozess und schickte den Briefkasten-Befehl, während `config.json` unverändert
   war. Ein Aufrufer, der nach dem Speichern „gespeichert" sagt, prüft; wer nur
@@ -1299,9 +1313,15 @@ es die Marker-Farben.
   Boss-Watcher bis `llm_watcher_timeout`). Deshalb ruft **jede Schleife, die den
   Worker länger aufhält**, `status.heartbeat(state)` — oder `status.waiting_for()`,
   das über dieselbe Funktion schreibt und dabei noch sagt, worauf gewartet wird.
-  Heute: `_wait_loop`, `_color_loop` und der Boss-Watcher. Ein Test hält das
-  fest — ohne die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist
-  der Fall, für den man die Ansicht aufmacht.
+  Heute: `_wait_loop`, `_color_loop`, der Boss-Watcher, das Warten auf einen
+  Zeitplan (`_wait_for_schedule`) **und die Pause** (`wait_while_paused` in
+  `runtime/actions.py`). Die Pause fehlte zuletzt: sie schlief in `utils/io.py`
+  mit `time.sleep`, ohne Lebenszeichen — nach fünf Sekunden CTRL+ALT+G stand
+  „KEIN HAUPTPROZESS" im Studio. Sie schreibt jetzt `kind: pause` **über** den
+  Warte-Zustand des Blocks und stellt ihn danach wieder her (`status.current_waiting()`),
+  und sie wartet auf `stop_event` statt zu schlafen. Ein Test hält das fest — ohne
+  die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist der Fall,
+  für den man die Ansicht aufmacht.
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
   - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
   - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
@@ -1483,7 +1503,7 @@ mit, weil man „nur die Sequenz" wegräumen wollte.
 statt überschrieben zu werden. Dieselbe Regel wie beim Start-Durchgang, und aus
 demselben Grund — samt der gespiegelten Struktur, also unter dem **Ordner**namen.
 
-**Und der Ordner heisst nicht wie die Sequenz.** `save_data()` legt ihn unter
+**Und der Ordner heisst nicht wie die Sequenz.** `sequence_file()` legt ihn unter
 `sanitize_filename(name)` an: aus „Raid" wird `sequences/raid`, aus „Mein Lauf"
 wird `mein_lauf`. Der angezeigte Name steht **in** der Datei — wer ihn an
 `sequences/` hängt, greift ins Leere, und wenn zufällig ein Ordner so heisst,
@@ -2919,7 +2939,7 @@ Das Studio merkt sich beim Laden den Zeitstempel der Sequenzdatei
 (`_state_remember()`) — die Punkte stehen darin, es ist also EIN Stand für
 beides; hat sie sich beim Speichern geändert, fragt es
 nach, statt zu überschreiben. Der Fall ist Alltag: eine Aufnahme im Hauptprozess
-legt Punkte an, `save_data()` schreibt die Sequenz. Die Rückfrage ist derselbe
+legt Punkte an, `save_points()` schreibt die Sequenz. Die Rückfrage ist derselbe
 Dialog wie bei ungespeicherten Änderungen — er trägt Titel, Text und
 Knopfbeschriftung jetzt aus der Brücke, weil sich die Fälle zu sehr
 unterscheiden (bei „ausserhalb geändert" gibt es nichts zu verwerfen).
@@ -2990,16 +3010,27 @@ zusammensetzbar, wenn man sich auf unkomprimierte Zeilen bzw. eingebettete PNGs
 beschränkt). Eine Binärdatei im Repo wäre eine Kopie des Motivs, die niemand
 mitzieht — dasselbe Argument wie bei „Referenzen statt Kopien".
 
-**Wer eine Sequenz von Platte lädt, holt die Punkte mit** (`reload_points()`
-in `persistence/sequences.py`). Das Studio schreibt beim Speichern *beide*
-Dateien; der Hauptprozess nahm die Sequenz von Platte und die Punkte aus seinem
-Speicher — ein dort angelegter Punkt fehlte deshalb genau dann, wenn man ihn
-braucht („[Punkt #51 FEHLT]", Schritt übersprungen). Zwei Hälften aus zwei
-Zeitpunkten. Betroffen sind alle drei Wege: `command_start` (Studio-Knopf),
-`handle_switch` und `run_sequence_loader` (CTRL+ALT+L, der Weg, auf den die
-Schlussmeldung des Studios selbst verweist); ein Test hält sie zusammen.
-Zusammengeführt wird über die ID, **Platte gewinnt**, und gelöscht wird nichts —
-Boss- und Icon-Editor legen Punkte an, ohne sofort zu speichern.
+**Wer eine Sequenz wechselt, ruft `activate_sequence(state, seq)`**
+(`persistence/sequences.py`) — die EINE Stelle, die aktive Sequenz, Punkte
+UND Scans (Item-, Boss-, Icon-Scans, Boss-Bibliothek) gemeinsam umstellt. Die
+drei Zeilen dafür standen an fünf Stellen in `handlers.py` und im
+Konsolen-Editor, und zweimal fehlte ein Teil: das Punkte-Menü (CTRL+ALT+P)
+wechselte die Sequenz, liess aber die Scans der vorigen im Speicher — ein Start
+danach lief mit B-Schritten gegen A-Scans; und der Konsolen-Editor bearbeitete B
+mit den Punkten der gerade aktiven A und schrieb B mit A's Pool zurück. Regel
+beim Erweitern: **wer `state.active_sequence` setzt, ruft `activate_sequence`**,
+nichts anderes. (Ein früheres `reload_points()` für einen separaten Punkte-Pool
+ist gelöscht — die Punkte kommen mit der `sequence.json`, und ein Test verlangt,
+dass kein Ladeweg sie separat nachlädt.)
+
+**Es gibt EINE geladene Sequenz: `state.active_sequence`.** Daneben stand
+`state.sequences`, ein Dict, das nur ein Teil der Ladewege pflegte
+(Konsolen-Editor, Aufnahme, Import; Quick-Switch und Studio-Start nicht), und
+`save_data()` schrieb es **komplett** zurück — auch eine Aufnahme von vorhin,
+die das Studio inzwischen geändert hatte; die kam aus dem Speicher zurück auf
+die Platte, ohne dass jemand an ihr gearbeitet hätte. Beides ist gelöscht.
+Geschrieben wird die aktive Sequenz (`save_points`), alles andere liegt auf der
+Platte und wird von dort gelesen (`list_available_sequences`, `load_sequence_file`).
 
 **Eine Stelle fährt man an, statt sie zu tippen** (`point_capture()`): Maus hin,
 ENTER — derselbe Weg wie `area_capture()` für Screenshot-Bereiche, nur mit
@@ -3346,6 +3377,17 @@ das Speichern`). Ungeprüft bleibt die Anzeige selbst.
 ### Sequenz-Modell
 Eine `Sequence` hat 3 Phasen: `init_steps` (einmalig), `loop_phases` (mehrere `LoopPhase`s je mit eigenem `repeat`-Counter, optional `scheduled_start` für Uhrzeit-Trigger), `end_steps` (einmalig nach allen Zyklen). Jeder `SequenceStep` ist polymorph: kann Klick, Key-Press, Wait-Pixel-Trigger, Item-Scan, Boss-Scan, Boss-Watcher (kontinuierliche Überwachung), Wait-only oder Screenshot sein — gesteuert über die gesetzten Felder. `else_config` definiert Fallback bei Trigger-Miss.
 
+**Ein Zyklus ohne Schritt ist kein Zyklus.** Eine Sequenz, deren Phasen ALLE
+auf eine Uhrzeit warten („täglich um 07:00"), drehte vorher in `_run_main_loop`
+ohne einen einzigen Schritt — gemessen 133 Umläufe in einer halben Sekunde,
+jeder mit einer Statusdatei —, und mit `total_cycles=5` war sie vorbei, bevor
+die Uhrzeit je erreicht wurde. Dasselbe bei leeren Phasen (das Studio legt genau
+so eine an). `_run_loop_phases` sagt jetzt, wie viele Phasen liefen; bei null
+zählt der Zyklus nicht, und `_wait_for_schedule` schläft in Sekundenschritten
+bis zum nächsten Termin (mit `waiting_for` für die Live-Ansicht, Stopp/Pause/
+sanftes Ende greifen weiter) — oder beendet den Lauf mit Ansage, wenn es gar
+keinen Zeitplan gibt.
+
 **`else` ist ein *stattdessen*, kein *zusätzlich*.** Greift die else-Aktion, entfällt die
 eigene Aktion des Schritts — so steht es in der Editor-Hilfe (`else skip` = „nur DIESEN
 Schritt überspringen", `else <Punkt-Nr>` = „**stattdessen** diesen Punkt klicken").
@@ -3419,7 +3461,7 @@ Letztes tun und danach nichts mehr ausführen (Item-/Boss-/Icon-Scan), dürfen w
 irrtümlich noch feuern könnte.
 
 ### Sequenz-Aufnahme (`editors/sequence_recorder.py`)
-Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck, Mausrad**,
+Aufgezeichnet wird, was das Spielen ausmacht: **Linksklick, Tastendruck**,
 per `CTRL+ALT+SHIFT+M` ein **Warte-Marker auf eine Farbe** und per
 `CTRL+ALT+SHIFT+D` ein **Screenshot-Marker**. Jedes Ereignis ist ein
 `RecordEvent` (`models.py`, `REC_*`) —
@@ -3568,25 +3610,39 @@ Frage nichts, ist die alte Antwort besser als gar keine. Vier Fälle stehen im
 Test — beide Richtungen des Fensterwechsels, dazu Vordergrund gleich und
 Vordergrund als Rückfall.
 
-**Rechtsklick wird bewusst nicht aufgezeichnet**: der Autoclicker kann gar keinen
-ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es gibt kein Modellfeld
-und keinen Editor-Befehl). Ihn mitzuschneiden hiesse, etwas aufzunehmen, das beim
-Abspielen zum Linksklick wird. Wer ihn nachrüstet, braucht die ganze Kette:
+**Rechtsklick wird bewusst nicht aufgezeichnet — aber gezählt**: der Autoclicker
+kann gar keinen ausführen (`send_click` ist auf `LEFTDOWN`/`LEFTUP` festgelegt, es
+gibt kein Modellfeld und keinen Editor-Befehl). Ihn mitzuschneiden hiesse, etwas
+aufzunehmen, das beim Abspielen zum Linksklick wird. Ihn zu **verschweigen** war
+aber der schlechtere Fehler: wer im Spiel rechts geklickt hat, bekam eine Sequenz,
+der still ein Schritt fehlt. Der Hook meldet ihn deshalb über einen zweiten
+Callback (`install_mouse_hook(on_lbutton_down, on_rbutton_down)`), der Recorder
+zählt ihn in `state.recording_right_clicks` — nach denselben Regeln wie den
+Linksklick (nicht pausiert, nicht im Studio-Fenster) — und sagt beim Stoppen, wie
+viele fehlen; das Studio zeigt den Zähler in der Aufnahme-Tafel (`right_clicks`
+in `.recording.json`). Gemeldet wird **vor** der Auswertung: eine Aufnahme aus
+lauter Rechtsklicks ist „nichts aufgezeichnet", und genau dann muss der Grund
+dastehen. Wer das Abspielen nachrüstet, braucht die ganze Kette:
 `winapi` → Modellfeld → `safe_click` → Serializer-Default → Editor-Anzeige.
 
-Der Hook liefert beim Mausrad die **rohe** Windows-Distanz, nicht schon Rasterstufen:
-hochauflösende Räder senden Bruchteile, und einzeln abgerundet ergäben die null. Der
-Recorder summiert erst (eine Drehung = ein Ereignis, `_SCROLL_MERGE_GAP`) und teilt dann.
-
-Das Rad lässt sich per `record_scroll: false` (Config) ganz abschalten — für Spiele, in
-denen es nur die Ansicht dreht und solche Drehungen die Sequenz bloss aufblähen.
-Abgeschaltet gibt `_on_wheel_factory()` **`None`** zurück, und `install_mouse_hook`
-ignoriert das Rad schon in der Hook-Prozedur. Absichtlich dort und nicht in
-`_append_event`: ein Callback, der jedes Ereignis nur entgegennimmt, um es wegzuwerfen,
-liefe bei jeder Radbewegung mit — auch wenn gerade niemand aufnimmt.
+**Das Mausrad ist ersatzlos gestrichen** — Hook-Zweig, `REC_SCROLL`,
+`SequenceStep.scroll`, `safe_scroll`/`send_scroll`, der Editor-Befehl `scroll`,
+das Studio-Feld und der Config-Schalter `record_scroll`. Es drehte in Idle Clans
+nur die Ansicht und blähte jede Aufnahme mit Schritten auf, die nichts tun; im
+Studio war es ausserdem ein Fremdkörper (kein eigener Typ, das Feld nur
+sichtbar, wenn eine Aufnahme es mitgebracht hatte). Ein `"scroll"` in einer
+alten `sequence.json` ist ein unbekannter Schlüssel wie jeder andere: der Loader
+ignoriert ihn, der Schritt wird zum Klick auf seinen Punkt. Wer es je wieder
+braucht, holt die ganze Kette aus der Historie (`git log -S send_scroll`).
 
 ### Boss-Scan vs. Boss-Watcher
 - **Boss-Scan**: Einmaliger Scan in einem Step. Wenn nichts erkannt → `else_config` oder Default-Action.
+  Die Default-Action kann **weniger als ein Boss**: `VALID_BOSS_DEFAULT_ACTIONS`
+  (`models.py`) sind skip, skip_cycle, restart und Item-Scan — ohne erkannten Boss
+  gibt es keinen Punkt und keine Taste, die Felder dafür sitzen am Boss. Das Studio
+  bot trotzdem alle sechs Kacheln an, und „Punkt klicken" liess sich speichern und
+  tat zur Laufzeit nichts. Laufzeit, Konsole und Studio lesen jetzt dieselbe Liste;
+  ein Altwert in einer Datei wird einmal je Lauf gemeldet.
 - **Boss-Watcher**: Schleife im Step, prüft alle `llm_watcher_interval` Sekunden bis ein Boss erkannt wird (mit `llm_watcher_max_scans` und `llm_watcher_timeout` als Exit-Bedingungen). Erst dann `_execute_boss_action`.
 
 **Ein noch antwortender LLM-Aufruf gehört zum BEENDETEN Lauf.** Mit `llm_async`
@@ -3783,8 +3839,9 @@ und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
 - **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
   zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`
   und `_remap_sequence_data` prüfen deshalb `point_id is None`, bevor sie rechnen.
-- **Geladene Sequenzen im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
-  der nächste `save_data()` den alten Stand aus dem Speicher zurück.
+- **Die geladene Sequenz im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
+  das nächste `save_points()` den alten Stand aus dem Speicher zurück. Ihre Datei wird
+  danach **nicht** ein zweites Mal über die Platte umgerechnet.
 - **Vorher sichern**: `backup_before_calibration()` legt ein Export-ZIP an. Kein eigenes
   Backup-Format — der Export kann das, der Import spielt es zurück.
 - `repair` übernimmt nur bei **eindeutiger Zuordnung**: gleiche Anzahl, gleiche Grösse,
@@ -3896,8 +3953,9 @@ ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
   `_punkte_schreibfertig`, `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` sowie rund
   vierzig Tests weg. Die Regel ist also nicht nur aufgeschrieben, sondern eingelöst.
 - Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
-- `tools/sync_json.py` wurde gelöscht statt gepflegt; `_norm_items` steht als
-  `_norm_noop` da, weil es ein totes Feld in ein anderes totes Format hob.
+- `tools/sync_json.py` wurde gelöscht statt gepflegt; die Normalisierer der
+  Migration, `_FIELD_MIGRATION` der Config, `reload_points`, `_REF_KEYS`, die
+  sieben Import-Flags und das Mausrad sind ihm gefolgt.
 
 Drei Sorten Altlast, die auffallen sollen:
 

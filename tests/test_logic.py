@@ -358,50 +358,49 @@ section("llm_vision: System-Prompt")
 check("Default-Prompt enthält KEIN_BOSS-Regel", "KEIN_BOSS" in _build_system_prompt())
 check("bekannte Bosse landen im Prompt", "Drache" in _build_system_prompt(["Drache"]))
 
-# ------------------------------------------------- Scroll + Einmal-Farbpruefung
-section("Scroll-Schritt + Farbpruefung ohne Warten")
+# ------------------------------------------------- Einmal-Farbpruefung
+section("Farbpruefung ohne Warten")
 from autoclicker.models import SequenceStep, WaitCondition
 from autoclicker.persistence.serialization import _step_to_dict, _parse_steps
 
-_scroll = SequenceStep(x=10, y=20, delay_before=0.5, name="scrollen", scroll=-3)
 _check = SequenceStep(x=30, y=40, delay_before=0, name="farbcheck",
                       wait_condition=WaitCondition(pixel=(5, 6), color=(1, 2, 3),
                                                    check_only=True, until_gone=True))
-_back = _parse_steps([_step_to_dict(x) for x in (_scroll, _check)])
-check("scroll ueberlebt Round-Trip", _back[0].scroll == -3)
-check("check_only ueberlebt Round-Trip", _back[1].wait_condition.check_only is True)
-check("until_gone ueberlebt Round-Trip", _back[1].wait_condition.until_gone is True)
+_back = _parse_steps([_step_to_dict(_check)])
+check("check_only ueberlebt Round-Trip", _back[0].wait_condition.check_only is True)
+check("until_gone ueberlebt Round-Trip", _back[0].wait_condition.until_gone is True)
 
 _old = _parse_steps([{"x": 1, "y": 2, "delay_before": 1, "name": "alt"}])
-check("alte Schritte ohne neue Keys: scroll=None", _old[0].scroll is None)
 check("alte Schritte ohne neue Keys: keine WaitCondition", _old[0].wait_condition is None)
+# Das Mausrad ist ersatzlos gestrichen. Ein `"scroll"` in einer alten Datei ist ein
+# unbekannter Schluessel wie jeder andere: der Loader ignoriert ihn, der Schritt
+# wird zum Klick auf seinen Punkt — und ein Modell-Feld dafuer gibt es nicht mehr.
+_old_scroll = _parse_steps([{"point_id": 3, "delay_before": 0, "scroll": -3}])
+check("ein altes 'scroll'-Feld faellt still weg", not hasattr(_old_scroll[0], "scroll")
+      and _old_scroll[0].point_id == 3 and "scroll" not in _step_to_dict(_old_scroll[0]))
 _old_color = _parse_steps([{"x": 1, "y": 2, "delay_before": 0, "wait_pixel": [3, 4],
                             "wait_color": [5, 6, 7]}])
 check("alter Farb-Trigger bleibt Warten (check_only=False)",
       _old_color[0].wait_condition.check_only is False)
 
-check("Scroll-Anzeige nennt Richtung und Stufen",
-      "scrolle runter x3" in str(_scroll))
 _check_text = str(SequenceStep(
     x=1, y=2, delay_before=0,
     wait_condition=WaitCondition(pixel=(1, 2), color=(3, 4, 5), check_only=True)))
 check("Einmal-Pruefung wird als 'prüfe einmal' angezeigt", "prüfe einmal" in _check_text)
 check("Einmal-Pruefung nennt den Standard-Fallback", "überspringen" in _check_text)
 
-# Scroll-Delta als 32-Bit-Zweierkomplement (mouseData ist ein DWORD)
-_WHEEL = 120
-check("Scroll runter wird korrekt maskiert", ((-1 * _WHEEL) & 0xFFFFFFFF) == 0xFFFFFF88)
-check("Scroll hoch bleibt positiv", ((3 * _WHEEL) & 0xFFFFFFFF) == 360)
-
 # ------------------------------------------------------------- Debug-Modi
-section("Debug-Modi: getrennte Flags + Migration alter Keys")
+section("Debug-Modi: getrennte Flags, alte Keys fallen weg")
 from autoclicker.config import AppConfig
 
-_c = AppConfig.from_dict({"debug_detection": True, "debug_mode": True})
-check("debug_detection -> debug_log", _c.debug_log is True)
-check("debug_mode -> debug_detail", _c.debug_detail is True)
-check("debug_step (Zwischenstufe) -> debug_detail",
-      AppConfig.from_dict({"debug_step": True}).debug_detail is True)
+# `_FIELD_MIGRATION` (clicks_per_point -> click_per_point, debug_mode -> debug_detail
+# usw.) ist geloescht: der Start-Durchgang schreibt config.json laengst im aktuellen
+# Format, die Tabelle war nach dem ersten Start wirkungslos. Ein alter Schluessel ist
+# heute ein unbekannter — er faellt weg, das Feld bekommt seinen Default.
+_c = AppConfig.from_dict({"debug_detection": True, "debug_mode": True, "debug_step": True})
+check("alte Debug-Schluessel werden nicht mehr uebersetzt, sondern ignoriert",
+      _c.debug_log is False and _c.debug_detail is False)
+check("und es gibt keine Uebersetzungstabelle mehr", not hasattr(AppConfig, "_FIELD_MIGRATION"))
 
 # Die beiden Stufen muessen in JEDER Kombination unabhaengig schaltbar sein
 for _log, _det in ((True, False), (False, True), (True, True), (False, False)):
@@ -754,7 +753,7 @@ check("neuere Version wird gemeldet", any("kennt nur" in m for m in _m4))
 _mp = tmp / "altformat.json"
 _mp.write_text(json.dumps({"name": "Alt", "steps": [
     {"x": 100, "y": 200, "name": "Markt", "delay_before": 0}]}), encoding="utf-8")
-_seq_old = _load_seq(_mp, _pts)
+_seq_old = _load_seq(_mp)
 check("der Loader wirft bei einer Altdatei nicht", _seq_old is not None)
 check("sie kommt leer an, statt halb geraten", _seq_old is not None
       and _seq_old.loop_phases == [] and _seq_old.init_steps == [])
@@ -768,7 +767,7 @@ _mp4.write_text(json.dumps({
     "init_steps": [], "end_steps": [],
     "loop_phases": [{"name": "Loop", "repeat": 1,
                      "steps": [{"point_id": 3, "delay_before": 0}]}]}), encoding="utf-8")
-_seq_new = _load_seq(_mp4, _pts)
+_seq_new = _load_seq(_mp4)
 check("eine aktuelle Datei laedt vollstaendig",
       _seq_new is not None and len(_seq_new.loop_phases[0].steps) == 1)
 check("und ihre Koordinate kommt aus ihrer Punktliste",
@@ -778,33 +777,26 @@ check("und ihre Koordinate kommt aus ihrer Punktliste",
 
 
 # ------------------------------------------------ Migration: alle Dateitypen
-section("Migration: Normalisierer fuer Dateitypen ohne Versions-Feld")
+section("Migration: Dateitypen ohne Versions-Feld bleiben unangetastet")
 from autoclicker.persistence.migration import (
-    KIND_ITEMS as _K_ITEMS, KIND_ITEM_SCAN as _K_ISCAN, KIND_POINTS as _K_PTS,
+    KIND_ITEMS as _K_ITEMS, KIND_ITEM_SCAN as _K_ISCAN,
     file_version as _fv, migrate as _mig,
 )
 
-# file_version muss auch Listen und Muell vertragen - points.json IST eine Liste.
-# Vorher knallte hier AttributeError und tools/migrate.py starb an der ersten Datei.
+# file_version muss auch Listen und Muell vertragen - die Boss-Bibliothek IST eine
+# Liste. Vorher knallte hier AttributeError und tools/migrate.py starb an der ersten Datei.
 check("file_version(Liste) = 0", _fv([{"x": 1}]) == 0)
 check("file_version(None) = 0", _fv(None) == 0)
 check("file_version(dict ohne Feld) = 0", _fv({"name": "x"}) == 0)
 
-# Punkte: fehlende IDs nachnummerieren, tote Felder entfernen
-_pts = [{"id": 1, "x": 10, "y": 20, "name": "A"},
-        {"x": 30, "y": 40, "name": "B", "legacy_flag": True}]
-_pts, _m = _mig(_pts, _K_PTS)
-check("Punkte: fehlende ID wird vergeben", _pts[1]["id"] is not None)
-check("Punkte: vergebene ID kollidiert nicht", _pts[1]["id"] != _pts[0]["id"])
-check("Punkte: totes Feld entfernt", "legacy_flag" not in _pts[1])
-check("Punkte: Meldungen im Klartext", len(_m) == 2)
-_wieder = _mig([dict(p) for p in _pts], _K_PTS)[1]
-check("Punkte: zweiter Lauf meldet nichts", _wieder == [])
-
-# items.json hat keinen Normalisierer mehr: der einzige hob `confirm_point` von [x, y]
-# auf {x, y} - ein Feld, das der Loader seit den Punkt-Referenzen nicht mehr liest.
-# Ein Normalisierer, der totes Format in totes Format ueberfuehrt, gehoert geloescht,
-# nicht gepflegt. Was bleibt, ist die Regel: der Typ ist trotzdem eingetragen.
+# Die Normalisierer sind Geschichte: `_norm_points` hob eine `points.json`, die es seit
+# den sequenzlokalen Punkten nicht mehr gibt, die uebrigen waren No-ops. Ein Modul
+# voller Haken fuer Dateien, die niemand mehr schreibt, ist genau das Anwachsen, das
+# hier vermieden werden soll. Was bleibt, ist die Regel: unversionierte Typen kommen
+# unveraendert zurueck — auch ein totes `confirm_point`-Feld wird nicht angefasst.
+import autoclicker.persistence.migration as _mg_check
+check("KIND_POINTS und die Normalisierer gibt es nicht mehr",
+      not hasattr(_mg_check, "KIND_POINTS") and not hasattr(_mg_check, "_NORMALIZER"))
 _items = {"Kohle": {"name": "Kohle", "confirm_point": [55, 66]}}
 _items_before = json.loads(json.dumps(_items))
 _items, _m = _mig(_items, _K_ITEMS)
@@ -835,9 +827,8 @@ check("Loader liest die Punkt-Referenz",
 check("Name kommt aus dem Schluessel", _ifd({}, "Kohle").name == "Kohle")
 
 # Hier stand der Test, dass ein Schritt an einem Punkt OHNE ID einen neuen Punkt
-# bekommt - Verhalten von `_seq_v3_to_v4`, mit der Kette entfallen. Dass Punkte ohne
-# ID ueberhaupt eine bekommen, macht weiterhin `_norm_points`, und das prueft die
-# Sektion "Normalisierer fuer Dateitypen ohne Versions-Feld" weiter unten.
+# bekommt - Verhalten von `_seq_v3_to_v4`, mit der Kette entfallen; `_norm_points`
+# (IDs nachnummerieren) ist ihm gefolgt. `_point_from_dict` verlangt die ID.
 
 # scheduled_start war nur da, um den Debug-Enter-Prompt zu ueberspringen - beides weg
 check("kein scheduled_start-Flag mehr am State",
@@ -873,10 +864,11 @@ _cfgmod.save_config = _orig_save
 section("Migration greift bei JEDEM Dateityp (Formatwechsel ohne Neuaufnahme)")
 from autoclicker.persistence import migration as _mg
 
-# 1. Kein Dateityp ohne Eintrag. Faellt hier etwas durch, wuerde eine spaetere
-#    Formataenderung fuer diesen Typ stillschweigend NICHT migriert.
-_without = [k for k in _mg.ALL_KINDS if k not in _mg._CHAINS and k not in _mg._NORMALIZER]
-check("jeder Dateityp ist in _CHAINS oder _NORMALIZER registriert", _without == [])
+# 1. Versioniert ist genau, was eine Kette hat — und das ist die Sequenz. Alle
+#    anderen Typen stehen in ALL_KINDS und kommen aus migrate() unveraendert zurueck.
+check("nur die Sequenz hat eine Kette", set(_mg._CHAINS) == {_mg.KIND_SEQUENCE})
+check("jeder Typ mit Kette steht in ALL_KINDS",
+      all(k in _mg.ALL_KINDS for k in _mg._CHAINS))
 
 # 2. JEDER Loader ruft migrate() auf - gesucht statt aufgezaehlt.
 #
@@ -954,7 +946,6 @@ check("ALL_KINDS deckt alle KIND_-Konstanten ab",
 _current = {
     _mg.KIND_SEQUENCE: {"schema_version": _mg.SCHEMA_VERSION, "name": "s",
                         "init_steps": [], "loop_phases": [], "end_steps": []},
-    _mg.KIND_POINTS: [{"id": 1, "x": 1, "y": 2, "name": "P"}],
     _mg.KIND_ITEMS: {"I": {"name": "I", "confirm_point": {"x": 1, "y": 2}}},
     _mg.KIND_ITEM_SCAN: {"name": "sc", "slot_names": ["S"], "item_names": ["I"]},
     _mg.KIND_SLOTS: {"S": {"name": "S", "scan_region": [0, 0, 1, 1], "click_pos": [0, 0]}},
@@ -1180,9 +1171,10 @@ check("gesetzte Farb-Bedingung wird geschrieben",
 check("gesetzte Else-Aktion wird geschrieben",
       _color.get("else_action") == "click" and _color.get("else_x") == 10)
 
-# 0 ist nicht False: scroll=0 waere ein echter Wert, screenshot_only=0 nicht
-check("scroll wird bei 0 nicht als False verschluckt",
-      _s2d(_SS(x=0, y=0, delay_before=0, scroll=0)).get("scroll") == 0)
+# 0 ist nicht False: else_delay=0 ist ein echter Wert, screenshot_only=0 nicht.
+# Ein Bool-Default darf keine 0 verschlucken und eine Zahl keinen Bool.
+check("eine 0 in einem Bool-Feld wird nicht als Default verschluckt",
+      _s2d(_SS(x=0, y=0, delay_before=0, screenshot_only=0)).get("screenshot_only") == 0)
 
 # Round-Trip ohne Referenzen: diese Schritte tragen nichts Abgeleitetes, sie muessen
 # unveraendert zurueckkommen.
@@ -1209,7 +1201,7 @@ _with_ref = [
     _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7,
         wait_condition=_WCx(point_id=8, pixel=(5, 6), color=(7, 8, 9), check_only=True),
         else_config=_ECx(action="click", point_id=9, x=10, y=11, name="Ausweich")),
-    _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7, scroll=-3),
+    _SS(x=100, y=200, delay_before=0, name="Klick", point_id=7, key_press="enter"),
 ]
 _returned = _p2s([_s2d(st) for st in _with_ref])
 _aufl(_pool, _Seq(name="rt", loop_phases=[_LP(name="L", steps=_returned)]), quiet=True)
@@ -1318,6 +1310,7 @@ import os as _os, zipfile as _zip
 from autoclicker.import_export import (import_bundle as _import_bundle,
                                        export_bundle as _export_bundle)
 from autoclicker.models import AutoClickerState as _ACS
+from autoclicker.persistence import list_available_sequences as _las
 
 # **Hier stand die Pruefung eines zweiten, vollstaendigen Import-Wegs.** Buendel
 # aus der Zeit des globalen Bestands brachten `points.json`, `slots.json` und
@@ -1354,8 +1347,7 @@ try:
           "aelteren Fassung" in _msg_old and "Studio" in _msg_old)
     # Das ist der eigentliche Gewinn gegenueber dem alten Zweig: er meldete
     # Erfolg und hinterliess nichts Brauchbares.
-    check("abgelehnt heisst: nichts angelegt",
-          not _st_old.sequences and not Path("sequences").exists())
+    check("abgelehnt heisst: nichts angelegt", not Path("sequences").exists())
 
     # --- Der heutige Weg: exportieren, einlesen, alles wieder da ---
     from autoclicker.persistence import (ensure_sequences_dir as _esd_i,
@@ -1369,7 +1361,6 @@ try:
     _ssf_i(_source, Path("sequences") / "farm" / "sequence.json")
 
     _st_exp = _ACS()
-    _st_exp.sequences = {"farm": _source}
     _new_bundle = Path(_imp_dir) / "neu.zip"
     _ok_exp, _ = _export_bundle(_st_exp, str(_new_bundle), (0, 0), (10, 10))
     check("ein heutiges Buendel laesst sich schreiben", _ok_exp is True)
@@ -1378,7 +1369,11 @@ try:
     _ok_imp, _msg_imp = _import_bundle(_st_imp, str(_new_bundle), import_config=False,
                                        merge=False)
     check("und wieder einlesen", _ok_imp is True)
-    _seq_i = _st_imp.sequences.get("farm")
+    # Gezaehlt wird, was auf der Platte liegt — einen Sequenz-Cache im State
+    # gibt es nicht mehr, der Import schreibt Ordner.
+    from autoclicker.persistence import load_sequence_file as _lsf_i
+    _on_disk = dict(_las())
+    _seq_i = _lsf_i(_on_disk["farm"]) if "farm" in _on_disk else None
     check("die Sequenz kommt an", _seq_i is not None)
     # Die Punkte reisen IM Dokument mit - ohne sie zeigte der Schritt ins Leere.
     check("ihr Punkt reist mit", _seq_i is not None
@@ -1393,16 +1388,19 @@ try:
     # Genau deshalb gibt es keine ID-Zuordnung mehr: eine zweite Sequenz mit
     # demselben Punkt #7 ist kein Konflikt, sondern ein anderer Punkt.
     _st_two = _ACS()
-    _st_two.sequences = {"andere": _SEQ_i("andere", [], [_LP_i(
+    _other = _SEQ_i("andere", [], [_LP_i(
         name="L", steps=[_SS_i(delay_before=0, point_id=7)], repeat=1)], [], 1, "",
-        [_CP_i(9, 9, "Woanders", 7)])}
+        [_CP_i(9, 9, "Woanders", 7)])
+    _ssf_i(_other, Path("sequences") / "andere" / "sequence.json")
+    _before_two = {n for n, _ in _las()}
     _import_bundle(_st_two, str(_new_bundle), import_config=False, merge=True)
     # `merge` weicht einem vorhandenen Ordner aus (farm -> farm_2), der Name
     # steht also nicht vorher fest; gesucht wird die dazugekommene Sequenz.
-    _add_to_scan = [n for n in _st_two.sequences if n != "andere"]
+    _after_two = dict(_las())
+    _add_to_scan = [n for n in _after_two if n not in _before_two]
     check("die Sequenz kommt neben der vorhandenen an", len(_add_to_scan) == 1)
-    _a = _st_two.sequences["andere"].points[0]
-    _b = _st_two.sequences[_add_to_scan[0]].points[0]
+    _a = _lsf_i(_after_two["andere"]).points[0]
+    _b = _lsf_i(_after_two[_add_to_scan[0]]).points[0] if _add_to_scan else _a
     check("zwei Sequenzen duerfen denselben Punkt #7 haben",
           _a.id == _b.id == 7 and (_a.x, _a.y) != (_b.x, _b.y))
 finally:
@@ -1743,7 +1741,7 @@ try:
     _st_learn.item_scans = {"lern": _ISC(name="lern", slots=_slots, items=[],
                                         learn_unknown=True, reverse=False)}
     _besucht = []
-    _IS._check_profile_match = lambda *a, **k: False
+    _IS._check_profile_match = lambda *a, **k: (False, 0.0)
     _orig_learn = _IS._learn_unknown_slot_item
     _IS._learn_unknown_slot_item = lambda st, slot, img, dbg, cfg=None: _besucht.append(slot.name)
     try:
@@ -1776,14 +1774,14 @@ finally:
 
 
 # ------------------------------- Farb-Bedingung gilt fuer JEDE Aktion
-section("Farb-Bedingung an Taste/Scroll (nicht nur am Klick)")
-# Taste und Scroll wurden vor der Farb-Bedingung abgefertigt: ein Trigger an so einem
+section("Farb-Bedingung an der Taste (nicht nur am Klick)")
+# Die Taste wurde vor der Farb-Bedingung abgefertigt: ein Trigger an so einem
 # Schritt wurde ignoriert, die Aktion feuerte sofort. Jetzt wartet execute_step zentral
 # fuer alle Aktions-Schritte an einer Stelle.
 _orig_c3, _orig_k3 = _RS.safe_click, _RS.safe_key
-_orig_s3, _orig_shot3 = _RS.safe_scroll, _RS.take_screenshot
+_orig_shot3 = _RS.take_screenshot
 _orig_p3, _orig_f3 = _RS.PILLOW_AVAILABLE, _RS.check_failsafe
-_akt = {"klick": [], "action_key": [], "scroll": []}
+_akt = {"klick": [], "action_key": []}
 _shots = []
 
 class _Pix2:
@@ -1792,7 +1790,6 @@ class _Pix2:
 
 _RS.safe_click = _RA.safe_click = lambda st, x, y, label="": (_akt["klick"].append((x, y)), True)[1]
 _RS.safe_key = _RA.safe_key = lambda st, k, label="": (_akt["action_key"].append(k), True)[1]
-_RS.safe_scroll = _RA.safe_scroll = lambda st, c, x=None, y=None, label="": (_akt["scroll"].append(c), True)[1]
 _RS.PILLOW_AVAILABLE = True
 _RS.check_failsafe = lambda st: False
 
@@ -1819,8 +1816,6 @@ try:
         ("Klick", _SS(x=1, y=2, delay_before=0, name="K", wait_condition=_wc3()), "klick"),
         ("Taste", _SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
                       wait_condition=_wc3()), "action_key"),
-        ("Scroll", _SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
-                       wait_condition=_wc3()), "scroll"),
     ]:
         _checked, _was = _with_trigger(_step_local, hits=False)
         check(f"{_name}-Schritt: Farb-Bedingung wird geprueft", _checked)
@@ -1830,9 +1825,6 @@ try:
     _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
                                wait_condition=_wc3()), hits=True)
     check("Taste-Schritt: Aktion laeuft bei Treffer", _was["action_key"] == ["enter"])
-    _, _was = _with_trigger(_SS(x=3, y=4, delay_before=0, name="S", scroll=-3,
-                               wait_condition=_wc3()), hits=True)
-    check("Scroll-Schritt: Aktion laeuft bei Treffer", _was["scroll"] == [-3])
 
     # else greift jetzt auch hier — und ersetzt die Aktion
     _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
@@ -1865,8 +1857,8 @@ try:
     check("Anzeige: Taste-Schritt zeigt die Farb-Bedingung",
           "Farbe DA bei (5,5)" in str(_SS(x=0, y=0, delay_before=0, key_press="enter",
                                           wait_condition=_wc3())))
-    check("Anzeige: Scroll-Schritt zeigt die Farb-Bedingung",
-          "Farbe WEG bei (5,5)" in str(_SS(x=1, y=1, delay_before=0, scroll=2,
+    check("Anzeige: 'bis Farbe WEG' steht am Klick-Schritt",
+          "Farbe WEG bei (5,5)" in str(_SS(x=1, y=1, delay_before=0,
                                            wait_condition=_wc3(until_gone=True))))
     check("Anzeige: ohne Bedingung weiterhin nur die Wartezeit",
           "Farbe" not in str(_SS(x=0, y=0, delay_before=3, key_press="enter")))
@@ -1884,7 +1876,6 @@ try:
 finally:
     _RS.safe_click = _RA.safe_click = _orig_c3
     _RS.safe_key = _RA.safe_key = _orig_k3
-    _RS.safe_scroll = _RA.safe_scroll = _orig_s3
     _RS.take_screenshot = _orig_shot3
     _RS.PILLOW_AVAILABLE = _orig_p3
     _RS.check_failsafe = _orig_f3
@@ -2203,7 +2194,6 @@ def _calib_state():
     _seq = _KSEQ(name="Seq", init_steps=[_step_local],
                  loop_phases=[_KLP("L", [_trig, _shot], 1)], end_steps=[],
                  points=_points)
-    s.sequences = {"Seq": _seq}
     s.active_sequence = _seq
     s.points = _seq.points
     return s, _step_local, _trig, _shot
@@ -2253,7 +2243,7 @@ try:
     check("kalibriert: Schritt mit point_id wird nicht selbst verschoben",
           (_step_local.x, _step_local.y) == (100, 200))
     _IE_resolve = __import__("autoclicker.persistence", fromlist=["x"]).resolve_point_references
-    _IE_resolve(_st, _st.sequences["Seq"])
+    _IE_resolve(_st, _st.active_sequence)
     check("kalibriert: Schritt mit point_id folgt dem Punkt (einfach, nicht doppelt)",
           (_step_local.x, _step_local.y) == (140, 175))
 
@@ -2287,7 +2277,7 @@ try:
            _st4.global_items["Erz"].confirm_point.y) == (340, 375))
     # Der Schritt haengt am Punkt, und der ist umgerechnet - er landet also richtig,
     # ohne dass die Kalibrierung ihn selbst anfassen musste.
-    _IE_resolve(_st4, _st4.sequences["Seq"])
+    _IE_resolve(_st4, _st4.active_sequence)
     check("ohne Slots: Sequenz-Schritt landet trotzdem richtig",
           (_step4.x, _step4.y) == (140, 175))
 
@@ -2701,8 +2691,7 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 from autoclicker.editors.sequence_recorder import points_for_events as _pfe
 from autoclicker.editors.sequence_recorder import recording_file as _aufnahme_datei
 from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
-                                REC_KEY as _R_KEY, REC_SCROLL as _R_SCROLL,
-                                REC_WAIT_COLOR as _R_WAIT)
+                                REC_KEY as _R_KEY, REC_WAIT_COLOR as _R_WAIT)
 
 _st_rec = AutoClickerState()
 _events = [_RE(_R_CLICK, 0.0, 100, 200, (1, 2, 3)),
@@ -2761,7 +2750,6 @@ check("Tastendruecke dazwischen verschieben die Nummern nicht",
 from autoclicker.persistence.sequences import point_for_position as _pfs
 _st_names = AutoClickerState()
 _seq_names = _KSEQ(name="N", init_steps=[], end_steps=[], loop_phases=[], points=[])
-_st_names.sequences = {"N": _seq_names}
 _st_names.active_sequence = _seq_names
 _st_names.points = _seq_names.points
 _id_a = _pfs(_st_names, 10, 20, (1, 2, 3))
@@ -2831,7 +2819,6 @@ _st_rec2 = AutoClickerState()
 _seq_rec = _KSEQ(name="R", init_steps=[], end_steps=[], loop_phases=[_KLP("L", [
     _SS(x=100, y=200, delay_before=0, name="Klick 1", point_id=_map2[0])], 1)],
     points=_points2)
-_st_rec2.sequences = {"R": _seq_rec}
 _st_rec2.active_sequence = _seq_rec
 _st_rec2.points = _seq_rec.points
 _st_rec2.points[0].x, _st_rec2.points[0].y = 777, 888
@@ -2878,21 +2865,22 @@ if _without_ref:
     print("        " + ", ".join(_without_ref))
 
 
-# --------------------------- Aufnahme: Taste, Mausrad, Warte-Marker
+# --------------------------- Aufnahme: Taste, Warte-Marker
 section("Aufnahme schneidet mehr mit als nur Linksklicks")
 
 from autoclicker.editors.sequence_recorder import (
-    steps_from_events as _sae, _append_event as _anh, _SCROLL_MERGE_GAP as _SMG,
+    steps_from_events as _sae, _append_event as _anh,
     discard_last as _verwirf, check_markers as _mpr)
 
-# Eine Aufnahme, die alle vier Arten enthaelt. Der Marker wird 2s nach dem ersten
+# Eine Aufnahme, die alle Arten enthaelt. Der Marker wird 2s nach dem ersten
 # Klick gedrueckt (bis dahin lief normal etwas ab — das bleibt Wartezeit), und erst
-# 3.4s SPAETER kommt der Klick: das ist das Warten auf die Farbe.
+# 3.4s SPAETER kommt der Klick: das ist das Warten auf die Farbe. Das Mausrad war
+# einmal die vierte Art und ist ersatzlos gestrichen (s. sequence_recorder).
 _ev_all = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_WAIT, 2.0),
             _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
             _RE(_R_KEY, 6.0, key="enter"),
-            _RE(_R_SCROLL, 6.5, 50, 60, (7, 7, 7), scroll=-3)]
+            _RE(_R_CLICK, 6.5, 50, 60, (7, 7, 7))]
 _st_all = AutoClickerState()
 _map_all, _new_all = _pfe(_ev_all)
 _steps_all = _sae(_ev_all, _map_all)
@@ -2901,13 +2889,14 @@ check("Tastendruck bekommt keinen Punkt", 3 not in _map_all)
 # DAS war der Fehler aus der echten Aufnahme: der Marker legte einen Punkt an der
 # zufaelligen Mausposition an — Muell in points.json, mit einer Farbe von irgendwo.
 check("Warte-Marker bekommt KEINEN eigenen Punkt", 1 not in _map_all)
-check("nur Klick und Scroll bekommen einen", set(_map_all) == {0, 2, 4})
-check("Scroll auf der Klick-Stelle teilt sich dessen Punkt", _map_all[2] == _map_all[4])
+check("nur Klicks bekommen einen", set(_map_all) == {0, 2, 4})
+check("ein zweiter Klick auf dieselbe Stelle teilt sich den Punkt", _map_all[2] == _map_all[4])
 check("kein Punkt ohne echte Stelle", len(_new_all) == 2)
 
 check("Tastendruck wird ein key_press-Schritt",
       _steps_all[2].key_press == "enter" and _steps_all[2].point_id is None)
-check("Mausrad wird ein scroll-Schritt", _steps_all[3].scroll == -3)
+check("die Aufnahme kennt kein Mausrad mehr",
+      not hasattr(_steps_all[3], "scroll") and _steps_all[3].point_id == _map_all[4])
 
 # Der Kern: der Marker ist KEIN eigener Schritt, sondern eine Bedingung am naechsten
 check("Marker wird kein eigener Schritt", len(_steps_all) == 4)
@@ -2953,7 +2942,6 @@ check("vor dem Aufloesen ist der Pruef-Pixel noch leer",
       _steps_real[1].wait_condition.pixel == (0, 0))
 _seq_fresh = _SEQ3(name="F", loop_phases=[_LP3(name="L", steps=_steps_real, repeat=1)],
                     points=_points_real)
-_st_real.sequences = {"F": _seq_fresh}
 _st_real.active_sequence = _seq_fresh
 _st_real.points = _seq_fresh.points
 _rpr3(_st_real, _seq_fresh)
@@ -2972,8 +2960,6 @@ _g3, _v3 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_CLICK, 1.0, 5, 5)])
 check("Marker vor einem Klick bleibt", _v3 == 0 and len(_g3) == 2)
 _g4, _v4 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_WAIT, 0.5), _RE(_R_CLICK, 1.0, 5, 5)])
 check("zweimal M ist derselbe Wunsch -> ein Marker", _v4 == 1 and len(_g4) == 2)
-_g5, _v5 = _mpr([_RE(_R_WAIT, 0.0), _RE(_R_SCROLL, 1.0, 5, 5, scroll=2)])
-check("Marker vor einem Scroll bleibt (Scroll hat eine Stelle)", _v5 == 0)
 
 # Screenshot-Marker (CTRL+ALT+D): anders als der Warte-Marker wird er SEIN EIGENER
 # Schritt — er hat keine Folge-Aktion, an die er sich haengen koennte. Eine Stelle hat
@@ -3115,7 +3101,6 @@ check("in der Datei steht nur die Pruef-Referenz",
 # Aufloesen fuellt Stelle und Farbe nach
 _seq_w = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=_steps_watch, repeat=1)],
                points=_points_watch)
-_st_watch.sequences = {"W": _seq_w}
 _st_watch.active_sequence = _seq_w
 _st_watch.points = _seq_w.points
 _rpr3(_st_watch, _seq_w)
@@ -3249,42 +3234,15 @@ check("ein zu kurzes Kuerzel matcht gar nichts",
       _ocr_match("or", ["Orkhaeuptling"]) is None)
 check("leerer Text matcht nichts", _ocr_match("   ", ["Ork"]) is None)
 
-# Mausrad-Zusammenfassung: eine Drehung um 5 Rasten ist EIN Schritt, nicht fuenf.
-_st_scroll = AutoClickerState()
-_st_scroll.recording_active = True
-with _cl2.redirect_stdout(_io2.StringIO()):
-    for _k in range(5):
-        _anh(_st_scroll, _RE(_R_SCROLL, _k * (_SMG / 2), 10, 20, None, scroll=-1))
-check("eine Raddrehung wird EIN Ereignis", len(_st_scroll.recording_events) == 1)
-check("und summiert die Rasterstufen", _st_scroll.recording_events[0].scroll == -5)
-
-_st_scroll2 = AutoClickerState()
-_st_scroll2.recording_active = True
-with _cl2.redirect_stdout(_io2.StringIO()):
-    _anh(_st_scroll2, _RE(_R_SCROLL, 0.0, 10, 20, None, scroll=-1))
-    _anh(_st_scroll2, _RE(_R_SCROLL, _SMG * 3, 10, 20, None, scroll=-1))
-check("zwei getrennte Drehungen bleiben zwei Ereignisse",
-      len(_st_scroll2.recording_events) == 2)
-
-# record_scroll: der Schalter wirkt am Hook, nicht erst im Callback. Beide Richtungen
-# pruefen — ein Test nur auf None waere auch gruen, wenn das Rad NIE ankaeme.
-from autoclicker.editors.sequence_recorder import _on_wheel_factory as _owf
-_st_wheel = AutoClickerState()
-check("Standard nimmt das Mausrad auf", _st_wheel.config.record_scroll is True)
-check("und liefert dafuer einen Callback", callable(_owf(_st_wheel)))
-_st_wheel.config.record_scroll = False
-check("record_scroll=false liefert keinen Callback", _owf(_st_wheel) is None)
-# install_mouse_hook(cb, None) ignoriert das Rad laut Vertrag — das ist der Zweck von None
+# Das Mausrad ist ersatzlos gestrichen — samt Config-Schalter, Hook-Zweig und
+# Schritt-Typ. Ein `record_scroll` in einer alten config.json ist ein unbekannter
+# Schluessel und faellt beim Laden weg; der Hook nimmt keinen Rad-Callback mehr.
 import inspect as _insp2
 from autoclicker.winapi import install_mouse_hook as _imh
-check("None ist der dokumentierte Weg, das Rad zu ignorieren",
-      _insp2.signature(_imh).parameters["on_wheel"].default is None)
-
-# Der Schalter muss die config.json ueberleben, sonst steht er beim naechsten Start wieder auf True
-_cfg_wheel = AppConfig.from_dict({"record_scroll": False})
-check("record_scroll ueberlebt den Weg durch die config.json",
-      _cfg_wheel.record_scroll is False
-      and AppConfig.from_dict(_cfg_wheel.to_dict()).record_scroll is False)
+check("der Maus-Hook kennt kein Rad mehr",
+      "on_wheel" not in _insp2.signature(_imh).parameters)
+check("record_scroll ist aus der Config verschwunden",
+      not hasattr(AppConfig.from_dict({"record_scroll": False}), "record_scroll"))
 
 # Pausiert wird nichts aufgezeichnet — das galt fuer Klicks und muss fuer alles gelten
 _st_pause = AutoClickerState()
@@ -3468,7 +3426,7 @@ try:
 
     with _cl2.redirect_stdout(_io2.StringIO()):
         for _ in range(20):
-            _lsf2(_rfile, [])
+            _lsf2(_rfile)
     check("Sequenz laden ruft keinen Migrationsschritt mehr auf",
           _counters["n"] == _after_first)
 finally:
@@ -3578,10 +3536,9 @@ _d_vg = _s2d(_SS(x=1, y=2, delay_before=0, point_id=1,
 check("die Richtung (WEG statt DA) ueberlebt ebenfalls",
       _p2s([_d_vg])[0].verify_condition.until_gone is True)
 
-# --- Import: die vierte Stelle muss remapped werden, sonst zeigt sie ins Leere ---
-from autoclicker.import_export import _REF_KEYS as _RK4
-check("der Import zieht auch die Nachpruef-Referenz nach",
-      "verify_point_id" in _RK4)
+# `_REF_KEYS` (die vier Referenzfelder eines Schritts) stand hier fuer den Import.
+# Seit Punkt-IDs sequenzlokal sind, rechnet der Import keine IDs mehr um — die
+# Liste hatte nur noch diesen Test als Leser und ist geloescht.
 
 # --- Aufloesen: Punkt fuellt pixel/color; fehlt er, entfaellt NUR die Pruefung ---
 _st_res = AutoClickerState()
@@ -3589,7 +3546,6 @@ _st_res.points = [_WCP(x=111, y=222, name="Wirkung", id=7, color=(0, 255, 0))]
 _seq_v = _SEQ3(name="V", loop_phases=[_LP3(name="L", steps=[
     _SS(x=1, y=2, delay_before=0, point_id=None,
         verify_condition=_WC4(point_id=7))], repeat=1)], points=_st_res.points)
-_st_res.sequences = {"V": _seq_v}
 _st_res.active_sequence = _seq_v
 with _cl2.redirect_stdout(_io2.StringIO()):
     _rpr3(_st_res, _seq_v)
@@ -3604,11 +3560,14 @@ _st_gone = AutoClickerState()
 _seq_gone = _SEQ3(name="W", loop_phases=[_LP3(name="L", steps=[
     _SS(x=1, y=2, delay_before=0, point_id=None,
         verify_condition=_WC4(point_id=999))], repeat=1)])
-_st_gone.sequences = {"W": _seq_gone}
 _report = _rpr3(_st_gone, _seq_gone)
 _sw = _seq_gone.loop_phases[0].steps[0]
+# Entfallen heisst: nicht geprueft — nicht: geloescht. Hier stand
+# `verify_condition is None`, und genau das war der stille Datenverlust: das
+# naechste Speichern schrieb die Sequenz ohne Nachpruefung (s. contract/points.py).
 check("verwaiste Nachpruefung entfaellt, statt den Schritt zu reissen",
-      _sw.verify_condition is None and _sw.unresolved is False)
+      _sw.verify_condition is not None and _sw.verify_condition.unresolved is True
+      and _sw.unresolved is False)
 check("und wird gemeldet", any("Nachpruefung" in m for m in _report))
 
 # --- Laufzeit: wiederholen bis es wirkt, dann aufgeben ---
@@ -4765,22 +4724,20 @@ try:
 finally:
     _os.chdir(_cwd14)
 
-# --- Was die Oberflaeche nicht anzeigt, ueberlebt sie trotzdem ---
-# Die Bloecke SIND die originalen SequenceStep-Objekte: das Studio gruppiert um,
-# es konvertiert nicht. Sonst verloere jede Runde durchs Studio genau die Felder,
-# die nur der Konsolen-Editor oder die Aufnahme setzen.
-_step11 = _SS(x=5, y=6, delay_before=0, name="Rad", point_id=1, scroll=-3)
+# --- Die Bloecke SIND die originalen SequenceStep-Objekte ---
+# Das Studio gruppiert um, es konvertiert nicht. Sonst verloere jede Runde durchs
+# Studio genau die Felder, die nur der Konsolen-Editor oder die Aufnahme setzen
+# (gemessen wurde das einmal am Mausrad, das es inzwischen nicht mehr gibt —
+# die Zusicherung gilt fuer jedes Feld, das die Oberflaeche nicht anfasst).
+_step11 = _SS(x=5, y=6, delay_before=0, name="Klick", point_id=1, recorded_color=(9, 8, 7))
 _seq11 = _SEQ8(name="R", loop_phases=[_LP8(name="Loop", repeat=1, steps=[_step11])])
 _b11 = _SB8(_seq11, Path("sequences/R.json"), "sequences")
 _b11.select({"phase": 1, "row": 0})
 _b11.block_set({"field": "delay_before", "value": 2.0})
 from autoclicker.editors.sequence_studio.model import board_to_sequence as _b2s11
 _out11 = _b2s11(_b11.board).loop_phases[0].steps[0]
-check("ein Feld ohne Bedienelement (Mausrad) ueberlebt die Bearbeitung",
-      _out11.scroll == -3 and _out11 is _step11)
-check("die Karte verschweigt es trotzdem nicht",
-      any(z["label"] == "RAD" and z["text"] == "-3"
-          for z in _b11.snapshot()["phases"][1]["blocks"][0]["rows"]))
+check("der bearbeitete Block ist dasselbe Objekt wie vorher",
+      _out11 is _step11 and _out11.delay_before == 2.0)
 
 # --- Unbekannte Felder werden abgelehnt, nicht stillschweigend gesetzt ---
 _state11 = _b11.block_set({"field": "gibtsnicht", "value": 1})
@@ -5470,6 +5427,38 @@ try:
     check("danach ist der Stand wieder aktuell - keine zweite Rueckfrage",
           _z18["question"] is None)
 
+    # **Und ein Start bei offener Rueckfrage startet NICHT.** `run_command`
+    # speicherte vor dem Start und prueft danach `kind == "err"` — die
+    # Rueckfrage ist aber kein Fehler: der Start lief los, mit der Datei von
+    # der Platte (der fremden Fassung), die eigenen Aenderungen blieben
+    # ungespeichert, und weil `snapshot()` die Frage verbraucht hatte, sah die
+    # Seite den Dialog nie. „'W' gestartet." stand ueber einem Lauf, der etwas
+    # anderes tat als das Angezeigte.
+    from autoclicker.mailbox import COMMAND_PATH as _CP18
+    _b18.sequence_set({"field": "description", "value": "im Studio"})
+    _time16.sleep(0.01)
+    Path("sequences/w/sequence.json").write_text(
+        '{"name": "W", "description": "fremd"}', encoding="utf-8")
+    try:
+        _CP18.unlink()
+    except OSError:
+        pass
+    _z18 = _b18.run_command({"command": "start"})
+    check("bei einer fremden Aenderung faellt der Start aus und die Frage kommt an",
+          (_z18["question"] or {}).get("kind") == "save"
+          and not _CP18.exists() and _b18._dirty)
+    check("die Datei traegt weiter die fremde Fassung",
+          "fremd" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
+    _b18.save({"force": True})
+    _z18 = _b18.run_command({"command": "start"})
+    check("nach dem Erzwingen startet er — mit der gespeicherten Fassung",
+          _CP18.exists() and not _b18._dirty
+          and "im Studio" in Path("sequences/w/sequence.json").read_text(encoding="utf-8"))
+    try:
+        _CP18.unlink()
+    except OSError:
+        pass
+
     check("es gibt keine zweite Punkt-Datei mit eigenem Konfliktstand",
           not Path("sequences/points.json").exists())
 
@@ -5623,8 +5612,10 @@ try:
     check("jede Warteschleife meldet sich wieder ab", _without_signoff16 == [])
     # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
     # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
+    # `execute_step` ist seit dem Block-Skip-Fix nur noch die Huelle; der
+    # Rumpf mit dem Laufstatus-Schreiber heisst `_dispatch_step`.
     check("der Blockwechsel raeumt den Warte-Kasten ab",
-          '"waiting": None' in _insp16.getsource(_stp16.execute_step))
+          '"waiting": None' in _insp16.getsource(_stp16._dispatch_step))
 
     # Was nach dem Timeout kommt, gehoert neben den Countdown: dass in 8 s
     # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
@@ -6514,6 +6505,11 @@ import tests.contract.sequence_delete     # noqa: F401,E402
 import tests.contract.catalog               # noqa: F401,E402
 import tests.contract.breakpoint            # noqa: F401,E402
 import tests.contract.usability             # noqa: F401,E402
+import tests.contract.scheduled_phases      # noqa: F401,E402
+import tests.contract.sequence_context      # noqa: F401,E402
+import tests.contract.pause_and_skip        # noqa: F401,E402
+import tests.contract.pixel_fallback        # noqa: F401,E402
+import tests.contract.import_config         # noqa: F401,E402
 
 
 import shutil as _shD

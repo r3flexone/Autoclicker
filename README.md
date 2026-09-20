@@ -196,7 +196,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+A` | Mausposition als Punkt speichern |
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
-| `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
+| `CTRL+ALT+J` | Sequenz aufnehmen (Linksklicks und Tasten per Hook; Rechtsklicks werden nur gezählt und beim Stoppen gemeldet) |
 | `CTRL+ALT+SHIFT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
 | `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
 | `CTRL+ALT+SHIFT+R` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
@@ -225,6 +225,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+F` | Sanft beenden (Zyklus abschliessen, dann END + Stop) |
 | `CTRL+ALT+G` | Pause/Resume |
 | `CTRL+ALT+K` | Skip (aktuelle Wartezeit überspringen) |
+| `CTRL+ALT+SHIFT+K` | Block überspringen (samt Klick/Taste/Scan — weiter mit dem nächsten) |
 | `CTRL+ALT+W` | Quick-Switch (schnell Sequenz wechseln) |
 | `CTRL+ALT+Z` | Zeitplan (Start zu bestimmter Zeit) |
 
@@ -475,7 +476,6 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `wait <Nr> colorgone` | Warten bis die Punkt-Farbe VERSCHWINDET, KEIN Klick |
 | `wait pixel` | Auf Farbe an der aktuellen Mausposition warten, KEIN Klick |
 | `wait pixelgone` | Warten bis Farbe an der Mausposition VERSCHWINDET, KEIN Klick |
-| `scroll <Punkt-Nr> <Stufen>` | Mausrad am Punkt drehen, `+` hoch / `-` runter (z.B. `scroll 3 -5`) |
 | `<Punkt-Nr> checkcolor` | Farbe **einmal** prüfen: passt sie → klicken, sonst Schritt überspringen |
 | `<Punkt-Nr> checkgone` | einmal prüfen, ob die Farbe **weg** ist – sonst überspringen |
 | `key <Taste>` | Taste sofort drücken (z.B. `key enter`) |
@@ -854,6 +854,8 @@ Während eine Sequenz läuft:
 - **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschliessen, dann END-Phase + Stop)
 - **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten); steht der Lauf an einem Haltepunkt, heisst es „weiter"
 - **CTRL+ALT+K** - Überspringt die aktuelle Wartezeit
+- **CTRL+ALT+SHIFT+K** - Überspringt den ganzen Block, samt Klick/Taste/Scan
+  (dasselbe wie „Block überspringen" im Live-Run des Studios)
 
 ### Haltepunkte
 
@@ -1258,7 +1260,6 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 
 | Option | Beschreibung |
 |--------|--------------|
-| `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
 | `scan_catalog_file` | Pfad zu `catalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/catalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
@@ -1270,7 +1271,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `debug_log` | **Beobachten.** Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans. Läuft ohne Eingriff durch |
 | `debug_detail` | **Stufe 2.** Zusätzlich springt der Zeiger vor jedem Schritt auf den Zielpunkt (ohne Klick) und es wird ausgeschrieben, *was* dort passieren soll — mit Farbquadrat bei Farb-Bedingungen. Läuft weiter durch |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
-| `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
+| `debug_save_templates` | Speichert Scan+Template in `screenshots/debug/` für Debugging |
 
 ## Dateistruktur
 

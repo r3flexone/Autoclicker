@@ -24,7 +24,7 @@ def setup():
         LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_item_scan,
+        list_available_sequences, save_sequence_file, sequence_file, save_item_scan,
     )
 
     sandbox("rauch_wz_")
@@ -35,10 +35,9 @@ def setup():
                            color=(10, 200, 30)),
                 ClickPoint(id=2, x=900, y=600, name="Bestaetigen"),
                 ClickPoint(id=3, x=400, y=300, name="Menue")])
-    st.sequences["Farm"] = seq
     st.active_sequence = seq
     st.points = seq.points
-    save_data(st)
+    save_sequence_file(seq, sequence_file(seq.name))
     # Absichtlich unvollständig, damit die Prüfung etwas darstellt.
     save_item_scan(ItemScanConfig(
         name="Inventar", owner_sequence="Farm",

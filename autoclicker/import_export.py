@@ -104,7 +104,9 @@ def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, i
             label = f"Punkt #{p.id}" + (f" {p.name}" if p.name else "")
             positions.append((label, p.x, p.y))
 
-        for name, seq in state.sequences.items():
+        loaded = [state.active_sequence] if state.active_sequence is not None else []
+        for seq in loaded:
+            name = seq.name
             groups = [("Init", seq.init_steps), ("End", seq.end_steps)]
             for lp in seq.loop_phases:
                 groups.append((lp.name, lp.steps))
@@ -192,8 +194,8 @@ def calibration_preview(state: 'AutoClickerState', transform: dict) -> list[tupl
 def _remap_sequence_obj(seq, transform: dict) -> None:
     """Wie _remap_sequence_data, aber auf einer geladenen Sequenz (in-place).
 
-    Die geladenen Sequenzen MÜSSEN mitgezogen werden, nicht nur die Dateien: sonst
-    schreibt der nächste `save_data()` den alten Stand aus dem Speicher wieder über
+    Die geladene Sequenz MUSS mitgezogen werden, nicht nur die Dateien: sonst
+    schreibt das nächste `save_points()` den alten Stand aus dem Speicher wieder über
     die frisch umgerechnete Datei.
     """
     phases = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
@@ -251,7 +253,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
 
     Gibt eine Zählung nach Bereich zurück.
     """
-    from .persistence import list_available_sequences, save_points
+    from .persistence import list_available_sequences, save_points, sequence_file
     from .utils import atomic_write, compact_json
 
     number = {"points": 0, "slots": 0, "items": 0, "item_scans": 0,
@@ -307,13 +309,17 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
 
         # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
         # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
-        if with_sequences:
-            for seq in state.sequences.values():
-                _remap_sequence_obj(seq, transform)
+        if with_sequences and state.active_sequence is not None:
+            # Die geladene Sequenz im Speicher mitziehen — genau ihre
+            # Screenshot-Regionen schreibt `save_points()` unten zurueck; alle
+            # anderen Sequenzen werden ueber ihre Dateien umgerechnet.
+            _remap_sequence_obj(state.active_sequence, transform)
 
         boss_scans = list(state.boss_scans.values()) if with_scans else []
         icon_scans = list(state.icon_scans.values()) if with_scans else []
         item_scans = list(state.item_scans.values()) if with_scans else []
+        written_from_memory = (sequence_file(state.active_sequence.name).resolve()
+                               if state.active_sequence is not None else None)
 
     # Jeder Saver meldet seinen Fehler selbst — dieselbe Zeile wie bei den
     # Sequenzdateien unten, damit ein Fehlschlag im Log neben der Bilanz steht.
@@ -333,6 +339,12 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
     # --- Sequenzen über die Dateien, damit auch nicht geladene erfasst werden ---
     if with_sequences:
         for _name, path in list_available_sequences():
+            # Die aktive Sequenz hat `save_points()` eben aus dem Speicher
+            # geschrieben — schon umgerechnet. Ein zweiter Durchgang ueber die
+            # Datei verschoebe ihre Screenshot-Regionen doppelt.
+            if written_from_memory is not None and Path(path).resolve() == written_from_memory:
+                number["sequences"] += 1
+                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
@@ -515,7 +527,7 @@ class _ImportTransaction:
     """Sichert State und importrelevante Dateien und rollt bei Fehlern zurück."""
 
     _STATE_FIELDS = (
-        "points", "sequences", "global_slots", "global_items", "item_scans",
+        "points", "global_slots", "global_items", "item_scans",
         "boss_scans", "icon_scans", "global_bosses",
     )
     # Was ausserhalb der Sequenzordner liegt und ein Import anfassen kann.
@@ -671,11 +683,11 @@ def _remap_sequence_folder(folder: Path, transform: dict) -> None:
 
 
 def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
-                            names: list[str], manifest: dict, transform: dict,
+                            names: list[str], transform: dict,
                             import_sequences: bool, import_config: bool,
                             merge: bool) -> tuple[bool, str]:
     """Importiert das neue, nach Sequenzordnern geordnete Bundle."""
-    from .config import save_config
+    from .config import AppConfig, apply_config, save_config
     from .persistence import ensure_sequences_dir, load_sequence_file
 
     imported_ones = []
@@ -717,17 +729,21 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                 seq = load_sequence_file(target / "sequence.json")
                 if seq is None:
                     raise ValueError(f"{target.name}: importierte Sequenz ist nicht lesbar")
-                with state.lock:
-                    state.sequences[seq.name] = seq
                 imported_ones.append(seq.name)
 
         if import_config and "config.json" in names:
             raw = json.loads(zf.read("config.json").decode("utf-8"))
             if isinstance(raw, dict):
                 allowed = {k: v for k, v in raw.items() if k not in _SENSITIVE_CONFIG_KEYS}
-                for key, value in allowed.items():
-                    if hasattr(state.config, key):
-                        setattr(state.config, key, value)
+                # Ueber `from_dict`, nicht per `setattr`: nur so laeuft
+                # `__post_init__` — ein Buendel mit `pixel_check_interval: 0`
+                # oder einem Tippfehler in `pixel_timeout_action` landete sonst
+                # ungeprueft im laufenden Config-Objekt, und unbekannte
+                # Schluessel gleich mit. Hineingeschrieben statt getauscht,
+                # weil `state.config` das Modul-CONFIG ist (s. apply_config).
+                merged = AppConfig.from_dict({**state.config.to_dict(), **allowed})
+                with state.lock:
+                    apply_config(state.config, merged)
                 save_config(state.config)
 
     parts = [f"{len(imported_ones)} Sequenz(en) mit zugehörigen Scans und Vorlagen"]
@@ -737,19 +753,15 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
 
 
 def import_bundle(state: 'AutoClickerState', filepath: str,
-                  transform: dict = None,
-                  import_points: bool = True, import_sequences: bool = True,
-                  import_slots: bool = True, import_items: bool = True,
-                  import_item_scans: bool = True, import_boss_scans: bool = True,
-                  import_icon_scans: bool = True,
+                  transform: dict = None, import_sequences: bool = True,
                   import_config: bool = True, merge: bool = True) -> tuple[bool, str]:
     """Importiert ein Setup aus einer ZIP-Datei.
 
-    Nur noch der Ablauf: **die Reihenfolge ist die eigentliche Aussage dieser
-    Funktion**, und sie ist nicht beliebig. Templates zuerst (Items verweisen
-    darauf), dann Punkte (Sequenzen verweisen darauf), dann die Sequenzen; Slots
-    und Items vor den Item-Scans, weil die per Namen auf sie zeigen und am Ende
-    aufgelöst werden. Zuletzt die Config und ein Speichern für Punkte + Sequenzen.
+    Ein Buendel besteht aus Sequenzordnern (jeder mit Punkten, Scans und
+    Vorlagen) und optional der Config — mehr Teile gibt es nicht, also auch
+    nur diese zwei Schalter. Hier standen sieben (`import_points`,
+    `import_slots`, `import_items`, …) aus der Zeit des globalen Bestands,
+    die am Ende nur noch ver-odert wurden.
 
     Args:
         transform: Koordinaten-Transformation (None = keine Anpassung)
@@ -786,10 +798,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
                     "bauen; das ist inzwischen billiger als der Umweg.")
             with _ImportTransaction(state):
                 return _import_sequence_bundle(
-                    state, zf, names, manifest, transform,
-                    import_sequences or import_points or import_slots or import_items
-                    or import_item_scans or import_boss_scans or import_icon_scans,
-                    import_config, merge)
+                    state, zf, names, transform, import_sequences, import_config, merge)
 
     except Exception as e:
         logger.error(f"Import fehlgeschlagen: {e}")
@@ -827,10 +836,6 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
             sr = s["screenshot_region"]
             s["screenshot_region"] = list(remap_region(tuple(sr), transform))
 
-
-# Die drei Referenz-Felder eines Schritts. Wer eine vierte Stelle einbaut, traegt sie
-# hier ein - sonst zeigt sie nach einem Import auf einen fremden lokalen Punkt.
-_REF_KEYS = ("point_id", "wait_point_id", "else_point_id", "verify_point_id")
 
 
 

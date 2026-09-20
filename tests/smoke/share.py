@@ -11,7 +11,7 @@ def setup():
         AutoClickerState, ClickPoint, LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data,
+        list_available_sequences, save_sequence_file, sequence_file,
     )
 
     sandbox("rauch_teilen_")
@@ -20,10 +20,9 @@ def setup():
         SequenceStep(point_id=1, delay_before=3.0), SequenceStep(point_id=2)])],
         points=[ClickPoint(id=1, x=100, y=100, name="A"),
                 ClickPoint(id=2, x=200, y=200, name="B")])
-    st.sequences["Farm"] = seq
     st.active_sequence = seq
     st.points = seq.points
-    save_data(st)
+    save_sequence_file(seq, sequence_file(seq.name))
     return StudioBridge(seq, Path(dict(list_available_sequences())["Farm"]),
                         "sequences")
 

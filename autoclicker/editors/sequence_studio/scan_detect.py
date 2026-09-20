@@ -27,6 +27,7 @@ from ...models import (
     BOSS_ACTION_SCAN,
     BOSS_ACTION_SKIP,
     BOSS_ACTION_SKIP_CYCLE,
+    VALID_BOSS_DEFAULT_ACTIONS,
     BossProfile,
     BossScanConfig,
     IconScanConfig,
@@ -223,6 +224,10 @@ class ScanDetectMixin:
                          for a in _BOSS_ACTIONS],
                 "icon": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
                          for a in _ICON_ACTIONS],
+                # Der Fallback eines Boss-Scans kann weniger als ein Boss: kein
+                # Klick, keine Taste — dafuer gibt es am Scan keine Felder.
+                "boss_default": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                                 for a in VALID_BOSS_DEFAULT_ACTIONS],
                 "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODES_TEXT],
             },
             "ready": self._ready(),
@@ -371,8 +376,11 @@ class ScanDetectMixin:
             cfg.color_tolerance = max(0, number)
             return self._scan_changed()
         if field == "default_action":
-            if value not in VALID_BOSS_ACTIONS:
-                return self._scan_report(f"Unbekannte Aktion '{value}'.", "err")
+            if value not in VALID_BOSS_DEFAULT_ACTIONS:
+                return self._scan_report(
+                    f"'{value}' geht als Fallback nicht — ohne erkannten Boss gibt es "
+                    "keinen Punkt und keine Taste, nur skip, skip_cycle, restart "
+                    "oder einen Item-Scan.", "err")
             self._remember(f"'{cfg.name}': Fallback-Aktion")
             cfg.default_action = str(value)
             return self._scan_changed(
@@ -395,12 +403,9 @@ class ScanDetectMixin:
         schnell, das LLM kostet bis `llm_timeout`. Das steht in
         `runtime/boss_detection.py` genauso — hier wird es nur vorgelesen.
         """
-        front = [name for name, an, fallback in
-                (("OCR", cfg.use_ocr, cfg.ocr_fallback), ("LLM", cfg.use_llm, cfg.llm_fallback))
-                if an and not fallback]
-        back = [name for name, an, fallback in
-                  (("OCR", cfg.use_ocr, cfg.ocr_fallback), ("LLM", cfg.use_llm, cfg.llm_fallback))
-                  if an and fallback]
+        ways = (("OCR", cfg.use_ocr, cfg.ocr_fallback), ("LLM", cfg.use_llm, cfg.llm_fallback))
+        front = [name for name, on, fallback in ways if on and not fallback]
+        back = [name for name, on, fallback in ways if on and fallback]
         parts = front + ["Template/Marker"] + back
         return "Reihenfolge: " + " → ".join(parts)
 

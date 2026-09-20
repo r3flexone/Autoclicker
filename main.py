@@ -23,6 +23,7 @@ from autoclicker.winapi import (
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
     HOTKEY_SEQUENCE_STUDIO, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
     HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
+    HOTKEY_SKIP_STEP,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages,
     poll_hotkey, get_current_thread_id, platform_name, environment_warnings,
     PlatformError,
@@ -37,7 +38,7 @@ from autoclicker.utils import col, err, info, warn, hint, init_logging
 from autoclicker.handlers import (
     handle_record, handle_undo, handle_clear, handle_reset,
     handle_editor, handle_item_scan_editor, handle_load, handle_show,
-    handle_toggle, handle_pause, handle_skip, handle_switch,
+    handle_toggle, handle_pause, handle_skip, handle_skip_step, handle_switch,
     handle_schedule, handle_analyze, handle_quit, handle_finish,
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
@@ -65,7 +66,7 @@ def print_banner() -> None:
     print(line)
 
 
-def print_help(mit_anleitung: bool = True) -> None:
+def print_help(with_guide: bool = True) -> None:
     """Zeigt die Hilfe mit farbigen Kategorien an."""
     line = col("=" * 65, 'cyan')
     print(line)
@@ -78,7 +79,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+A', 'yellow')}  Mausposition als Punkt speichern")
     print(f"  {col('CTRL+ALT+U', 'yellow')}  Letzten Punkt entfernen {hint('(während einer Aufnahme: letztes Ereignis)')}")
     print(f"  {col('CTRL+ALT+C', 'yellow')}  Alle Punkte löschen")
-    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klick/Taste/Mausrad → Sequenz erstellen)')}")
+    print(f"  {col('CTRL+ALT+J', 'yellow')}  Sequenz aufnehmen {hint('(Klick/Taste → Sequenz erstellen)')}")
     print(f"  {col('CTRL+ALT+SHIFT+M', 'yellow')}  Aufnahme: auf Farbe warten {hint('(Maus über die Stelle, sobald sie da ist)')}")
     print(f"  {col('CTRL+ALT+SHIFT+D', 'yellow')}  Aufnahme: Screenshot {hint('(Vollbild)')}")
     print(f"  {col('CTRL+ALT+SHIFT+R', 'yellow')}  Aufnahme: Screenshot-Bereich {hint('(2× drücken = zwei Ecken)')}")
@@ -107,6 +108,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+F', 'yellow')}  Sanft beenden {hint('(Zyklus abschliessen, dann END + Stop)')}")
     print(f"  {col('CTRL+ALT+G', 'yellow')}  Pause/Resume")
     print(f"  {col('CTRL+ALT+K', 'yellow')}  Skip {hint('(aktuelle Wartezeit überspringen)')}")
+    print(f"  {col('CTRL+ALT+SHIFT+K', 'yellow')}  Block überspringen {hint('(samt Klick/Taste/Scan, weiter mit dem nächsten)')}")
     print(f"  {col('CTRL+ALT+W', 'yellow')}  Quick-Switch {hint('(schnell Sequenz wechseln)')}")
     print(f"  {col('CTRL+ALT+Z', 'yellow')}  Zeitplan {hint('(Start zu bestimmter Zeit)')}")
     print()
@@ -118,7 +120,7 @@ def print_help(mit_anleitung: bool = True) -> None:
     print(f"  {col('CTRL+ALT+Q', 'yellow')}  Programm beenden")
     print()
 
-    if mit_anleitung:
+    if with_guide:
         print_guide()
     else:
         print(hint(f"  Daten: '{SEQUENCES_DIR}/' | Einstellungen: '{CONFIG_FILE}'"))
@@ -158,8 +160,8 @@ def print_guide() -> None:
     print()
 
 
-def _first_start(state) -> bool:
-    """Nichts aufgenommen, nichts gespeichert — dann ist die Anleitung das Wichtigste."""
+def _first_start() -> bool:
+    """Nichts gespeichert — dann ist die Anleitung das Wichtigste."""
     return not list_available_sequences()
 
 
@@ -185,10 +187,10 @@ def _check_commands(state) -> None:
         return
     _command_last = now
 
-    auftrag = fetch_command()
-    if auftrag is None:
+    command = fetch_command()
+    if command is None:
         return
-    name = auftrag["command"]
+    name = command["command"]
     fn = COMMANDS.get(name)
     if fn is None:
         print(f"\n{info(f'Unbekannter Befehl aus dem Studio: {name}')}")
@@ -198,7 +200,7 @@ def _check_commands(state) -> None:
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     try:
-        fn(state, auftrag["arguments"])
+        fn(state, command["arguments"])
     except PlatformError as error:
         print(err(f"Systemaktion fehlgeschlagen: {error}"))
 
@@ -276,8 +278,8 @@ def main() -> int:
 
     # Beim allerersten Start die volle Anleitung zeigen - da ist sie das Wichtigste
     # im Fenster. Danach reicht der Banner oben, alles Weitere liegt auf CTRL+ALT+O.
-    erster_start = _first_start(state)
-    if tui_start and erster_start:
+    first_start = _first_start()
+    if tui_start and first_start:
         print()
         print_help()
 
@@ -332,14 +334,14 @@ def main() -> int:
     # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
     # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,
     # wuerde `discard_command()` genau diesen ersten Auftrag wegwerfen.
-    studio_offen = _studio_opens_on_start(state)
-    if not tui_start and not studio_offen:
+    studio_open = _studio_opens_on_start(state)
+    if not tui_start and not studio_open:
         # Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten
         # Hauptprozess hinterlassen. In diesem Sonderfall wird die TUI sichtbar
         # zur Startoberflaeche und nennt auch beim ersten Start die Anleitung.
         print(warn("Studio konnte nicht geöffnet werden — starte in der Konsole."))
         print_banner()
-        if erster_start:
+        if first_start:
             print()
             print_help()
         _tui_show_ready(state)
@@ -357,6 +359,7 @@ def main() -> int:
         HOTKEY_TOGGLE: handle_toggle,
         HOTKEY_PAUSE: handle_pause,
         HOTKEY_SKIP: handle_skip,
+        HOTKEY_SKIP_STEP: handle_skip_step,
         HOTKEY_SWITCH: handle_switch,
         HOTKEY_SCHEDULE: handle_schedule,
         HOTKEY_ANALYZE: handle_analyze,

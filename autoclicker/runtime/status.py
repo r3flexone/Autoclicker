@@ -54,7 +54,7 @@ def write_status(state, part: dict, immediately: bool = False) -> None:
         pass
 
 
-def waiting_for(state, part) -> None:
+def waiting_for(state, part, immediately: bool = False) -> None:
     """Worauf der laufende Block gerade wartet — oder `None`, wenn er fertig wartet.
 
     Zeiten stehen als absolute Zeitstempel darin (`since`, `until`), nicht als
@@ -64,7 +64,13 @@ def waiting_for(state, part) -> None:
     Das Abmelden schreibt sofort — zwischen „Farbe erkannt" und dem nächsten
     Block liegt noch die eigene Aktion des Schritts.
     """
-    write_status(state, {"waiting": part}, immediately=part is None)
+    write_status(state, {"waiting": part}, immediately=immediately or part is None)
+
+
+def current_waiting():
+    """Worauf der Block laut Laufstatus gerade wartet — fuer eine Pause, die
+    das kurz ueberdeckt und danach wiederherstellt."""
+    return _state.get("waiting")
 
 
 def heartbeat(state) -> None:

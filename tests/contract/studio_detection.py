@@ -68,6 +68,31 @@ check("und die Seite fuehrt dieselbe Liste",
       _js_kinds is not None
       and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_ARTEN))
 
+# **Der Fallback eines Boss-Scans kann weniger als ein Boss.** Ohne erkannten
+# Boss gibt es keinen Punkt und keine Taste — die Felder dafuer sitzen am
+# Boss, nicht am Scan. Das Studio bot trotzdem alle sechs Kacheln an:
+# „Punkt klicken" liess sich waehlen und speichern, und die Laufzeit
+# (`_execute_boss_scan_step`) tat damit nichts. Laufzeit, Konsole und Studio
+# lesen jetzt dieselbe Liste.
+from autoclicker.models import (VALID_BOSS_DEFAULT_ACTIONS as _VBDA,
+                                BOSS_ACTION_CLICK as _BAC, BOSS_ACTION_KEY as _BAK)
+import autoclicker.runtime.steps as _steps_mod
+from autoclicker.editors.boss_scan_editor import edit_boss_scan as _console_editor
+check("Klick und Taste sind als Fallback nicht vorgesehen",
+      _BAC not in _VBDA and _BAK not in _VBDA and len(_VBDA) == 4)
+_runtime_src = _inspect.getsource(_steps_mod._execute_boss_scan_step)
+check("die Laufzeit kennt jeden Fallback-Wert der Liste",
+      all(name in _runtime_src for name in
+          ("BOSS_ACTION_SKIP_CYCLE", "BOSS_ACTION_RESTART", "BOSS_ACTION_SCAN"))
+      and "VALID_BOSS_DEFAULT_ACTIONS" in _runtime_src)
+_console_src = _inspect.getsource(_console_editor)
+check("der Konsolen-Editor bietet genau diese vier an",
+      "default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, "
+      "BOSS_ACTION_SCAN]" in _console_src)
+check("die Seite nimmt die Fallback-Kacheln aus der eigenen Liste",
+      "SC.actions.boss_default" in _web
+      and "detActionTiles(SC.actions.boss, c.default_action" not in _web)
+
 # ---------------------------------------------------------------------------
 section("Boss- und Icon-Scans: anlegen, Region, Felder, Bibliothek")
 
@@ -114,6 +139,15 @@ try:
     check("und sie sagt warum", _z["status"]["kind"] == "warn")
     _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region", "value": ["a", 1, 2, 3]})
     check("Buchstaben in einer Region sind ein Fehler", _z["status"]["kind"] == "err")
+
+    # --- Fallback ohne erkannten Boss: kein Klick, keine Taste ---
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "click"})
+    check("'Punkt klicken' wird als Fallback abgelehnt — die Laufzeit koennte es nicht",
+          _z["status"]["kind"] == "err" and _b.boss_scans["Bossfarm"].default_action == "skip")
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "restart"})
+    check("ein ausfuehrbarer Fallback wird gesetzt",
+          _b.boss_scans["Bossfarm"].default_action == "restart")
+    _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "skip"})
 
     # --- Bosse ---
     _b.boss_new({"name": "Ancient Dragon"})

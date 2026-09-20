@@ -87,8 +87,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 self.assertIsNone(load_sequence_file(path))
 
     def test_stopp_im_mikrodelay_verhindert_jede_eingabe(self):
-        for kind, arguments in (("click", (10, 20)), ("key", ("a",)),
-                               ("scroll", (1,))):
+        for kind, arguments in (("click", (10, 20)), ("key", ("a",))):
             with self.subTest(kind=kind):
                 state = AutoClickerState()
                 with patch.object(actions, "_humanize_delay",
@@ -273,14 +272,6 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch.object(actions, "send_click", return_value=False), \
                 patch.object(actions, "log_event") as log:
             self.assertFalse(actions.safe_click(state, 10, 20, "test"))
-            log.assert_not_called()
-
-        with patch.object(actions, "_wait_for_target_window", return_value=True), \
-                patch.object(actions, "_humanize_check_break"), \
-                patch.object(actions, "_humanize_delay"), \
-                patch.object(actions, "send_scroll", return_value=False), \
-                patch.object(actions, "log_event") as log:
-            self.assertFalse(actions.safe_scroll(state, 1, label="test"))
             log.assert_not_called()
 
         with patch.object(actions, "_wait_for_target_window", return_value=True), \
