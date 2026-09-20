@@ -3269,6 +3269,58 @@ Regeln beim Erweitern:
 - **Die leere Bühne trägt ihre Aktion selbst** (`emptyStageArt()` plus ein
   Knopf, der denselben Befehl schickt wie Schritt 1 des Assistenten). Vorher
   nannte der Text einen Knopf, der 400 px weiter links lag.
+- **Der Editor hat ein Rückgängig** (`_edit_commit()` / `undo()` / `redo()` in
+  `bridge_editing.py`, STRG+Z / STRG+Y, „Zurück"/„Wieder" im Kopf). Der
+  Scans-Reiter hatte es mit 30 Abzügen, der Editor nichts: Entf auf einer
+  Auswahl war endgültig, der einzige Ausweg „Verwerfen & neu laden". Dieselbe
+  Bauart wie `_remember()` — ein **vollständiger Abzug** von Board, Punkten
+  und Auswahl, kein Rückwärts-Schritt —, aber an einer Stelle: `_changed()`
+  legt ihn ab, kein Kommando muss daran denken. Drei Regeln:
+  - **`_edit_current` ist der Stand nach dem letzten Abzug**, und
+    `snapshot()` merkt sich darin die Auswahl: Auswählen legt keinen Abzug
+    ab, und nach dem Zurück soll man auf dem stehen, was man gerade gelöscht
+    hatte. Ein Abzug hält Indizes, keine Lane-Objekte.
+  - **Speichern, Laden, Anlegen, Import und Kalibrierung leeren den Stapel**
+    (`_edit_reset()` in `_state_remember()`, `_after_import()`,
+    `_after_calibration()`): ein Zurück über einen Ladevorgang hinweg
+    beschriebe einen Stand, den es nicht mehr gibt, und was auf Platte
+    geschrieben ist, holt kein STRG+Z zurück.
+  - **`offer=True` hängt den Rückgängig-Knopf an die Meldung** (`#status-action`)
+    — nur bei löschen, Typwechsel und verschieben, nicht bei jedem Tippfeld;
+    `group="move"` fasst eine gehaltene Pfeiltaste zu EINEM Abzug zusammen
+    (`EDIT_GROUP_SECONDS`), dieselbe Regel wie `counts` bei den Slots. Die
+    Punkt-Werkzeuge (`tool_point_*`, `tool_points_prune`) rufen `_edit_commit()`
+    selbst — sie gehen nicht über `_changed()`.
+- **Befunde sind Sprungmarken.** `Finding.target` (`diagnostics.py`),
+  `targets` im Bericht (`_report_targets()`: Timeout-Name → Block der offenen
+  Sequenz, über `step.name` oder `Phase[n]`) und die Warnmarke auf der Karte
+  tragen ein Ziel; `goTo(target)` in `app.js` ist die EINE Funktion, die alle
+  kennt: `{"view":"scans","kind","name"}`, `{"view":"editor","phase","row"}`
+  (Lane-Index wie im Board, 0 = INIT), `{"view":"editor","point"}`. Ein Ziel in
+  einer anderen Sequenz lädt sie erst — mit derselben Rückfrage. Ein Befund
+  ohne Ziel (unlesbare Datei) bekommt keinen Knopf statt eines, der nirgendwohin
+  führt. `selection()` schreibt seinen `key` als `data-key` ans Feld, damit
+  die Warnmarke „Name fehlt" den Fokus in die Scan-Auswahl stellen kann.
+- **Die Übersicht kennt den letzten Lauf** (`_last_run()`: neueste
+  `logs/<stamp>_<sanitize(name)>.csv`, gerechnet mit `evaluate()` aus dem
+  Werkzeug, gemerkt am Dateistand), **kann duplizieren**
+  (`sequence_duplicate()`: Ordner kopieren samt Scans und Vorlagen, Name per
+  `unique_name()` — die Punkte sind sequenzlokal, es gibt nichts umzuhängen)
+  und hat Filter und Sortierung (`seqSorted()`, Oberflächenzustand). Das
+  Datum steht als Spanne („vor 2 Stunden", `sinceText()`) mit dem Stempel im
+  Tooltip — vorher stand es HINTER dem Pfad, also hinter dem „…". Und „1
+  Zyklen" gibt es nicht mehr: der Plural sass im Code.
+- **Die Punkte-Liste zeigt die Verwendung** (`usages` an jedem Punkt,
+  `points` an jedem Block). Ein Klick auf die Zeile markiert im Board jeden
+  Block, der den Punkt benutzt (`pointHighlight`, Ring in Punktfarbe — keine
+  Auswahl), ein gewählter Block hebt seine Punkte hervor (`in-use`);
+  ungenutzte sind blass, „ungenutzt" ist ein Filterwort, und
+  `tool_points_prune()` löscht sie in einem Griff (mit Abzug). Die Zieh-Geste
+  steht als Zeile unter der Liste — `cursor: grab` liest niemand.
+- **Ein leeres Board sagt, wie man anfängt** (`startCard()`: Aufnehmen oder
+  von Hand bauen, dazu der Import), und die Tastenkürzel stehen in EINER Tafel
+  (`shortcutTable()`, Taste `?` und `#btn-help`). Die Scan-Modi nehmen ihre
+  Buchstaben aus `SCAN_MODES`; ein Test hält die Tafel gegen `keyboard()`.
 - **Der Status steht unten, nicht im Kopf.** Oben nahm er den Platz weg, den die
   Bedienelemente brauchen; unten hat er die volle Breite und liegt da, wo sonst
   nichts passiert. **Die Art steht als Kachel VOR dem Text** (`#status-kind`,

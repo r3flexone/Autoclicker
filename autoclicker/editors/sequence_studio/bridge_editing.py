@@ -2,6 +2,7 @@
 
 import copy
 import re
+import time
 from typing import Optional
 
 from ...models import BLOCK_WAIT_CLICK, SequenceStep, WaitCondition
@@ -27,8 +28,121 @@ from .model import (
 )
 
 
+# Wie viele Stände das Rückgängig hält — dieselbe Tiefe wie im Scans-Reiter.
+EDIT_UNDO_DEPTH = 30
+# Innerhalb dieser Spanne gilt eine wiederholte Aktion derselben Gruppe (eine
+# gehaltene Pfeiltaste) als EIN Schritt.
+EDIT_GROUP_SECONDS = 1.5
+
+
 class BridgeEditingMixin:
-    """Bearbeitet die Sequenz ausschließlich über klar benannte Kommandos."""
+    """Bearbeitet die Sequenz ausschließlich über klar benannte Kommandos.
+
+    **Rückgängig ist ein vollständiger Abzug, kein Rückwärts-Schritt** — dieselbe
+    Bauart wie `_remember()` im Scans-Reiter, und aus demselben Grund: fast
+    jede Aktion hier rührt an mehrere Stellen (ein gelöschter Block nimmt
+    seinen Punkt mit, ein Typwechsel räumt das ELSE), und ein vergessener
+    Rückwärts-Schritt drehte die Daten halb zurück. Der Abzug umfasst Board,
+    Punkte und Auswahl; er entsteht in `_changed()`, also bei JEDER Änderung,
+    ohne dass ein Kommando daran denken muss. Speichern und Laden leeren den
+    Stapel: ein Zurück über einen Ladevorgang hinweg beschriebe einen Stand,
+    den es nicht mehr gibt.
+    """
+
+    # ------------------------------------------------------------ Rückgängig
+
+    def _edit_init(self) -> None:
+        self._edit_undo: list = []          # (was, Abzug) — ältester zuerst
+        self._edit_redo: list = []
+        self._edit_current: dict = self._edit_state()
+        self._edit_offer = False
+        self._edit_group: Optional[str] = None
+        self._edit_time = 0.0
+
+    def _edit_selection(self) -> tuple:
+        """Die Auswahl als Indizes — ein Abzug darf keine Lane-Objekte halten."""
+        lane_index = (self.board.lanes.index(self.sel_lane)
+                      if self.sel_lane in self.board.lanes else None)
+        return (lane_index, set(self.sel_rows), self.sel_anchor)
+
+    def _edit_state(self) -> dict:
+        """Ein vollständiger Abzug: Board, Punkte und Auswahl (als Indizes)."""
+        return {"board": copy.deepcopy(self.board),
+                "points": copy.deepcopy(self.points),
+                "sel": self._edit_selection()}
+
+    def _edit_install(self, stamp: dict) -> None:
+        """Stellt einen Abzug wieder her — als Kopie, damit der Stapel unberührt bleibt."""
+        self.board = copy.deepcopy(stamp["board"])
+        self.points = copy.deepcopy(stamp["points"])
+        lane_index, rows, anchor = stamp["sel"]
+        self.sel_lane = (self.board.lanes[lane_index]
+                         if lane_index is not None and lane_index < len(self.board.lanes)
+                         else None)
+        self.sel_rows = set(rows) if self.sel_lane is not None else set()
+        self.sel_anchor = anchor
+        self._points_apply()
+        self._dirty = True
+
+    def _edit_commit(self, what: str = "", group: Optional[str] = None) -> None:
+        """Legt den Stand VOR dieser Änderung ab und merkt sich den neuen.
+
+        `group`: eine gehaltene Pfeiltaste ist EIN Verschieben — nur der erste
+        Schritt einer Serie kommt auf den Stapel (dieselbe Regel wie `counts`
+        beim Schieben der Slots), sonst läge er nach zwei Sekunden voll.
+        """
+        now = time.time()
+        merged = (group is not None and group == self._edit_group
+                  and now - self._edit_time < EDIT_GROUP_SECONDS)
+        if not merged:
+            # `_edit_current` trägt die Auswahl der letzten Momentaufnahme —
+            # also die VOR dieser Änderung (Auswählen legt keinen Abzug ab,
+            # `snapshot()` merkt sie sich). Nach dem Zurück steht man damit
+            # wieder auf dem, was man gerade gelöscht hatte.
+            self._edit_undo.append((what or "letzte Änderung", self._edit_current))
+            del self._edit_undo[:-EDIT_UNDO_DEPTH]
+            self._edit_redo = []
+        self._edit_current = self._edit_state()
+        self._edit_group, self._edit_time = group, now
+        self._dirty = True
+
+    def _edit_reset(self) -> None:
+        """Nach Laden, Anlegen, Speichern, Import: der Stapel beschreibt nichts mehr."""
+        self._edit_undo, self._edit_redo = [], []
+        self._edit_current = self._edit_state()
+        self._edit_offer = False
+        self._edit_group = None
+
+    def _edit_json(self) -> dict:
+        return {"can": bool(self._edit_undo),
+                "what": self._edit_undo[-1][0] if self._edit_undo else "",
+                "redo": bool(self._edit_redo),
+                "redo_what": self._edit_redo[-1][0] if self._edit_redo else "",
+                # Die Meldung nach einer zerstörenden Aktion trägt den Rückweg
+                # an sich — ein Klick, ohne die Tastenkombination zu kennen.
+                "offer": self._edit_offer}
+
+    def undo(self, data: Optional[dict] = None) -> dict:
+        """Nimmt die letzte Änderung zurück (STRG+Z)."""
+        if not self._edit_undo:
+            return self._report("Nichts zum Rückgängigmachen.", "info")
+        what, stamp = self._edit_undo.pop()
+        self._edit_redo.append((what, self._edit_current))
+        self._edit_current = stamp
+        self._edit_install(stamp)
+        self._edit_group = None
+        return self._report(f"Rückgängig: {what}")
+
+    def redo(self, data: Optional[dict] = None) -> dict:
+        """Stellt die zuletzt zurückgenommene Änderung wieder her (STRG+Y)."""
+        if not self._edit_redo:
+            return self._report("Nichts zum Wiederherstellen.", "info")
+        what, stamp = self._edit_redo.pop()
+        self._edit_undo.append((what, self._edit_current))
+        self._edit_current = stamp
+        self._edit_install(stamp)
+        self._edit_group = None
+        return self._report(f"Wiederhergestellt: {what}")
 
     def _lane(self, index) -> Optional[Lane]:
         try:
@@ -47,7 +161,7 @@ class BridgeEditingMixin:
             return self._report("INIT und END lassen sich nicht löschen.", "warn")
         self.board.delete_loop_lane(lane)
         self._selection_clear()
-        return self._changed(f"Phase '{lane.name}' gelöscht.")
+        return self._changed(f"Phase '{lane.name}' gelöscht.", offer=True)
 
     def phase_set(self, data: dict) -> dict:
         """Name, Wiederholungen oder Startzeit einer Phase ändern."""
@@ -233,7 +347,6 @@ class BridgeEditingMixin:
         self.sel_lane = target
         self.sel_rows = set(range(at, at + len(steps_list)))
         self.sel_anchor = at
-        self._dirty = True
 
     def drag(self, data: dict) -> dict:
         """Ziel eines Drag&Drop mit Karten."""
@@ -250,7 +363,7 @@ class BridgeEditingMixin:
                 if (self.sel_lane is source and from_row in self.sel_rows)
                 else [from_row])
         self._move(source, rows, target, at)
-        return self._report("")
+        return self._changed("", offer=True, what=f"{_blocks(len(rows))} verschoben")
 
     def selection_move(self, data: dict) -> dict:
         """Verschiebt die Auswahl als Block um eine Position (−1 hoch, +1 runter)."""
@@ -268,7 +381,7 @@ class BridgeEditingMixin:
         consequence = rows if delta < 0 else list(reversed(rows))
         self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in consequence}
         self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
-        return self._changed()
+        return self._changed(group="move", what=f"{_blocks(len(rows))} verschoben")
 
     _REF_FIELDS = ("wait_condition", "verify_condition", "else_config")
 
@@ -364,7 +477,7 @@ class BridgeEditingMixin:
             self.board.delete_step(lane, idx)
         count = len(self.sel_rows)
         self._selection_clear()
-        return self._changed(f"{_blocks(count)} gelöscht.")
+        return self._changed(f"{_blocks(count)} gelöscht.", offer=True)
 
     # ---------------------------------------------------------- Block-Felder
 
@@ -403,7 +516,8 @@ class BridgeEditingMixin:
         set_block_type(step, type_value)
         self._points_apply()
         gone = self._else_cleanup(step)
-        return self._changed(gone, "warn" if gone else "ok")
+        return self._changed(gone, "warn" if gone else "ok", offer=True,
+                             what=f"Typ → {BLOCK_LABELS[type_value]}")
 
     def block_set(self, data: dict) -> dict:
         """Ein einfaches Feld des gewählten Schritts setzen."""
@@ -475,8 +589,7 @@ class BridgeEditingMixin:
                 f"Bereich zu klein: {x2 - x1}×{y2 - y1} Pixel — nichts geändert.", "warn")
 
         step.screenshot_region = (x1, y1, x2, y2)
-        self._dirty = True
-        return self._report(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
+        return self._changed(f"Bereich {x2 - x1}×{y2 - y1} bei ({x1},{y1}).", "ok")
 
     def _await_position(self) -> tuple:
         """Wartet auf ENTER und gibt `(x, y, "")` zurück — bei Abbruch `(None, None, Grund)`.

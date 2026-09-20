@@ -64,6 +64,9 @@ class BridgeViewMixin:
         """
         text, kind = self._status
         ask, self._ask = self._ask, None
+        # Die Auswahl gehört zum Stand, den die Seite gerade sieht: Auswählen
+        # legt keinen Abzug ab, also merkt sich der nächste Abzug sie von hier.
+        self._edit_current["sel"] = self._edit_selection()
         return {
             "file": str(self.filepath),
             "start_view": self.start_view,
@@ -71,6 +74,7 @@ class BridgeViewMixin:
             "description": self.board.description,
             "cycles": self.board.total_cycles,
             "dirty": self._dirty,
+            "undo": self._edit_json(),
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
@@ -153,8 +157,13 @@ class BridgeViewMixin:
         return self.board.lanes.index(self.sel_lane)
 
     def _point_json(self, p: PalettePoint) -> dict:
+        # `usages`: wie oft der Punkt gebraucht wird — die Liste zeigte es nicht,
+        # obwohl `_point_usages()` es fuer den Inspektor laengst rechnete. Ein
+        # Punkt, den vier Bloecke teilen, ist genau der, den man vor dem
+        # Verschieben kennen will; einer mit 0 ist ein Rest der Aufnahme.
         return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
-                "color": _hex(p.color), "source": p.source}
+                "color": _hex(p.color), "source": p.source,
+                "usages": len(self._point_usages(p.id))}
 
     def _phase_json(self, index: int, lane: Lane) -> dict:
         return {
@@ -220,6 +229,14 @@ class BridgeViewMixin:
             # (`_lines`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
             "point_color": _hex(point.color) if point is not None else None,
+            # Alle Punkte, an denen der Block haengt (Stelle, Pruef-Pixel,
+            # Nachpruefung, ELSE): die Punkte-Liste markiert damit, wer einen
+            # Punkt benutzt — in beide Richtungen.
+            "points": sorted({pid for pid in (
+                step.point_id, wc.point_id if wc else None,
+                step.verify_condition.point_id if step.verify_condition else None,
+                step.else_config.point_id if step.else_config else None,
+            ) if pid is not None}),
             "color_swatch": _hex(wc.color) if wc else None,
             "color_text": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
@@ -351,13 +368,21 @@ class BridgeViewMixin:
 
     # --------------------------------------------------------------- Zustand
 
-    def _report(self, text: str, kind: str = "ok") -> dict:
+    def _report(self, text: str, kind: str = "ok", *, offer: bool = False) -> dict:
         self._status = (text, kind)
+        self._edit_offer = offer
         return self.snapshot()
 
-    def _changed(self, text: str = "", kind: str = "ok") -> dict:
-        self._dirty = True
-        return self._report(text, kind)
+    def _changed(self, text: str = "", kind: str = "ok", *, group: Optional[str] = None,
+                 offer: bool = False, what: str = "") -> dict:
+        """Eine Änderung an Board oder Punkten: Abzug ablegen, melden.
+
+        `what` benennt den Schritt auf dem Rückgängig-Stapel, wenn der
+        Meldungstext dafür nicht taugt (leer oder eine Warnung); `offer` hängt
+        den Rückgängig-Knopf an die Meldung (löschen, Typwechsel, verschieben).
+        """
+        self._edit_commit(what or text.rstrip("."), group)
+        return self._report(text, kind, offer=offer)
 
     def _point(self, point_id) -> Optional[PalettePoint]:
         if point_id is None:

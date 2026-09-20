@@ -149,8 +149,10 @@ def run():
         # Werkzeug, das „Aufnehmen, nachmessen, umbenennen und sicher loeschen"
         # verspricht.
         f.click_text("#wz-left button", "Punkte verwalten")
+        # Nicht der Sammelknopf „N ungenutzte loeschen" (der ist nie gesperrt,
+        # er loescht nur, was 0x verwendet wird), sondern der des Punkts.
         locked = f.page.eval_on_selector(
-            "#wz-middle button.danger", "e => e.disabled")
+            "#wz-middle button.danger:not(#wz-points-prune)", "e => e.disabled")
         expect(locked is True,
                "Punkt #1 wird verwendet — der Loeschen-Knopf muesste gesperrt sein")
         # #3 „Menue" haengt an keinem Block.

@@ -148,7 +148,7 @@ class BridgeToolsMixin:
                 point.color = tuple(color)
             action = "neu gemessen"
         self._points_apply()
-        self._dirty = True
+        self._edit_commit(f"Punkt #{point.id} {action}")
         return {"ok": True, "point_id": point.id,
                 "message": f"Punkt #{point.id} {action}: ({x}, {y})."}
 
@@ -172,7 +172,7 @@ class BridgeToolsMixin:
         except (TypeError, ValueError):
             return {"ok": False, "message": f"'{value}' ist kein gültiger Wert."}
         self._points_apply()
-        self._dirty = True
+        self._edit_commit(f"Punkt #{point.id} geändert")
         return {"ok": True, "message": f"Punkt #{point.id} geändert."}
 
     def tool_point_show(self, data: Optional[dict] = None) -> dict:
@@ -200,8 +200,24 @@ class BridgeToolsMixin:
             return {"ok": False, "usages": used,
                     "message": f"Punkt #{point.id} wird noch {len(used)}× verwendet."}
         self.points.remove(point)
-        self._dirty = True
+        self._edit_commit(f"Punkt #{point.id} gelöscht")
         return {"ok": True, "message": f"Punkt #{point.id} gelöscht."}
+
+    def tool_points_prune(self, data: Optional[dict] = None) -> dict:
+        """Löscht alle Punkte ohne Verwendung — in einem Griff, mit einem Abzug.
+
+        Nach einer Aufnahme bleiben Punkte übrig (verworfene Marker, gelöschte
+        Blöcke); einzeln zu suchen, was 0× dasteht, ist die Arbeit, die dieser
+        Knopf spart. Referenzen bricht er nie: geprüft wird jeder Punkt einzeln.
+        """
+        unused = [p for p in self.points if not self._point_usages(p.id)]
+        if not unused:
+            return {"ok": True, "message": "Kein ungenutzter Punkt — nichts zu tun."}
+        for point in unused:
+            self.points.remove(point)
+        self._edit_commit(f"{len(unused)} ungenutzte Punkte gelöscht")
+        return {"ok": True, "message": f"{len(unused)} ungenutzte(r) Punkt(e) gelöscht.",
+                "count": len(unused)}
 
     # ---------------------------------------------------------- Farbanalysator
 
@@ -307,8 +323,10 @@ class BridgeToolsMixin:
                     "findings": [], "checked": []}
         return {
             "ok": True,
+            # `target` ist die Sprungmarke: der Reiter öffnet damit Scan, Block
+            # oder Punkt, statt den Leser in vier Reitern suchen zu lassen.
             "findings": [{"level": b.level, "area": b.area, "text": b.text,
-                         "tip": b.tip} for b in report.findings],
+                         "tip": b.tip, "target": b.target} for b in report.findings],
             "checked": list(report.checked),
             "errors": sum(1 for b in report.findings if b.level == LEVEL_ERROR),
             "hints": sum(1 for b in report.findings if b.level != LEVEL_ERROR),
@@ -490,6 +508,8 @@ class BridgeToolsMixin:
         from .model import load_palette_points
         from ...mailbox import send_command
         self.points = load_palette_points(self.filepath)
+        # Was auf Platte geschrieben ist, holt kein STRG+Z zurück.
+        self._edit_reset()
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.

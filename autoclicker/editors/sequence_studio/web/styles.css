@@ -225,6 +225,11 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .status{min-width:0;font-size:11.5px;color:var(--text);line-height:1.4;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .status.kind-info{color:var(--muted)}
+/* Der Rueckweg an der Meldung: Akzent-Umriss, damit er neben der Warnung als
+   Handgriff und nicht als weitere Meldung gelesen wird. */
+.status-action{border-color:var(--accent);color:var(--accent);font-size:11.5px;
+  padding:3px 9px;font-weight:600;flex:none}
+.status-action:hover{background:#F59E0B1A;color:var(--accent)}
 
 /* -------------------------------------------------------------------- Rumpf */
 .body{flex:1;display:flex;min-height:0}
@@ -284,6 +289,20 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .point .nr{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
 .point .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .point .xy{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
+/* Der Verwendungszaehler; 0× ist blass und gestrichelt — ein Rest, kein Punkt,
+   an dem etwas haengt. */
+.point .uses{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;
+  background:var(--sub);color:var(--muted);flex:none}
+.point .uses.none{background:none;border:1px dashed var(--dim);color:var(--dim)}
+.point.unused{opacity:.55;border-style:dashed}
+/* Angeklickt: die Zeile traegt den Ring, ihre Bloecke im Board tragen ihn in
+   Punktfarbe. `in-use`: die Punkte des gewaehlten Blocks — die Gegenrichtung. */
+.point.highlight{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.point.in-use{background:var(--sub)}
+.points-unused{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;
+  background:#F59E0B1F;color:var(--accent);flex:none}
+.points-hint{display:flex;align-items:center;gap:6px;padding:6px 8px;margin-top:4px;
+  border:1px dashed var(--line);border-radius:4px;font-size:11px;color:var(--dim)}
 
 /* -------------------------------------------------------------------- Board */
 .board{
@@ -480,12 +499,27 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    `align-content:start` in jeder Zelle waere falsch: die Fusszeile soll unten
    stehen, und genau dafuer ist die vierte Zeile `1fr`. */
 .seq-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
-  padding:16px;display:grid;gap:12px;grid-row:span 5;
+  padding:16px;display:grid;gap:12px;grid-row:span 6;
   grid-template-rows:subgrid}
+/* Filter und Ordnung ueber der ganzen Breite des Rasters. */
+.seq-toolbar{grid-column:1/-1;display:flex;align-items:center;gap:10px}
+.seq-toolbar input{flex:1 1 auto;min-width:0}
+.seq-toolbar .segment{flex:none}
+.seq-toolbar .segment button{padding:5px 10px}
+/* Geaendert / letzter Lauf: Etikett links, Wert rechts — dieselbe
+   zweispaltige Form wie der Kartenkoerper im Board. */
+.seq-history{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;
+  align-items:center;font-size:11.5px;color:var(--muted);padding-top:6px;
+  border-top:1px dashed var(--line)}
+.seq-history:empty{min-height:0;padding:0;border:none}
+.seq-history-label{font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
+.seq-run-badge{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;white-space:nowrap}
+.seq-run-badge.ok{background:#3ED07A1F;color:var(--ok)}
+.seq-run-badge.warn{background:#F59E0B1F;color:var(--accent)}
 .cards{grid-auto-rows:auto}
 /* Ohne subgrid: dieselbe Aufteilung, nur ohne Abgleich zwischen den Karten. */
 @supports not (grid-template-rows: subgrid) {
-  .seq-card{grid-template-rows:auto auto auto 1fr auto;grid-row:auto}
+  .seq-card{grid-template-rows:auto auto auto auto 1fr auto;grid-row:auto}
 }
 /* Leere Zeilen sollen keine Hoehe erfinden — sie sind nur der Platzhalter,
    damit die Nachbarkarte ihre Zeile an derselben Stelle hat. */
@@ -506,7 +540,12 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-numbers{display:flex;flex-wrap:wrap;gap:6px}
 .num{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.seq-footer{display:flex;align-items:center;gap:8px;align-self:end;min-width:0}
+/* Ordnername oben, darunter drei gleiche Spalten: Duplizieren, Loeschen,
+   Oeffnen. Als `button-pair` brachen die drei bei 320 px Kartenbreite um
+   (auto-fit, min. 118 px) — eine feste Dreiteilung passt, weil die laengste
+   Beschriftung („Duplizieren") in 100 px steht. */
+.seq-footer{display:flex;flex-direction:column;gap:6px;align-self:end;min-width:0}
+.seq-toolbar .segment button{white-space:nowrap}
 /* Ein langer Sequenzpfad darf weder den Öffnen-Knopf aus der Karte drücken noch
    sichtbar über ihn und die Nachbarkarte malen. `min-width:0` allein lässt das
    Flex-Element nur schrumpfen — seinen Text zeichnet es ohne overflow trotzdem
@@ -1093,6 +1132,29 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .dialog h2{font-size:14px}
 .dialog p{font-size:12.5px;color:var(--muted);line-height:1.6}
 .dialog .buttons{display:flex;gap:8px;justify-content:flex-end}
+/* Die Tastenkuerzel-Tafel: breiter als eine Rueckfrage, zwei Spalten. */
+.dialog.wide{width:760px;max-width:calc(100vw - 40px)}
+.shortcut-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px}
+.shortcut-group{display:flex;flex-direction:column;gap:5px;padding-bottom:10px}
+.shortcut-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:12px;color:var(--text)}
+.shortcut-row kbd{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:4px;
+  border:1px solid var(--line);background:var(--bg);color:var(--muted);white-space:nowrap;
+  flex:none}
+.btn.help{width:30px;padding:5px 0;font-weight:700;margin-left:4px}
+/* Die Einstiegskarte auf dem leeren Board. */
+.start-card{width:460px;flex:none;background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.start-head{display:flex;flex-direction:column;gap:3px;text-align:center}
+.start-head b{font-size:15px}
+.start-head span{font-size:12px;color:var(--muted)}
+.start-ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.start-way{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;
+  display:flex;flex-direction:column;gap:8px}
+.start-way.primary{border-color:var(--accent)}
+.start-way-title{display:flex;align-items:center;gap:8px;font-size:13px}
+.start-way > span{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1 1 auto}
+.start-import{align-self:center;font-size:11.5px}
 [hidden]{display:none !important}
 
 /* --- Werkzeuge -----------------------------------------------------------
@@ -1398,8 +1460,19 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
    den Ertrag. Name links, Wert rechts, Balken darunter ueber die volle Breite:
    der Balken traegt das Verhaeltnis, die Zahl den Wert. Getrennte Gestalten je
    Liste haetten dieselbe Sache viermal verschieden aussehen lassen. */
-.rep-rank{display:grid;grid-template-columns:1fr auto;gap:3px 10px;
+.rep-rank{display:grid;grid-template-columns:1fr auto auto;gap:3px 10px;align-items:center;
   padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+/* Der Sprungknopf: klein, gedaempft, mit Pfeil — ein Weg, keine Aktion an den
+   Daten. Ueberall dieselbe Gestalt: Befund, Rangzeile, Warnmarke. */
+.btn.jump{font-size:11px;padding:2px 8px;gap:5px}
+.wz-finding-jump{grid-column:2;display:flex}
+.badge-small.jump{cursor:pointer;font:inherit;font-family:var(--mono);font-size:9.5px}
+.badge-small.jump:hover{background:#FFFFFF88}
+/* Der gezeigte Punkt blinkt einmal — die Liste ist lang, und „da ist er"
+   muss man sehen, nicht suchen. */
+.point.flash{animation:point-flash 1.6s ease-out}
+@keyframes point-flash{0%,60%{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent)}
+  100%{box-shadow:none}}
 .rep-rank:last-child{border-bottom:none}
 .rep-rank-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rep-rank-value{color:var(--text);font-weight:600}
@@ -1428,9 +1501,9 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
    160 px unterscheiden. Nah genug beieinander, dass es wie ein Rundungsfehler
    aussieht statt wie Absicht; dieselbe Falle wie einmal im Phasenkopf. */
 #rep-middle .share-card{max-width:880px}
-/* Zwei Knoepfe in der Fusszeile einer Sequenzkarte teilen sich gleiche Spalten:
-   „Öffnen" und „Löschen" sind verschieden lang, und zwei verschieden breite
-   Knoepfe nebeneinander lesen sich als zwei Rangstufen. `flex:none`, damit das
-   Paar dem Pfad daneben keine Breite wegnimmt — der schrumpft schon selbst. */
-.seq-footer .button-pair{flex:none;grid-template-columns:repeat(2,82px)}
+/* Die drei Knoepfe der Fusszeile (Duplizieren, Loeschen, Oeffnen) teilen sich
+   gleiche Spalten: verschieden breite Knoepfe nebeneinander lesen sich als
+   Rangstufen. Der Ordnername steht darueber, nicht daneben — drei Knoepfe
+   und ein Pfad passen in 320 px nicht in eine Zeile. */
+.seq-footer .button-pair{grid-template-columns:repeat(3,minmax(0,1fr))}
 .seq-footer .button-pair > .btn{white-space:nowrap;padding-left:0;padding-right:0}

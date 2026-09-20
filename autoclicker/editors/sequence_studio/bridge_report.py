@@ -84,6 +84,9 @@ class BridgeReportMixin:
             "sessions": list(reversed(total["sessions"])),
             "skipped_files": max(0, len(self._report_all_files(folder)) - len(all_of)),
             "brief": self._report_brief(report),
+            # Welcher Block hinter einem Timeout-Namen steht — aufgelöst gegen
+            # die offene Sequenz, damit die Rangzeile den Block öffnen kann.
+            "targets": self._report_targets(report),
             "yield_value": self._yield(report),
         }
 
@@ -137,6 +140,37 @@ class BridgeReportMixin:
         }
 
     # ------------------------------------------------------------ Auswertung
+
+    def _report_targets(self, raw: dict) -> dict:
+        """Timeout-Name → Sprungmarke auf den Block der offenen Sequenz.
+
+        Das Log kennt nur den Namen des Schritts (`step.name`, sonst
+        `Phase[n]`); die Stelle steht nicht drin. Aufgelöst wird gegen das
+        Board, das gerade offen ist — bei einem Namen, den zwei Blöcke tragen,
+        gewinnt der erste, und ein Lauf einer anderen Sequenz findet nichts.
+        Beides ist ehrlicher als ein erfundenes Ziel.
+        """
+        import re
+        wanted = {name for name, _ in raw.get("timeouts", [])}
+        if not wanted:
+            return {}
+        by_name, by_position = {}, {}
+        for lane_index, lane in enumerate(self.board.lanes):
+            for row, step in enumerate(lane.steps):
+                target = {"view": "editor", "sequence": self.board.name,
+                          "phase": lane_index, "row": row}
+                if step.name:
+                    by_name.setdefault(step.name, target)
+                by_position[(lane.name, row + 1)] = target
+        out = {}
+        for name in wanted:
+            if name in by_name:
+                out[name] = by_name[name]
+                continue
+            m = re.fullmatch(r"(.+)\[(\d+)\]", name)
+            if m and (m.group(1), int(m.group(2))) in by_position:
+                out[name] = by_position[(m.group(1), int(m.group(2)))]
+        return out
 
     @staticmethod
     def _report_brief(raw: dict) -> dict:

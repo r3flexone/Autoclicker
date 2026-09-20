@@ -47,6 +47,7 @@ const ICONS = {
   record: '<circle cx="8" cy="8" r="4.5" fill="currentColor" stroke="none"/>',
   save: '<path d="M3 2.5h8l2.5 2.5v8.5H3z"/><path d="M5 2.5v4h5v-4"/><path d="M5.5 13.5v-4h5v4"/>',
   undo: '<path d="M3.5 6.5h5.5a3.5 3.5 0 0 1 0 7H6"/><path d="M6 4L3.5 6.5 6 9"/>',
+  redo: '<path d="M12.5 6.5H7a3.5 3.5 0 0 0 0 7h2.5"/><path d="M10 4l2.5 2.5L10 9"/>',
   refresh: '<path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3.3h-3.3"/>',
   reset: '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.5v3.3h3.3"/>',
   sort: '<path d="M5 3v10M3 11l2 2 2-2"/><path d="M11 13V3M9 5l2-2 2 2"/>',
@@ -54,6 +55,9 @@ const ICONS = {
   warn: '<path d="M8 2.5l6 11H2z"/><path d="M8 7v3"/><circle cx="8" cy="12.2" r=".5" fill="currentColor"/>',
   cross: '<path d="M4 4l8 8M12 4l-8 8"/>',
   info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.5v4"/><circle cx="8" cy="5" r=".5" fill="currentColor"/>',
+  arrow: '<path d="M3 8h10M9 4l4 4-4 4"/>',
+  drop: '<path d="M8 2v9M4.5 7.5L8 11l3.5-3.5"/><path d="M3 13.5h10"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
 };
 
 function icon(name, size) {
@@ -439,6 +443,7 @@ function selection(caption, values, current, onSet, help, key) {
     s.appendChild(o);
   }
   s.addEventListener("change", () => onSet(s.value));
+  if (key) s.dataset.key = key;
   return caption ? el("label", {class: "field"}, labeled(caption, help, key), s) : s;
 }
 
@@ -563,6 +568,66 @@ async function call(name, data_reload) {
   }
 }
 
+/* ------------------------------------------------------------ Sprungmarken
+ *
+ * Ein Befund kennt das Ding, das er meint (Scan-Name, Block, Punkt), und die
+ * Ansicht kann es oeffnen — verbunden waren beide nicht: „Block 5" hiess
+ * scrollen und zaehlen, „Item-Scan 'Inventar'" hiess Reiter wechseln und
+ * suchen. `goTo()` ist die EINE Funktion, die alle Ziele kennt; die Bruecke
+ * haengt das Ziel als `target` an jeden Befund (Pruefen, Bericht, Karte). */
+async function goTo(t) {
+  if (!t || !t.view) return;
+  if (t.view === "scans") {
+    setView("scans");
+    if (!SC) await renderScans(true);
+    if (t.kind && t.kind !== scanKind) scanSetKind(t.kind);
+    const open = {item: "scan_open", boss: "boss_scan_open",
+                  icon: "icon_scan_open"}[t.kind || "item"];
+    // Ein leerer Name meint die Boss-Bibliothek: sie ist kein Scan, sondern
+    // die Sammlung — sichtbar, sobald die Art offen ist.
+    if (t.name) await callScan(open, {name: t.name});
+    return;
+  }
+  // Ein Ziel in einer anderen Sequenz: erst laden — mit derselben Rueckfrage
+  // wie ueber die Auswahl. Bleibt sie offen, ist noch nichts geladen.
+  if (t.sequence && S && t.sequence !== S.name) {
+    await switchSequence("load", {name: t.sequence});
+    if (!S || S.name !== t.sequence) return;
+  }
+  setView("editor");
+  if (t.point !== undefined && t.point !== null) return pointFlash(t.point);
+  if (t.phase !== undefined && t.row !== undefined) {
+    selectedPhase = null;
+    await call("select", {phase: t.phase, row: t.row, mode: "single"});
+    const card = document.querySelector(".card.selected");
+    if (card) card.scrollIntoView({block: "center", behavior: "smooth"});
+    // Und den Fokus ins Feld, das fehlt (die Warnmarke „Name fehlt" nennt es).
+    if (t.focus) {
+      const field = document.querySelector("#inspector " + t.focus);
+      if (field) field.focus();
+    }
+  }
+}
+
+/** Ein kleiner Sprungknopf mit Pfeil, fuer Befunde und Rangzeilen. */
+function jumpButton(t, text) {
+  if (!t) return null;
+  return el("button", {class: "btn quiet jump", title: "Dorthin springen",
+    onclick: (e) => { e.stopPropagation(); goTo(t); }},
+    text, icon("arrow"));
+}
+
+/** Zeigt einen Punkt in der Liste: Filter leeren, hinscrollen, einmal blinken. */
+function pointFlash(id) {
+  const filter = $("point-filter");
+  if (filter.value) { filter.value = ""; renderPoints(); }
+  const row = document.querySelector('.point[data-id="' + id + '"]');
+  if (!row) return;
+  row.scrollIntoView({block: "center", behavior: "smooth"});
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 1600);
+}
+
 /** Wie call(), aber die Antwort ersetzt NICHT die Momentaufnahme.
  *
  * Für alles, was gefragt und nicht befohlen wird: Sequenzliste, Laufstatus.
@@ -641,12 +706,30 @@ function render() {
   // findet sich in der Taskleiste besser über einen gleichbleibenden Namen.
   document.title = "Sequenz-Studio";
   setStatus(S.status);
+  // NACH setStatus: das versteckt den Rueckweg an der Meldung, renderUndo
+  // schaltet ihn wieder an, wenn die Momentaufnahme ihn anbietet.
+  renderUndo(S.undo);
   renderHeader();
   renderSequence();
   renderPoints();
   renderPhases();
   renderInspector();
   restoreFocus(memo);
+}
+
+/* Zurueck / Wieder im Kopf und der Rueckgaengig-Knopf an der Meldung. Beide
+ * lesen denselben Stand aus der Momentaufnahme (`undo`); die Bruecke
+ * entscheidet, wann die Meldung den Knopf traegt (`offer`). */
+function renderUndo(u) {
+  u = u || {};
+  const back = $("btn-undo");
+  back.disabled = !u.can;
+  back.title = u.can ? "Rückgängig (STRG+Z): " + u.what : "Nichts zum Rückgängigmachen";
+  const again = $("btn-redo");
+  again.disabled = !u.redo;
+  again.title = u.redo ? "Wiederherstellen (STRG+Y): " + u.redo_what
+                       : "Nichts zum Wiederherstellen";
+  $("status-action").hidden = !(u.can && u.offer);
 }
 
 /* Wie oft der Status seit Programmstart geschrieben wurde. Ein verzoegerter
@@ -664,6 +747,9 @@ const STATUS_KIND = {
 
 function setStatus(status) {
   statusStamp += 1;
+  // Eine neue Meldung ohne Momentaufnahme (ask-Kanal, Nachfassen) traegt
+  // keinen Rueckweg — render() schaltet ihn danach wieder an, wenn es ihn gibt.
+  $("status-action").hidden = true;
   const n = $("status");
   const text = (status && status.text) || "";
   n.textContent = text;
@@ -706,21 +792,49 @@ function renderSequence() {
   $("seq-blocks").textContent = S.phases.reduce((n, p) => n + p.blocks.length, 0);
 }
 
+/* Der Punkt, dessen Verwendungen im Board gerade markiert sind. Ein Klick
+ * auf die Zeile setzt ihn, ein zweiter Klick (oder ESC) nimmt ihn zurueck —
+ * es ist eine Anzeige, keine Auswahl. */
+let pointHighlight = null;
+
+/** Die Punkte, an denen die gewaehlten Bloecke haengen — fuer die Gegenrichtung. */
+function selectedPoints() {
+  const out = new Set();
+  for (const phase of S.phases)
+    for (const b of phase.blocks)
+      if (b.selected) (b.points || []).forEach((id) => out.add(id));
+  return out;
+}
+
 function renderPoints() {
   const filter = $("point-filter").value.trim().toLowerCase();
-  const listEl = S.points.filter((p) => !filter ||
-      (p.name + " #" + p.id + " " + p.x + "," + p.y).toLowerCase().includes(filter));
-  $("points-count").textContent = listEl.length + "/" + S.points.length;
+  // „ungenutzt" ist ein Filterwort: die Reste einer Aufnahme auf einen Blick.
+  const onlyUnused = filter === "ungenutzt";
+  const listEl = S.points.filter((p) => onlyUnused ? !p.usages : (!filter ||
+      (p.name + " #" + p.id + " " + p.x + "," + p.y).toLowerCase().includes(filter)));
+  const unused = S.points.filter((p) => !p.usages).length;
+  $("points-count").textContent = (filter ? listEl.length + "/" : "") + S.points.length;
+  const badge = $("points-unused");
+  badge.hidden = !unused;
+  badge.textContent = unused + " ungenutzt";
   const target = $("points");
   target.replaceChildren();
   if (!S.points.length) {
     target.appendChild(el("p", {class: "hint"},
-      "Noch keine Punkte aufgenommen. Im Hauptprozess mit CTRL+ALT+A anlegen."));
+      "Noch keine Punkte. Sie entstehen von selbst: „Stelle mit der Maus setzen“ " +
+      "im Inspektor, eine Aufnahme — oder CTRL+ALT+A im Hauptprozess."));
     return;
   }
+  const inUse = selectedPoints();
   for (const p of listEl) {
     target.appendChild(el("div", {
-      class: "point", draggable: "true", title: p.source || "",
+      class: "point" + (p.usages ? "" : " unused")
+             + (p.id === pointHighlight ? " highlight" : "")
+             + (inUse.has(p.id) ? " in-use" : ""),
+      draggable: "true", "data-id": String(p.id),
+      title: (p.source ? p.source + " · " : "") + "Klick zeigt die Blöcke, die diesen Punkt benutzen",
+      onclick: () => { pointHighlight = pointHighlight === p.id ? null : p.id;
+                       renderPoints(); renderPhases(); },
       ondragstart: (e) => { drag = {kind: "point", point: p.id};
                             e.dataTransfer.effectAllowed = "copy"; },
       ondragend: () => { drag = null; clearDropZone(); },
@@ -733,8 +847,15 @@ function renderPoints() {
                   style: p.color ? "background:" + p.color : ""}),
       el("span", {class: "nr"}, "#" + p.id),
       el("span", {class: "name"}, p.name),
-      el("span", {class: "xy"}, p.x + "," + p.y)));
+      el("span", {class: "xy"}, p.x + "," + p.y),
+      // Der Zaehler: „4×" heisst, vier Bloecke ziehen mit, wenn der Punkt
+      // umzieht; „0×" heisst, er ist ein Rest.
+      el("span", {class: "uses" + (p.usages ? "" : " none"),
+                  title: p.usages + "× verwendet"}, p.usages + "×")));
   }
+  // Die Geste steht dran: `cursor: grab` liest niemand als Hinweis.
+  target.appendChild(el("div", {class: "points-hint"},
+    icon("drop"), "Ins Board ziehen = neuer Klick-Block · Klick = Verwendung zeigen"));
 }
 
 /* --------------------------------------------------------------------- Board */
@@ -745,6 +866,11 @@ function renderPhases() {
   if (!S.phases.some((p) => p.index === selectedPhase && p.kind === "loop")) {
     selectedPhase = null;
   }
+  // **Ein leeres Board sagt, wie man anfaengt.** Vorher stand links als
+  // einziger Hinweis der umstaendlichste der drei Wege (CTRL+ALT+A im
+  // Hauptprozess); die Aufnahme, die das Studio selbst starten kann, kam nicht
+  // vor. Die Karte steht nur, solange keine Phase Bloecke hat.
+  if (!S.phases.some((phase) => phase.blocks.length)) target.appendChild(startCard());
   const visible = S.phases.filter((phase) => phase.kind === "loop" ||
     phase.blocks.length || openSpecialPhases.has(phase.kind));
   for (const phase of visible) target.appendChild(renderPhase(phase));
@@ -947,8 +1073,14 @@ function renderCard(phase, block) {
   // und die Karte trug beide Zeichen gleichzeitig. Was die Gesten sind, steht
   // jetzt am Titel der Karte statt in einem Kästchen, das man erst anfassen
   // muss, um es zu verstehen.
+  // Ein Ring in Punktfarbe — nicht Amber, denn es ist keine Auswahl —, wenn
+  // dieser Block den in der Liste angeklickten Punkt benutzt.
+  const usesPoint = pointHighlight !== null && (block.points || []).includes(pointHighlight);
+  const ring = usesPoint ? ((S.points.find((p) => p.id === pointHighlight) || {}).color
+                            || "var(--muted)") : "";
   return el("div", {
-    class: "card" + (block.selected ? " selected" : ""),
+    class: "card" + (block.selected ? " selected" : "") + (usesPoint ? " uses-point" : ""),
+    style: usesPoint && !block.selected ? "box-shadow:0 0 0 2px " + ring : null,
     title: "Klick wählt · STRG+Klick nimmt dazu oder heraus · "
            + "SHIFT+Klick wählt bis hierher · Ziehen sortiert um",
     draggable: "true",
@@ -988,9 +1120,41 @@ function renderCard(phase, block) {
       block.breakpoint ? el("span", {class: "badge-small breakpoint",
                                      title: "Haltepunkt — der Lauf hält vor diesem Block an"},
                             icon("pause", 10), "halt") : null,
-      block.warning ? el("span", {class: "badge-small warn"}, block.warning) : null,
+      // Die Warnmarke ist die Sprungmarke: sie waehlt den Block UND stellt
+      // den Fokus ins Feld, das fehlt — einen Klick von der Reparatur, nicht drei.
+      block.warning ? el("button", {class: "badge-small warn jump",
+        title: "Klick: Block wählen und das fehlende Feld öffnen",
+        onclick: (e) => { e.stopPropagation();
+          goTo({view: "editor", phase: phase.index, row: block.row,
+                focus: 'select[data-key="scan"]'}); }},
+        block.warning, " →") : null,
       el("span", {class: "card-nr"}, String(block.row + 1).padStart(2, "0"))),
     body);
+}
+
+/** Zwei Wege zu einer Sequenz, der erste ist der schnellere. */
+function startCard() {
+  const loop = S.phases.find((p) => p.kind === "loop");
+  return el("div", {class: "start-card"},
+    el("div", {class: "start-head"},
+      el("b", {}, "Noch keine Blöcke"),
+      el("span", {}, "Zwei Wege zu einer Sequenz — der erste ist der schnellere.")),
+    el("div", {class: "start-ways"},
+      el("div", {class: "start-way primary"},
+        el("div", {class: "start-way-title"}, icon("record"), el("b", {}, "Aufnehmen")),
+        el("span", {}, "Einmal im Spiel vorspielen. Klicks, Tasten und Wartezeiten " +
+                       "werden zu Blöcken; STRG+ALT+SHIFT+P schneidet Phasen."),
+        el("button", {class: "btn primary", onclick: () => wzOpen("recording")},
+          icon("record"), "Aufnahme starten")),
+      el("div", {class: "start-way"},
+        el("div", {class: "start-way-title"}, icon("plus"), el("b", {}, "Von Hand bauen")),
+        el("span", {}, "Block anlegen, im Inspektor die Stelle mit der Maus setzen. " +
+                       "Punkte kommen dabei von selbst."),
+        el("button", {class: "btn", onclick: () => loop
+            ? call("block_append", {phase: loop.index}) : call("phase_append")},
+          icon("plus"), loop ? "Ersten Block anlegen" : "Erste Phase anlegen"))),
+    el("button", {class: "btn quiet start-import", onclick: () => setView("share")},
+      "Oder eine Sequenz einlesen: Teilen → Importieren"));
 }
 
 /* -------------------------------------------------------- Ansicht: Sequenzen */
@@ -1037,6 +1201,39 @@ function phaseBar(s) {
     el("span", {style: "flex:" + t.n / totalSum + ";background:" + t.color, title: t.what})));
 }
 
+/* Filter und Sortierung der Uebersicht — Oberflaechenzustand wie `view`:
+ * sie aendern nichts an den Daten und ueberleben den Reiterwechsel. */
+let seqFilter = "";
+let seqOrder = "changed";
+const SEQ_ORDERS = [["changed", "zuletzt geändert"], ["run", "zuletzt gelaufen"],
+                    ["name", "Name"]];
+
+function seqSorted(listEl) {
+  const wanted = seqFilter.trim().toLowerCase();
+  const rows = listEl.filter((s) => !wanted ||
+    (s.name + " " + (s.description || "")).toLowerCase().includes(wanted));
+  const by = {
+    changed: (a, b) => (b.changed || 0) - (a.changed || 0),
+    run: (a, b) => ((b.last_run && b.last_run.begin) || 0)
+                 - ((a.last_run && a.last_run.begin) || 0),
+    name: (a, b) => a.name.localeCompare(b.name, "de", {numeric: true}),
+  }[seqOrder] || (() => 0);
+  return rows.sort(by);
+}
+
+/** „vor 2 Stunden" — die Frage an ein Datum in der Uebersicht ist „ist das
+ *  die aktuelle?", und die beantwortet eine Spanne schneller als ein Stempel.
+ *  Der genaue Zeitpunkt steht im Tooltip. */
+function sinceText(seconds) {
+  if (!seconds) return "—";
+  const diff = Math.max(0, Date.now() / 1000 - seconds);
+  if (diff < 60) return "gerade eben";
+  if (diff < 3600) return "vor " + Math.round(diff / 60) + " Min.";
+  if (diff < 86400) { const h = Math.round(diff / 3600); return "vor " + h + (h === 1 ? " Stunde" : " Stunden"); }
+  if (diff < 86400 * 14) { const d = Math.round(diff / 86400); return "vor " + d + (d === 1 ? " Tag" : " Tagen"); }
+  return timestamp(seconds).slice(0, 10);
+}
+
 async function renderSequenceList() {
   const target = $("view-sequences");
   const listEl = await ask("sequence_list");
@@ -1052,7 +1249,26 @@ async function renderSequenceList() {
       "Hauptprozess mit CTRL+ALT+J eine aufnehmen."));
     return;
   }
-  for (const s of listEl) target.appendChild(seqCard(s));
+  // Ab einem Dutzend Sequenzen braucht die Uebersicht Filter und Ordnung;
+  // die Leiste steht immer, damit sie nicht erst auftaucht, wenn es eng ist.
+  const filter = el("input", {placeholder: "filtern…", autocomplete: "off",
+    value: seqFilter, oninput: (e) => { seqFilter = e.target.value; renderSequenceList(); }});
+  target.appendChild(el("div", {class: "seq-toolbar"},
+    filter,
+    el("div", {class: "segment"}, SEQ_ORDERS.map(([key, text]) =>
+      el("button", {class: key === seqOrder ? "on" : "",
+        onclick: () => { seqOrder = key; renderSequenceList(); }}, text)))));
+  const rows = seqSorted(listEl);
+  if (!rows.length) {
+    target.appendChild(el("p", {class: "empty", style: "grid-column:1/-1"},
+      "Keine Sequenz passt zu „" + seqFilter + "“."));
+  }
+  for (const s of rows) target.appendChild(seqCard(s));
+  // Der Fokus bleibt im Filter — jeder Tastendruck baut die Liste neu.
+  if (document.activeElement !== filter && seqFilter) {
+    filter.focus();
+    filter.setSelectionRange(filter.value.length, filter.value.length);
+  }
 }
 
 /** Eine Sequenz als Karte — mit FESTEN Zeilen, damit die Karten sich einmessen.
@@ -1090,19 +1306,46 @@ function seqCard(s) {
   cardEl.appendChild(el("div", {class: "seq-bar"},
     s.broken ? null : phaseBar(s)));
   cardEl.appendChild(el("div", {class: "seq-numbers"}, s.broken ? null : [
-    el("span", {class: "num"}, s.steps + " Schritte"),
-    el("span", {class: "num"}, s.phases.length + " Loop-Phasen"),
-    el("span", {class: "num"}, s.cycles ? s.cycles + " Zyklen" : "endlos")]));
+    el("span", {class: "num"}, s.steps + (s.steps === 1 ? " Schritt" : " Schritte")),
+    el("span", {class: "num"}, s.phases.length + (s.phases.length === 1 ? " Loop-Phase" : " Loop-Phasen")),
+    // „1 Zyklen" stand hier — der Plural sass im Code, dieselbe Falle wie
+    // einmal „Item-Scann".
+    el("span", {class: "num"}, s.cycles ? s.cycles + (s.cycles === 1 ? " Zyklus" : " Zyklen") : "endlos")]));
+
+  // Wann geaendert, wann zuletzt gelaufen und wie es ausging — das Datum stand
+  // vorher HINTER dem Pfad, also bei jedem realen Pfad hinter dem „…".
+  const run = s.last_run;
+  cardEl.appendChild(el("div", {class: "seq-history"}, s.broken ? null : [
+    el("span", {class: "seq-history-label"}, "GEÄNDERT"),
+    el("span", {title: timestamp(s.changed)}, sinceText(s.changed)),
+    el("span", {class: "seq-history-label"}, "LETZTER LAUF"),
+    run ? el("span", {title: run.file},
+            sinceText(run.begin) + " · " + repDuration(run.duration) + " · " +
+            run.clicks + " Klicks ",
+            el("span", {class: "seq-run-badge" + (run.timeouts ? " warn" : " ok")},
+              run.timeouts ? run.timeouts + "× Timeout" : "ohne Timeout"))
+        : el("span", {class: "small"}, "kein Session-Log")]));
 
   // Zwei Knöpfe teilen sich gleiche Spalten (`knopfpaar`): „Öffnen" und
   // „Löschen" sind verschieden lang, und zwei verschieden breite Knöpfe
   // nebeneinander lesen sich als zwei Rangstufen. Bei einer defekten Datei
   // bleibt die erste Spalte leer statt zu verschwinden — sonst säße das
   // Löschen dort, wo bei den Nachbarkarten das Öffnen steht.
+  // Der Pfad schrumpft auf den Ordnernamen: der Rest ist bei jeder Karte
+  // derselbe, und ganz steht er im Tooltip.
+  const folder = String(s.file).replace(/[\\/]sequence\.json$/, "").split(/[\\/]/).pop();
   cardEl.appendChild(el("div", {class: "seq-footer"},
-    el("span", {class: "small mono grow", title: s.file},
-       s.file + " · " + timestamp(s.changed)),
+    el("span", {class: "small mono grow", title: s.file}, folder + "/"),
     el("div", {class: "button-pair"},
+      // Kopieren = Ordner kopieren, samt Scans und Vorlagen. Der Fall ist
+      // „dasselbe Spiel in einem zweiten Fenster".
+      s.broken ? el("span", {}) : el("button", {class: "btn quiet",
+        title: "Ordner samt Scans, Vorlagen und Bildern kopieren",
+        onclick: async () => {
+          const answer = await ask("sequence_duplicate", {name: s.name});
+          if (answer) setStatus({text: answer.message, kind: answer.ok ? "ok" : "warn"});
+          renderSequenceList();
+        }}, "Duplizieren"),
       // Öffnen geht über den vorhandenen Befehl, nicht über einen neuen: dann
       // greift auch die vorhandene Rückfrage bei ungespeicherten Änderungen.
       s.broken ? el("span", {}) : el("button", {
@@ -2033,6 +2276,58 @@ function buildElse(target, b) {
     target.appendChild(field("ELSE-Taste", b.else_key,
       (v) => call("block_else", {action: "key", action_key: v})));
   }
+}
+
+/* ------------------------------------------------------------ Tastenkuerzel
+ *
+ * EINE Tabelle fuer die Tafel. Die Scan-Modi kommen aus `SCAN_MODES` (dort
+ * steht der Buchstabe, den `keyboard()` liest); alles andere steht hier, und
+ * ein Test haelt die Tafel gegen `keyboard()`. Ein Kuerzel, das nur in einem
+ * Tooltip steht, findet niemand — hier stehen sie beisammen. */
+function shortcutTable() {
+  const modes = SCAN_MODES.map((m) => m.text + " (" + m.shortcut + ")").join(" · ");
+  return [
+    ["Überall", [
+      ["Speichern (Sequenz, Scans oder Einstellungen — je nach Reiter)", "STRG S"],
+      ["Rückgängig / Wiederherstellen", "STRG Z · STRG Y"],
+      ["Rückfrage schliessen · Modus verlassen · Auswahl aufheben", "ESC"],
+      ["Diese Tafel", "?"],
+    ]],
+    ["Editor", [
+      ["Auswahl löschen", "ENTF"],
+      ["Auswahl duplizieren", "STRG D"],
+      ["Auswahl verschieben", "ALT ↑ · ALT ↓"],
+      ["Dazu wählen · bis hierher wählen", "STRG+Klick · SHIFT+Klick"],
+      ["Phase löschen (bei gewähltem Phasenkopf)", "ENTF"],
+    ]],
+    ["Scans · Items", [
+      ["Modus: " + modes, SCAN_MODES.map((m) => m.shortcut).join(" · ")],
+      ["Auswahl schieben (SHIFT = 10 px)", "↑ ↓ ← →"],
+      ["Slot löschen", "ENTF"],
+      ["Hintergrund messen · Klickpunkt setzen", "ALT+Klick · Doppelklick"],
+      ["Zoom", "STRG + Rad"],
+    ]],
+    ["Scans · Bosse / Icons", [
+      ["Region aufziehen · Klickpunkt", "R · K"],
+      ["Testen", "T"],
+      ["Boss löschen", "ENTF"],
+    ]],
+  ];
+}
+
+function toggleShortcuts(open) {
+  const veil = $("shortcuts");
+  const show = open === undefined ? veil.hidden : open;
+  if (show) {
+    // `...`: replaceChildren nimmt Knoten, keine Liste — mit einer Liste stand
+    // „[object HTMLDivElement]" in der Tafel.
+    $("shortcut-columns").replaceChildren(...shortcutTable().map(([title, rows]) =>
+      el("div", {class: "shortcut-group"},
+        el("span", {class: "heading"}, title.toUpperCase()),
+        rows.map(([what, keys]) => el("div", {class: "shortcut-row"},
+          el("span", {}, what), el("kbd", {}, keys))))));
+  }
+  veil.hidden = !show;
 }
 
 /* -------------------------------------------------------------------- Dialog */
@@ -5033,9 +5328,10 @@ function repNumber(n, positions) {
  * zum groessten Wert der Liste. VIER Listen benutzen sie (Timeouts, Items,
  * Erkanntes, Nachpruefung) — eine Bauform fuer alle, sonst hat dieselbe Sache
  * vier Gestalten. */
-function repRank(name, value, share_pct, extra, kind) {
+function repRank(name, value, share_pct, extra, kind, target) {
   const row = el("div", {class: "rep-rank" + (kind ? " " + kind : "")},
     el("span", {class: "rep-rank-name", title: name}, name),
+    target ? jumpButton(target, "Block öffnen") : null,
     el("span", {class: "rep-rank-value mono"}, value),
     el("div", {class: "rep-bar"},
       el("div", {class: "rep-bar-fill",
@@ -5050,7 +5346,7 @@ function repList(title, help, key, entries) {
   const highest = entries.reduce((m, e) => Math.max(m, e.value), 0) || 1;
   for (const e of entries)
     boxEl.appendChild(repRank(e.name, repNumber(e.value), e.value / highest,
-      e.extra, e.kind));
+      e.extra, e.kind, e.target));
   return boxEl;
 }
 
@@ -5145,7 +5441,10 @@ function reportRenderMiddle() {
     target.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HAENGT",
       "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
       + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "ber-timeout",
-      b.timeouts.map(([name, n]) => ({name: name, value: n, kind: "warn"}))));
+      // Welcher Block das ist, sagt `targets` (gegen die offene Sequenz
+      // aufgeloest) — die Rangzeile oeffnet ihn, statt ihn nur zu nennen.
+      b.timeouts.map(([name, n]) => ({name: name, value: n, kind: "warn",
+                                      target: (B.targets || {})[name]}))));
   } else {
     target.appendChild(el("div", {class: "wz-success"}, wzIcon("ok"),
       el("div", {}, el("b", {}, "Keine Timeouts"),
@@ -5746,6 +6045,16 @@ function wzBuildPoints() {
     out.push(el("p", {class: "empty"}, "Noch keine Punkte in dieser Sequenz."));
     return out;
   }
+  // Die Reste einer Aufnahme in einem Griff — statt einzeln zu suchen, was
+  // 0× dasteht. STRG+Z im Editor holt sie zurueck.
+  const unusedCount = points.filter((p) => !p.usages.length).length;
+  if (unusedCount) {
+    out.push(el("div", {class: "wz-action row"},
+      el("button", {class: "btn quiet danger", id: "wz-points-prune",
+        onclick: () => callTool("tool_points_prune")},
+        unusedCount + " ungenutzte löschen"),
+      el("span", {class: "small"}, "Punkte ohne einen einzigen Verweis")));
+  }
   out.push(selection("Punkt", points.map(p => ({value: p.id,
     text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), point.id,
     (v) => { wzPointId = Number(v); wzRenderMiddle(); wzRenderRight(); }));
@@ -6007,6 +6316,14 @@ function wzFinding(b, level) {
     el("div", {class: "wz-area"}, b.area), el("div", {}, b.text));
   if (b.tip) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tip));
   boxEl.appendChild(copy);
+  // Das Ziel des Befunds: Scan im Scans-Reiter, Block im Editor, Punkt in der
+  // Liste. Ohne Ziel (unlesbare Datei) gibt es keinen Knopf — statt eines, der
+  // nirgendwohin fuehrt.
+  const t = b.target;
+  const where = !t ? "" : t.view === "scans"
+    ? (t.name ? "Im Scans-Reiter öffnen" : "Bibliothek öffnen")
+    : (t.point !== undefined && t.point !== null) ? "Punkt zeigen" : "Block öffnen";
+  if (t) boxEl.appendChild(el("div", {class: "wz-finding-jump"}, jumpButton(t, where)));
   return boxEl;
 }
 
@@ -6948,6 +7265,16 @@ function wire() {
   $("btn-new").addEventListener("click", () => switchSequence("new"));
   $("btn-save").addEventListener("click", saveSequence);
   $("btn-save").prepend(icon("save"));
+  $("btn-undo").addEventListener("click", () => call("undo"));
+  $("btn-undo").prepend(icon("undo"));
+  $("btn-redo").addEventListener("click", () => call("redo"));
+  $("btn-redo").prepend(icon("redo"));
+  $("status-action").addEventListener("click", () => call("undo"));
+  $("status-action").prepend(icon("undo"));
+  $("btn-help").addEventListener("click", () => toggleShortcuts());
+  $("shortcuts").addEventListener("click", (e) => {
+    if (e.target === $("shortcuts")) toggleShortcuts(false);
+  });
   $("btn-run").prepend(icon("play"));
   $("btn-recording").addEventListener("click", () => wzOpen("recording"));
   $("btn-recording").prepend(icon("record"));
@@ -7178,12 +7505,18 @@ function inTextField() {
 
 function keyboard(e) {
   if (e.key === "Escape") {
+    if (!$("shortcuts").hidden) return toggleShortcuts(false);
     if (openQuestion) return closeQuestion();
     if (inTextField()) return document.activeElement.blur();
     if (view === "scans") return callScan("scan_cancel");
     if (view === "settings") return;
     if (selectedPhase !== null) {
       selectedPhase = null;
+      return renderPhases();
+    }
+    if (pointHighlight !== null) {
+      pointHighlight = null;
+      renderPoints();
       return renderPhases();
     }
     return call("selection_clear");
@@ -7196,6 +7529,7 @@ function keyboard(e) {
     return saveSequence();
   }
   if (inTextField() || openQuestion) return;
+  if (e.key === "?") { e.preventDefault(); return toggleShortcuts(); }
   if (view === "scans") {
     // STRG+Z steht NACH der Textfeld-Abfrage: in einem Eingabefeld gehoert das
     // Rueckgaengig dem Feld, nicht dem Reiter.
@@ -7261,6 +7595,16 @@ function keyboard(e) {
   }
   // Alles Weitere arbeitet auf der Block-Auswahl, die es hier nicht gibt.
   if (view === "settings") return;
+  // STRG+Z / STRG+Y gehoeren der Sequenz — auch aus der Uebersicht oder dem
+  // Live-Run heraus, denn dort ist dieselbe Sequenz offen.
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    return call(e.shiftKey ? "redo" : "undo");
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+    e.preventDefault();
+    return call("redo");
+  }
   if (e.key === "Delete" && selectedPhase !== null) {
     e.preventDefault();
     const phase = selectedPhase;

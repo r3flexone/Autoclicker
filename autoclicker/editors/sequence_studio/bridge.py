@@ -96,6 +96,7 @@ class StudioBridge(
         # Bereich aus min/max der ganzen Auswahl berechnet und liess sich mit
         # demselben Umschalt-Klick nicht wieder abwählen.
         self.sel_anchor: Optional[int] = None
+        self._edit_init()
         self._dirty = False
         # Wurde in dieser Sitzung mindestens einmal geschrieben? Nur dafür da,
         # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.

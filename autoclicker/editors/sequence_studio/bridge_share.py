@@ -280,6 +280,7 @@ class BridgeShareMixin:
         self._scan_loaded = False
         self._scan_dirty = False
         self._undo = []
+        self._edit_reset()
         self._scan_load()
         try:
             from ...mailbox import send_command

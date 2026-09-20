@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from .models import AutoClickerState
 from .persistence import sequence_templates_dir
@@ -35,11 +36,19 @@ LEVEL_HINT = "hint"      # läuft, ist aber vermutlich nicht gewollt
 
 @dataclass
 class Finding:
-    """Ein Prüfergebnis: wo, was, und was man dagegen tut."""
+    """Ein Prüfergebnis: wo, was, und was man dagegen tut.
+
+    `target` ist die Sprungmarke fürs Studio: wohin man muss, um es zu
+    reparieren — `{"view": "scans", "kind": …, "name": …}` für einen Scan,
+    `{"view": "editor", "phase": i, "row": j}` für einen Block, `{"view":
+    "editor", "point": id}` für einen Punkt. Die Konsole liest es nicht; ein
+    Befund ohne Ziel bleibt erlaubt (eine unlesbare Datei hat keins).
+    """
     level: str
     area: str
     text: str
     tip: str = ""
+    target: Optional[dict] = None
 
 
 @dataclass
@@ -47,8 +56,9 @@ class CheckReport:
     findings: list[Finding] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
 
-    def add_finding(self, level: str, area: str, text: str, tip: str = "") -> None:
-        self.findings.append(Finding(level, area, text, tip))
+    def add_finding(self, level: str, area: str, text: str, tip: str = "",
+                    target: Optional[dict] = None) -> None:
+        self.findings.append(Finding(level, area, text, tip, target))
 
     @property
     def errors(self) -> list[Finding]:
@@ -67,6 +77,17 @@ class CheckReport:
 # Einzelprüfungen
 # ---------------------------------------------------------------------------
 
+
+def _scan_target(kind: str, name: str) -> dict:
+    """Sprungmarke auf einen Scan im Scans-Reiter (leerer Name = die Bibliothek)."""
+    return {"view": "scans", "kind": kind, "name": name}
+
+
+def _block_target(phase: int, row: int, sequence: str) -> dict:
+    """Sprungmarke auf einen Block: Phase als Lane-Index (0 = INIT), Zeile ab 0."""
+    return {"view": "editor", "sequence": sequence, "phase": phase, "row": row}
+
+
 def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
     """Jedes referenzierte Template-PNG muss auf Platte liegen.
 
@@ -75,25 +96,26 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
     """
     with state.lock:
         owner = state.active_sequence.name if state.active_sequence else ""
-        sources = [(f"Item '{i.name}' (Scan '{scan.name}')", tpl)
+        sources = [(f"Item '{i.name}' (Scan '{scan.name}')", tpl, _scan_target("item", scan.name))
                    for scan in state.item_scans.values() for i in scan.items
                    for tpl in i.template_names()]
         for scan in state.boss_scans.values():
-            sources += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template)
+            sources += [(f"Boss '{b.name}' (Scan '{scan.name}')", b.template,
+                         _scan_target("boss", scan.name))
                         for b in scan.bosses]
-        sources += [(f"Boss '{b.name}' (Bibliothek)", b.template)
+        sources += [(f"Boss '{b.name}' (Bibliothek)", b.template, _scan_target("boss", ""))
                     for b in state.global_bosses]
-        sources += [(f"Icon-Scan '{c.name}'", c.template)
+        sources += [(f"Icon-Scan '{c.name}'", c.template, _scan_target("icon", c.name))
                     for c in state.icon_scans.values()]
 
     template_folder = sequence_templates_dir(owner) if owner else Path("sequences")
-    missing = [(who, tpl) for who, tpl in sources
+    missing = [(who, tpl, target) for who, tpl, target in sources
                if tpl and not (template_folder / tpl).exists()]
-    report.checked.append(f"{sum(1 for _, t in sources if t)} Template-Verweise")
-    for who, tpl in missing:
+    report.checked.append(f"{sum(1 for _, t, _ in sources if t)} Template-Verweise")
+    for who, tpl, target in missing:
         report.add_finding(LEVEL_ERROR, who,
                       f"Template '{tpl}' fehlt in {template_folder}/",
-                      "Template neu aufnehmen oder den Verweis entfernen")
+                      "Template neu aufnehmen oder den Verweis entfernen", target)
 
 
 def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
@@ -105,21 +127,25 @@ def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
     with state.lock:
         candidates = []
         for scan in state.boss_scans.values():
-            candidates += [(f"Boss '{b.name}' (Scan '{scan.name}')", b) for b in scan.bosses]
-        candidates += [(f"Boss '{b.name}' (Bibliothek)", b) for b in state.global_bosses]
-        candidates += [(f"Icon-Scan '{c.name}'", c) for c in state.icon_scans.values()]
-        items = [(f"Item '{i.name}' (Scan '{scan.name}')", i)
+            candidates += [(f"Boss '{b.name}' (Scan '{scan.name}')", b,
+                            _scan_target("boss", scan.name)) for b in scan.bosses]
+        candidates += [(f"Boss '{b.name}' (Bibliothek)", b, _scan_target("boss", ""))
+                       for b in state.global_bosses]
+        candidates += [(f"Icon-Scan '{c.name}'", c, _scan_target("icon", c.name))
+                       for c in state.icon_scans.values()]
+        items = [(f"Item '{i.name}' (Scan '{scan.name}')", i, _scan_target("item", scan.name))
                  for scan in state.item_scans.values() for i in scan.items]
 
-    for who, profile in candidates:
+    for who, profile, target in candidates:
         if not profile.template and not profile.marker_colors:
             report.add_finding(LEVEL_ERROR, who,
                           "weder Template noch Farb-Marker — wird nie erkannt",
-                          "Template aufnehmen oder Marker-Farben setzen")
-    for who, item in items:
+                          "Template aufnehmen oder Marker-Farben setzen", target)
+    for who, item, target in items:
         if not item.template_names() and not item.marker_colors:
             report.add_finding(LEVEL_HINT, who,
-                          "weder Template noch Farb-Marker — wird in keinem Scan gefunden")
+                          "weder Template noch Farb-Marker — wird in keinem Scan gefunden",
+                          target=target)
     report.checked.append(f"{len(candidates) + len(items)} Erkennungs-Profile")
 
 
@@ -129,15 +155,18 @@ def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None
         scans = list(state.item_scans.values())
 
     for cfg in scans:
+        target = _scan_target("item", cfg.name)
         if not cfg.slots:
             report.add_finding(LEVEL_ERROR, f"Item-Scan '{cfg.name}'",
-                          "kein einziger Slot — der Scan kann nichts absuchen")
+                          "kein einziger Slot — der Scan kann nichts absuchen", target=target)
         elif not any(slot.enabled for slot in cfg.slots):
             report.add_finding(LEVEL_ERROR, f"Item-Scan '{cfg.name}'",
-                          "kein Slot ist eingeschaltet — der Scan kann nichts absuchen")
+                          "kein Slot ist eingeschaltet — der Scan kann nichts absuchen",
+                          target=target)
         if not any(item.enabled for item in cfg.items) and not cfg.learn_unknown:
             report.add_finding(LEVEL_HINT, f"Item-Scan '{cfg.name}'",
-                          "keine aktiven Items und kein Auto-Lernen — findet nie etwas")
+                          "keine aktiven Items und kein Auto-Lernen — findet nie etwas",
+                          target=target)
     report.checked.append(f"{len(scans)} Item-Scan(s)")
 
     # **`default_scan` ist die fünfte Referenz auf einen Scan-Namen** — und die
@@ -153,7 +182,8 @@ def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None
         if cfg.default_scan and cfg.default_scan not in existing:
             report.add_finding(LEVEL_HINT, f"Boss-Scan '{cfg.name}'",
                           f"Fallback-Scan '{cfg.default_scan}' gibt es nicht",
-                          "im Scans-Reiter einen vorhandenen Item-Scan wählen")
+                          "im Scans-Reiter einen vorhandenen Item-Scan wählen",
+                          _scan_target("boss", cfg.name))
     if boss_scans:
         report.checked.append(f"{len(boss_scans)} Fallback-Scan-Verweis(e)")
 
@@ -192,7 +222,8 @@ def _check_coordinates(state: AutoClickerState, report: CheckReport) -> None:
                       f"({p.x}, {p.y}) liegt ausserhalb aller Monitore "
                       f"({left},{top})-({right},{bottom})",
                       "Bildschirm-Layout geaendert? Punkte-Menue -> 'fix' rechnet "
-                      "alle Koordinaten aus einem neu gesetzten Punkt um")
+                      "alle Koordinaten aus einem neu gesetzten Punkt um",
+                      {"view": "editor", "point": p.id})
 
 
 def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
@@ -225,38 +256,45 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
         phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
         phases.append(("END", seq.end_steps))
 
+        # Die Sprungmarke zeigt auf den Block: Lane-Index wie im Studio-Board
+        # (0 = INIT, dann die Loop-Phasen, zuletzt END), Zeile ab 0.
         dead_refs, dead_scans = [], []
-        for phase, steps in phases:
+        for lane, (phase, steps) in enumerate(phases):
             for i, step in enumerate(steps, 1):
+                target = _block_target(lane, i - 1, seq.name)
                 if step.point_id is not None and step.point_id not in point_ids:
-                    dead_refs.append(f"{phase}[{i}] → Punkt #{step.point_id}")
+                    dead_refs.append((f"{phase}[{i}] → Punkt #{step.point_id}", target))
                 for attr, names in known.items():
                     ref = getattr(step, attr, None)
                     if ref and ref not in names:
-                        dead_scans.append(f"{phase}[{i}] → {attr} '{ref}'")
+                        dead_scans.append((f"{phase}[{i}] → {attr} '{ref}'", target))
 
-        for entry in _truncated(dead_refs):
+        for entry, target in _truncated(dead_refs):
             report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
                           f"{entry} gibt es nicht mehr",
-                          "Punkt im Punkte-Editor dieser Sequenz neu setzen")
-        for entry in _truncated(dead_scans):
+                          "Punkt im Punkte-Editor dieser Sequenz neu setzen", target)
+        for entry, target in _truncated(dead_scans):
             report.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
-                          f"{entry} existiert nicht")
+                          f"{entry} existiert nicht", target=target)
 
         if seq.total_steps() == 0:
             report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'", "hat keine Schritte")
-        for lp in seq.loop_phases:
+        for lane, lp in enumerate(seq.loop_phases, 1):
             if not lp.steps:
                 report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
-                              f"Loop-Phase '{lp.name}' ist leer")
+                              f"Loop-Phase '{lp.name}' ist leer",
+                              target=_block_target(lane, 0, seq.name))
 
 
-def _truncated(entries: list[str]) -> list[str]:
-    """Lange Listen abschneiden — 40 gleichartige Zeilen liest niemand."""
+def _truncated(entries: list) -> list:
+    """Lange Listen abschneiden — 40 gleichartige Zeilen liest niemand.
+
+    Einträge sind `(Text, Ziel)`; die Sammelzeile am Ende hat kein Ziel.
+    """
     if len(entries) <= _MAX_SINGLE:
         return entries
     remainder = len(entries) - _MAX_SINGLE
-    return entries[:_MAX_SINGLE] + [f"... und {remainder} weitere"]
+    return entries[:_MAX_SINGLE] + [(f"... und {remainder} weitere", None)]
 
 
 # ---------------------------------------------------------------------------

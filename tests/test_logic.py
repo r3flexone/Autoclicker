@@ -6513,6 +6513,7 @@ import tests.contract.points               # noqa: F401,E402
 import tests.contract.sequence_delete     # noqa: F401,E402
 import tests.contract.catalog               # noqa: F401,E402
 import tests.contract.breakpoint            # noqa: F401,E402
+import tests.contract.usability             # noqa: F401,E402
 
 
 import shutil as _shD

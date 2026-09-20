@@ -72,7 +72,8 @@ def run():
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
         widths = f.page.eval_on_selector_all(
             ".seq-card .button-pair .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
-        expect(len(widths) == 4, f"4 Knoepfe erwartet, da: {len(widths)}")
+        # Drei je Karte: Duplizieren, Loeschen, Oeffnen.
+        expect(len(widths) == 6, f"6 Knoepfe erwartet, da: {len(widths)}")
         expect(widths and max(widths) - min(widths) < 0.5,
                f"die Knoepfe sind verschieden breit: {widths}")
         # Und jede Karte gibt dem Paar dieselbe Breite. Gemessen wird die

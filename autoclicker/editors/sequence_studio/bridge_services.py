@@ -10,7 +10,7 @@ from ...persistence import (
     load_sequence_file,
     save_sequence_file,
 )
-from ...utils import sanitize_filename
+from ...utils import sanitize_filename, unique_name
 from .bridge_contract import (
     _same_value,
     _hex,
@@ -75,8 +75,96 @@ class BridgeServicesMixin:
                 "open": path == self.filepath,
                 "scope": self._sequence_extent(path.parent),
                 "warnings": scan_warnings(sequence_to_board(seq)),
+                "last_run": self._last_run(seq.name),
             })
         return out
+
+    # Letzter Lauf je Sequenz, gemerkt am Log-Pfad und dessen Aenderungszeit:
+    # die Uebersicht wird bei jedem Oeffnen neu gezeichnet, und ein Log kann
+    # eine halbe Nacht lang sein.
+    _last_run_cache: dict = {}
+
+    def _last_run(self, name: str) -> Optional[dict]:
+        """Was der letzte Lauf dieser Sequenz hinterlassen hat — aus `logs/`.
+
+        Die Dateien heissen `<stamp>_<sanitize(name)>.csv`; genommen wird die
+        neueste mit diesem Ende, gerechnet mit `evaluate()` aus dem Werkzeug
+        (dieselbe Zahl wie im Bericht). Ohne Log, ohne Werkzeug oder ohne
+        Session-Log-Ordner gibt es `None` — die Karte lässt die Zeile dann weg,
+        statt „nie gelaufen" zu behaupten.
+        """
+        folder = self._report_folder()
+        if folder is None:
+            return None
+        suffix = f"_{sanitize_filename(name)}.csv"
+        candidates = [p for p in self._report_all_files(folder) if p.name.endswith(suffix)]
+        if not candidates:
+            return None
+        path = candidates[-1]
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            return None
+        key = str(path)
+        cached = self._last_run_cache.get(key)
+        if cached and cached[0] == stamp:
+            return cached[1]
+        evaluate, _ = self._report_tool()
+        if evaluate is None:
+            return None
+        try:
+            raw = evaluate([path])
+        except Exception:                                        # noqa: BLE001
+            return None
+        session = (raw.get("sessions") or [None])[0]
+        if not session:
+            return None
+        from datetime import datetime
+        try:
+            begin = datetime.strptime(session["begin"][:19], "%Y-%m-%d %H:%M:%S").timestamp()
+        except (ValueError, KeyError):
+            begin = stamp
+        out = {"begin": begin, "duration": session["duration"],
+               "clicks": session["clicks"], "timeouts": session["timeouts"],
+               "file": path.name}
+        self._last_run_cache[key] = (stamp, out)
+        return out
+
+    def sequence_duplicate(self, data: Optional[dict] = None) -> dict:
+        """Kopiert einen Sequenzordner — samt Scans, Vorlagen und Bildern.
+
+        Der Fall ist „dasselbe Spiel in einem zweiten Fenster": bis hierher
+        baute man die Sequenz nach oder ging über Export → Import. Die Punkte
+        sind sequenzlokal, es gibt nichts umzuhängen; nur der Name in der
+        Datei wird neu gesetzt (`unique_name`, wie überall bei Kollisionen).
+        Kein Momentaufnahme-Befehl: die Übersicht liest danach neu.
+        """
+        import json as _json
+        import shutil
+        from ...utils import atomic_write
+
+        name = str((data or {}).get("name") or "").strip()
+        folder = self._sequence_folder(name) if name else None
+        if folder is None or not (folder / "sequence.json").exists():
+            return {"ok": False, "message": f"'{name}' gibt es nicht (mehr)."}
+        taken = {n for n, _ in list_available_sequences()}
+        taken |= {p.name for p in Path(self.sequences_dir).iterdir()} \
+            if Path(self.sequences_dir).exists() else set()
+        new_name = unique_name(name, taken)
+        target = Path(self.sequences_dir) / sanitize_filename(new_name)
+        if target.exists():
+            return {"ok": False, "message": f"Ordner '{target.name}' gibt es schon."}
+        try:
+            shutil.copytree(folder, target)
+            path = target / "sequence.json"
+            raw = _json.loads(path.read_text(encoding="utf-8"))
+            raw["name"] = new_name
+            atomic_write(path, _json.dumps(raw, ensure_ascii=False, indent=1))
+        except (OSError, ValueError, shutil.Error) as error:
+            shutil.rmtree(target, ignore_errors=True)
+            return {"ok": False, "message": f"Konnte nicht kopieren: {error}"}
+        return {"ok": True, "message": f"'{name}' kopiert nach '{new_name}'.",
+                "name": new_name}
 
     # Was in einem Sequenzordner ausser der sequence.json noch liegt. Reihenfolge
     # = Anzeige; der Schluessel ist der Unterordner.
@@ -816,6 +904,11 @@ class BridgeServicesMixin:
         # dreimal gesetzt und nirgends gelesen wurde — ein Rest aus der
         # Zeit der eigenen `points.json`.
         self._state_file = _mtime(self.filepath)
+        # Laden, Anlegen und Speichern leeren den Rückgängig-Stapel: ein Zurück
+        # über einen Ladevorgang hinweg beschriebe einen Stand, den es nicht
+        # mehr gibt; nach dem Speichern wäre „zurück" ein Stand, der nicht auf
+        # der Platte steht — und die Datei ist die Wahrheit.
+        self._edit_reset()
 
     def rescue_write(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.
