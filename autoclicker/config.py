@@ -66,6 +66,7 @@ class AppConfig:
     failsafe_enabled: bool = True                   # Fail-Safe: Maus in Ecke stoppt alles
     failsafe_x: int = 5                             # Fail-Safe X-Bereich (Maus x <= Wert)
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
+    session_max_hours: float = 0                    # Nach N Stunden sanft beenden (0 = unbegrenzt)
 
     # === PIXEL-ERKENNUNG ===
     # Wann zwei Stellen derselbe Punkt sind. Radius 0 = nur exakt gleiche
@@ -196,6 +197,9 @@ class AppConfig:
         if self.timing_pause_interval <= 0:
             warnings.append(f"timing_pause_interval={self.timing_pause_interval} → 0.1")
             self.timing_pause_interval = 0.1
+        if self.session_max_hours < 0:
+            warnings.append(f"session_max_hours={self.session_max_hours} → 0")
+            self.session_max_hours = 0
         if self.pixel_max_consecutive_timeouts < 0:
             warnings.append(f"pixel_max_consecutive_timeouts={self.pixel_max_consecutive_timeouts} → 0")
             self.pixel_max_consecutive_timeouts = 0
@@ -361,6 +365,7 @@ _CONFIG_SECTIONS = [
     ]),
     ("SICHERHEIT", [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
+        "session_max_hours",
     ]),
     ("PIXEL-ERKENNUNG", [
         "punkt_radius", "punkt_farbtoleranz",

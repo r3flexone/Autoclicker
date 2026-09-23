@@ -133,6 +133,34 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
         return None
 
 
+def locate_step(arguments: dict) -> tuple:
+    """`(Sequenz, Schrittliste, Block)` aus Datei und Position — oder `(None, None, -1)`.
+
+    Der gemeinsame Kern von Block-Test, Einstieg und Einfüge-Aufnahme: gesendet
+    wird nur die gespeicherte Position (`file`, `phase`, `phase_index`, `block`),
+    geladen die Datei von Platte — dieselbe Fassung, die auch ein echter Lauf
+    verwenden würde.
+    """
+    path = Path(str(arguments.get("file") or ""))
+    seq = load_sequence_file(path) if str(path) else None
+    if seq is None:
+        print(f"\n{err('Keine lesbare Sequenz — ignoriert.')}")
+        return None, None, -1
+    kind = str(arguments.get("phase") or "")
+    try:
+        block = int(arguments.get("block"))
+        phase_index = int(arguments.get("phase_index", -1))
+        steps_list = (seq.init_steps if kind == "init" else seq.end_steps if kind == "end"
+                    else seq.loop_phases[phase_index].steps)
+        steps_list[block]
+        if block < 0:
+            raise IndexError(block)
+    except (TypeError, ValueError, IndexError):
+        print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
+        return None, None, -1
+    return seq, steps_list, block
+
+
 # Sequenz-Liste mit mtime-Cache — die Editor-Auswahl ruft list_available_sequences
 # mehrmals hintereinander auf, ohne Cache wäre das pro Aufruf ein voller Dir-Scan.
 _seq_cache: list[tuple[str, Path]] = []

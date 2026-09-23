@@ -2713,11 +2713,25 @@ check("beide Klicks auf dieselbe Stelle teilen sich die ID",
 # (dieselbe Bauart wie beim geloeschten `scan_reverse`).
 import inspect as _insp_rec
 _sig_pfe = list(_insp_rec.signature(_pfe).parameters)
-check("points_for_events nimmt nur die Ereignisse", _sig_pfe == ["events"])
-check("kein state in der Signatur - der Pool KANN nicht hineinlecken",
+check("points_for_events nimmt Ereignisse und optional einen Punkte-Bestand",
+      _sig_pfe == ["events", "existing"])
+check("kein state in der Signatur - der Pool kann nur EXPLIZIT mitgegeben werden",
       "state" not in _sig_pfe)
 _map2, _points2 = _pfe(_events)
-check("Recorder baut einen eigenen Punkt-Pool", len(_points2) == 2)
+check("Recorder baut ohne Bestand einen eigenen Punkt-Pool", len(_points2) == 2)
+
+# Bei einer Einfuege-Aufnahme ("Ab hier aufnehmen") ist ein mitgegebener
+# Bestand dagegen gewollt: ein Klick auf einen schon vorhandenen Punkt DER
+# ZIELSEQUENZ soll ihn wiederverwenden statt einen zweiten mit derselben
+# Stelle anzulegen - und die naechste ID darf nicht mit einer vorhandenen
+# kollidieren.
+_existing_pts_rec = [ClickPoint(100, 200, "P5", 5, color=(1, 2, 3))]
+_map3, _new3 = _pfe(_events, existing=_existing_pts_rec)
+check("ein Klick auf einen vorhandenen Punkt bekommt dessen ID",
+      _map3[0] == 5 and _map3[2] == 5)
+check("nur der wirklich neue Klick liefert einen neuen Punkt", len(_new3) == 1)
+check("die neue ID liegt hinter der hoechsten vorhandenen", _new3[0].id == 6)
+check("der uebergebene Bestand bleibt unveraendert", len(_existing_pts_rec) == 1)
 
 # --- Ein Punkt heisst P<ID>, nicht nach seiner Sequenz --------------------
 # Er trug den Sequenznamen als Vorsatz ("aufnahme_214638 3"). Seit die Punkte
@@ -6511,6 +6525,9 @@ import tests.contract.pause_and_skip        # noqa: F401,E402
 import tests.contract.pixel_fallback        # noqa: F401,E402
 import tests.contract.import_config         # noqa: F401,E402
 import tests.contract.start_from            # noqa: F401,E402
+import tests.contract.record_from           # noqa: F401,E402
+import tests.contract.session_limit         # noqa: F401,E402
+import tests.contract.block_import          # noqa: F401,E402
 
 
 import shutil as _shD

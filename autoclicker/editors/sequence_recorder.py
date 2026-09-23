@@ -30,7 +30,7 @@ from ..utils import (
 )
 from ..persistence.sequences import (
     save_sequence_file, ensure_sequences_dir,
-    resolve_point_references, sequence_file,
+    resolve_point_references, sequence_file, locate_step, activate_sequence,
 )
 
 
@@ -276,8 +276,17 @@ def mark_phase(state: AutoClickerState) -> None:
     INIT und END befüllt die Aufnahme nicht mehr. Beide waren an dieser Stelle
     eine Vermutung darüber, was gemeint ist; welche Phase einmalig laufen soll,
     sagt man im Studio an der Phase selbst.
+
+    Bei einer Einfüge-Aufnahme ("Ab hier aufnehmen") ergibt der Marker keinen
+    Sinn: eingefügt wird immer in genau eine bestehende Phase, eine zweite
+    entstünde daneben und ihre Schritte landeten nirgends.
     """
     if not _recording_running(state):
+        return
+    with state.lock:
+        inserting = state.recording_insert is not None
+    if inserting:
+        print(f"\n{hint('Einfüge-Aufnahme bleibt in einer Phase — keine neue Grenze möglich.')}")
         return
     with state.lock:
         placed = sum(1 for ev in state.recording_events if ev.kind == REC_PHASE)
@@ -321,6 +330,9 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         state.recording_ui_cycles = max(0, int(cycles or 0))
         state.recording_ui_description = str(description or "").strip()
 
+    with state.lock:
+        inserting = state.recording_insert is not None
+
     if install_mouse_hook(_on_click_factory(state), _on_right_click_factory(state)):
         # Die Tastatur ist die Kür: klappt sie nicht, laeuft die Aufnahme trotzdem —
         # nur eben ohne Tastendrücke. Umgekehrt waere eine Aufnahme ohne Klicks sinnlos.
@@ -329,6 +341,9 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         if keys_list:
             kinds += ", Tastendruck"
         print(f"\n{col('╔══ AUFNAHME GESTARTET ══╗', 'red')}")
+        if inserting:
+            print(hint("  Wird beim Stoppen HINTER dem gewählten Block eingefügt — "
+                       "keine neue Sequenz."))
         print("  Klicke die gewünschten Positionen im Spiel.")
         print(f"  Aufgezeichnet: {kinds} "
               f"{hint('(Rechtsklicks werden nur gezählt — der Autoclicker kann keine)')}")
@@ -355,13 +370,21 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         _write_status(state, [], active=False)
 
 
-def points_for_events(events: list) -> tuple[dict, list[ClickPoint]]:
+def points_for_events(events: list,
+                      existing: list[ClickPoint] | None = None) -> tuple[dict, list[ClickPoint]]:
     """Sorgt dafür, dass jedes aufgenommene Ereignis mit Stelle einen Punkt hat.
 
-    Gibt `({event_index: point_id}, Punkte)` zurück; ein Punkt an
+    Gibt `({event_index: point_id}, NEUE Punkte)` zurück; ein Punkt an
     derselben Stelle wird wiederverwendet. Muss VOR dem Bauen der Schritte
     laufen, damit die über `point_id` referenzieren statt eigene Koordinaten zu
     halten.
+
+    `existing` ist der Punkte-Bestand einer bereits gespeicherten Sequenz — bei
+    einer Einfüge-Aufnahme ("Ab hier aufnehmen") reicht die Zusicherung sonst
+    nicht: ohne ihn als Dedup-Kontext bekäme ein Klick auf einen schon
+    vorhandenen Punkt einen zweiten, und die nächste ID kollidierte mit einer
+    schon vergebenen. Zurückgegeben werden trotzdem nur die NEUEN Punkte —
+    `existing` bleibt unverändert und wird vom Aufrufer selbst angehängt.
 
     Keinen Punkt bekommen: Tastendrücke, Warte-Marker (benutzen den Punkt des
     folgenden Klicks), Screenshot-Marker und Phasengrenzen. Der
@@ -382,18 +405,20 @@ def points_for_events(events: list) -> tuple[dict, list[ClickPoint]]:
     Sequenz hineinlecken konnten.
     """
     from ..persistence.sequences import point_at_position
+    pool = list(existing) if existing else []
     point_id_for: dict[int, int] = {}
     points: list[ClickPoint] = []
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
-        match = point_at_position(points, ev.x, ev.y, ev.color)
+        match = point_at_position(pool, ev.x, ev.y, ev.color)
         if match is not None:
             point_id_for[i] = match.id
             continue
-        pid = max((p.id for p in points), default=0) + 1
+        pid = max((p.id for p in pool), default=0) + 1
         point = ClickPoint(ev.x, ev.y, f"P{pid}", pid,
                            color=ev.color, source="Aufnahme")
+        pool.append(point)
         points.append(point)
         point_id_for[i] = pid
     return point_id_for, points
@@ -545,6 +570,48 @@ def steps_from_events(events: list, point_id_for: dict) -> list:
     return steps
 
 
+def _finish_insert_recording(state: AutoClickerState, events: list, target: dict) -> str | None:
+    """Fügt die aufgenommenen Schritte HINTER dem Ziel-Block in seine Sequenz ein.
+
+    Anders als eine normale Aufnahme entsteht keine neue Sequenz: `target` (aus
+    `locate_step()`: file/phase/phase_index/block) zeigt auf den Block, hinter
+    dem eingefügt wird — geladen wird dieselbe Datei noch einmal von Platte,
+    damit hier nicht mit einem Stand gearbeitet wird, der inzwischen anderswo
+    geändert wurde. Vorhandene Punkte an gleicher Stelle werden wiederverwendet
+    (`points_for_events` mit dem Punkte-Bestand der Sequenz als Dedup-Kontext).
+    """
+    seq, steps_list, block = locate_step(target)
+    if seq is None:
+        return None
+
+    # ERST die Punkte, DANN die Schritte — dieselbe Reihenfolge wie beim
+    # Neuaufbau, nur mit dem vorhandenen Bestand als Dedup-Kontext.
+    point_id_for, new_points = points_for_events(events, existing=seq.points)
+    new_steps = steps_from_events(events, point_id_for)
+    steps_list[block + 1:block + 1] = new_steps
+    seq.points.extend(new_points)
+
+    filepath = Path(str(target.get("file") or ""))
+    if not save_sequence_file(seq, filepath):
+        print(f"\n{err('Sequenz konnte nicht gespeichert werden!')}")
+        return None
+
+    with state.lock:
+        active = state.active_sequence
+        same = active is not None and active.name == seq.name
+    if same:
+        # Die geladene Fassung ist jetzt veraltet — ersetzt wird sie ueber den
+        # EINEN Weg, der Punkte und Scans gemeinsam umstellt (und aufloest,
+        # sonst zeigte die Konsole "(0,0)" fuer eine Stelle, die es gibt).
+        activate_sequence(state, seq)
+
+    anchor = steps_list[block].name or f"Block {block + 1}"
+    print(f"\n{ok(f'{len(new_steps)} Block(e) eingefügt')} nach '{anchor}' in '{seq.name}'.")
+    if new_points:
+        print(f"  {len(new_points)} neue(r) Punkt(e) gespeichert.")
+    return seq.name
+
+
 def stop_recording(state: AutoClickerState) -> str | None:
     """Stoppt die Aufnahme und baut eine Sequenz aus den Ereignissen."""
     with state.lock:
@@ -558,9 +625,11 @@ def stop_recording(state: AutoClickerState) -> str | None:
         ui_name = state.recording_ui_name
         ui_cycles = state.recording_ui_cycles
         ui_description = state.recording_ui_description
+        insert_target = state.recording_insert
         state.recording_ui_name = ""
         state.recording_ui_cycles = 0
         state.recording_ui_description = ""
+        state.recording_insert = None
 
     remove_mouse_hook()
     remove_keyboard_hook()
@@ -641,6 +710,12 @@ def stop_recording(state: AutoClickerState) -> str | None:
     if fast_clicks:
         print(f"\n{col('Hinweis:', 'yellow')} {fast_clicks} sehr schnelle(r) Klick(s) (⚡, < {_FAST_CLICK_GAP:.2f}s Abstand).")
         print(hint("        Falls das versehentliche Doppelklicks waren: im Editor mit 'del <Nr>' entfernen."))
+
+    # Einfüge-Aufnahme ("Ab hier aufnehmen"): keine neue Sequenz, sondern die
+    # Schritte werden in eine bestehende gespleisst. Ab hier trennen sich die
+    # Wege komplett — Name/Zyklen/Beschreibung gelten nur fuer eine NEUE Sequenz.
+    if insert_target:
+        return _finish_insert_recording(state, events, insert_target)
 
     if ui_name:
         # UI-Aufnahme: alle Angaben stehen schon vor dem ersten Klick fest. So

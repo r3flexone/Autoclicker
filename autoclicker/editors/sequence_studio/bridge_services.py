@@ -359,7 +359,8 @@ class BridgeServicesMixin:
     ALL_COMMANDS = RUN_COMMANDS + ("show", "config", "data_reload", "recording",
                                    "recording_stop",
                                    "quit_program",
-                                   "reclick", "reclick_stop", "block_test", "start_from")
+                                   "reclick", "reclick_stop", "block_test", "start_from",
+                                   "record_from")
 
     def recording_start(self, data: Optional[dict] = None) -> dict:
         """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
@@ -557,6 +558,35 @@ class BridgeServicesMixin:
         lane, row, _step = self._single()
         return self._report(f"'{self.board.name}' gestartet ab {lane.name} · Block {row + 1} "
                             f"— alles davor wird übersprungen.")
+
+    def block_record_start(self, data: Optional[dict] = None) -> dict:
+        """Startet eine Aufnahme, die genau HINTER dem gewählten Block landet.
+
+        Derselbe Weg wie `block_start`: gesendet werden Datei und Position, der
+        Hauptprozess lädt von Platte und hängt die neuen Schritte dahinter ein
+        — mit allen Markern (Farbe, Screenshot, Beobachten) einer normalen
+        Aufnahme. Nur eine neue Phase (CTRL+ALT+SHIFT+P) ergibt hier keinen
+        Sinn und wird im Hauptprozess abgelehnt, denn eingefügt wird immer in
+        genau eine bestehende Phase.
+        """
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
+        # Die drei Zeilen der vorigen Aufnahme sollen nicht als neue aufblitzen —
+        # dieselbe Vorsichtsmassnahme wie bei `recording_start`.
+        from ...config import RECORD_STATUS_FILE
+        try:
+            Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
+        except OSError:
+            pass
+        from ...mailbox import send_command
+        if not send_command("record_from", **position):
+            return self._report("Aufnahme konnte nicht gestartet werden.", "err")
+        lane, row, _step = self._single()
+        return self._report(f"Aufnahme läuft — wird nach {lane.name} · Block {row + 1} "
+                            f"eingefügt. Ins Spiel wechseln, CTRL+ALT+J beendet.")
 
     # ------------------------------------------------------------ Einstellungen
 

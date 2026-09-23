@@ -542,6 +542,20 @@ let openQuestion = null;
 let selectedPhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
 const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
+// Einfüge-Aufnahme ("Ab hier aufnehmen"): reiner Oberflächenzustand wie
+// wzRecordingStarted — die Brücke weiss nur ueber die Datei RECORD_STATUS_FILE
+// (poll_record_status), dass ueberhaupt aufgenommen wird, nicht WOFUER.
+let insertRecordingActive = false;
+let insertRecordingLabel = "";
+let insertRecordingPoll = 0;
+// Die Live-Ausgabe der Einfüge-Aufnahme — dieselben Daten und dieselbe
+// Zeichenfunktion wie im Werkzeuge-Reiter (`wzFillRecordingOutput`), nur ein
+// zweiter Einbauort. Ohne sie sagte die Tafel nur „läuft", und ob der Hook
+// wirklich mitschreibt, sah man erst nach dem Stoppen.
+let insertRecordingLive = {active: false, paused: false, count: 0, events: []};
+// Wie lange auf das erste Lebenszeichen gewartet wird (Versuche à 500 ms).
+const INSERT_RECORDING_START_ATTEMPTS = 20;
+
 function waitForBridge() {
   return new Promise((done) => {
     if (window.pywebview && window.pywebview.api) return done();
@@ -1942,8 +1956,25 @@ function buildProbe(target, b) {
   if (b.else_action === "click" && b.else_point !== null && b.else_point !== undefined)
     positions.push(["else", "ELSE-Klick", b.else_point]);
   const footer = el("div", {class: "insp-footer"});
+  // Waehrend eine Aufnahme laeuft — diese oder die aus dem Werkzeuge-Reiter —
+  // teilen sich Maus- und Tastatur-Hook nur EINEN Vorgang (`_block_if_recording`
+  // auf der Hauptprozess-Seite lehnt eine zweite ab). Testen und Starten
+  // wuerden ausserdem echte Klicks mitten in die Aufnahme setzen.
+  const recording = insertRecordingActive || wzRecordingStarted;
+  if (insertRecordingActive) {
+    footer.appendChild(el("div", {class: "wz-recording-state running"},
+      el("span", {class: "wz-rec-point"}),
+      el("div", {}, el("b", {}, "Aufnahme läuft"),
+        el("span", {}, insertRecordingLabel)),
+      el("button", {class: "btn danger", onclick: blockRecordStop},
+        icon("stop"), "Stoppen")));
+    const output = el("div", {class: "wz-recording-output", id: "insert-recording-output"});
+    footer.appendChild(output);
+    wzFillRecordingOutput(output, insertRecordingLive, true);
+  }
   footer.appendChild(el("button", {
     class: "btn wide",
+    disabled: recording,
     title: "Führt diesen Block sofort aus — Wartezeit und Farb-Trigger werden übersprungen",
     onclick: () => call("block_test"),
   }, icon("play"), "Block einmal testen"));
@@ -1953,10 +1984,41 @@ function buildProbe(target, b) {
   // die Lampe soll kippen, und ein fehlender Hauptprozess soll sich melden.
   footer.appendChild(el("button", {
     class: "btn wide launch",
+    disabled: recording,
     title: "Startet die Sequenz bei diesem Block — alles davor wird übersprungen, "
       + "danach läuft sie normal weiter (nächster Zyklus wieder von vorn)",
     onclick: async () => { await call("block_start"); runFollowUp(); mailboxFollowUp(); },
   }, icon("play"), "Ab hier starten"));
+  // Nimmt weitere Klicks/Tasten/Marker auf und fuegt sie genau zwischen diesen
+  // Block und den naechsten ein — dieselbe Aufnahme wie CTRL+ALT+J, nur dass
+  // stop_recording() sie in die bestehende Datei spleisst statt eine neue zu
+  // bauen. Waehrend sie laeuft steht hier stattdessen die Tafel oben.
+  if (!insertRecordingActive) {
+    footer.appendChild(el("button", {
+      class: "btn wide",
+      disabled: wzRecordingStarted,
+      title: "Nimmt weitere Klicks, Tasten und Marker auf und fügt sie direkt hinter "
+        + "diesem Block ein — vor dem, der als Nächstes kommt",
+      onclick: blockRecordStart,
+    }, icon("record"), "Ab hier aufnehmen"));
+  }
+  // Blöcke einer anderen Sequenz dahinter einfügen — eine bewusste, einmalige
+  // Kopie mit eigenen Punkten (`block_import`), kein Aufruf. Wer den Weg zur
+  // Bank in drei Sequenzen braucht, baut ihn einmal und holt ihn sich.
+  const others = (S.sequences || []).filter((n) => n !== S.name);
+  if (others.length) {
+    const source = el("select", {title: "Sequenz, deren Blöcke hinter diesem eingefügt werden"},
+      el("option", {value: ""}, "aus Sequenz …"),
+      ...others.map((n) => el("option", {value: n}, n)));
+    footer.appendChild(el("div", {class: "button-pair"}, source,
+      el("button", {
+        class: "btn",
+        disabled: recording,
+        title: "Kopiert alle Blöcke der gewählten Sequenz hinter diesen — mit eigenen "
+          + "Punkten, Scans kommen nicht mit",
+        onclick: () => call("block_import", {name: source.value}),
+      }, "Blöcke einfügen")));
+  }
   for (const [which, text, point] of positions) {
     footer.appendChild(el("button", {
       class: "btn wide",
@@ -1964,6 +2026,75 @@ function buildProbe(target, b) {
     }, icon("target"), text + " zeigen (#" + point + ")"));
   }
   target.appendChild(footer);
+}
+
+/** Startet die Einfüge-Aufnahme fuer den gewaehlten Block ("Ab hier aufnehmen").
+ *
+ * `block_record_start` prueft und speichert wie `block_start` (position ueber
+ * `_selected_position()`) und legt dann denselben Maus-/Tastatur-Hook wie
+ * jede Aufnahme an — nur dass `stop_recording()` die Bloecke am Ende in DIESE
+ * Datei spleisst statt eine neue Sequenz zu bauen. */
+async function blockRecordStart() {
+  await call("block_record_start");
+  if (S && S.status && (S.status.kind === "err" || S.status.kind === "warn")) return;
+  insertRecordingActive = true;
+  insertRecordingLabel = "Ins Spiel wechseln — CTRL+ALT+J oder „Stoppen“ beendet und fügt "
+    + "die Blöcke ein.";
+  insertRecordingLive = {active: true, paused: false, count: 0, events: []};
+  render();
+  mailboxFollowUp();
+  watchInsertRecording();
+}
+
+async function blockRecordStop() {
+  const answer = await ask("recording_stop");
+  if (!answer) return;
+  setStatus({text: answer.message || "", kind: answer.ok ? "ok" : "err"});
+  if (answer.ok) watchInsertRecording(true);
+}
+
+function endInsertRecording() {
+  ++insertRecordingPoll;
+  insertRecordingActive = false;
+  insertRecordingLabel = "";
+}
+
+/** Folgt der Einfüge-Aufnahme bis zu ihrem Ende und lädt dann neu — die
+ * neuen Blöcke stehen erst auf der Platte, nicht im offenen Board.
+ *
+ * Erst wenn die Aufnahme einmal als LAUFEND gemeldet wurde, heisst „nicht
+ * aktiv" auch „fertig". Vorher heisst es „noch nicht angelaufen": der
+ * Hauptprozess holt den Briefkasten alle 250 ms und legt erst dann den Hook
+ * an — die erste Fassung sah beim ersten Blick nach 500 ms oft noch nichts,
+ * erklärte die Aufnahme für beendet und liess sie unsichtbar weiterlaufen.
+ * Kommt gar kein Lebenszeichen, wird das gesagt statt still aufgegeben.
+ * `quick` (nach „Stoppen") weiss schon, dass sie lief. */
+function watchInsertRecording(quick) {
+  const number = ++insertRecordingPoll;
+  let seen = !!quick;
+  let attempts = 0;
+  const poll = async () => {
+    if (number !== insertRecordingPoll) return;
+    const status = await ask("recording_status");
+    if (number !== insertRecordingPoll) return;
+    if (status && status.active) {
+      seen = true;
+      insertRecordingLive = status;
+      wzFillRecordingOutput($("insert-recording-output"), insertRecordingLive, true);
+      return void setTimeout(poll, quick ? 300 : 500);
+    }
+    if (!seen) {
+      if (++attempts < INSERT_RECORDING_START_ATTEMPTS) return void setTimeout(poll, 500);
+      endInsertRecording();
+      render();
+      setStatus({text: "Keine laufende Aufnahme — hört der Hauptprozess zu?", kind: "warn"});
+      return;
+    }
+    endInsertRecording();
+    if (S && S.name) await call("load", {name: S.name});
+    else render();
+  };
+  setTimeout(poll, quick ? 200 : 300);
 }
 
 function renderBulkEditor(count) {
@@ -6221,18 +6352,18 @@ async function wzStartRecording() {
 }
 
 /** Drei feste Zeilen statt eines wachsenden Logs: neuestes Ereignis unten. */
-function wzFillRecordingOutput(target) {
+function wzFillRecordingOutput(target, live = wzRecordingLive, started = wzRecordingStarted) {
   if (!target) return;
-  const data_reload = wzRecordingLive || {};
+  const data_reload = live || {};
   const events = Array.isArray(data_reload.events) ? data_reload.events.slice(-3) : [];
-  const headText = data_reload.paused ? "PAUSIERT" : wzRecordingStarted ? "LIVE" : "LETZTE EREIGNISSE";
+  const headText = data_reload.paused ? "PAUSIERT" : started ? "LIVE" : "LETZTE EREIGNISSE";
   target.replaceChildren(el("div", {class: "wz-output-header"},
     el("span", {}, headText),
     el("span", {class: "wz-output-counter"}, String(data_reload.count || 0) + " Ereignisse")));
   const rows = el("div", {class: "wz-output-rows"});
   if (!events.length) {
     rows.appendChild(el("div", {class: "wz-output-empty"},
-      wzRecordingStarted ? "Warte auf das erste Ereignis …" : "Noch nichts aufgenommen."));
+      started ? "Warte auf das erste Ereignis …" : "Noch nichts aufgenommen."));
   } else {
     events.forEach((e, i) => {
       const color = e.color

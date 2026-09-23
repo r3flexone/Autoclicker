@@ -30,6 +30,14 @@
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* Die Seite ist dunkel — das muss auch der Browser wissen. Aufgeklappte
+   Auswahllisten, Bildlaufleisten und Datumsfelder malt er selbst, und ohne
+   diese Angabe hell: die Einträge erbten die helle Schrift (--text) und
+   standen weiss auf weiss. Die Farben der Einträge stehen zusätzlich fest,
+   weil `.seq-chip select` seinen Hintergrund auf `none` setzt. */
+:root{color-scheme:dark}
+option,optgroup{background:var(--panel);color:var(--text)}
+option:disabled{color:var(--dim)}
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--text); overflow:hidden;

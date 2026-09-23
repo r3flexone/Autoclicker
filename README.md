@@ -1085,6 +1085,7 @@ Wird beim ersten Start automatisch erstellt:
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
+  "session_max_hours": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
@@ -1165,6 +1166,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `failsafe_enabled` | Fail-Safe: Maus in Ecke stoppt alles |
 | `failsafe_x` | Fail-Safe X-Bereich: Maus x <= Wert löst aus (Standard: 5) |
 | `failsafe_y` | Fail-Safe Y-Bereich: Maus y <= Wert löst aus (Standard: 5) |
+| `session_max_hours` | Nach N Stunden sanft beenden — Zyklus fertig, dann END-Phase (`0` = unbegrenzt) |
 
 ### Farb-/Pixel-Erkennung
 

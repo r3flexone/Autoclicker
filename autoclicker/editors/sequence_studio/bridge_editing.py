@@ -385,7 +385,7 @@ class BridgeEditingMixin:
 
     _REF_FIELDS = ("wait_condition", "verify_condition", "else_config")
 
-    def _points_copy_along(self, step, mapping: dict) -> None:
+    def _points_copy_along(self, step, mapping: dict, source=None) -> None:
         """Hängt alle Punkt-Referenzen eines kopierten Schritts auf eigene Punkte um.
 
         `mapping` gilt für den ganzen Durchgang: derselbe Ausgangspunkt ergibt
@@ -399,12 +399,18 @@ class BridgeEditingMixin:
         klicken zwei Gewählte denselben Knopf, tun ihre Kopien das auch. Sonst
         entstünden bei einer Mehrfachauswahl drei Punkte auf einem Knopf statt
         zwei.
+
+        `source` sucht den Ausgangspunkt (Standard: die eigenen Punkte). Beim
+        Einfügen aus einer anderen Sequenz ist es deren Punkte-Bestand — die
+        IDs dort sind sequenzlokal und sagen hier nichts.
         """
+        lookup = source or self._point
+
         def new_for(old_id):
             if old_id is None:
                 return None
             if old_id not in mapping:
-                template_value = self._point(old_id)
+                template_value = lookup(old_id)
                 if template_value is None:
                     return old_id          # zeigt schon ins Leere — nicht erfinden
                 copy_of = PalettePoint(
@@ -467,6 +473,102 @@ class BridgeEditingMixin:
             f"{_blocks(len(rows))} dupliziert."
             + (f" {fresh} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
                f"verschieben, ohne das Original mitzunehmen." if fresh else ""))
+
+    # Scan-Verweise eines Schritts und der Unterordner, in dem der Scan liegen
+    # muss — Scans sind wie Punkte sequenzlokal.
+    _SCAN_DIRS = (("item_scan", "item_scans"), ("boss_scan", "boss_scans"),
+                  ("boss_watcher", "boss_scans"), ("icon_scan", "icon_scans"))
+
+    def block_import(self, data: Optional[dict] = None) -> dict:
+        """Fügt alle Blöcke einer anderen Sequenz hinter dem gewählten ein.
+
+        Die billige Fassung von „Bausteine": keine Referenz auf die andere
+        Sequenz, sondern eine **bewusste, einmalige Kopie** — der Weg zur Bank
+        steht danach zweimal da, und wer ihn ändert, ändert ihn in beiden. Ein
+        echter Aufruf bräuchte einen Stapel im Worker (Live-Run und Phasenleiste
+        beschreiben genau eine Sequenz), Schutz vor Rekursion und eine Antwort
+        darauf, was `restart` in einem Baustein heisst.
+
+        Drei Regeln:
+
+        - **Eigene Punkte, wie beim Duplizieren** (`_points_copy_along` mit dem
+          Bestand der Quelle). Punkt-IDs sind sequenzlokal; eine übernommene
+          `#3` zeigte hier auf einen ganz anderen Knopf.
+        - **Ein Block, dessen Punkt schon in der Quelle fehlt, kommt nicht mit.**
+          Er bliebe sonst mit einer fremden ID stehen, die hier zufällig
+          vergeben sein kann — ein Klick auf eine falsche Stelle ist schlimmer
+          als ein fehlender Block. Gezählt und gesagt.
+        - **Scans kommen nicht mit, werden aber genannt.** Sie gehören der
+          Quelle samt Vorlagen; fehlen sie hier, sagt die Meldung welche, und
+          die Diagnose springt später genau dorthin.
+        """
+        from ...persistence import load_sequence_file
+        from ...utils import sanitize_filename
+
+        name = str((data or {}).get("name") or "").strip()
+        if not name:
+            return self._report("Erst eine Sequenz wählen, aus der eingefügt wird.", "warn")
+        if name == self.board.name:
+            return self._report("Das ist die offene Sequenz — dafür gibt es „duplizieren“.",
+                                "warn")
+        lane, row, step = self._single()
+        if step is None or lane is None or row is None:
+            return self._report("Bitte genau einen Block wählen — eingefügt wird dahinter.",
+                                "warn")
+        folder = self._sequence_folder(name)
+        source = load_sequence_file(folder / "sequence.json") if folder else None
+        if source is None:
+            return self._report(f"'{name}' ist nicht lesbar.", "err")
+        steps = [*source.init_steps,
+                 *(s for phase in source.loop_phases for s in phase.steps),
+                 *source.end_steps]
+        if not steps:
+            return self._report(f"'{name}' hat keine Blöcke.", "warn")
+
+        pool = {p.id: p for p in source.points}
+
+        def dangling(s) -> bool:
+            ids = [s.point_id] + [getattr(getattr(s, f, None), "point_id", None)
+                                  for f in self._REF_FIELDS]
+            return any(i is not None and i not in pool for i in ids)
+
+        before = len(self.points)
+        mapping: dict = {}
+        at = row + 1
+        taken = 0
+        skipped = 0
+        missing_scans: list[str] = []
+        base = self.filepath.parent
+        for original in steps:
+            if dangling(original):
+                skipped += 1
+                continue
+            copy_of = copy.deepcopy(original)
+            copy_of.unresolved = False
+            self._points_copy_along(copy_of, mapping, source=pool.get)
+            self.board.add_step(lane, copy_of, at + taken)
+            taken += 1
+            for field, subdir in self._SCAN_DIRS:
+                scan = getattr(copy_of, field, None)
+                if scan and scan not in missing_scans and not (
+                        base / subdir / f"{sanitize_filename(scan)}.json").exists():
+                    missing_scans.append(scan)
+        if not taken:
+            return self._report(f"Kein Block aus '{name}' übernommen — alle zeigen auf "
+                                f"Punkte, die es dort nicht mehr gibt.", "warn")
+        self.sel_rows = {at + i for i in range(taken)}
+        self.sel_anchor = at
+        self._points_apply()
+        fresh = len(self.points) - before
+        text = (f"{_blocks(taken)} aus '{name}' eingefügt"
+                + (f", {fresh} eigene(r) Punkt(e) angelegt" if fresh else "") + ".")
+        if skipped:
+            text += f" {_blocks(skipped)} ausgelassen — ihr Punkt fehlt schon in '{name}'."
+        if missing_scans:
+            text += (" Scans fehlen hier und kommen nicht mit: "
+                     + ", ".join(f"'{s}'" for s in missing_scans) + ".")
+        return self._changed(text, "warn" if (skipped or missing_scans) else "ok",
+                             offer=True, what=f"Blöcke aus '{name}' eingefügt")
 
     def selection_delete(self, data: Optional[dict] = None) -> dict:
         lane = self.sel_lane

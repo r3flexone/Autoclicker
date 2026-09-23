@@ -2872,6 +2872,26 @@ Sequenz), **der Laufstatus sagt, wo eingestiegen wurde** (`started_from`, im
 Kopf des Live-Runs), und ein Einstieg in END lässt INIT und alle Zyklen aus —
 `_run_main_loop` gibt dann 0 Zyklen zurück.
 
+**„Ab hier aufnehmen" ist eine Aufnahme mit Ziel, kein zweiter Recorder**
+(`block_record_start` → Briefkasten `record_from` → `command_record_from`).
+Derselbe Hook, dieselben Marker; nur `stop_recording()` biegt am Ende ab
+(`state.recording_insert`) und spleisst die Schritte über
+`_finish_insert_recording` hinter den gewählten Block der **Datei** — Punkte mit
+dem Bestand der Zielsequenz als Dedup-Kontext (`points_for_events(existing=…)`),
+eine geladene Fassung derselben Sequenz über `activate_sequence`. Eine neue
+Phase (`CTRL+ALT+SHIFT+P`) wird abgelehnt: eingefügt wird in genau eine. Die
+Tafel im Inspektor zeigt dieselbe Live-Ausgabe wie der Werkzeuge-Reiter
+(`wzFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
+aktiv" erst nach einem ersten Lebenszeichen als „fertig" — beim ersten Blick
+nach dem Start hat der Hauptprozess den Briefkasten oft noch gar nicht geholt.
+
+**„Blöcke einfügen" (aus einer anderen Sequenz) ist eine Kopie, kein Aufruf**
+(`block_import`). Die billige Fassung der Bausteine-Idee: alle Blöcke der
+Quelle in Laufreihenfolge hinter den gewählten, mit **eigenen Punkten**
+(`_points_copy_along(…, source=…)`, Punkt-IDs sind sequenzlokal). Ein Block,
+dessen Punkt schon in der Quelle fehlt, bleibt draussen, und Scans kommen nicht
+mit — beides steht in der Meldung, STRG+Z nimmt den ganzen Durchgang zurück.
+
 **Die Phasen stehen alle nebeneinander**, die laufende breit (`_phase_overview()`
 im Worker, Feld `phases`). Sie aus der geöffneten Sequenz zu holen wäre geraten —
 laufen kann eine ganz andere —, deshalb schreibt der Worker sie einmal beim Start

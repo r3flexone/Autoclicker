@@ -882,6 +882,9 @@ class AutoClickerState:
     restart_event: threading.Event = field(default_factory=threading.Event)
     skip_cycle_event: threading.Event = field(default_factory=threading.Event)
     finish_event: threading.Event = field(default_factory=threading.Event)
+    # Das sanfte Ende kam vom Zeitlimit (`session_max_hours`), nicht vom
+    # Nutzer — nur damit die Zusammenfassung den richtigen Grund nennt.
+    session_limit_hit: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Eigener Lock NUR für Maus/Tastatur-Eingaben (SetCursorPos + SendInput).
     # Garantiert echte Mutual-Exclusion zwischen Sequenz-Worker und dem
@@ -934,6 +937,12 @@ class AutoClickerState:
     recording_ui_name: str = ""
     recording_ui_cycles: int = 0
     recording_ui_description: str = ""
+    # Ziel einer Einfüge-Aufnahme (Studio-Knopf "Ab hier aufnehmen"): das Dict aus
+    # `locate_step()` (file/phase/phase_index/block). Gesetzt heisst: die
+    # aufgezeichneten Schritte werden beim Stoppen NICHT zu einer neuen Sequenz,
+    # sondern hinter diesen Block in die bestehende Datei gespleisst. Leer (None)
+    # ist der Normalfall jeder anderen Aufnahme.
+    recording_insert: Optional[dict] = None
 
     # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
     # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie

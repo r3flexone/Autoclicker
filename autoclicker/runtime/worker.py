@@ -205,6 +205,9 @@ def _end_reason(state: AutoClickerState) -> str:
         return f"Notbremse nach {state.consecutive_timeouts} Timeouts in Folge"
     if state.quit_event.is_set():
         return "Programm wird beendet"
+    if state.session_limit_hit:
+        return (f"Zeitlimit erreicht ({state.config.session_max_hours:g} h, "
+                f"END-Phase gelaufen)")
     if state.finish_event.is_set():
         return "sanft beendet (END-Phase gelaufen)"
     if state.stop_event.is_set():
@@ -320,6 +323,7 @@ def _prepare_worker_state(state: AutoClickerState, show_preview: bool):
         state.session_screenshots_dir = None  # Wird beim ersten Screenshot-Schritt angelegt
         state.humanize_last_break = time.monotonic()
         state.finish_event.clear()
+        state.session_limit_hit = False
         # Stale Events aus der Vorsession löschen — sonst Phantom-Skip/Restart
         state.restart_event.clear()
         state.skip_cycle_event.clear()
@@ -512,11 +516,36 @@ def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,
                 print(f"\n{ok('Sequenz einmal durchgelaufen.')}")
                 break
 
+            _check_session_limit(state)
             if state.finish_event.is_set():
                 print(f"\n{ok('Sanfter Abbruch: Zyklus abgeschlossen.')}")
                 break
 
     return cycles_before_restart + cycle_count
+
+
+def _check_session_limit(state: AutoClickerState, now: Optional[float] = None) -> bool:
+    """Setzt das sanfte Ende, sobald `session_max_hours` abgelaufen ist.
+
+    Geprueft wird am Zyklus-Rand (und beim Warten auf einen Zeitplan), nicht
+    mitten im Zyklus: ein harter Stopp liesse Items liegen und die END-Phase
+    aus — genau dafuer hat CTRL+ALT+F das sanfte Ende. Dasselbe Ereignis, nur
+    von der Uhr ausgeloest; ein Zyklus kann das Limit also um seine eigene
+    Laenge ueberziehen. Gemeldet wird einmal.
+    """
+    limit = state.config.session_max_hours
+    if state.session_limit_hit:
+        return True
+    if not limit or limit <= 0 or not state.start_time:
+        return False
+    elapsed = (time.time() if now is None else now) - state.start_time
+    if elapsed < limit * 3600:
+        return False
+    state.session_limit_hit = True
+    state.finish_event.set()
+    print(col(f"\n[ZEITLIMIT] {limit:g} h erreicht — der Lauf endet sanft "
+              f"(END-Phase, dann Stopp).", "yellow"))
+    return True
 
 
 def _next_schedule(sequence, now: datetime) -> Optional[tuple[str, float]]:
@@ -567,6 +596,7 @@ def _wait_for_schedule(state: AutoClickerState, sequence, scheduled_pending: dic
                "total": round(upcoming[1] - began, 2) if upcoming else None}
     try:
         while not state.stop_event.is_set() and not state.quit_event.is_set():
+            _check_session_limit(state)
             if state.finish_event.is_set():
                 # Sanft beenden heisst: nicht mehr auf den naechsten Termin
                 # warten. Die END-Phase laeuft danach wie sonst auch.

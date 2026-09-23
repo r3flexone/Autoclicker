@@ -13,7 +13,9 @@ und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
 Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
 *Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_report.py`
 über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
-`scan_market_value_file`).
+`scan_market_value_file`), *Session-Zeitlimit* (`session_max_hours`, sanftes
+Ende am Zyklus-Rand über `finish_event`), *Live-Ausgabe der Einfüge-Aufnahme*
+(im Block-Inspektor, dieselbe Zeichenfunktion wie im Werkzeuge-Reiter).
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
 Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
@@ -44,8 +46,9 @@ Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
   Was nicht passt: Live-Run, Phasenleiste und `.run.json` beschreiben **eine** Sequenz mit
   Phasen; ein Aufruf macht daraus einen Stapel, und „Phase 2 von 4" stimmt dann nicht mehr.
   Dazu die Rekursion (A ruft B ruft A) und die Frage, was `restart` in einem Baustein
-  bedeutet. Deutlich billiger und fast so gut: eine reine Editor-Funktion „Schritte aus
-  Sequenz X hier einfügen" — eine Kopie, aber eine bewusste und einmalige.
+  bedeutet. Die billige Fassung ist gebaut: „Blöcke einfügen" im Inspektor
+  (`block_import`) kopiert eine Sequenz bewusst und einmalig hinter den gewählten Block.
+  Offen bleibt nur der echte Aufruf.
 
 ## Performance
 
@@ -105,19 +108,6 @@ mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde),
   Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
   gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
   bleiben, wie sie sind.
-
-## Safety
-
-### Session-Zeitlimit
-Harte Obergrenze (z.B. max. 6h pro Tag), danach automatischer Stop.
-
-Der **Break-Scheduler dieses Eintrags ist gebaut**: `humanize_break_interval_min` +
-`humanize_break_duration_min/max` legen periodische Pausen ein (`_humanize_check_break`
-in `runtime/actions.py`). Offen ist nur die harte Obergrenze.
-
-- **Nutzen:** Schutz vor Bans durch 24/7-Laufzeit.
-- **Tradeoff:** Reduziert Throughput, muss konfigurierbar sein. Ein Stop mitten im Zyklus kann Items liegen lassen — sauberer wäre `finish_event` (Zyklus zu Ende, dann END-Phase).
-- **Ansatz:** Ein Config-Wert `max_session_hours`. In `_run_main_loop` am Zyklus-Rand gegen `state.start_time` prüfen und `finish_event` setzen.
 
 ## Observability
 
