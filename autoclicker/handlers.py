@@ -114,9 +114,9 @@ def handle_record(state: AutoClickerState) -> None:
         point = ClickPoint(x, y, name, new_id, color=color)
         state.points.append(point)
 
-    # Auto-speichern. Bewusst nur die Punkte: save_data() wuerde zusaetzlich alle
-    # Sequenzen aus dem Speicher schreiben und damit Aenderungen ueberbuegeln, die
-    # inzwischen von aussen an der Datei passiert sind (z.B. Sequenz-Studio-Subprozess).
+    # Auto-speichern: nur die aktive Sequenz samt ihren Punkten. Das fruehere
+    # save_data() schrieb zusaetzlich alle Sequenzen aus dem Speicher und
+    # ueberbuegelte damit Aenderungen von aussen (z.B. Sequenz-Studio-Subprozess).
     save_points(state)
 
     color_str = f"  {describe_color(color)}" if color else ""
@@ -791,8 +791,8 @@ def _start_schedule(state: AutoClickerState, time_text: str) -> bool:
         state.countdown_active = True
         name = state.active_sequence.name if state.active_sequence else "?"
 
-    from .runtime import status as laufstatus
-    laufstatus.schedule_run(name, target_time)
+    from .runtime import status as run_status
+    run_status.schedule_run(name, target_time)
 
     def countdown_worker():
         start_now = False
@@ -807,7 +807,7 @@ def _start_schedule(state: AutoClickerState, time_text: str) -> bool:
         finally:
             with state.lock:
                 state.countdown_active = False
-            laufstatus.end_schedule()
+            run_status.end_schedule()
         if state.stop_event.is_set():
             state.stop_event.clear()
             print(f"\n{col('[ABBRUCH]', 'yellow')} Zeitplan abgebrochen.")
@@ -888,11 +888,11 @@ def command_config(state: AutoClickerState, arguments: dict) -> None:
     Neuladen jeden Leser, auch die Editoren und `imaging`. Ein laufender Lauf
     zieht sofort mit: der Worker liest `state.config` bei jedem Schritt neu.
     """
-    from .config import load_config, apply_config as _uebernehmen
+    from .config import load_config
 
     new = load_config()
     with state.lock:
-        _uebernehmen(state.config, new)
+        apply_config(state.config, new)
         log_on = state.config.debug_log or state.config.debug_detail
     # Die Ausgabe-Stufen haengen am Logger, der nur beim Start gesetzt wurde.
     init_logging(log_on)
@@ -1047,7 +1047,7 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
     Ein Knopf, der etwas anfaengt, aber nicht aufhoeren kann, laesst einen mit
     einem scharfen Maus-Hook sitzen und der Frage, wie man ihn wieder los wird.
 
-    `verwerfen=1` ist der Weg des geschlossenen Fensters: die Runde gehoert dem
+    `discard=1` ist der Weg des geschlossenen Fensters: die Runde gehoert dem
     Studio, und wer es zumacht, hat sie nicht uebernommen. Geschrieben wird
     ausschliesslich auf ausdrueckliches Uebernehmen.
 
@@ -1071,7 +1071,7 @@ def command_reclick_stop(state: AutoClickerState, arguments: dict) -> None:
         return
     if discard:
         stop_reclick(state, DISCARD_REASON.get(reason, DISCARD_REASON["button"]),
-                       apply_config=False)
+                       apply_result=False)
     else:
         stop_reclick(state, "aus dem Studio übernommen")
 
@@ -1475,7 +1475,7 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
         # Klicks auf Fensterdekoration dauerhaft in sequence.json. Wer übernehmen
         # will, drückt CTRL+ALT+J; alles andere lässt die Punkte in Ruhe.
         from .editors.reclick import stop_reclick
-        stop_reclick(state, "beim Beenden verworfen", apply_config=False)
+        stop_reclick(state, "beim Beenden verworfen", apply_result=False)
     if was_recording:
         from .winapi import remove_mouse_hook, remove_keyboard_hook
         remove_mouse_hook()

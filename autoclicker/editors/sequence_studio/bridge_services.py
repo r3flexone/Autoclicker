@@ -921,7 +921,7 @@ class BridgeServicesMixin:
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
-        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
+        # `save_points()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
         # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
         foreign = self._changed_externally(old)
         if foreign and not (data or {}).get("force"):
@@ -940,11 +940,22 @@ class BridgeServicesMixin:
         old_folder = old.parent
         new_folder = new.parent
         moved = False
-        if renamed and old.exists():
-            if new_folder.exists():
-                return self._report(
-                    f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
-                    "err")
+        # **Die Pruefung gilt fuer JEDES Umbenennen, nicht nur fuer eines mit
+        # alter Datei.** Sie stand im Zweig `old.exists()` — eine frisch
+        # angelegte, nie gespeicherte Sequenz kam daran vorbei: „Neu", den Namen
+        # einer vorhandenen eintippen, Speichern, und deren sequence.json war
+        # ueberschrieben (Schritte und Punkte weg, gemeldet als „Gespeichert").
+        if renamed and new_folder.exists():
+            return self._report(
+                f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
+                "err")
+        # Verschoben wird, sobald es den alten ORDNER gibt: auch eine nie
+        # gespeicherte Sequenz kann dort schon gemerkte Bildschirme haben. Aber
+        # nur ein eigener Unterordner von `sequences/` — bei einem flachen Pfad
+        # (`sequences/x.json`) waere der „alte Ordner" der Sequenzordner selbst.
+        own_folder = (old_folder.is_dir() and old_folder.resolve().parent
+                      == Path(self.sequences_dir).resolve())
+        if renamed and own_folder:
             try:
                 old_folder.rename(new_folder)
                 moved = True
@@ -964,9 +975,15 @@ class BridgeServicesMixin:
             return self._report("Speichern fehlgeschlagen!", "err")
 
         self.filepath = new
-        if moved:
-            self._scan_init()
-            self._scan_load()
+        if moved and self._scan_loaded:
+            # Alles im Scans-Reiter leitet seine Pfade bei Gebrauch aus
+            # `self.filepath` ab — nach dem Verschieben stimmen sie von selbst.
+            # Veraltet ist nur der gemerkte Plattenstand (er haengt an den alten
+            # Pfaden und meldete sonst eine Fremdaenderung). Hier stand
+            # `_scan_init()` + `_scan_load()`: das warf Screenshot, Auswahl,
+            # Erkennung, Rueckgaengig und ungespeicherte Scan-Aenderungen weg,
+            # und die rechte Spalte sprang mitten in der Arbeit auf „Slots".
+            self._disk_track()
         self._saved = True
         self._dirty = False
         self._state_remember()

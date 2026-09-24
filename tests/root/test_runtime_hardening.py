@@ -1,5 +1,6 @@
 """Regressionstests für Bilderkennung, OCR-Cache und asynchrone Fehler."""
 
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -542,6 +543,63 @@ class RuntimeHardeningTest(unittest.TestCase):
 
         exception.assert_called_once()
         self.assertEqual(log.call_args.args[1], "boss_async_error")
+
+    def _in_sandbox(self):
+        """Temp-Ordner als Arbeitsverzeichnis — Sequenzen und `.run.json` landen dort."""
+        cwd = Path.cwd()
+        temp = tempfile.TemporaryDirectory()
+        os.chdir(temp.name)
+        self.addCleanup(temp.cleanup)
+        self.addCleanup(os.chdir, cwd)
+
+    def test_konsolen_loader_laedt_die_scans_der_sequenz(self):
+        # CTRL+ALT+L (und S/T ohne geladene Sequenz) setzte Sequenz und Punkte
+        # von Hand: der Lauf hatte danach GAR keine Scans.
+        from autoclicker.editors.sequence_editor import loader
+        from autoclicker.persistence import save_item_scan, save_sequence_file, sequence_file
+        self._in_sandbox()
+        path = sequence_file("A")
+        path.parent.mkdir(parents=True)
+        save_sequence_file(Sequence("A", init_steps=[SequenceStep(item_scan="inv")]), path)
+        state = AutoClickerState()
+        with patch("sys.stdout"):
+            save_item_scan(ItemScanConfig(name="inv", owner_sequence="A"))
+            with patch.object(loader, "interactive_select", return_value=0):
+                loader.run_sequence_loader(state)
+        self.assertEqual(state.active_sequence.name, "A")
+        self.assertEqual(list(state.item_scans), ["inv"])
+
+    def test_block_skip_im_immediate_scan_gilt_dem_ganzen_block(self):
+        # `execute_item_scan` verbrauchte den Skip selbst — im Immediate-Modus
+        # fiel dadurch nur EIN Slot weg, der Rest wurde weiter geklickt.
+        self._in_sandbox()
+        state = AutoClickerState()
+        state.is_running = True
+        state.config.scan_click_immediate = True
+        state.config.scan_item_click_delay = 0
+        state.item_scans["inv"] = ItemScanConfig("inv", slots=[
+            ItemSlot(f"S{i}", (i * 10, 0, i * 10 + 8, 8), (100 + i, 0)) for i in range(4)],
+            items=[ItemProfile("Bogen", marker_colors=[(1, 2, 3)])])
+        parks, clicks = [], []
+
+        def park(*_args):
+            parks.append(1)
+            if len(parks) == 2:
+                state.skip_step_event.set()      # beim Scan des zweiten Slots
+
+        with patch.object(item_scan, "take_screenshot", return_value=Mock(size=(8, 8))), \
+                patch.object(item_scan, "_park_mouse_for_scan", side_effect=park), \
+                patch.object(item_scan, "_check_profile_match", return_value=(True, 1.0)), \
+                patch.object(actions, "send_click",
+                             side_effect=lambda x, y, *a: clicks.append((x, y)) or True), \
+                patch.object(steps, "check_failsafe", return_value=False), \
+                patch("sys.stdout"):
+            result = steps.execute_step(
+                state, SequenceStep(item_scan="inv", item_scan_mode=SCAN_MODE_EVERY),
+                1, 1, "Loop")
+        self.assertTrue(result)
+        self.assertEqual(clicks, [(100, 0)])
+        self.assertFalse(state.skip_step_event.is_set())
 
 
 if __name__ == "__main__":

@@ -358,12 +358,12 @@ def _banner(name: str, count: int, target: str, others: list) -> None:
 
 
 def stop_reclick(state: AutoClickerState, reason: str = "beendet",
-                   apply_config: bool = True) -> None:
+                   apply_result: bool = True) -> None:
     """Beendet die Runde und schreibt das Ergebnis — oder wirft es weg.
 
     **Erst hier wird überhaupt etwas geändert.** Während der Runde stehen die
     neuen Stellen in `reclick_set`; die Punkte selbst sind unangetastet,
-    auch im Speicher. `uebernehmen=False` heisst deshalb schlicht: Liste weg,
+    auch im Speicher. `apply_result=False` heisst deshalb schlicht: Liste weg,
     fertig — es gibt nichts zurückzudrehen.
 
     Das ist der Unterschied zwischen einer abgebrochenen Runde und einer halb
@@ -386,7 +386,7 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
         target_sequence = state.reclick_sequence
         points = {p.id: p for p in (
             target_sequence.points if target_sequence is not None else state.points)}
-        if apply_config:
+        if apply_result:
             for point_id, _old, new, new_color in placed:
                 point = points.get(point_id)
                 if point is None:
@@ -421,15 +421,25 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     # einer Datei, die nicht geschrieben wurde. Im Speicher sind die Punkte
     # dann gesetzt, auf der Platte nicht; der naechste Start klickt daneben.
     saved = False
-    if placed and apply_config:
-        from ..persistence import save_sequence_file, sequence_file
+    if placed and apply_result:
+        from ..persistence import activate_sequence, save_sequence_file, sequence_file
         if target_sequence is not None:
             saved = save_sequence_file(target_sequence, sequence_file(target_sequence.name))
+        # **Eine Runde aus dem Studio arbeitet auf einer eigenen Kopie von der
+        # Platte.** Ist dieselbe Sequenz hier geladen, hielt der Speicher danach
+        # die ALTEN Stellen: ein Start per Hotkey klickte daneben, und das naechste
+        # `save_points()` (CTRL+ALT+A, CTRL+ALT+U, Editor `done`) schrieb sie
+        # zurueck — die Runde war verloren, ohne dass es jemand gesagt haette.
+        with state.lock:
+            active = state.active_sequence
+        if (saved and active is not None and active is not target_sequence
+                and active.name == target_sequence.name):
+            activate_sequence(state, target_sequence)
 
     if summary is not None:
         summary.update({"active": False, "paused": False, "point": {},
                           "reason": reason,
-                          "applied": bool(apply_config and (saved or not placed)),
+                          "applied": bool(apply_result and (saved or not placed)),
                           "stamp": time.time()})
         try:
             atomic_write(_STATUS_PATH, compact_json(summary))
@@ -439,10 +449,10 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     print(f"\n{col('[NACHKLICK]', 'cyan')} {reason}.")
     if not placed:
         print("  Nichts geändert.")
-    elif apply_config and not saved:
+    elif apply_result and not saved:
         print(f"  {err(f'{len(placed)} Punkt(e) neu gesetzt, aber NICHT gespeichert')} "
               f"{hint('— im Speicher gesetzt; CTRL+ALT+E → done schreibt die Sequenz erneut.')}")
-    elif apply_config:
+    elif apply_result:
         print(f"  {ok(f'{len(placed)} Punkt(e) neu gesetzt und gespeichert.')}")
         for point_id, old_pos, new, _f in placed[:12]:
             print(hint(f"     #{point_id}  ({old_pos[0]}, {old_pos[1]}) → "
@@ -454,7 +464,7 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     else:
         print(f"  {warn(f'{len(placed)} gesetzte Stelle(n) verworfen')} "
               f"{hint('— sequence.json ist unverändert.')}")
-    if remaining > 0 and apply_config:
+    if remaining > 0 and apply_result:
         print(hint(f"  {remaining} Punkt(e) standen noch aus — sie blieben, wo sie waren."))
 
 

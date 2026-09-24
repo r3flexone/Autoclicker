@@ -12,7 +12,8 @@ from typing import Optional
 
 from ...models import LoopPhase, Sequence, AutoClickerState
 from ...persistence import (
-    activate_sequence, list_available_sequences, load_sequence_file, save_points,
+    activate_sequence, confirm_new_sequence_name, list_available_sequences,
+    load_sequence_file, save_points,
 )
 from ...utils import (
     breadcrumb, col, confirm, err, header, hint, interactive_select, safe_input,
@@ -87,9 +88,11 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         description = existing.description
     else:
         print("\n--- Neue Sequenz erstellen ---")
-        seq_name = safe_input("Name der Sequenz: ").strip()
-        if not seq_name:
-            seq_name = f"Sequenz_{int(time.time())}"
+        seq_name = confirm_new_sequence_name(
+            safe_input("Name der Sequenz: ").strip() or f"Sequenz_{int(time.time())}")
+        if seq_name is None:
+            print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
+            return
         init_steps = []
         loop_phases = []
         end_steps = []

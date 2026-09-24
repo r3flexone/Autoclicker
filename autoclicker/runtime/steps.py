@@ -29,7 +29,7 @@ from ..utils import (
 from ..winapi import check_failsafe
 from .actions import (
     safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
-    wait_with_pause_skip, wait_while_paused, execute_else_action,
+    wait_with_pause_skip, wait_while_paused, execute_else_action, input_refused,
 )
 from . import status
 from .debug import (
@@ -71,6 +71,10 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
         return _execute_item_scan_immediate(state, step, step_num, total_steps, phase, mode, debug)
 
     scan_results = execute_item_scan(state, step.item_scan, mode)
+    if state.skip_step_event.is_set():
+        # Block-Skip waehrend des Scans: weder die gefundenen Items noch die
+        # ELSE-Aktion — `execute_step` verbraucht das Signal und macht weiter.
+        return False
 
     if scan_results:
         for i, (pos, item, priority) in enumerate(scan_results):
@@ -119,7 +123,9 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
     session = ScanSession()
     total_clicked = 0
     for slot in slots:
-        if state.stop_event.is_set():
+        # Der Block-Skip gilt dem ganzen Block, nicht dem einen Slot, der gerade
+        # dran ist — `execute_step` verbraucht ihn und macht mit dem naechsten weiter.
+        if state.stop_event.is_set() or state.skip_step_event.is_set():
             return False
 
         results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot],
@@ -131,6 +137,8 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                 return False
             total_clicked += 1
             session.invalidate()
+    if state.skip_step_event.is_set():
+        return False     # kam im letzten Slot — dann auch kein ELSE
 
     if total_clicked > 0:
         _step_status(debug, phase, step_num, total_steps,
@@ -378,8 +386,8 @@ def _execute_key(state: AutoClickerState, step: SequenceStep,
         _step_status(debug, phase, step_num, total_steps,
                      f"Taste '{step.key_press}'!",
                      f"Taste '{step.key_press}' | Gesamt: {state.key_presses}")
-
-    return True
+        return True
+    return not input_refused(state)
 
 
 # =============================================================================

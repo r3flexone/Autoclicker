@@ -124,6 +124,21 @@ class StudioCloseTest(unittest.TestCase):
             _on_close(bridge, True)
             send_command.assert_called_once_with("quit_program")
 
+    def test_neue_sequenz_ueberschreibt_keine_vorhandene(self):
+        # „Neu", Namen einer vorhandenen eintippen, Speichern: die Ordner-
+        # pruefung stand nur im Zweig mit alter Datei, und die vorhandene
+        # sequence.json wurde ueberschrieben (Schritte und Punkte weg).
+        existing = self._bridge().filepath
+        original = existing.read_bytes()
+        bridge = StudioBridge(Sequence("andere"), Path("sequences/andere/sequence.json"),
+                              "sequences")
+        with patch("sys.stdout"):
+            bridge.new({})
+            bridge.sequence_set({"field": "name", "value": "test"})
+            answer = bridge.save({})
+        self.assertEqual(answer["status"]["kind"], "err")
+        self.assertEqual(existing.read_bytes(), original)
+
 
 if __name__ == "__main__":
     unittest.main()

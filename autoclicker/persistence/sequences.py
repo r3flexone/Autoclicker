@@ -121,7 +121,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             seq_points,
         )
 
-        # Arbeitswerte fuellen. `still=True`: dass ein Schritt seine Koordinate aus dem
+        # Arbeitswerte fuellen. `quiet=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
         for m in resolve({p.id: p for p in seq.points}, seq, quiet=True):
@@ -159,6 +159,41 @@ def locate_step(arguments: dict) -> tuple:
         print(f"\n{err('Der gewählte Block existiert nicht mehr.')}")
         return None, None, -1
     return seq, steps_list, block
+
+
+def free_sequence_name(name: str) -> str:
+    """`name` — oder mit angehängtem Zähler, bis sein ORDNER frei ist.
+
+    Verglichen wird der Ordner, nicht der angezeigte Name: „Raid" und „raid"
+    landen beide in `sequences/raid`, und genau dort würde überschrieben.
+    """
+    candidate, number = name, 2
+    while sequence_dir(candidate).exists():
+        candidate = f"{name} {number}"
+        number += 1
+    return candidate
+
+
+def confirm_new_sequence_name(name: str) -> Optional[str]:
+    """Der Name für eine NEUE Sequenz — ohne eine vorhandene still zu überschreiben.
+
+    Eine neue Sequenz unter einem vergebenen Namen schrieb über die
+    `sequence.json` der alten: Schritte und Punkte weg, ihre Scans blieben
+    daneben liegen und zeigten auf Punkte, die es nicht mehr gibt. Dieselbe
+    Regel wie bei Slots und Items — ein getippter Name wird vor dem
+    Überschreiben erfragt. `None` = abgebrochen.
+    """
+    from ..utils import confirm, is_cancel, safe_input
+    while sequence_file(name).exists():
+        if confirm(f"  '{name}' gibt es bereits. Überschreiben?"):
+            return name
+        proposal = free_sequence_name(name)
+        answer = safe_input(f"  Anderer Name (Enter = {proposal}, "
+                            f"cancel = abbrechen): ").strip()
+        if is_cancel(answer):
+            return None
+        name = answer or proposal
+    return name
 
 
 # Sequenz-Liste mit mtime-Cache — die Editor-Auswahl ruft list_available_sequences
@@ -428,7 +463,7 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     Klick und Vorbedingung sind der Schritt selbst, Nachpruefung und else nur
     Zusatz. Gemeldet wird beides.
 
-    `still=True` unterdrueckt die "folgt Punkt"-Meldungen (beim Laden der
+    `quiet=True` unterdrueckt die "folgt Punkt"-Meldungen (beim Laden der
     Normalfall); verwaiste Referenzen werden IMMER gemeldet.
     """
     messages = []
@@ -436,6 +471,11 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     for phase_name, steps in _phases(sequence):
         for i, step in enumerate(steps, 1):
             location = f"{phase_name}[{i}]"
+            # Jeder Durchgang entscheidet neu. Zurueckgesetzt wurde nur im Zweig
+            # mit Klick-Punkt — ein „Beobachten"-Schritt (nur Pruef-Pixel), dessen
+            # Punkt einmal fehlte, blieb dadurch uebersprungen, auch nachdem der
+            # Punkt wieder da war.
+            step.unresolved = False
 
             if step.point_id is not None:
                 point = points.get(step.point_id)
@@ -447,7 +487,6 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
                         f"{location} '{step.name or 'Klick'}' zeigt auf Punkt "
                         f"#{step.point_id}, den es nicht mehr gibt - wird uebersprungen")
                 else:
-                    step.unresolved = False
                     old = (step.x, step.y)
                     step.x, step.y, step.name = point.x, point.y, point.name
                     step.recorded_color = point.color

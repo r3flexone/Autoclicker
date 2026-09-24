@@ -30,7 +30,8 @@ from ..utils import (
 )
 from ..persistence.sequences import (
     save_sequence_file, ensure_sequences_dir,
-    resolve_point_references, sequence_file, locate_step, activate_sequence,
+    sequence_file, locate_step, activate_sequence,
+    confirm_new_sequence_name, free_sequence_name,
 )
 
 
@@ -720,7 +721,11 @@ def stop_recording(state: AutoClickerState) -> str | None:
     if ui_name:
         # UI-Aufnahme: alle Angaben stehen schon vor dem ersten Klick fest. So
         # wartet der Abschluss nie unsichtbar in der Konsole auf eine Eingabe.
-        seq_name = ui_name
+        # Das Studio hat den Namen beim Start geprueft; ist er seither vergeben
+        # worden, wird ausgewichen statt ueberschrieben — fragen geht hier nicht.
+        seq_name = free_sequence_name(ui_name)
+        if seq_name != ui_name:
+            print(warn(f"'{ui_name}' gibt es inzwischen — gespeichert als '{seq_name}'."))
         total_cycles = ui_cycles
         description = ui_description
     else:
@@ -737,7 +742,10 @@ def stop_recording(state: AutoClickerState) -> str | None:
             print(f"{col('[VERWORFEN]', 'yellow')} Aufnahme nicht gespeichert.")
             return None
 
-        seq_name = name_input if name_input else auto_name
+        seq_name = confirm_new_sequence_name(name_input if name_input else auto_name)
+        if seq_name is None:
+            print(f"{col('[VERWORFEN]', 'yellow')} Aufnahme nicht gespeichert.")
+            return None
         print(f"\nZyklen (0 = unendlich, Enter = {col('unendlich', 'cyan')}):")
         try:
             cycles_input = safe_input("> ").strip()
@@ -777,12 +785,11 @@ def stop_recording(state: AutoClickerState) -> str | None:
     filepath = recording_file(seq_name)
 
     if save_sequence_file(seq, filepath):
-        with state.lock:
-            # Sofort aufloesen: sonst zeigt der Editor direkt nach der Aufnahme
-            # "(0,0)" statt der Stelle, auf die gewartet wird.
-            resolve_point_references(state, seq)
-            state.active_sequence = seq
-            state.points = seq.points
+        # Ueber den EINEN Weg, der Punkte und Scans gemeinsam umstellt — hier
+        # stand die Zuweisung von Hand, und die Scans der vorigen Sequenz
+        # blieben im Speicher. Loest zugleich auf: sonst zeigte der Editor
+        # direkt nach der Aufnahme "(0,0)" statt der Stelle, auf die gewartet wird.
+        activate_sequence(state, seq)
 
         cycles_str = "unendlich" if total_cycles == 0 else str(total_cycles)
         saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')

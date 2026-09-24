@@ -168,6 +168,200 @@ try:
         _hnd.handle_skip_step(_st)
     check("mit laufender Sequenz setzt er skip_step_event - denselben Weg wie der Knopf",
           _st.skip_step_event.is_set())
+
+    # =========================================================================
+    section("Block-Skip im Item-Scan gilt dem ganzen Block")
+    # =========================================================================
+    # `execute_item_scan` verbrauchte das Signal selbst. Im normalen Modus
+    # wurden die bis dahin gefundenen Items trotzdem geklickt, im Immediate-
+    # Modus (ein Aufruf je Slot) fiel nur EIN Slot weg — gemessen: 4 von 5
+    # Slots geklickt nach „Block ueberspringen".
+    import autoclicker.runtime.item_scan as _IS
+    from autoclicker.models import (
+        ElseConfig as _ELSE, ItemProfile as _ITEM, ItemScanConfig as _ISC,
+        ItemSlot as _SLOT,
+    )
+
+    class _Shot:                                   # ein Bild, das niemand ansieht
+        size = (8, 8)
+
+    _shots: list = []
+
+    def _screenshot(region=None):
+        _shots.append(region)
+        return _Shot()
+
+    def _matches(hit):
+        return lambda profile, img, *a, **k: (hit, 1.0 if hit else 0.0) \
+            if k.get("return_score") else hit
+
+    _orig_is = (_IS.take_screenshot, _IS._park_mouse_for_scan, _IS._check_profile_match)
+    _IS._park_mouse_for_scan = lambda *a: None
+    _IS._check_profile_match = _matches(True)
+
+    def _scan_state(immediate):
+        st = _ST()
+        st.is_running = True
+        st.config.scan_click_immediate = immediate
+        st.config.scan_item_click_delay = 0
+        st.config.scan_slot_delay = 0
+        st.item_scans["inv"] = _ISC("inv", slots=[
+            _SLOT(f"S{i}", (i * 10, 0, i * 10 + 8, 8), (100 + i, 0)) for i in range(5)],
+            items=[_ITEM("Bogen", marker_colors=[(1, 2, 3)])])
+        return st
+
+    def _skip_at_second_slot(st):
+        def shot(region=None):
+            if len(_shots) == 1:
+                st.skip_step_event.set()           # CTRL+ALT+SHIFT+K beim zweiten Slot
+            return _screenshot(region)
+        return shot
+
+    try:
+        # --- normal: Skip waehrend des zweiten Slots -----------------------
+        _st = _scan_state(False)
+        _clicks.clear()
+        _shots.clear()
+        _IS.take_screenshot = _skip_at_second_slot(_st)
+        _out = _io.StringIO()
+        _r1 = _run_step(_st, _STEP(item_scan="inv", item_scan_mode="every"), 1, 2, _out)
+        check("normal: die bis dahin gefundenen Items werden NICHT geklickt",
+              _r1 is True and _clicks == [])
+        check("normal: das Signal ist verbraucht", not _st.skip_step_event.is_set())
+        _r2 = _run_step(_st, _STEP(x=9, y=9, name="B", point_id=9), 2, 2, _out)
+        check("normal: der naechste Block laeuft und klickt",
+              _r2 is True and _clicks == [(9, 9)])
+
+        # --- immediate: Skip zwischen zwei Slots ---------------------------
+        _st = _scan_state(True)
+        _clicks.clear()
+        _shots.clear()
+        _IS.take_screenshot = _screenshot
+        _parks: list = []
+        _IS._park_mouse_for_scan = lambda *a: _parks.append(1)
+
+        def _click_then_skip(x, y, *a):
+            _clicks.append((x, y))
+            if len(_clicks) == 1:
+                _st.skip_step_event.set()          # direkt nach dem ersten Item
+            return True
+
+        _A.send_click = _click_then_skip
+        _r1 = _run_step(_st, _STEP(item_scan="inv", item_scan_mode="every"), 1, 2, _out)
+        _A.send_click = lambda x, y, *a: _clicks.append((x, y)) or True
+        check("immediate: nach dem Skip wird kein weiterer Slot geklickt",
+              _r1 is True and _clicks == [(100, 0)])
+        check("immediate: und keiner mehr angefasst — kein Parken, keine Aufnahme",
+              len(_parks) == 1 and len(_shots) == 1)
+        check("immediate: das Signal ist verbraucht", not _st.skip_step_event.is_set())
+
+        # Skip WAEHREND des Scans eines Slots (beim Parken davor): dann faengt
+        # ihn `execute_item_scan` — und darf ihn nicht verbrauchen, sonst
+        # scannt der Durchgang mit dem naechsten Slot einfach weiter.
+        def _skip_at_park(number):
+            def park(*a):
+                _parks.append(1)
+                if len(_parks) == number:
+                    _st.skip_step_event.set()
+            return park
+
+        _st = _scan_state(True)
+        _clicks.clear()
+        _parks.clear()
+        _IS._park_mouse_for_scan = _skip_at_park(2)          # vor dem zweiten Slot
+        _r1 = _run_step(_st, _STEP(item_scan="inv", item_scan_mode="every"), 1, 2, _out)
+        check("immediate: ein Skip mitten im Scan beendet den ganzen Block",
+              _r1 is True and _clicks == [(100, 0)] and not _st.skip_step_event.is_set())
+
+        # Kommt er im LETZTEN Slot, endet die Schleife von selbst — danach darf
+        # der Block nicht „erledigt" melden und das Signal liegen lassen.
+        _st = _scan_state(True)
+        _clicks.clear()
+        _parks.clear()
+        _IS._park_mouse_for_scan = _skip_at_park(5)          # vor dem fuenften Slot
+        _r1 = _run_step(_st, _STEP(item_scan="inv", item_scan_mode="every"), 1, 2, _out)
+        _r2 = _run_step(_st, _STEP(x=9, y=9, name="B", point_id=9), 2, 2, _out)
+        check("immediate: Skip im letzten Slot — der naechste Block laeuft trotzdem",
+              _r1 is True and _r2 is True and _clicks[-1] == (9, 9)
+              and len(_clicks) == 5 and not _st.skip_step_event.is_set())
+        _IS._park_mouse_for_scan = lambda *a: None
+
+        # --- ELSE darf den Skip nicht schlucken ----------------------------
+        # Ohne Treffer greift sonst ELSE — `skip` meldet „erledigt", und das
+        # Signal blieb fuer den NAECHSTEN Block liegen.
+        _st = _scan_state(False)
+        _IS._check_profile_match = _matches(False)
+        _clicks.clear()
+        _shots.clear()
+        _IS.take_screenshot = _skip_at_second_slot(_st)
+        _r1 = _run_step(_st, _STEP(item_scan="inv", item_scan_mode="every",
+                                   else_config=_ELSE(action="skip")), 1, 2, _out)
+        _r2 = _run_step(_st, _STEP(x=9, y=9, name="B", point_id=9), 2, 2, _out)
+        check("mit ELSE: der Skip wird verbraucht, der naechste Block klickt",
+              _r1 is True and not _st.skip_step_event.is_set() and _clicks == [(9, 9)])
+    finally:
+        _IS.take_screenshot, _IS._park_mouse_for_scan, _IS._check_profile_match = _orig_is
+
+    # =========================================================================
+    section("Eine verweigerte Taste laesst keinen Block-Skip liegen")
+    # =========================================================================
+    # `_execute_key` meldete „erledigt", auch wenn `safe_key` die Taste wegen
+    # des Skips verweigert hatte. Das Signal blieb gesetzt, und der NAECHSTE
+    # Block wurde verschluckt. Dasselbe Muster stand bei der ELSE-Taste und
+    # bei der Taste einer Boss-/Icon-Erkennung.
+    import autoclicker.runtime.boss_detection as _BD
+    from autoclicker.models import ElseConfig as _ELSE2, BOSS_ACTION_KEY as _BKEY
+
+    _keys: list = []
+    _orig_key, _orig_delay = _A.send_key, _A._humanize_delay
+    _A.send_key = lambda key: _keys.append(key) or True
+
+    def _skip_in_delay(st):
+        # Der Skip kommt in der Humanize-Pause — zwischen der ersten und der
+        # zweiten Pruefung in `safe_key`, deterministisch statt mit einer Uhr.
+        st.skip_step_event.set()
+
+    _A._humanize_delay = _skip_in_delay
+    try:
+        _st = _ST()
+        _st.is_running = True
+        _clicks.clear()
+        _out = _io.StringIO()
+        _r1 = _run_step(_st, _STEP(key_press="a", name="Taste"), 1, 2, _out)
+        _A._humanize_delay = _orig_delay
+        _r2 = _run_step(_st, _STEP(x=7, y=7, name="B", point_id=7), 2, 2, _out)
+        check("die Taste wird nicht gedrueckt, der Block gilt als uebersprungen",
+              _r1 is True and _keys == [])
+        check("der naechste Block laeuft und klickt — er wird nicht verschluckt",
+              _r2 is True and _clicks == [(7, 7)] and not _st.skip_step_event.is_set())
+
+        _A._humanize_delay = _skip_in_delay
+        _st = _ST()
+        _st.is_running = True
+        with _cl.redirect_stdout(_io.StringIO()):
+            _else = _A.execute_else_action(
+                _st, _STEP(else_config=_ELSE2(action="key", key="z")), "Loop", 1, 1)
+        check("ELSE-Taste: verweigert heisst nicht erledigt", _else is False and _keys == [])
+
+        _st = _ST()
+        _st.is_running = True
+        with _cl.redirect_stdout(_io.StringIO()):
+            _det = _BD._execute_detection_action(
+                _st, subject="Icon 'X'", action=_BKEY, label="icon:X", step_num=1,
+                total_steps=1, phase="Loop", debug=False, key="q")
+        check("Erkennungs-Taste: verweigert heisst nicht erledigt",
+              _det is False and _keys == [])
+
+        # Ein echter Fehlschlag des Systems (unbekannte Taste) ist KEIN Grund,
+        # den Durchgang abzubrechen — das bleibt, wie es war.
+        _A._humanize_delay = _orig_delay
+        _A.send_key = lambda key: False
+        _st = _ST()
+        _st.is_running = True
+        _r = _run_step(_st, _STEP(key_press="gibtsnicht"), 1, 1, _io.StringIO())
+        check("eine vom System abgelehnte Taste laesst den Lauf weitergehen", _r is True)
+    finally:
+        _A.send_key, _A._humanize_delay = _orig_key, _orig_delay
 finally:
     _A.send_click, _S.check_failsafe = _orig_click, _orig_failsafe
     _status._state.clear()

@@ -129,6 +129,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     sequence = None
     cycle_count = 0
     error = ""
+    stop_heartbeat = None
     try:
         print(col("\n[START] Sequenz gestartet.", "green"))
         sequence = _prepare_worker_state(state, state.config.debug_detail)
@@ -148,6 +149,7 @@ def sequence_worker(state: AutoClickerState) -> None:
                                 "phases": _phase_overview(sequence),
                                 "started_from": _start_from_label(sequence, start_from),
                                 "start": state.start_time}, immediately=True)
+        stop_heartbeat = status.start_heartbeat(state)
         _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug,
@@ -167,6 +169,11 @@ def sequence_worker(state: AutoClickerState) -> None:
             llm_thread = state.llm_thread
             if llm_thread is not None and llm_thread.is_alive():
                 llm_thread.join(timeout=state.config.llm_timeout + 5)
+            # Erst NACH dem Warten auf den LLM-Thread (sonst sähe genau diese
+            # Minute verwaist aus), aber VOR der Zusammenfassung — ein letzter
+            # Takt danach schriebe über sie.
+            if stop_heartbeat is not None:
+                stop_heartbeat()
             if sequence is not None:
                 status.finish_run(state, reason, cycle_count,
                               time.time() - state.start_time if state.start_time else 0)
@@ -729,8 +736,15 @@ def _run_loop_phases(state: AutoClickerState, sequence, scheduled_pending: dict,
 
 def _run_end_phase(state: AutoClickerState, sequence,
                    start_from: Optional[tuple] = None) -> None:
-    """Führt die END-Steps aus (ausser bei quit_event); mit Einstieg ab dessen Block."""
-    if not sequence.end_steps or state.quit_event.is_set():
+    """Führt die END-Steps aus — nicht nach Stopp oder Beenden; mit Einstieg ab dessen Block.
+
+    Das sanfte Ende (CTRL+ALT+F, Zeitlimit) laeuft hierher, ein Stopp nicht.
+    Hier stand nur `quit_event`: nach CTRL+ALT+S hiess es „Führe End-Sequenz
+    aus … abgeschlossen", Klicks und Tasten verweigerte `safe_click`, aber
+    Erkennungs-Blöcke liefen — ein Boss-Scan samt LLM-Aufruf, eine Minute
+    nachdem der Nutzer gestoppt hatte.
+    """
+    if not sequence.end_steps or state.quit_event.is_set() or state.stop_event.is_set():
         return
     first = int(start_from[2]) if start_from and start_from[0] == "end" else 0
 
@@ -744,11 +758,11 @@ def _run_end_phase(state: AutoClickerState, sequence,
     for i, step in enumerate(sequence.end_steps):
         if i < first:
             continue
-        if state.quit_event.is_set():
+        if state.quit_event.is_set() or state.stop_event.is_set():
             break
         execute_step(state, step, i + 1, total_end, "END")
 
-    if not state.quit_event.is_set():
+    if not state.quit_event.is_set() and not state.stop_event.is_set():
         print(col("\n[END] End-Sequenz abgeschlossen.", "cyan"))
 
 

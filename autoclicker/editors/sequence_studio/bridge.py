@@ -84,7 +84,7 @@ class StudioBridge(
         self._cfg_state: float = -1.0
         self._cfg_info: dict = {}
         # Stand der Dateien beim Laden. Der Hauptprozess schreibt dieselben
-        # Dateien (Aufnahme legt Punkte an, `save_data` schreibt die Sequenz) —
+        # Dateien (Aufnahme legt Punkte an, `save_points` schreibt die Sequenz) —
         # ohne diesen Vergleich überschreibt das Studio das kommentarlos.
         self._state_file: Optional[float] = _mtime(self.filepath)
         # Die Auswahl lebt in GENAU EINER Phase. Eine Auswahl quer über INIT und

@@ -308,7 +308,7 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
                 number["icon_scans"] += 1
 
         # Geladene Sequenzen im selben Lock mitziehen — sonst ueberschreibt der
-        # naechste save_data() die umgerechneten Dateien mit dem alten Stand.
+        # naechste save_points() die umgerechneten Dateien mit dem alten Stand.
         if with_sequences and state.active_sequence is not None:
             # Die geladene Sequenz im Speicher mitziehen — genau ihre
             # Screenshot-Regionen schreibt `save_points()` unten zurueck; alle

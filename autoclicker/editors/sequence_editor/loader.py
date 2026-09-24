@@ -5,7 +5,7 @@ Geändert oder gespeichert wird dabei nichts - siehe _report_point_mismatches.
 """
 
 from ...models import Sequence, AutoClickerState, ELSE_CLICK
-from ...persistence import list_available_sequences, load_sequence_file
+from ...persistence import activate_sequence, list_available_sequences, load_sequence_file
 from ...utils import col, hint, info, interactive_select, warn
 
 
@@ -36,9 +36,11 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
     seq, _seq_path = loaded_sequences[choice]
 
-    with state.lock:
-        state.active_sequence = seq
-        state.points = seq.points
+    # Samt Scans — hier standen nur Sequenz und Punkte. Nach einem frischen
+    # Start hatte der Lauf damit GAR keine Scans ("Item-Scan nicht gefunden"),
+    # nach einem Wechsel die der vorigen Sequenz. Derselbe Weg liegt unter
+    # CTRL+ALT+L, CTRL+ALT+S und CTRL+ALT+T ohne geladene Sequenz.
+    activate_sequence(state, seq)
     print(f"\n{col('[ERFOLG]', 'green')} Sequenz '{seq.name}' geladen!\n")
 
 

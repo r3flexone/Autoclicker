@@ -102,23 +102,17 @@ class BridgeShareMixin:
         pro Prozess.
         """
         from ...config import CONFIG, apply_config
-        from ...persistence import list_available_sequences, load_sequence_file
+        from ...persistence import (
+            activate_sequence, list_available_sequences, load_sequence_file,
+        )
         state = AutoClickerState()
         apply_config(state.config, CONFIG)
         path = next((p for n, p in list_available_sequences() if n == self.board.name), None)
         seq = load_sequence_file(path) if path is not None else None
         if seq is not None:
-            state.active_sequence = seq
-            state.points = seq.points
-            from ...persistence import (
-                load_all_boss_scans, load_all_icon_scans, load_all_item_scans,
-                load_global_bosses, resolve_click_references,
-            )
-            load_all_item_scans(state)
-            load_all_boss_scans(state)
-            load_all_icon_scans(state)
-            load_global_bosses(state, seq.name)
-            resolve_click_references(state, seq)
+            # Der EINE Weg — Punkte, Scans und Bibliothek gemeinsam. Hier standen
+            # dieselben sechs Zeilen noch einmal von Hand.
+            activate_sequence(state, seq)
         return state
 
     @staticmethod

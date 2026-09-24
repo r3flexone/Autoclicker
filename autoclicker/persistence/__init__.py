@@ -56,6 +56,7 @@ from .presets import (
 )
 from .sequences import (
     ensure_sequences_dir, save_sequence_file, load_sequence_file, locate_step,
+    free_sequence_name, confirm_new_sequence_name,
     list_available_sequences, activate_sequence,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
     sequence_dir, sequence_file, sequence_templates_dir,
@@ -85,6 +86,7 @@ __all__ = [
     '_boss_scan_to_dict', '_icon_scan_to_dict',
     # sequences
     'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file', 'locate_step',
+    'free_sequence_name', 'confirm_new_sequence_name',
     'list_available_sequences', 'activate_sequence',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
     'sequence_dir', 'sequence_file', 'sequence_templates_dir',

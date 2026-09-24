@@ -315,7 +315,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             state.skip_event.clear()
             break
         if state.skip_step_event.is_set():
-            state.skip_step_event.clear()
+            # NICHT verbrauchen: der Block-Skip gehoert dem Dispatcher. Hier
+            # geleert, klickte der normale Modus die bis dahin gefundenen Items
+            # trotzdem, und im Immediate-Modus (ein Aufruf je Slot) fiel nur
+            # EIN Slot weg — der Rest des Blocks lief weiter.
             break
 
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):

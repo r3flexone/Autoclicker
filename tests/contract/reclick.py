@@ -457,7 +457,7 @@ try:
     _ruesten(_s9)
     _click(_s9, 3030, 16, (99, 99, 99))       # Titelleiste erwischt
     check("die Stelle ist erfasst", len(_s9.reclick_set) == 1)
-    _stop(_s9, "Fenster zu", apply_config=False)
+    _stop(_s9, "Fenster zu", apply_result=False)
     check("verworfen lässt den Punkt in Ruhe",
           (_s9.points[0].x, _s9.points[0].y) == (100, 100))
     check("und die Farbe auch", _s9.points[0].color == (1, 2, 3))
@@ -702,3 +702,52 @@ try:
           _st_bad["active"] is False and _st_bad["applied"] is False)
 finally:
     _os.chdir(_cwd_sv)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken aus dem Studio: der Hauptprozess sieht das Ergebnis")
+
+# Die Runde aus dem Studio arbeitet auf einer eigenen Kopie von der Platte
+# (`command_reclick` laedt die Datei, die geladene Sequenz wechselt nicht). War
+# dieselbe Sequenz hier geladen, hielt der Speicher nach dem Übernehmen die
+# ALTEN Stellen: ein Start per Hotkey klickte daneben, und das naechste
+# `save_points()` (CTRL+ALT+A, CTRL+ALT+U, Editor `done`) schrieb sie zurueck.
+import contextlib as _cl_st
+import io as _io_st
+from autoclicker.persistence import (
+    activate_sequence as _activate_st, load_sequence_file as _load_st,
+    save_points as _save_points_st, save_sequence_file as _save_st,
+    sequence_file as _file_st,
+)
+
+_cwd_st = _os.getcwd()
+_sandbox_st = tempfile.mkdtemp(prefix="nachklick_studio_")
+_os.chdir(_sandbox_st)
+try:
+    _path_st = _file_st("Farm")
+    _path_st.parent.mkdir(parents=True)
+    _save_st(_SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
+                  points=[_point(1, 10, 10)]), _path_st)
+    _s_st = _ST()
+    _s_st.config.window_focus_title = ""               # kein Fensterfilter im Test
+    with _cl_st.redirect_stdout(_io_st.StringIO()):
+        _activate_st(_s_st, _load_st(_path_st))             # Hauptprozess hat Farm geladen
+        _ruesten(_s_st, _load_st(_path_st))                 # Runde aus dem Studio: eigene Kopie
+        _click(_s_st, 500, 500, None)
+        _stop(_s_st, "übernommen")
+    _disk_st = _load_st(_path_st).points[0]
+    _mem_st = _s_st.active_sequence.points[0]
+    check("übernommen steht die neue Stelle auf der Platte",
+          (_disk_st.x, _disk_st.y) == (500, 500))
+    check("und im Speicher des Hauptprozesses — ein Hotkey-Start klickt dort",
+          (_mem_st.x, _mem_st.y) == (500, 500)
+          and (_s_st.active_sequence.loop_phases[0].steps[0].x,
+               _s_st.active_sequence.loop_phases[0].steps[0].y) == (500, 500))
+    with _cl_st.redirect_stdout(_io_st.StringIO()):
+        _save_points_st(_s_st)                              # z.B. CTRL+ALT+A danach
+    _disk_st = _load_st(_path_st).points[0]
+    check("das naechste Speichern im Hauptprozess dreht die Runde nicht zurueck",
+          (_disk_st.x, _disk_st.y) == (500, 500))
+finally:
+    _os.chdir(_cwd_st)
+    shutil.rmtree(_sandbox_st, ignore_errors=True)

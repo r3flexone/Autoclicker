@@ -285,12 +285,38 @@ gefragt, und zwar in einer Schleife: während man auf die Rückkehr des Fensters
 wartet, kann erneut pausiert werden — erst der gleichzeitig freie Zustand lässt die
 Eingabe durch.
 
+**Ein `False` von `safe_click`/`safe_key` heisst zweierlei** — verweigert (Stopp,
+Block-Skip) oder vom System nicht angenommen (unbekannte Taste). `input_refused()`
+trennt beides. Wer eine verweigerte Eingabe als „erledigt" meldet, lässt einen
+Block-Skip gesetzt, und der **nächste** Block wird verschluckt: so stand es bei
+der Taste, der ELSE-Taste und der Taste einer Boss-/Icon-Erkennung. Regel beim
+Erweitern: **den Block-Skip verbraucht nur `execute_step`** (`_block_skip`), nie
+ein Handler darunter. Der Item-Scan tat es selbst — im normalen Modus wurden die
+bis dahin gefundenen Items trotzdem geklickt, im Immediate-Modus (ein Aufruf je
+Slot) fiel nur EIN Slot weg. Ein Handler, der den Skip sieht, gibt `False`
+zurück; `execute_step` macht daraus „übersprungen".
+
 **Der Worker räumt auch nach einem Fehler auf.** `sequence_worker()` liegt
 vollständig in `try/except/finally`: eine Ausnahme in einem Schritt beendete
 früher den Thread, ohne den Schedule-Watcher zu stoppen, das Session-Log zu
 schliessen oder `.run.json` abzuschliessen — zurück blieb ein Lauf, der laut
 Statusdatei noch läuft, und ein Timer-Thread als Geist. Gemeldet wird die
 Ausnahme, nicht verschluckt.
+
+**Die END-Phase gehört zum sanften Ende, nicht zum Stopp.** CTRL+ALT+F und
+das Zeitlimit laufen durch END; nach einem harten Stopp (CTRL+ALT+S,
+Notbremse, `click_max_total`) entfällt sie, und ein Stopp mitten in END
+beendet sie. `_run_end_phase` prüfte nur `quit_event`: nach CTRL+ALT+S stand
+„Führe End-Sequenz aus … abgeschlossen" in der Konsole, Klicks verweigerte
+`safe_click`, aber Erkennungs-Blöcke liefen — ein Boss-Scan samt LLM-Aufruf,
+eine Minute nachdem gestoppt war.
+
+**Ein Fehler in einem Handler beendet nicht den Hauptprozess.** Hotkeys und
+Briefkasten-Befehle laufen über `run_safely()` in `main.py`. Gefangen war nur
+`PlatformError`; jede andere Ausnahme lief aus der Hauptschleife, die Hotkeys
+wurden abgemeldet und ein laufender Worker (Daemon-Thread) starb mitten im
+Klick — ohne Aufräumen, ohne Zusammenfassung. Gemeldet wird mit Stack im
+Logger; `KeyboardInterrupt` und `SystemExit` gehen weiter durch.
 
 ### Debug-Ausgabe vs. manueller Modus (`runtime/debug.py`)
 Drei Dinge, die auseinandergehalten werden müssen — sie hingen früher in einem Flag:
@@ -335,7 +361,7 @@ Drei Dinge hängen daran:
   zuerst. Damit die Konsolenschleife das mitbekommt, liest `read_command()` mit
   einer Zeitgrenze (0,2 s) und sieht dazwischen auf das Befehls-Event — es war
   vorher ein blockierender `getch()`.
-- **Wo gefragt wird, entscheidet der Start.** `handle_toggle(aus_studio=…)`
+- **Wo gefragt wird, entscheidet der Start.** `handle_toggle(from_studio=…)`
   schreibt `state.run_from_studio`: ein Studio-Start bekommt die Tafel, ein
   Hotkey-Start die Konsole, der Countdown-Thread lässt stehen, was der
   Zeitplan gesetzt hat. Die Tafel steht dabei in **beiden** Fällen im
@@ -1107,6 +1133,30 @@ machen das vor).
 Für Serien immer den ersten: ein angehängter Zähler ergäbe `Slot 3 2`, und das liest
 niemand gern.
 
+**Dieselbe Regel gilt für Sequenzen — und dort ist der Schlüssel der ORDNER.**
+„Raid" und „raid" landen beide in `sequences/raid`. Drei Wege legen eine neue
+Sequenz unter einem getippten Namen an, und alle drei schrieben über die
+`sequence.json` einer vorhandenen: das Studio („Neu", Namen eintippen,
+Speichern — die Ordnerprüfung stand nur im Zweig „alte Datei existiert"), die
+Konsolen-Aufnahme und „Neue Sequenz erstellen" im Konsolen-Editor. Schritte und
+Punkte waren weg, die Scans blieben daneben liegen. Heute:
+
+| wo | was bei einem vergebenen Namen passiert |
+|---|---|
+| Studio `save()` | abgelehnt („Ordner existiert bereits") — bei **jedem** Umbenennen |
+| Konsole (Aufnahme, Editor) | `confirm_new_sequence_name()`: überschreiben? sonst anderer Name |
+| Aufnahme aus dem Studio | `free_sequence_name()`: ausweichen auf `Raid 2` — fragen geht dort nicht |
+
+Beide Helfer stehen in `persistence/sequences.py`. Verschoben wird beim
+Umbenennen, sobald es den alten **Ordner** gibt, nicht erst die Datei: auch eine
+nie gespeicherte Sequenz kann dort schon gemerkte Bildschirme und gelernte
+Vorlagen haben (der Reiter schreibt nach `self.filepath.parent`) — sie blieben
+sonst im alten Ordner zurück. Danach wird der Scans-Reiter **nicht** neu
+aufgebaut, nur sein gemerkter Plattenstand nachgezogen (`_disk_track()`): alle
+Pfade leiten sich ohnehin aus `self.filepath` ab. Der frühere Neuaufbau warf
+Screenshot, Auswahl, Rückgängig und ungespeicherte Scan-Änderungen weg, und die
+rechte Spalte sprang mitten in der Arbeit auf „Slots".
+
 Dieselbe Regel gilt für **Identität ausserhalb der Persistenz**: Loop-Phasen-Namen sind
 frei wählbar und doppelt vergebbar, deshalb hängt der Zeitplan-Zustand im Worker an der
 *Position* der Phase, nicht an ihrem Namen (`_schedule_watcher`). Ein Name ist eine
@@ -1304,7 +1354,7 @@ es die Marker-Farben.
   Worker kennt Zyklus und Phase, `execute_step` den Block, die Warteschleifen
   (`waiting_for()`) das, worauf gerade gewartet wird — keiner das Ganze.
   Geschrieben wird höchstens alle 200 ms; Phasen- und Zykluswechsel umgehen die
-  Drossel (`sofort=True`), weil ein übersprungener Sprung nicht nachgeholt wird.
+  Drossel (`immediately=True`), weil ein übersprungener Sprung nicht nachgeholt wird.
 
   **Ein wartender Lauf ist kein toter Lauf.** Der Leser erkennt einen abgestürzten
   Lauf am Alter des Zeitstempels (älter als 5 s = verwaist), und das geht nur, wenn
@@ -1322,6 +1372,20 @@ es die Marker-Farben.
   und sie wartet auf `stop_event` statt zu schlafen. Ein Test hält das fest — ohne
   die Aufrufe sähe genau der Lauf tot aus, der gerade wartet, und das ist der Fall,
   für den man die Ansicht aufmacht.
+
+  **Ein einzelner Aufruf kann länger dauern als jede Schleife** — deshalb hält
+  zusätzlich ein eigener Thread den Stempel frisch (`status.start_heartbeat()`,
+  einmal pro Sekunde, gestartet und gestoppt von `sequence_worker`). Ein
+  synchroner LLM-Boss-Scan (`llm_async` ist aus) steckt an einem kalten Modell
+  über eine Minute in EINER HTTP-Antwort, ein erster OCR-Aufruf lädt Modelle
+  nach; dazwischen ruft niemand `heartbeat()`, und das Studio zeigte „kein
+  Hauptprozess" über einem Lauf, der nur wartete. „Verwaist" heisst „der Prozess
+  ist weg" — und mit dem Prozess stirbt auch dieser Thread. Die Aufrufe in den
+  Schleifen bleiben: sie schreiben zugleich, **worauf** gewartet wird. Zwei
+  Regeln: der Takt stoppt **nach** dem Warten auf den LLM-Thread und **vor**
+  `finish_run()` (sonst schriebe ein letzter Takt über die Zusammenfassung), und
+  weil jetzt mehrere Threads schreiben, liegt alles in `status.py` hinter
+  `_lock` — nie unter `state.lock` nehmen, `_counters()` sperrt ihn darin.
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
   - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
   - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
@@ -2857,7 +2921,7 @@ benutzt** — es ist ein Umschalter und würde starten, wenn gerade nichts läuf
 **„Ab hier starten" ist ein Start mit Einstieg, kein zweiter Lauf-Modus**
 (`block_start` → Briefkasten `start_from` → `command_start_from`). Geschickt
 werden Datei und Position — derselbe Helfer wie beim Block-Test
-(`_selected_position()` im Studio, `_locate_step()` im Hauptprozess) —, der
+(`_selected_position()` im Studio, `locate_step()` in `persistence`) —, der
 Handler legt `state.start_from = (Art, Phasen-Index, Block)` ab und ruft dann
 `command_start`, also denselben Weg wie der Start-Knopf. Der Worker holt den
 Einstieg **einmal** ab (`_take_start_from`, verbraucht ihn und prüft, ob es den
@@ -3057,7 +3121,15 @@ wechselte die Sequenz, liess aber die Scans der vorigen im Speicher — ein Star
 danach lief mit B-Schritten gegen A-Scans; und der Konsolen-Editor bearbeitete B
 mit den Punkten der gerade aktiven A und schrieb B mit A's Pool zurück. Regel
 beim Erweitern: **wer `state.active_sequence` setzt, ruft `activate_sequence`**,
-nichts anderes. (Ein früheres `reload_points()` für einen separaten Punkte-Pool
+nichts anderes.
+
+Und die Regel reichte als Regel nicht: der Konsolen-Loader (CTRL+ALT+L, dazu
+CTRL+ALT+S und CTRL+ALT+T ohne geladene Sequenz) und das Ende einer Aufnahme
+setzten die Sequenz trotzdem von Hand. Nach einem frischen Start hatte ein Lauf
+damit **gar keine** Scans („Item-Scan nicht gefunden"), nach einem Wechsel die
+der vorigen Sequenz. Seither misst ein Test den Quelltext: eine Zuweisung an
+`.active_sequence` außerhalb von `persistence/sequences.py` ist rot (nur
+`= None` beim Factory-Reset ist kein Wechsel). (Ein früheres `reload_points()` für einen separaten Punkte-Pool
 ist gelöscht — die Punkte kommen mit der `sequence.json`, und ein Test verlangt,
 dass kein Ladeweg sie separat nachlädt.)
 
@@ -3761,13 +3833,21 @@ seq)` nimmt sie als Argument). Sie zu aktivieren hiesse, dass ein Druck auf
 **Geschrieben wird erst am Schluss, und nur auf ausdrückliches Übernehmen**
 (`CTRL+ALT+J`, „Übernehmen" im Studio). Bis dahin stehen die neuen Stellen in
 `state.reclick_set` und die Punkte sind unverändert — auch im Speicher.
-Damit ist ein Abbruch folgenlos: `stop_reclick(..., uebernehmen=False)` wirft
+Damit ist ein Abbruch folgenlos: `stop_reclick(..., apply_result=False)` wirft
 die Liste weg, es gibt nichts zurückzudrehen. Verworfen wird beim Schliessen des
 Studio-Fensters (`reclick_on_close()` — die Runde gehört dem Fenster,
 das sie gestartet hat) und beim Beenden des Programms.
 
 Vorher schrieb **jeder** Ausgang. In einer echten Runde hat das drei Punkte auf
 Fensterdekoration gesetzt und beim Beenden gespeichert.
+
+**Und nach dem Übernehmen zieht der Hauptprozess nach.** Eine Runde aus dem
+Studio arbeitet auf einer eigenen Kopie von der Platte. Hatte der Hauptprozess
+dieselbe Sequenz geladen, hielt sein Speicher danach die ALTEN Stellen: ein
+Start per Hotkey klickte daneben, und das nächste `save_points()` (CTRL+ALT+A,
+CTRL+ALT+U, Editor `done`) schrieb sie zurück — die Runde war verloren, ohne dass
+es jemand sagte. `stop_reclick()` aktiviert die gespeicherte Kopie deshalb, wenn
+sie dieselbe Sequenz ist wie die geladene.
 
 Fünf Regeln, an denen die Klick-Runde hängt:
 

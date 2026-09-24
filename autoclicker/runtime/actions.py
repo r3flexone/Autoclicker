@@ -190,6 +190,18 @@ def _input_allowed(state: AutoClickerState, label: str) -> bool:
     return False
 
 
+def input_refused(state: AutoClickerState) -> bool:
+    """Hat `safe_click`/`safe_key` die Eingabe VERWEIGERT (Stopp, Block-Skip)?
+
+    Ein `False` von dort heisst zweierlei: verweigert — dann ist der Block
+    nicht erledigt, und `execute_step` verbraucht den Skip —, oder vom System
+    nicht angenommen (unbekannte Taste), dann laeuft die Sequenz weiter wie
+    immer. Wer beides als „erledigt" meldet, laesst einen Block-Skip gesetzt,
+    und der NAECHSTE Block wird verschluckt.
+    """
+    return state.stop_event.is_set() or state.skip_step_event.is_set()
+
+
 def safe_click(state: AutoClickerState, x: int, y: int, label: str = "") -> bool:
     """Wrapper für send_click mit Window-Fokus-Check, Humanization und Logging.
 
@@ -403,7 +415,8 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
             with state.lock:
                 state.key_presses += 1
             _step_status(debug, phase, step_num, total_steps, f"ELSE: Taste '{ec.key}'!")
-        return True
+            return True
+        return not input_refused(state)
 
     elif ec.action == ELSE_RESTART:
         _step_status(debug, phase, step_num, total_steps, "ELSE: Neustart!")

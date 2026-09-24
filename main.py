@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plattformübergreifender Autoclicker mit Sequenzen und Item-Erkennung."""
 
+import logging
 import sys
 import time
 
@@ -199,10 +200,27 @@ def _check_commands(state) -> None:
     # für Handler gedacht, die minutenlang auf Konsolen-Eingaben warten. Ein Befehl
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
+    run_safely(f"Befehl '{name}' aus dem Studio", fn, state, command["arguments"])
+
+
+def run_safely(what: str, fn, *arguments) -> None:
+    """Führt einen Hotkey-Handler oder Studio-Befehl aus — ein Fehler darin
+    beendet NICHT den Hauptprozess.
+
+    Gefangen war nur `PlatformError`. Jede andere Ausnahme lief aus der
+    Hauptschleife heraus, die Hotkeys wurden abgemeldet, und ein laufender
+    Worker (Daemon-Thread) starb mitten im Klick — ohne Aufräumen, ohne
+    Zusammenfassung, im Studio als „kein Hauptprozess". Ein Fehler in EINEM
+    Editor ist kein Grund, alles andere mitzunehmen; gemeldet wird er mit
+    Stack im Logger. `KeyboardInterrupt` und `SystemExit` gehen weiter durch.
+    """
     try:
-        fn(state, command["arguments"])
+        fn(*arguments)
     except PlatformError as error:
         print(err(f"Systemaktion fehlgeschlagen: {error}"))
+    except Exception as error:                                   # noqa: BLE001
+        logging.getLogger("autoclicker").exception(f"{what} fehlgeschlagen")
+        print(err(f"{what} fehlgeschlagen: {type(error).__name__}: {error}"))
 
 
 def _studio_opens_on_start(state) -> bool:
@@ -386,10 +404,7 @@ def main() -> int:
                     handle_quit(state, main_thread_id)
                     break
                 if hk_id in hotkey_handlers:
-                    try:
-                        hotkey_handlers[hk_id](state)
-                    except PlatformError as error:
-                        print(err(f"Systemaktion fehlgeschlagen: {error}"))
+                    run_safely("Hotkey-Aktion", hotkey_handlers[hk_id], state)
                     # Während ein blockierender Handler lief, aufgestaute
                     # Hotkeys verwerfen (sonst feuern sie als Burst).
                     flush_hotkey_messages()

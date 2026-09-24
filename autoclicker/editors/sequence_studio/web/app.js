@@ -564,9 +564,9 @@ function waitForBridge() {
 }
 
 /** Ein Befehl an die Brücke. Antwort ist immer die neue Momentaufnahme. */
-async function call(name, data_reload) {
+async function call(name, data) {
   try {
-    const answer = await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
+    const answer = await window.pywebview.api[name](data === undefined ? null : data);
     const switched = name === "load" || name === "new";
     if (switched) {
       selectedPhase = null;
@@ -655,9 +655,9 @@ function pointFlash(id) {
  * Für alles, was gefragt und nicht befohlen wird: Sequenzliste, Laufstatus.
  * Über `call()` geholt würde ihre Antwort in `S` landen und den Editor-Zustand
  * zerschiessen — ein Blick in die Übersicht wäre dann ein Datenverlust. */
-async function ask(name, data_reload) {
+async function ask(name, data) {
   try {
-    return await window.pywebview.api[name](data_reload === undefined ? null : data_reload);
+    return await window.pywebview.api[name](data === undefined ? null : data);
   } catch (e) {
     setStatus({text: String(e && e.message ? e.message : e), kind: "err"});
     return null;
@@ -2646,8 +2646,8 @@ async function renderScans(fresh) {
 }
 
 /** Ein Befehl an den Scan-Teil der Brücke. Antwort ist die neue Scan-Aufnahme. */
-async function callScan(name, data_reload) {
-  const answer = await ask(name, data_reload);
+async function callScan(name, data) {
+  const answer = await ask(name, data);
   if (!answer) return;
   SC = answer;
   // Frisch von Platte heisst frisch sortiert — dort gibt es keine Zeile, in
@@ -2667,8 +2667,8 @@ async function callScan(name, data_reload) {
     scanWizardStep = SC.steps[1].done ? 3 : 2;
   else if (name === "scan_learn_preview" || name === "scan_recognize")
     scanWizardStep = 3;
-  else if (name === "scan_mode_set" && data_reload &&
-           (data_reload.mode === "find" || data_reload.mode === "slot"))
+  else if (name === "scan_mode_set" && data &&
+           (data.mode === "find" || data.mode === "slot"))
     scanWizardStep = 2;
   await renderScans();
   scanScheduleAutosave(name);
@@ -5312,8 +5312,8 @@ async function renderShare(fresh) {
 }
 
 /** Ein Befehl an den Teilen-Teil. Antwort ist die neue Teilen-Aufnahme. */
-async function callShare(name, data_reload) {
-  const answer = await ask(name, data_reload);
+async function callShare(name, data) {
+  const answer = await ask(name, data);
   if (!answer) return;
   T = answer;
   await renderShare();
@@ -5456,8 +5456,8 @@ function shareRenderImport() {
 
 let B = null;
 
-async function renderReport(data_reload) {
-  const answer = await ask("report_data", data_reload === undefined ? null : data_reload);
+async function renderReport(data) {
+  const answer = await ask("report_data", data === undefined ? null : data);
   if (!answer || view !== "report") return;
   B = answer;
   const memo = rememberFocus();
@@ -5889,9 +5889,9 @@ let autonameCancel = false;
  * Schritt und zeigt an, was zurueckkommt. Der Zustand (was ist offen, was ist
  * benannt) liegt vollstaendig in der Bruecke.
  */
-async function scanAutonameRun(data_reload) {
+async function scanAutonameRun(data) {
   autonameCancel = false;
-  await callScan("scan_autoname_start", data_reload);
+  await callScan("scan_autoname_start", data);
   // Kein Durchgang in der Momentaufnahme heisst: abgelehnt (LLM aus, nichts
   // mit Vorlage). Die Statuszeile sagt bereits, warum.
   if (!SC.autoname) return;
@@ -5916,10 +5916,10 @@ async function scanAutonameRun(data_reload) {
  * den zweiten — seine Antwort ist keine Momentaufnahme, und ueber `callScan`
  * geholt zerschoesse sie den Scans-Reiter.
  */
-async function withWork(kind, name, data_reload, title, text) {
+async function withWork(kind, name, data, title, text) {
   showWork(title, text);
   try {
-    return kind === "scan" ? await callScan(name, data_reload) : await ask(name, data_reload);
+    return kind === "scan" ? await callScan(name, data) : await ask(name, data);
   } finally {
     hideWait();
   }
@@ -5931,12 +5931,12 @@ async function withWork(kind, name, data_reload, title, text) {
  * Momentaufnahme, `tool` zeichnet den Reiter neu, `ask` fragt nur. Das
  * Overlay aendert daran nichts — es legt sich nur davor.
  */
-async function withWait(kind, name, data_reload) {
+async function withWait(kind, name, data) {
   showWait(name);
   try {
-    return kind === "call" ? await call(name, data_reload)
-         : kind === "tool" ? await callTool(name, data_reload)
-         : await ask(name, data_reload);
+    return kind === "call" ? await call(name, data)
+         : kind === "tool" ? await callTool(name, data)
+         : await ask(name, data);
   } finally {
     hideWait();
   }
@@ -6072,8 +6072,8 @@ async function renderTools(fresh) {
 
 /** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
  *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
-async function callTool(name, data_reload) {
-  const answer = await ask(name, data_reload);
+async function callTool(name, data) {
+  const answer = await ask(name, data);
   if (!answer) return null;
   if (answer.message)
     setStatus({text: answer.message, kind: answer.ok ? "ok" : "err"});
@@ -6354,12 +6354,12 @@ async function wzStartRecording() {
 /** Drei feste Zeilen statt eines wachsenden Logs: neuestes Ereignis unten. */
 function wzFillRecordingOutput(target, live = wzRecordingLive, started = wzRecordingStarted) {
   if (!target) return;
-  const data_reload = live || {};
-  const events = Array.isArray(data_reload.events) ? data_reload.events.slice(-3) : [];
-  const headText = data_reload.paused ? "PAUSIERT" : started ? "LIVE" : "LETZTE EREIGNISSE";
+  const data = live || {};
+  const events = Array.isArray(data.events) ? data.events.slice(-3) : [];
+  const headText = data.paused ? "PAUSIERT" : started ? "LIVE" : "LETZTE EREIGNISSE";
   target.replaceChildren(el("div", {class: "wz-output-header"},
     el("span", {}, headText),
-    el("span", {class: "wz-output-counter"}, String(data_reload.count || 0) + " Ereignisse")));
+    el("span", {class: "wz-output-counter"}, String(data.count || 0) + " Ereignisse")));
   const rows = el("div", {class: "wz-output-rows"});
   if (!events.length) {
     rows.appendChild(el("div", {class: "wz-output-empty"},
@@ -6380,9 +6380,9 @@ function wzFillRecordingOutput(target, live = wzRecordingLive, started = wzRecor
   target.appendChild(rows);
   // Gezaehlt, nicht aufgezeichnet: wer im Spiel rechts geklickt hat, soll es
   // hier sehen und nicht erst an der Sequenz merken, dass ein Schritt fehlt.
-  if (data_reload.right_clicks) {
+  if (data.right_clicks) {
     target.appendChild(el("div", {class: "hint rc-hint"},
-      data_reload.right_clicks + " Rechtsklick(s) nicht aufgezeichnet — der Autoclicker "
+      data.right_clicks + " Rechtsklick(s) nicht aufgezeichnet — der Autoclicker "
       + "kann keine ausführen."));
   }
 }
@@ -7401,7 +7401,7 @@ async function cfgSave() {
  * etwa weil die Sequenzdatei ausserhalb geändert wurde —, bleibt es beim
  * bisherigen Stand, statt die Arbeit im Vorbeigehen mitzunehmen.
  */
-async function switchSequence(command, data_reload) {
+async function switchSequence(command, data) {
   if (SC && SC.dirty) {
     const answer = await ask("scan_save");
     if (answer) {
@@ -7412,7 +7412,7 @@ async function switchSequence(command, data_reload) {
       }
     }
   }
-  return call(command, data_reload);
+  return call(command, data);
 }
 
 /* --------------------------------------------------------------- Verdrahtung */

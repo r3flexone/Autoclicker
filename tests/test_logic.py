@@ -6528,6 +6528,8 @@ import tests.contract.start_from            # noqa: F401,E402
 import tests.contract.record_from           # noqa: F401,E402
 import tests.contract.session_limit         # noqa: F401,E402
 import tests.contract.block_import          # noqa: F401,E402
+import tests.contract.sequence_names        # noqa: F401,E402
+import tests.contract.run_lifecycle         # noqa: F401,E402
 
 
 import shutil as _shD

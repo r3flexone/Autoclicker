@@ -521,3 +521,20 @@ _resolve({p.id: p for p in _seq_r.points}, _seq_r, quiet=True)
 check("taucht der Punkt wieder auf, ist die Nachpruefung wieder aktiv",
       _step_r.verify_condition.unresolved is False
       and _step_r.verify_condition.pixel == (7, 7))
+
+# =============================================================================
+section("Ein Schritt ohne Klick-Punkt wird wieder aufgeloest")
+# =============================================================================
+# `resolve()` setzte `unresolved` nur im Zweig mit Klick-Punkt zurueck. Ein
+# „Beobachten"-Schritt (nur Pruef-Pixel), dessen Punkt einmal fehlte, blieb
+# damit uebersprungen — auch nachdem der Punkt wieder da war, bis zum
+# naechsten Laden von der Platte.
+_seq_w = _SEQ("w", points=[], loop_phases=[_PHASE("L", steps=[
+    _STEP(wait_only=True, name="Beobachten", wait_condition=_WAIT(point_id=4))])])
+_step_w = _seq_w.loop_phases[0].steps[0]
+_resolve({p.id: p for p in _seq_w.points}, _seq_w, quiet=True)
+check("fehlt der Punkt des Pruef-Pixels, wird der Schritt uebersprungen", _step_w.unresolved)
+_seq_w.points.append(_CP(8, 9, "P4", 4, color=(1, 2, 3)))
+_resolve({p.id: p for p in _seq_w.points}, _seq_w, quiet=True)
+check("taucht er wieder auf, laeuft der Schritt wieder",
+      _step_w.unresolved is False and _step_w.wait_condition.pixel == (8, 9))
