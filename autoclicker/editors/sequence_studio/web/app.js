@@ -548,6 +548,10 @@ const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 let insertRecordingActive = false;
 let insertRecordingLabel = "";
 let insertRecordingPoll = 0;
+// Wohin eingefügt wird: Phase, gewählter Block und Blockzahl VOR der Aufnahme.
+// Nach dem Neuladen ergibt die Differenz, welche Blöcke neu sind — die werden
+// die Auswahl (`select_range`), so wie nach dem Duplizieren.
+let insertRecordingTarget = null;
 // Die Live-Ausgabe der Einfüge-Aufnahme — dieselben Daten und dieselbe
 // Zeichenfunktion wie im Werkzeuge-Reiter (`wzFillRecordingOutput`), nur ein
 // zweiter Einbauort. Ohne sie sagte die Tafel nur „läuft", und ob der Hook
@@ -873,7 +877,24 @@ function renderPoints() {
       // Der Zaehler: „4×" heisst, vier Bloecke ziehen mit, wenn der Punkt
       // umzieht; „0×" heisst, er ist ein Rest.
       el("span", {class: "uses" + (p.usages ? "" : " none"),
-                  title: p.usages + "× verwendet"}, p.usages + "×")));
+                  title: p.usages
+                    ? p.usages + "× verwendet — löschen geht erst, wenn kein Block ihn mehr benutzt"
+                    : "0× verwendet — ein Rest, der sich löschen lässt"}, p.usages + "×"),
+      // Loeschen nur, woran nichts haengt: ein verwendeter Punkt liesse seine
+      // Bloecke ins Leere zeigen. Dieselbe Regel wie im Werkzeug
+      // (`_point_remove`); hier gibt es den Knopf deshalb gar nicht erst —
+      // eine Kachel, die nichts tut, gibt es nicht. Eigener Klick, nicht der
+      // der Zeile: der hebt die Verwendungen hervor. Verwendete Zeilen halten
+      // den Platz frei, sonst stuenden Koordinaten und Zaehler je nach Zeile
+      // an einer anderen Kante.
+      p.usages ? el("span", {class: "point-delete-slot"}) : el("button", {
+        class: "point-delete", title: "Punkt #" + p.id + " löschen",
+        "aria-label": "Punkt #" + p.id + " löschen", draggable: "false",
+        onclick: (e) => {
+          e.stopPropagation();
+          if (pointHighlight === p.id) pointHighlight = null;
+          call("point_delete", {point_id: p.id});
+        }}, icon("cross", 10))));
   }
   // Die Geste steht dran: `cursor: grab` liest niemand als Hinweis.
   target.appendChild(el("div", {class: "points-hint"},
@@ -979,14 +1000,19 @@ function renderPhase(phase) {
   // es selbst jeden Block darin ändert. Ohne Blöcke hatte es ausserdem nichts
   // zu tun und stand trotzdem da.
   if (phase.blocks.length) {
-    const all = S.selection.phase === phase.index &&
-                 S.selection.rows.length === phase.blocks.length;
+    // Gefragt wird jede Karte, nicht `S.selection.phase`: die Auswahl darf über
+    // mehrere Phasen reichen, und eine ganz gewählte Phase muss nicht die sein,
+    // in der zuletzt geklickt wurde.
+    const all = phase.blocks.every((b) => b.selected);
     // `knopfpaar`, nicht `series` mit `wachse`: für „mehrere Knöpfe teilen sich
     // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
     // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
     const bulk = el("div", {class: "button-pair phase-all"},
       el("button", {class: "btn quiet",
-        onclick: () => call("phase_selection", {phase: phase.index})},
+        title: all ? "Nur diese Phase abwählen"
+                   : "Alle Blöcke dieser Phase wählen · STRG+Klick nimmt sie dazu",
+        onclick: (e) => call("phase_selection",
+                             {phase: phase.index, add: e.ctrlKey || e.metaKey})},
         all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
     if (phase.kind === "loop") {
       bulk.appendChild(el("button", {
@@ -1535,38 +1561,23 @@ function waitBox(w, now) {
                                    (tight ? " tight" : "")});
 
   if (w.kind === "color") {
-    const match = w.distance !== null && w.distance !== undefined &&
-                    w.distance <= w.tolerance;
-    // Das Ziel hängt an der Richtung: bei `until_gone` ist ein Treffer genau das,
-    // worauf NICHT gewartet wird — dieselbe Zahl, umgekehrte Bedeutung.
-    const fulfilled = w.until_gone ? !match : match;
     boxEl.appendChild(el("div", {class: "header"},
       el("span", {class: "grow"},
          (w.until_gone ? "wartet, bis die Farbe weg ist" : "wartet auf die Farbe") +
          " bei (" + w.point.join(",") + ")"),
       el("span", {class: "small mono"}, "seit " + duration(now - w.since))));
-    const details = el("div", {class: "grow"},
-      el("div", {class: "color-pair"},
-        colorChip("target", w.target),
-        colorChip("jetzt", w.actual),
-        w.distance === null || w.distance === undefined
-          ? el("span", {class: "small"}, "nicht messbar")
-          : el("span", {class: "badge-match" + (fulfilled ? "" : " beside")},
-               "Δ " + w.distance + " · " +
-               (match ? "im Toleranzbereich" : "ausserhalb") + " (" + w.tolerance + ")")));
-    // Das Bild steht links neben den Zahlen: es beantwortet die Anschlussfrage
-    // („was ist da statt dessen zu sehen?"), nicht dieselbe.
-    boxEl.appendChild(w.image
-      ? el("div", {class: "pixel-box"},
-          el("div", {class: "live-pixel"},
-            el("div", {class: "frame"}, el("img", {src: w.image, alt: ""})),
-            el("span", {class: "sign"}, "LIVE-PIXEL")),
-          details)
-      : details);
+    boxEl.appendChild(livePixelBox(w, "target"));
   } else {
     boxEl.appendChild(el("div", {class: "header"},
-      el("span", {class: "grow"}, w.text || "wartet"),
+      el("span", {class: "grow"}, (w.text || "wartet") +
+         (w.point ? " · (" + w.point.join(",") + ")" : "")),
       el("span", {class: "remainder"}, remaining === null ? "" : "noch " + remainingTime(remaining))));
+    // Auch bei einer reinen Wartezeit steht der Ausschnitt um die Stelle da,
+    // die danach dran ist — dieselbe Frage wie beim Farb-Warten („steht da,
+    // wo gleich geklickt wird, das Richtige?"), nur ohne Urteil über den
+    // Ablauf: gewartet wird so oder so die volle Zeit. Deshalb heisst die
+    // Soll-Farbe hier „Punkt" und nicht „target".
+    if (w.point) boxEl.appendChild(livePixelBox(w, "Punkt"));
   }
 
   if (remaining !== null) {
@@ -1580,6 +1591,37 @@ function waitBox(w, now) {
     boxEl.appendChild(el("span", {class: "small"}, "von " + remainingTime(w.total || 0)));
   }
   return boxEl;
+}
+
+/** Live-Ausschnitt plus Soll/Ist-Farbe einer Stelle — für Farb- UND Zeitwarten.
+ *
+ * Eine Funktion für beide Kästen: sonst zeigte das Zeitwarten dieselbe Stelle
+ * in einer zweiten Gestalt, und eine Korrektur am einen ginge am anderen
+ * vorbei. Ohne Bild (kein Pillow) bleiben die Zahlen allein stehen. */
+function livePixelBox(w, targetLabel) {
+  const match = w.distance !== null && w.distance !== undefined &&
+                  w.distance <= w.tolerance;
+  // Das Ziel hängt an der Richtung: bei `until_gone` ist ein Treffer genau das,
+  // worauf NICHT gewartet wird — dieselbe Zahl, umgekehrte Bedeutung.
+  const fulfilled = w.until_gone ? !match : match;
+  const details = el("div", {class: "grow"},
+    el("div", {class: "color-pair"},
+      colorChip(targetLabel, w.target),
+      colorChip("jetzt", w.actual),
+      w.distance === null || w.distance === undefined
+        ? el("span", {class: "small"}, w.target ? "nicht messbar" : "keine Punktfarbe")
+        : el("span", {class: "badge-match" + (fulfilled ? "" : " beside")},
+             "Δ " + w.distance + " · " +
+             (match ? "im Toleranzbereich" : "ausserhalb") + " (" + w.tolerance + ")")));
+  // Das Bild steht links neben den Zahlen: es beantwortet die Anschlussfrage
+  // („was ist da statt dessen zu sehen?"), nicht dieselbe.
+  return w.image
+    ? el("div", {class: "pixel-box"},
+        el("div", {class: "live-pixel"},
+          el("div", {class: "frame"}, el("img", {src: w.image, alt: ""})),
+          el("span", {class: "sign"}, "LIVE-PIXEL")),
+        details)
+    : details;
 }
 
 function bar(actual, target) {
@@ -1838,7 +1880,9 @@ function renderInspector() {
   const target = $("inspector");
   target.replaceChildren();
   const b = S.block;
-  const selected = S.selection.rows.length;
+  // Gezählt wird über ALLE Phasen: `rows` beschreibt nur die, in der zuletzt
+  // geklickt wurde.
+  const selected = S.selection.count || 0;
 
   $("btn-block-delete").disabled = selected === 0;
   $("btn-block-copy").disabled = selected === 0;
@@ -2035,6 +2079,10 @@ function buildProbe(target, b) {
  * jede Aufnahme an — nur dass `stop_recording()` die Bloecke am Ende in DIESE
  * Datei spleisst statt eine neue Sequenz zu bauen. */
 async function blockRecordStart() {
+  const phase = S && S.selection ? S.selection.phase : null;
+  const lane = phase !== null && phase !== undefined ? S.phases[phase] : null;
+  insertRecordingTarget = lane && S.selection.count === 1
+    ? {phase: phase, row: S.selection.rows[0], before: lane.blocks.length} : null;
   await call("block_record_start");
   if (S && S.status && (S.status.kind === "err" || S.status.kind === "warn")) return;
   insertRecordingActive = true;
@@ -2057,6 +2105,26 @@ function endInsertRecording() {
   ++insertRecordingPoll;
   insertRecordingActive = false;
   insertRecordingLabel = "";
+}
+
+/** Wählt nach dem Neuladen die Blöcke, die die Aufnahme eingefügt hat.
+ *
+ * Nicht nur Bequemlichkeit: wer aus dem Spiel zurückkommt, dessen erster Klick
+ * ins Fenster aktiviert es womöglich nur. In einer STRG-Auswahl über die neuen
+ * Blöcke fehlte dann genau der erste — an einer echten Einfügung gemessen:
+ * von drei eingefügten Blöcken wurden die letzten zwei gelöscht, der erste
+ * blieb stehen. Steht die Auswahl schon, braucht es diesen Klick gar nicht. */
+async function selectInsertedBlocks() {
+  const target = insertRecordingTarget;
+  insertRecordingTarget = null;
+  if (!target || !S || !S.phases || S.question) return;
+  const lane = S.phases[target.phase];
+  const added = lane ? lane.blocks.length - target.before : 0;
+  if (added > 0) {
+    await call("select_range", {phase: target.phase, row: target.row + 1, count: added});
+    setStatus({text: added + (added === 1 ? " Block" : " Blöcke")
+      + " eingefügt und gewählt — verschieben, duplizieren oder Entf.", kind: "ok"});
+  }
 }
 
 /** Folgt der Einfüge-Aufnahme bis zu ihrem Ende und lädt dann neu — die
@@ -2091,11 +2159,20 @@ function watchInsertRecording(quick) {
       return;
     }
     endInsertRecording();
-    if (S && S.name) await call("load", {name: S.name});
+    if (S && S.name) {
+      await call("load", {name: S.name});
+      await selectInsertedBlocks();
+    }
     else render();
   };
   setTimeout(poll, quick ? 200 : 300);
 }
+
+/** Schnellwahl der Wartezeit im Sammel-Inspektor. Das Feld darunter nimmt
+ * jeden Wert; die Kacheln sind die, die man beim Aufräumen einer Aufnahme
+ * wirklich tippt. Drei Stück (0/0,5/1 s) deckten nur das Ende der Skala ab —
+ * die Pausen zwischen zwei Durchläufen liegen bei 30 oder 60 Sekunden. */
+const BULK_WAIT_PRESETS = [0, 0.5, 1, 2, 5, 10, 30, 60];
 
 function renderBulkEditor(count) {
   const timeField = (caption, fieldName, value, mixed) => {
@@ -2112,12 +2189,20 @@ function renderBulkEditor(count) {
     inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") inputEl.blur(); });
     return el("label", {class: "field"}, caption, inputEl);
   };
+  const phases = S.selection.phases || 1;
+  // Die Kachel, die dem gemeinsamen Wert entspricht, ist markiert — bei
+  // verschiedenen Werten keine: eine Markierung, die nur für einen Teil der
+  // Auswahl stimmt, wäre eine Behauptung.
+  const current = S.selection.delay_before_mixed ? null : S.selection.delay_before;
   return el("div", {},
     el("p", {class: "hint"},
-      count + " Blöcke gemeinsam bearbeiten. Verschieben: ALT+↑/↓, löschen: Entf."),
+      count + " Blöcke" + (phases > 1 ? " in " + phases + " Phasen" : "")
+      + " gemeinsam bearbeiten. Verschieben: ALT+↑/↓"
+      + (phases > 1 ? " (je Phase)" : "") + ", löschen: Entf."),
     el("span", {class: "heading"}, "WARTEZEIT FÜR AUSWAHL"),
-    el("div", {class: "row bulk-quick"}, [0, 0.5, 1].map((seconds) =>
-      el("button", {class: "btn quiet", onclick: () => call("selection_set",
+    el("div", {class: "bulk-quick"}, BULK_WAIT_PRESETS.map((seconds) =>
+      el("button", {class: "btn quiet" + (current === seconds ? " on" : ""),
+                    onclick: () => call("selection_set",
         {field: "delay_before", value: seconds})}, String(seconds).replace(".", ",") + " s"))),
     el("div", {class: "grid2"},
       timeField("Wartezeit (s)", "delay_before", S.selection.delay_before,
@@ -6072,11 +6157,25 @@ async function renderTools(fresh) {
 
 /** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
  *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
+// Werkzeuge, die die Punkte der Sequenz aendern. Die stehen in `sequence.json`
+// — also im Editor-Zustand `S`, den `ask()` nicht anfasst.
+const TOOL_POINT_COMMANDS = new Set(["tool_point_capture", "tool_point_set",
+  "tool_point_delete", "tool_points_prune"]);
+
 async function callTool(name, data) {
   const answer = await ask(name, data);
   if (!answer) return null;
+  // **Die Punkte gehoeren der Sequenz, nicht dem Reiter.** Ohne das Nachholen
+  // stand ein hier geloeschter Punkt im Editor weiter in der Liste, der
+  // Ungespeichert-Punkt fehlte — und weil dieser Reiter keinen Speichern-Knopf
+  // hat, sah das Loeschen aus, als haette es nicht gewirkt. Beim Schliessen
+  // landete es dann nur in der Notsicherung.
+  const points = TOOL_POINT_COMMANDS.has(name) && answer.ok;
+  if (points) await call("snapshot");
   if (answer.message)
-    setStatus({text: answer.message, kind: answer.ok ? "ok" : "err"});
+    setStatus({text: answer.message + (points && S && S.dirty
+                ? " Noch nicht gespeichert — im Editor speichern." : ""),
+               kind: answer.ok ? "ok" : "err"});
   await renderTools();
   return answer;
 }

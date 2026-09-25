@@ -22,8 +22,8 @@ from ..winapi import (
     get_cursor_pos,
 )
 from ._click_window import clicked_window
-from ..imaging import get_pixel_color
-from ..config import RECORD_STATUS_FILE
+from ..imaging import get_pixel_color, capture_surface, click_surface
+from ..config import CONFIG, RECORD_STATUS_FILE
 from ..utils import (
     safe_input, col, ok, err, warn, is_cancel, hint, describe_color,
     atomic_write, compact_json,
@@ -48,7 +48,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # ist als in der Konsole, in der die Aufnahme tatsächlich läuft.
 RECORDING_HOTKEYS = (
     ("CTRL+ALT+J", "starten / beenden",
-     "beim Beenden werden die Ereignisse zu Blöcken einer neuen Sequenz"),
+     "beim Beenden werden die Ereignisse zu Blöcken"),
     ("CTRL+ALT+H", "pausieren / fortsetzen",
      "im Spiel navigieren, ohne etwas aufzuzeichnen"),
     ("CTRL+ALT+U", "zurücknehmen", "das letzte Ereignis verwerfen"),
@@ -159,7 +159,14 @@ def _on_click_factory(state: AutoClickerState):
         # Klick-Runde, deshalb derselbe Helfer.
         if "sequenz-studio" in clicked_window(x, y).casefold():
             return
-        _append_event(state, RecordEvent(REC_CLICK, time.monotonic(), x, y, color))
+        with state.lock:
+            if not state.recording_active or state.recording_paused:
+                return
+        # Der Ausschnitt muss HIER entstehen: beim Stoppen steht längst etwas
+        # anderes auf dem Schirm. Er entscheidet später, ob ein vorhandener
+        # Punkt auf demselben Knopf liegt (`points_for_events`).
+        _append_event(state, RecordEvent(REC_CLICK, time.monotonic(), x, y, color,
+                                         patch=capture_surface(x, y)))
     return _on_click
 
 
@@ -349,6 +356,8 @@ def start_recording(state: AutoClickerState, *, name: str = "", cycles: int = 0,
         print(f"  Aufgezeichnet: {kinds} "
               f"{hint('(Rechtsklicks werden nur gezählt — der Autoclicker kann keine)')}")
         for key, action, label in RECORDING_HOTKEYS:
+            if inserting and key == "CTRL+ALT+J":
+                label = "beim Beenden landen die Blöcke hinter dem gewählten"
             print(f"  {action + ':':24} {col(key, 'yellow')} "
                   f"{hint('(' + label + ')')}")
         if not keys_list:
@@ -412,7 +421,13 @@ def points_for_events(events: list,
     for i, ev in enumerate(events):
         if ev.kind in (REC_KEY, REC_WAIT_COLOR, REC_SCREENSHOT, REC_PHASE):
             continue
-        match = point_at_position(pool, ev.x, ev.y, ev.color)
+        # Die Fläche um den Klick entscheidet, was "derselbe Knopf" ist — der
+        # Radius allein trug bei Klicks von Hand nicht (s. point_at_position).
+        # Bevorzugt wird, was dieser Durchgang schon vergeben hat: derselbe
+        # Knopf bekommt so in der ganzen Aufnahme denselben Punkt.
+        surface = click_surface(ev.patch, ev.x, ev.y, ev.color, CONFIG.punkt_farbtoleranz)
+        match = point_at_position(pool, ev.x, ev.y, ev.color, surface=surface,
+                                  prefer=point_id_for.values())
         if match is not None:
             point_id_for[i] = match.id
             continue

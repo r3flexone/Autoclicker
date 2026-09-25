@@ -190,18 +190,32 @@ class BridgeToolsMixin:
                 "current": list(current) if current else None,
                 "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
 
-    def tool_point_delete(self, data: Optional[dict] = None) -> dict:
-        """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
-        point = self._point_with_id((data or {}).get("point_id"))
+    def _point_remove(self, point_id) -> tuple[bool, str, list[str]]:
+        """Die EINE Löschregel für Punkte: nur unbenutzte, Referenzen nie still brechen.
+
+        Zwei Wege führen hierher — das Werkzeug „Punkte verwalten" und die
+        Punkte-Liste im Editor. Eine Regel, damit beide dasselbe verweigern.
+        Gibt `(gelöscht, Meldung, Verwendungen)` zurück; den Rückgängig-Stand
+        legt der Aufrufer ab.
+        """
+        point = self._point_with_id(point_id)
         if point is None:
-            return {"ok": False, "message": "Punkt nicht gefunden."}
+            return False, "Punkt nicht gefunden.", []
         used = self._point_usages(point.id)
         if used:
-            return {"ok": False, "usages": used,
-                    "message": f"Punkt #{point.id} wird noch {len(used)}× verwendet."}
+            return (False, f"Punkt #{point.id} wird noch {len(used)}× verwendet "
+                           f"({', '.join(used[:3])}{' …' if len(used) > 3 else ''}) — "
+                           "erst dort entfernen oder einen anderen Punkt wählen.", used)
         self.points.remove(point)
-        self._edit_commit(f"Punkt #{point.id} gelöscht")
-        return {"ok": True, "message": f"Punkt #{point.id} gelöscht."}
+        return True, f"Punkt #{point.id} gelöscht.", []
+
+    def tool_point_delete(self, data: Optional[dict] = None) -> dict:
+        """Löscht nur unbenutzte Punkte; Referenzen werden nie still gebrochen."""
+        removed, message, used = self._point_remove((data or {}).get("point_id"))
+        if not removed:
+            return {"ok": False, "usages": used, "message": message}
+        self._edit_commit(message.rstrip("."))
+        return {"ok": True, "message": message}
 
     def tool_points_prune(self, data: Optional[dict] = None) -> dict:
         """Löscht alle Punkte ohne Verwendung — in einem Griff, mit einem Abzug.

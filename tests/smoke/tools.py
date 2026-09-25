@@ -251,6 +251,46 @@ def run():
         f.page.evaluate("wzRecordingStarted = false; ++wzRecordingPoll; "
                          "++wzRecordingLivePoll;")
 
+        # --- Punkte loeschen: im Werkzeug UND in der Liste des Editors ---
+        # Das Werkzeug zog die Editor-Liste nicht nach: der Punkt stand dort
+        # weiter, der Ungespeichert-Punkt fehlte (dieser Reiter hat keinen
+        # Speichern-Knopf), und das Loeschen sah wirkungslos aus.
+        f.click_text("#wz-left button", "Punkte verwalten")
+        f.page.select_option("#wz-middle select", value="3")      # „Menue", 0x
+        f.settle()
+        f.click("#wz-middle button.danger:not(#wz-points-prune)")
+        expect("gelöscht" in f.status() and "im Editor speichern" in f.status(),
+               f"Loeschen im Werkzeug sagt nicht, dass gespeichert werden muss: {f.status()!r}")
+        expect(f.page.is_visible("#dirty-dot"),
+               "nach dem Loeschen im Werkzeug fehlt der Ungespeichert-Punkt")
+        f.tab("editor")
+        listed = f.page.eval_on_selector_all("#points .point", "ns => ns.map(n => n.dataset.id)")
+        expect(listed == ["1", "2"],
+               f"die Editor-Liste zeigt den im Werkzeug geloeschten Punkt noch: {listed}")
+
+        # Zurueckholen, dann direkt in der Liste loeschen — das x steht nur
+        # am ungenutzten Punkt.
+        f.click("#btn-undo")
+        listed = f.page.eval_on_selector_all("#points .point", "ns => ns.map(n => n.dataset.id)")
+        expect(listed == ["1", "2", "3"], f"STRG+Z holt den Punkt nicht zurueck: {listed}")
+        expect(f.count('#points .point[data-id="3"] .point-delete') == 1,
+               "am ungenutzten Punkt fehlt der Loeschen-Knopf")
+        expect(f.count('#points .point[data-id="1"] .point-delete') == 0,
+               "ein verwendeter Punkt darf keinen Loeschen-Knopf haben")
+        # Verwendete Zeilen halten den Platz des Knopfs frei — sonst stuende der
+        # Zaehler je nach Zeile an einer anderen Kante.
+        edges = f.page.eval_on_selector_all(
+            "#points .point .uses", "ns => ns.map(n => Math.round(n.getBoundingClientRect().right))")
+        expect(len(set(edges)) == 1, f"die Zaehler stehen nicht auf einer Kante: {edges}")
+        f.click('#points .point[data-id="3"] .point-delete')
+        listed = f.page.eval_on_selector_all("#points .point", "ns => ns.map(n => n.dataset.id)")
+        expect(listed == ["1", "2"], f"das x in der Liste loescht nicht: {listed}")
+        expect("gelöscht" in f.status(), f"Loeschen in der Liste: {f.status()!r}")
+        expect(f.page.is_visible("#dirty-dot"), "nach dem Loeschen fehlt der Ungespeichert-Punkt")
+        expect(f.count("#points .point.highlight") == 0,
+               "der Loeschen-Klick hat zugleich die Zeile hervorgehoben")
+        f.image("punkte_loeschen")
+
         error.extend(f.error)
     return error
 

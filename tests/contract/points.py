@@ -538,3 +538,56 @@ _seq_w.points.append(_CP(8, 9, "P4", 4, color=(1, 2, 3)))
 _resolve({p.id: p for p in _seq_w.points}, _seq_w, quiet=True)
 check("taucht er wieder auf, laeuft der Schritt wieder",
       _step_w.unresolved is False and _step_w.wait_condition.pixel == (8, 9))
+
+# =============================================================================
+section("Punkte-Liste im Editor: ungenutzte Punkte direkt loeschen")
+# =============================================================================
+# Die Reste einer Aufnahme stehen dort als „0×" — loeschen liessen sie sich nur
+# im Werkzeuge-Reiter, und der zog die Liste nicht nach: der Punkt stand weiter
+# da, der Ungespeichert-Punkt fehlte, und das Loeschen sah wirkungslos aus.
+_seq_d = _SEQ("d", points=[_CP(10, 10, "benutzt", 1), _CP(20, 20, "Rest", 2)],
+              loop_phases=[_PHASE("L", steps=[_STEP(point_id=1)])])
+_b_d = _SB(_seq_d, Path("sequences/d/sequence.json"), "sequences")
+_b_d._dirty = False
+_snap_d = _b_d.point_delete({"point_id": 2})
+check("ein ungenutzter Punkt wird geloescht — die Momentaufnahme weiss es sofort",
+      [p.id for p in _b_d.points] == [1] and [p["id"] for p in _snap_d["points"]] == [1])
+check("die Sequenz gilt danach als ungespeichert", _b_d._dirty and _snap_d["dirty"])
+check("und die Meldung bietet Rueckgaengig an",
+      _snap_d["status"]["kind"] == "ok" and "#2" in _snap_d["status"]["text"])
+_b_d.undo()
+check("STRG+Z holt ihn zurueck", sorted(p.id for p in _b_d.points) == [1, 2])
+
+_snap_d = _b_d.point_delete({"point_id": 1})
+check("ein verwendeter Punkt bleibt — sein Block zeigte sonst ins Leere",
+      sorted(p.id for p in _b_d.points) == [1, 2]
+      and _snap_d["status"]["kind"] == "warn"
+      and "L · Block 1 · Stelle" in _snap_d["status"]["text"])
+check("Werkzeug und Liste verweigern mit derselben Regel",
+      _b_d.tool_point_delete({"point_id": 1})["ok"] is False
+      and _b_d.tool_point_delete({"point_id": 99})["message"] == "Punkt nicht gefunden.")
+
+_app_d = _web_src()
+_render_d = _app_d[_app_d.index("function renderPoints()"):]
+_render_d = _render_d[:_render_d.index("\nfunction ", 1)]
+check("die Liste bietet das Loeschen nur bei ungenutzten Punkten an",
+      'p.usages ? el("span", {class: "point-delete-slot"}) : el("button"' in _render_d
+      and 'call("point_delete", {point_id: p.id})' in _render_d)
+check("und der Knopf loest nicht zugleich das Hervorheben der Zeile aus",
+      "e.stopPropagation()" in _render_d)
+
+# Der Werkzeuge-Reiter: nach einer Punkt-Aktion holt die Seite die
+# Momentaufnahme nach — jede Punkt-Methode des Werkzeugs muss in der Liste
+# stehen, sonst bleibt genau sie stumm.
+import re as _re_d
+_tool_d = _app_d[_app_d.index("const TOOL_POINT_COMMANDS"):]
+_tool_d = _tool_d[:_tool_d.index("]);")]
+_listed_d = set(_re_d.findall(r'"(tool_points?_\w+)"', _tool_d))
+_bridge_d = {n for n in dir(_SB) if n.startswith(("tool_point_", "tool_points_"))
+             and n not in ("tool_point_show",)}
+check("jedes Punkt-Werkzeug, das aendert, zieht den Editor nach",
+      _listed_d == _bridge_d)
+_call_tool_d = _app_d[_app_d.index("async function callTool"):]
+_call_tool_d = _call_tool_d[:_call_tool_d.index("\n}\n")]
+check("und zwar ueber die Momentaufnahme — samt Hinweis aufs Speichern",
+      'await call("snapshot")' in _call_tool_d and "im Editor speichern" in _call_tool_d)

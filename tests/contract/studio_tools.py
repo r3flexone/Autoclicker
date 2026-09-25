@@ -377,8 +377,10 @@ check("Mehrfachauswahl ist erreichbar und benannt",
       and "STRG+Klick" in _app)
 check("kein Auswahl-Kästchen auf der Karte — der Ring sagt es schon",
       "karte-auswahl" not in _app and "karte-auswahl" not in _css)
-check("Mehrfachauswahl hat gemeinsame Wartezeiten und den 0,5-s-Knopf",
-      'function renderBulkEditor' in _app and '[0, 0.5, 1]' in _app)
+check("Mehrfachauswahl hat gemeinsame Wartezeiten mit Schnellwahl",
+      'function renderBulkEditor' in _app
+      and 'const BULK_WAIT_PRESETS = [0, 0.5, 1, 2, 5, 10, 30, 60];' in _app
+      and "BULK_WAIT_PRESETS.map" in _app)
 check("leere Start- und Abschlussphasen werden nur bei Bedarf eingeblendet",
       'openSpecialPhases' in _app and "+ Startphase" in _app
       and "+ Abschlussphase" in _app)

@@ -359,16 +359,31 @@ def get_next_point_id(state: AutoClickerState) -> int:
 
 def point_at_position(points, x: int, y: int, color=None,
                     radius: Optional[int] = None,
-                    color_tol: Optional[int] = None):
+                    color_tol: Optional[int] = None,
+                    surface=None, prefer=None):
     """Der vorhandene Punkt an dieser Stelle — oder None. Die eine Regel.
 
     Editor und Aufnahme stellen dieselbe Frage; mit exaktem Vergleich entstand
     pro Klick ein eigener Punkt. Zwei Bedingungen:
 
-    1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten)
+    1. Abstand ≤ `punkt_radius` (0 = nur exakt, das alte Verhalten) — **oder**
+       der Punkt liegt auf `surface`, der zusammenhängenden Farbfläche um die
+       Stelle (`imaging.click_surface`, nur die Aufnahme kennt sie)
     2. Die Farbe muss passen — an einer Farbgrenze klickt man zwei
        verschiedene Dinge, und zwei Spiele übereinander unterscheiden sich in
        nichts anderem.
+
+    **Der Radius allein trug nicht.** Klicks von Hand auf einen breiten Knopf
+    streuen weit mehr als 8 px (gemessen: 55 px über sechs Klicks), und aus
+    sechs Klicks auf einen Knopf wurden fünf Punkte. Den Radius hochzudrehen
+    wäre die falsche Antwort gewesen: in derselben Sequenz liegen zwei
+    gleichfarbige Ziele 20 px übereinander. Was sie trennt, ist der Rand
+    dazwischen — und den sieht nur die Fläche.
+
+    Passen mehrere, gewinnt einer aus `prefer` (die IDs, die derselbe
+    Durchgang schon vergeben hat), dann der nächste. Ohne das sprang derselbe
+    Knopf zwischen zwei alten Punkten hin und her, je nachdem, welcher Rand
+    gerade näher lag — und die Blöcke dazu trugen abwechselnd zwei Namen.
 
     Fehlt einer Seite die Farbe, zählt nur die exakte Stelle: lieber ein Punkt
     zu viel als zwei zusammengelegt, die es nicht sind.
@@ -383,15 +398,19 @@ def point_at_position(points, x: int, y: int, color=None,
             break
     if exact is not None or radius <= 0 or not color:
         return exact
-    best, best_distance = None, None
+    preferred = set(prefer or ())
+    best, best_key = None, None
     for p in points:
         if not p.color:
             continue
         if max(abs(a - b) for a, b in zip(p.color, color)) > ctol:
             continue
         distance = ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5
-        if distance <= radius and (best_distance is None or distance < best_distance):
-            best, best_distance = p, distance
+        if distance > radius and (surface is None or (p.x, p.y) not in surface):
+            continue
+        key = (p.id not in preferred, distance)
+        if best_key is None or key < best_key:
+            best, best_key = p, key
     return best
 
 

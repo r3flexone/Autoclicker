@@ -17,6 +17,7 @@ from ..models import (
     AutoClickerState, SequenceStep,
     ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY,
 )
+from ..imaging import take_screenshot, color_distance
 from ..session_log import log_event
 from ..utils import status_line, col, dbg
 from ..winapi import (
@@ -291,15 +292,78 @@ def _phase_color(phase: str) -> str:
 # WAIT-MIT-PAUSE-SKIP
 # =============================================================================
 
+# Kantenlänge des Live-Ausschnitts in Pixeln (ungerade, damit die Stelle genau
+# in der Mitte liegt). 49×49 ist gross genug, um den Knopf drumherum zu erkennen,
+# und klein genug, dass das PNG in eine Statusdatei passt: rund 3 KB.
+_LIVE_RADIUS = 24
+# Höchstens einmal pro Sekunde ein neues Bild — die Warteschleifen laufen
+# schneller (`pixel_check_interval`), und der Ausschnitt ist das Einzige daran,
+# das mehr als ein paar Byte kostet.
+_LIVE_INTERVAL = 1.0
+
+
+def live_view(x: int, y: int) -> tuple:
+    """`(Data-URL, Farbe in der Mitte)` um eine Stelle — beides `None` ohne Bild.
+
+    „RGB(30, 32, 34)" beantwortet nicht, WAS da zu sehen ist; der Ausschnitt tut
+    es. Kostet einen BitBlt über 49×49 Pixel plus PNG-Kodierung; ohne Pillow kein
+    Bild. Die Farbe kommt aus demselben Bild — ein zweiter Zugriff auf den
+    Bildschirm für den einen Pixel in der Mitte wäre dieselbe Frage noch einmal.
+    """
+    img = take_screenshot((x - _LIVE_RADIUS, y - _LIVE_RADIUS,
+                           x + _LIVE_RADIUS + 1, y + _LIVE_RADIUS + 1))
+    if img is None:
+        return None, None
+    try:
+        import base64
+        from io import BytesIO
+        center = tuple(int(v) for v in img.getpixel((_LIVE_RADIUS, _LIVE_RADIUS))[:3])
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return ("data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii"),
+                center)
+    except (OSError, ValueError, AttributeError, IndexError, TypeError):
+        return None, None
+
+
+def pixel_crop(x: int, y: int):
+    """Nur der Ausschnitt aus `live_view()` als Data-URL — oder `None`."""
+    return live_view(x, y)[0]
+
+
+def _live_point(state: AutoClickerState, point) -> dict:
+    """Der Punkt-Teil des Warte-Kastens: Bild, Soll- und Ist-Farbe.
+
+    Dieselben Felder wie beim Farb-Warten (`_color_wait_status`), damit die
+    Ansicht sie gleich zeichnet — nur ohne Urteil über den Ablauf: bei einer
+    reinen Wartezeit entscheidet die Farbe nichts, sie sagt nur, ob das Ziel
+    des Klicks gerade zu sehen ist.
+    """
+    x, y, target = point
+    image, actual = live_view(x, y)
+    distance = (round(color_distance(actual, target), 1)
+                if actual is not None and target else None)
+    return {"point": [int(x), int(y)], "target": list(target) if target else None,
+            "actual": list(actual) if actual is not None else None,
+            "distance": distance, "tolerance": state.config.pixel_wait_tolerance,
+            "image": image}
+
+
 def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, step_num: int,
-                         total_steps: int, message: str) -> bool:
-    """Wartet die angegebene Zeit, respektiert Pause und Skip. Gibt False zurück wenn gestoppt."""
+                         total_steps: int, message: str, point=None) -> bool:
+    """Wartet die angegebene Zeit, respektiert Pause und Skip. Gibt False zurück wenn gestoppt.
+
+    `point` = `(x, y, Farbe)` der Stelle, die nach dem Warten dran ist. Dann
+    zeigt die Live-Ansicht den Ausschnitt dort — wie beim Farb-Warten: auch bei
+    einer reinen Wartezeit ist „was steht gerade da, wo gleich geklickt wird?"
+    die Frage, mit der man hinsieht.
+    """
     remaining = seconds
     debug_active = is_verbose_debug(state)
     last_remaining = -1
     try:
         return _wait_loop(state, seconds, remaining, debug_active, last_remaining,
-                               phase, step_num, total_steps, message)
+                               phase, step_num, total_steps, message, point)
     finally:
         # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
         # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
@@ -308,18 +372,25 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
 
 def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
                     debug_active: bool, last_remaining: int, phase: str,
-                    step_num: int, total_steps: int, message: str) -> bool:
+                    step_num: int, total_steps: int, message: str, point=None) -> bool:
     """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
+    last_image, live = 0.0, {}
     while remaining > 0:
         if state.stop_event.is_set():
             return False
 
         # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
         # Hier zugleich das Lebenszeichen: `waiting_for()` schreibt mit.
-        status.waiting_for(state, {"kind": "time", "text": message,
-                              "since": time.time() - (seconds - remaining),
-                              "until": time.time() + remaining,
-                              "total": round(seconds, 2)})
+        waiting = {"kind": "time", "text": message,
+                   "since": time.time() - (seconds - remaining),
+                   "until": time.time() + remaining,
+                   "total": round(seconds, 2)}
+        if point is not None:
+            now = time.time()
+            if now - last_image >= _LIVE_INTERVAL:
+                last_image, live = now, _live_point(state, point)
+            waiting.update(live)
+        status.waiting_for(state, waiting)
 
         if state.skip_event.is_set():
             state.skip_event.clear()
@@ -386,7 +457,7 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
             return True
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        "ELSE: klicke in"):
+                                        "ELSE: klicke in", point=(ec.x, ec.y, None)):
                 return False
 
         if state.stop_event.is_set():

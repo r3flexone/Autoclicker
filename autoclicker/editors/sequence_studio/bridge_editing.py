@@ -61,9 +61,9 @@ class BridgeEditingMixin:
 
     def _edit_selection(self) -> tuple:
         """Die Auswahl als Indizes — ein Abzug darf keine Lane-Objekte halten."""
-        lane_index = (self.board.lanes.index(self.sel_lane)
-                      if self.sel_lane in self.board.lanes else None)
-        return (lane_index, set(self.sel_rows), self.sel_anchor)
+        others = [(self._lane_index(lane), set(rows)) for lane, rows in self.sel_other]
+        return (self._sel_index(), set(self.sel_rows), self.sel_anchor,
+                [(index, rows) for index, rows in others if index is not None])
 
     def _edit_state(self) -> dict:
         """Ein vollständiger Abzug: Board, Punkte und Auswahl (als Indizes)."""
@@ -75,11 +75,12 @@ class BridgeEditingMixin:
         """Stellt einen Abzug wieder her — als Kopie, damit der Stapel unberührt bleibt."""
         self.board = copy.deepcopy(stamp["board"])
         self.points = copy.deepcopy(stamp["points"])
-        lane_index, rows, anchor = stamp["sel"]
-        self.sel_lane = (self.board.lanes[lane_index]
-                         if lane_index is not None and lane_index < len(self.board.lanes)
-                         else None)
+        lane_index, rows, anchor, others = stamp["sel"]
+        lanes = self.board.lanes
+        self.sel_lane = (lanes[lane_index]
+                         if lane_index is not None and lane_index < len(lanes) else None)
         self.sel_rows = set(rows) if self.sel_lane is not None else set()
+        self.sel_other = [(lanes[index], set(r)) for index, r in others if index < len(lanes)]
         self.sel_anchor = anchor
         self._points_apply()
         self._dirty = True
@@ -220,17 +221,70 @@ class BridgeEditingMixin:
 
     def _selection_clear(self) -> None:
         self.sel_lane, self.sel_rows = None, set()
+        self.sel_other = []
         self.sel_anchor = None
 
     def _selection_set(self, lane: Lane, row: int) -> None:
         self.sel_lane, self.sel_rows = lane, {row}
+        self.sel_other = []
         self.sel_anchor = row
+
+    def _selection_focus(self, lane: Lane) -> None:
+        """Macht `lane` zur Phase, in der gerade gewählt wird — ohne etwas abzuwählen.
+
+        Die bisherige Phase wandert zu den übrigen, die Zeilen von `lane` (falls
+        sie schon dabei war) kommen von dort zurück.
+        """
+        if self.sel_lane is lane:
+            return
+        mine = next((rows for ln, rows in self.sel_other if ln is lane), set())
+        others = [(ln, rows) for ln, rows in self.sel_other if ln is not lane]
+        if self.sel_lane is not None and self.sel_rows:
+            others.append((self.sel_lane, self.sel_rows))
+        self.sel_lane, self.sel_rows, self.sel_other = lane, set(mine), others
+        self.sel_anchor = min(mine) if mine else None
+
+    def _selection_tidy(self) -> None:
+        """Leere Phasen fallen heraus; ist die aktuelle leer, rückt eine andere nach."""
+        self.sel_other = [(ln, rows) for ln, rows in self.sel_other
+                          if rows and self._lane_index(ln) is not None]
+        if self.sel_rows:
+            return
+        if self.sel_other:
+            self.sel_lane, self.sel_rows = self.sel_other.pop()
+            self.sel_anchor = min(self.sel_rows)
+        else:
+            self._selection_clear()
+
+    def _selection_replace(self, groups, keep) -> None:
+        """Setzt die Auswahl neu aus `[(Phase, Zeilen)]`.
+
+        `keep` bleibt die Phase, in der gewählt wird, sofern sie dabei ist —
+        sonst wanderte die Umschalt+Klick-Stelle nach jedem Duplizieren.
+        """
+        groups = [(lane, set(rows)) for lane, rows in groups if rows]
+        if not groups:
+            self._selection_clear()
+            return
+        main = next((g for g in groups if g[0] is keep), groups[-1])
+        self.sel_lane, self.sel_rows = main
+        self.sel_other = [g for g in groups if g is not main]
+        self.sel_anchor = min(self.sel_rows)
 
     def select(self, data: dict) -> dict:
         """Klick auf eine Karte. `mode`: single / add / area.
 
-        Die Auswahl fängt in einer anderen Phase immer neu an — siehe
-        Klassen-Docstring: Sammelaktionen brauchen genau eine Phase.
+        **Die Auswahl darf über Phasen reichen.** STRG+Klick in eine andere
+        Phase nimmt den Block dazu, statt neu anzufangen — die Wartezeit von
+        zehn Blöcken in vier Loops liess sich vorher nur Phase für Phase setzen.
+        Hier stand „Sammelaktionen brauchen genau eine Phase"; sie arbeiten
+        jetzt je Phase für sich (`_selection_groups()`), und damit hat auch
+        „eine Position hoch" wieder eine Bedeutung: hoch in der eigenen Phase.
+
+        Umschalt+Klick bleibt ein Bereich INNERHALB einer Phase. Die Phasen
+        stehen nebeneinander, ein Bereich quer darüber hätte keine Reihenfolge,
+        die man sieht — in einer anderen Phase nimmt er deshalb nur den Block
+        dazu und setzt dort den Anker für den nächsten.
         """
         data = data or {}
         lane = self._lane(data.get("phase"))
@@ -242,12 +296,11 @@ class BridgeEditingMixin:
             self._selection_clear()
             return self.snapshot()
         mode = data.get("mode") or "single"
-        if mode == "add" and self.sel_lane is lane:
+        if mode == "add":
+            self._selection_focus(lane)
             self.sel_rows.symmetric_difference_update({row})
-            if not self.sel_rows:
-                self._selection_clear()
-            else:
-                self.sel_anchor = row
+            self.sel_anchor = row
+            self._selection_tidy()
         elif mode == "area" and self.sel_lane is lane and self.sel_rows:
             anchor = self.sel_anchor if self.sel_anchor is not None else row
             from_index, until = sorted((anchor, row))
@@ -258,10 +311,37 @@ class BridgeEditingMixin:
                 self.sel_rows.difference_update(area)
             else:
                 self.sel_rows.update(area)
-            if not self.sel_rows:
-                self._selection_clear()
+            self._selection_tidy()
+        elif mode == "area" and (self.sel_rows or self.sel_other):
+            self._selection_focus(lane)
+            self.sel_rows.add(row)
+            self.sel_anchor = row
         else:
             self._selection_set(lane, row)
+        return self.snapshot()
+
+    def select_range(self, data: dict) -> dict:
+        """Wählt `count` Blöcke ab `row` in einer Phase — für die Seite nach einem
+        Vorgang, der Blöcke eingefügt hat, von dem sie aber erst nach dem Neuladen
+        erfährt (Einfüge-Aufnahme).
+
+        Dieselbe Regel wie beim Duplizieren und bei „Blöcke einfügen": was gerade
+        entstanden ist, ist die neue Auswahl — man will es verschieben oder
+        löschen, nicht erst wiederfinden. Hier ist es zusätzlich der einzige
+        verlässliche Weg: wer aus dem Spiel zurückkommt, dessen erster Klick ins
+        Fenster aktiviert es womöglich nur, und dann fehlte in einer STRG-Auswahl
+        genau der erste Block. Der Bereich wird auf die Phase beschnitten.
+        """
+        data = data or {}
+        lane = self._lane(data.get("phase"))
+        try:
+            row, count = int(data.get("row", 0)), int(data.get("count", 0))
+        except (TypeError, ValueError):
+            return self.snapshot()
+        rows = {r for r in range(row, row + count) if lane and 0 <= r < len(lane.steps)}
+        if not rows:
+            return self.snapshot()
+        self._selection_replace([(lane, rows)], lane)
         return self.snapshot()
 
     def selection_clear(self, data: Optional[dict] = None) -> dict:
@@ -269,26 +349,38 @@ class BridgeEditingMixin:
         return self.snapshot()
 
     def phase_selection(self, data: dict) -> dict:
-        """Wählt alle Blöcke einer Phase oder hebt deren Auswahl auf."""
-        lane = self._lane((data or {}).get("phase"))
+        """Wählt alle Blöcke einer Phase oder hebt deren Auswahl auf.
+
+        `add` (STRG am Knopf) nimmt die Phase zur bestehenden Auswahl dazu —
+        dieselbe Geste wie STRG+Klick auf eine Karte. Abwählen trifft nur DIESE
+        Phase: wer drei Phasen gewählt hat und eine loswerden will, soll nicht
+        alle drei verlieren.
+        """
+        data = data or {}
+        lane = self._lane(data.get("phase"))
         if lane is None or not lane.steps:
             self._selection_clear()
             return self.snapshot()
-        all_selected = self.sel_lane is lane and self.sel_rows == set(range(len(lane.steps)))
-        if all_selected:
-            self._selection_clear()
+        every = list(range(len(lane.steps)))
+        if self._selected_rows(lane) == every:
+            if lane is self.sel_lane:
+                self.sel_rows = set()
+            else:
+                self.sel_other = [(ln, r) for ln, r in self.sel_other if ln is not lane]
+            self._selection_tidy()
+        elif data.get("add"):
+            self._selection_focus(lane)
+            self.sel_rows, self.sel_anchor = set(every), 0
         else:
-            self.sel_lane = lane
-            self.sel_rows = set(range(len(lane.steps)))
-            self.sel_anchor = 0
+            self._selection_replace([(lane, every)], lane)
         return self.snapshot()
 
     def selection_set(self, data: dict) -> dict:
         """Setzt ein gemeinsames Feld auf allen gewählten Blöcken."""
         data = data or {}
-        lane = self.sel_lane
         field = data.get("field")
-        if lane is None or not self.sel_rows:
+        groups = self._selection_groups()
+        if not groups:
             return self._report("Keine Blöcke ausgewählt.", "warn")
         if field not in ("delay_before", "delay_max"):
             return self._report(f"'{field}' lässt sich nicht gesammelt setzen.", "warn")
@@ -296,11 +388,14 @@ class BridgeEditingMixin:
             value = _FIELDS[field](data.get("value"))
         except (TypeError, ValueError):
             return self._report("Die Wartezeit muss eine Zahl sein.", "warn")
-        rows = [row for row in sorted(self.sel_rows) if 0 <= row < len(lane.steps)]
-        for row in rows:
-            setattr(lane.steps[row], field, value)
+        count = 0
+        for lane, rows in groups:
+            for row in rows:
+                setattr(lane.steps[row], field, value)
+                count += 1
         return self._changed(
-            f"Wartezeit für {_blocks(len(rows))} gemeinsam gesetzt.")
+            f"Wartezeit für {_blocks(count)} gemeinsam gesetzt"
+            + (f" (in {len(groups)} Phasen)." if len(groups) > 1 else "."))
 
     # -------------------------------------------------------------- Struktur
 
@@ -326,27 +421,27 @@ class BridgeEditingMixin:
         self._selection_set(lane, at)
         return self._changed()
 
-    def _move(self, source: Lane, rows: list[int], target: Lane, at: int) -> None:
-        """Trägt `rows` aus `source` in `target` ab Position `at` ein.
+    def _move(self, groups, target: Lane, at: int) -> None:
+        """Trägt die Zeilen aus `groups` (`[(Phase, Zeilen)]`) in `target` ab `at` ein.
 
-        Der eine Weg für beides: Umsortieren innerhalb einer Phase und Verschieben
-        zwischen Phasen — Letzteres gibt es im Konsolen-Editor gar nicht.
+        Der eine Weg für alles: Umsortieren innerhalb einer Phase, Verschieben
+        zwischen Phasen — das gibt es im Konsolen-Editor gar nicht — und seit
+        die Auswahl über Phasen reicht, auch das Einsammeln aus mehreren. Die
+        Reihenfolge danach ist die des Boards: erst die Blöcke der linken Phase.
         """
-        steps_list = [source.steps[i] for i in sorted(rows)]
+        steps_list = [lane.steps[i] for lane, rows in groups for i in sorted(rows)]
         if not steps_list:
             return
         # Wie viele der entfernten Schritte lagen VOR der Zielposition? Um so viele
-        # rutscht sie nach vorne — aber nur, wenn aus derselben Phase entfernt wird.
-        if source is target:
-            at -= sum(1 for i in rows if i < at)
-        for i in sorted(rows, reverse=True):
-            self.board.delete_step(source, i)
+        # rutscht sie nach vorne — aber nur die, die aus der Zielphase selbst kommen.
+        at -= sum(1 for lane, rows in groups if lane is target for i in rows if i < at)
+        for lane, rows in groups:
+            for i in sorted(rows, reverse=True):
+                self.board.delete_step(lane, i)
         at = max(0, min(at, len(target.steps)))
         for offset, step in enumerate(steps_list):
             self.board.add_step(target, step, at=at + offset)
-        self.sel_lane = target
-        self.sel_rows = set(range(at, at + len(steps_list)))
-        self.sel_anchor = at
+        self._selection_replace([(target, range(at, at + len(steps_list)))], target)
 
     def drag(self, data: dict) -> dict:
         """Ziel eines Drag&Drop mit Karten."""
@@ -358,30 +453,37 @@ class BridgeEditingMixin:
         from_row = int(data.get("from_row", 0))
         at = int(data.get("to_row", 0))
         # Wird ein Schritt aus der aktuellen Auswahl gezogen, wandert die ganze
-        # Auswahl mit — sonst nur der angefasste.
-        rows = (sorted(self.sel_rows)
-                if (self.sel_lane is source and from_row in self.sel_rows)
-                else [from_row])
-        self._move(source, rows, target, at)
-        return self._changed("", offer=True, what=f"{_blocks(len(rows))} verschoben")
+        # Auswahl mit — auch aus anderen Phasen —, sonst nur der angefasste.
+        groups = (self._selection_groups() if from_row in self._selected_rows(source)
+                  else [(source, [from_row])])
+        self._move(groups, target, at)
+        count = sum(len(rows) for _lane, rows in groups)
+        return self._changed("", offer=True, what=f"{_blocks(count)} verschoben")
 
     def selection_move(self, data: dict) -> dict:
         """Verschiebt die Auswahl als Block um eine Position (−1 hoch, +1 runter)."""
         delta = int((data or {}).get("delta", 0))
-        lane = self.sel_lane
-        if lane is None or not self.sel_rows or delta == 0:
+        groups = self._selection_groups()
+        if not groups or delta == 0:
             return self.snapshot()
-        rows = sorted(self.sel_rows)
-        if delta < 0 and rows[0] == 0:
+        # Jede Phase für sich: ihre Gewählten rücken als Block, und wer schon an
+        # der Kante steht, bleibt stehen — ohne die anderen Phasen aufzuhalten.
+        moved, count, result = False, 0, []
+        for lane, rows in groups:
+            at_edge = rows[0] == 0 if delta < 0 else rows[-1] == len(lane.steps) - 1
+            if at_edge:
+                result.append((lane, rows))
+                continue
+            # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von
+            # hinten — sonst überholen sich die Elemente gegenseitig.
+            consequence = rows if delta < 0 else list(reversed(rows))
+            result.append((lane, {self.board.move_step(lane, idx, delta)
+                                  for idx in consequence}))
+            moved, count = True, count + len(rows)
+        if not moved:
             return self.snapshot()
-        if delta > 0 and rows[-1] == len(lane.steps) - 1:
-            return self.snapshot()
-        # Beim Hochschieben von vorne abarbeiten, beim Runterschieben von hinten —
-        # sonst überholen sich die Elemente gegenseitig.
-        consequence = rows if delta < 0 else list(reversed(rows))
-        self.sel_rows = {self.board.move_step(lane, idx, delta) for idx in consequence}
-        self.sel_anchor = min(self.sel_rows) if self.sel_rows else None
-        return self._changed(group="move", what=f"{_blocks(len(rows))} verschoben")
+        self._selection_replace(result, self.sel_lane)
+        return self._changed(group="move", what=f"{_blocks(count)} verschoben")
 
     _REF_FIELDS = ("wait_condition", "verify_condition", "else_config")
 
@@ -449,28 +551,32 @@ class BridgeEditingMixin:
         Kopiert wird tief — `else_config`, `wait_condition` und `verify_condition`
         sind eigene Objekte, sonst änderte ein Griff an der Kopie das Original mit.
         """
-        lane = self.sel_lane
-        if lane is None or not self.sel_rows:
+        groups = self._selection_groups()
+        if not groups:
             return self._report("Nichts ausgewählt — erst einen Block anklicken.", "warn")
-        rows = sorted(self.sel_rows)
-        # Alle Kopien hinter den LETZTEN Gewählten, in der Reihenfolge der
-        # Vorlagen. Jede einzeln hinter ihr Original zu setzen zerrisse eine
-        # Mehrfachauswahl in abwechselnd Original/Kopie.
-        target = rows[-1] + 1
         before = len(self.points)
+        # EINE Abbildung für den ganzen Durchgang, auch über Phasen hinweg:
+        # klicken zwei Gewählte denselben Knopf, tun ihre Kopien das auch.
         mapping: dict = {}
-        for offset, idx in enumerate(rows):
-            copy_of = copy.deepcopy(lane.steps[idx])
-            self._points_copy_along(copy_of, mapping)
-            self.board.add_step(lane, copy_of, target + offset)
+        copies, count = [], 0
+        for lane, rows in groups:
+            # Alle Kopien hinter den LETZTEN Gewählten dieser Phase, in der
+            # Reihenfolge der Vorlagen. Jede einzeln hinter ihr Original zu setzen
+            # zerrisse eine Mehrfachauswahl in abwechselnd Original/Kopie.
+            target = rows[-1] + 1
+            for offset, idx in enumerate(rows):
+                copy_of = copy.deepcopy(lane.steps[idx])
+                self._points_copy_along(copy_of, mapping)
+                self.board.add_step(lane, copy_of, target + offset)
+            copies.append((lane, range(target, target + len(rows))))
+            count += len(rows)
         # Die Kopien sind die neue Auswahl: man will sie gleich verschieben oder
         # umstellen, nicht erneut suchen.
-        self.sel_rows = {target + i for i in range(len(rows))}
-        self.sel_anchor = target
+        self._selection_replace(copies, self.sel_lane)
         self._points_apply()
         fresh = len(self.points) - before
         return self._changed(
-            f"{_blocks(len(rows))} dupliziert."
+            f"{_blocks(count)} dupliziert."
             + (f" {fresh} eigene(r) Punkt(e) angelegt — die Kopie lässt sich "
                f"verschieben, ohne das Original mitzunehmen." if fresh else ""))
 
@@ -556,8 +662,7 @@ class BridgeEditingMixin:
         if not taken:
             return self._report(f"Kein Block aus '{name}' übernommen — alle zeigen auf "
                                 f"Punkte, die es dort nicht mehr gibt.", "warn")
-        self.sel_rows = {at + i for i in range(taken)}
-        self.sel_anchor = at
+        self._selection_replace([(lane, range(at, at + taken))], lane)
         self._points_apply()
         fresh = len(self.points) - before
         text = (f"{_blocks(taken)} aus '{name}' eingefügt"
@@ -571,13 +676,14 @@ class BridgeEditingMixin:
                              offer=True, what=f"Blöcke aus '{name}' eingefügt")
 
     def selection_delete(self, data: Optional[dict] = None) -> dict:
-        lane = self.sel_lane
-        if lane is None or not self.sel_rows:
+        groups = self._selection_groups()
+        if not groups:
             return self.snapshot()
         # Von hinten löschen, sonst verschieben sich die noch offenen Indizes.
-        for idx in sorted(self.sel_rows, reverse=True):
-            self.board.delete_step(lane, idx)
-        count = len(self.sel_rows)
+        for lane, rows in groups:
+            for idx in reversed(rows):
+                self.board.delete_step(lane, idx)
+        count = sum(len(rows) for _lane, rows in groups)
         self._selection_clear()
         return self._changed(f"{_blocks(count)} gelöscht.", offer=True)
 
@@ -793,6 +899,23 @@ class BridgeEditingMixin:
         self._points_apply()
         return self._changed(f"Block hat jetzt seinen eigenen Punkt #{step.point_id}; "
                                f"#{old} bleibt bei: {', '.join(other)}")
+
+    def point_delete(self, data: Optional[dict] = None) -> dict:
+        """Löscht einen Punkt aus der Punkte-Liste des Editors.
+
+        Dort stehen die Reste einer Aufnahme als „0×" — gelöscht werden konnten
+        sie nur im Werkzeuge-Reiter, und der zog die Liste hier nicht nach: der
+        Punkt stand weiter da, der Ungespeichert-Punkt fehlte, und es sah aus,
+        als hätte das Löschen nicht gewirkt. Hier ist es ein Editor-Befehl wie
+        jeder andere — Momentaufnahme, Rückgängig, Speichern mit der Sequenz.
+        Dieselbe Regel wie im Werkzeug (`_point_remove`): ein Punkt, an dem
+        noch etwas hängt, bleibt.
+        """
+        point_id = (data or {}).get("point_id")
+        removed, message, _used = self._point_remove(point_id)
+        if not removed:
+            return self._report(message, "warn")
+        return self._changed(message, offer=True, what=message.rstrip("."))
 
     def block_point(self, data: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.

@@ -770,6 +770,10 @@ class RecordEvent:
     key: Optional[str] = None                   # nur REC_KEY
     # nur REC_SCREENSHOT: (x1, y1, x2, y2) oder None = Vollbild
     region: Optional[tuple[int, int, int, int]] = None
+    # nur REC_CLICK: `(links, oben, Bild)` rund um den Klick, aufgenommen im
+    # Hook (`imaging.capture_surface`). Daraus entscheidet `points_for_events()`,
+    # ob ein vorhandener Punkt auf DEMSELBEN Knopf liegt. None = kein Bild.
+    patch: Optional[tuple] = None
 
     def __str__(self) -> str:
         if self.kind == REC_KEY:

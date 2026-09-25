@@ -151,10 +151,40 @@ class BridgeViewMixin:
             BLOCK_BOSS_WATCHER: bosses,
         }
 
+    def _lane_index(self, lane) -> Optional[int]:
+        """Stelle einer Phase im Board — über die IDENTITÄT, nicht über Gleichheit.
+
+        `Lane` ist eine Dataclass: zwei leere Loop-Phasen sind gleich, und
+        `lanes.index()` fände immer die erste.
+        """
+        return next((i for i, ln in enumerate(self.board.lanes) if ln is lane), None)
+
     def _sel_index(self) -> Optional[int]:
-        if self.sel_lane is None or self.sel_lane not in self.board.lanes:
-            return None
-        return self.board.lanes.index(self.sel_lane)
+        return None if self.sel_lane is None else self._lane_index(self.sel_lane)
+
+    def _selected_rows(self, lane) -> list[int]:
+        """Die gewählten Zeilen EINER Phase — sortiert und nur gültige."""
+        if lane is None:
+            return []
+        if lane is self.sel_lane:
+            rows = self.sel_rows
+        else:
+            rows = next((r for ln, r in self.sel_other if ln is lane), ())
+        return sorted(r for r in rows if 0 <= r < len(lane.steps))
+
+    def _selection_groups(self) -> list:
+        """Alle gewählten Blöcke je Phase: `[(Phase, Zeilen)]` in Board-Reihenfolge.
+
+        Die EINE Stelle, an der eine Sammelaktion erfährt, worauf sie wirkt.
+        Seit die Auswahl über Phasen reichen darf, gäbe es sonst zwei Antworten:
+        „löschen" nähme alle Phasen und „Wartezeit" nur die zuletzt angeklickte.
+        """
+        groups = []
+        for lane in self.board.lanes:
+            rows = self._selected_rows(lane)
+            if rows:
+                groups.append((lane, rows))
+        return groups
 
     def _point_json(self, p: PalettePoint) -> dict:
         # `usages`: wie oft der Punkt gebraucht wird — die Liste zeigte es nicht,
@@ -177,12 +207,15 @@ class BridgeViewMixin:
         }
 
     def _selection_json(self) -> dict:
-        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor."""
-        rows = sorted(self.sel_rows)
-        steps = [] if self.sel_lane is None else [
-            self.sel_lane.steps[row] for row in rows
-            if 0 <= row < len(self.sel_lane.steps)
-        ]
+        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor.
+
+        `phase`/`rows` beschreiben die Phase, in der zuletzt geklickt wurde;
+        `count` und `phases` die ganze Auswahl — die Ansicht fragt nach der
+        Anzahl, nicht nach der Länge von `rows`, sonst hiesse eine Auswahl über
+        zwei Phasen „1 Block gewählt".
+        """
+        groups = self._selection_groups()
+        steps = [lane.steps[row] for lane, rows in groups for row in rows]
 
         def shared(field: str):
             values = [getattr(step, field) for step in steps]
@@ -193,7 +226,9 @@ class BridgeViewMixin:
         delay_max, max_mixed = shared("delay_max")
         return {
             "phase": self._sel_index(),
-            "rows": rows,
+            "rows": self._selected_rows(self.sel_lane),
+            "count": len(steps),
+            "phases": len(groups),
             "delay_before": delay_before,
             "delay_before_mixed": before_mixed,
             "delay_max": delay_max,
@@ -220,7 +255,7 @@ class BridgeViewMixin:
             "rows": self._lines(step, type_value),
             "checks": step.verify_condition is not None,
             "breakpoint": bool(step.breakpoint),
-            "selected": self.sel_lane is lane and row in self.sel_rows,
+            "selected": row in self._selected_rows(lane),
             # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
             # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
             # Klick zeigte Koordinaten — und Koordinaten unterscheidet niemand
@@ -302,13 +337,16 @@ class BridgeViewMixin:
                 ELSE_RESTART: "sonst: Sequenz neu starten"}.get(ec.action, f"sonst: {ec.action}")
 
     def _single(self) -> tuple[Optional[Lane], int, Optional[SequenceStep]]:
-        """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind."""
-        if self.sel_lane is None or len(self.sel_rows) != 1:
+        """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind.
+
+        „Mehrere" zählt über ALLE Phasen: ein Block in Loop 1 und einer in
+        Loop 2 sind zwei, auch wenn in jeder Phase nur einer gewählt ist.
+        """
+        groups = self._selection_groups()
+        if len(groups) != 1 or len(groups[0][1]) != 1:
             return None, -1, None
-        row = next(iter(self.sel_rows))
-        if not (0 <= row < len(self.sel_lane.steps)):
-            return None, -1, None
-        return self.sel_lane, row, self.sel_lane.steps[row]
+        lane, rows = groups[0]
+        return lane, rows[0], lane.steps[rows[0]]
 
     def _block_detail(self) -> Optional[dict]:
         """Alle Felder des gewählten Schritts für die Eigenschaften-Spalte."""

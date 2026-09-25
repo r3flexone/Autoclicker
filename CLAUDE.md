@@ -539,6 +539,22 @@ Regeln beim Erweitern:
   die exakte Stelle. Lieber ein Punkt zu viel als zwei zusammengelegte, die es
   nicht sind.
 
+  **Bei der Aufnahme reicht der Radius nicht — dort entscheidet die Fläche.**
+  Gemessen an einer echten Einfüge-Aufnahme: 18 Klicks auf drei Knöpfe ergaben
+  7 neue Punkte, und die Blöcke für denselben Knopf zeigten auf fünf
+  verschiedene. Klicks von Hand auf einen breiten Knopf streuten 55 px. Den
+  Radius hochzudrehen wäre falsch gewesen: in derselben Sequenz liegen zwei
+  gleichfarbige Ziele 20 px übereinander, und was sie trennt, ist nur der Rand
+  dazwischen. Deshalb nimmt der Maus-Hook bei jedem Klick einen Ausschnitt
+  (`imaging.capture_surface`, ±64 px, ~12 ms) mit, und `points_for_events()`
+  füllt daraus die zusammenhängende Fläche in Klickfarbe
+  (`imaging.click_surface`). Ein vorhandener Punkt passt, wenn er im Radius
+  **oder** auf dieser Fläche liegt — Farbe immer vorausgesetzt, Radius 0
+  schaltet beides ab. Passen mehrere, gewinnt der, den derselbe Durchgang
+  schon vergeben hat (`prefer`), dann der nächste; sonst sprang ein Knopf mit
+  zwei alten Punkten zwischen beiden hin und her. Editor-Wege
+  (`point_for_position`) haben keinen Ausschnitt und bleiben beim Radius.
+
   **Beim Aufnehmen wird nichts verschoben.** Der erste Klick legt den Punkt an,
   die folgenden finden ihn; er behält seine Position. Ihn auf die Mitte der
   Gruppe nachzuziehen wäre genauer und wäre falsch: ein wiederverwendeter Punkt
@@ -2948,6 +2964,10 @@ Tafel im Inspektor zeigt dieselbe Live-Ausgabe wie der Werkzeuge-Reiter
 (`wzFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
 aktiv" erst nach einem ersten Lebenszeichen als „fertig" — beim ersten Blick
 nach dem Start hat der Hauptprozess den Briefkasten oft noch gar nicht geholt.
+Nach dem Neuladen sind die eingefügten Blöcke **gewählt** (`select_range`, aus
+der Blockzahl vor und nach der Aufnahme): an einer echten Einfügung ging der
+erste Klick nach der Rückkehr aus dem Spiel verloren, und von drei neuen
+Blöcken wurden nur die letzten zwei gelöscht.
 
 **„Blöcke einfügen" (aus einer anderen Sequenz) ist eine Kopie, kein Aufruf**
 (`block_import`). Die billige Fassung der Bausteine-Idee: alle Blöcke der
@@ -3012,6 +3032,14 @@ Drei Eigenschaften, an denen das hängt:
   zusätzlich ab (`"warten": None` in `execute_step`).
 - **`waiting_for()` ersetzt das Lebenszeichen**, es kommt nicht dazu: es schreibt über
   dieselbe Funktion und schiebt `stamp` genauso vor.
+- **Auch eine reine Wartezeit zeigt den Ausschnitt** — um die Stelle, die danach
+  dran ist (`wait_with_pause_skip(..., point=)`, `_live_target()` in
+  `runtime/steps.py`; bei ELSE-Klick und „Vor Farbprüfung" deren Stelle). Die
+  Frage beim Hinsehen ist dieselbe wie beim Farb-Warten: steht da, wo gleich
+  geklickt wird, das Richtige? `_live_point()` schreibt dieselben Felder wie
+  `_color_wait_status()`, und die Seite zeichnet beide mit **einer** Funktion
+  (`livePixelBox`) — ein Test hält die Namen gegeneinander. Eine Taste und ein
+  Punkt ins Leere bringen keine Stelle mit, also kein Bild statt eines von (0, 0).
 
 **Am Ende bleibt die Zusammenfassung stehen.** Hier wurde die Statusdatei
 früher gelöscht, und damit war die Live-Ansicht genau in dem Moment leer, in dem
@@ -3158,8 +3186,8 @@ Regeln beim Erweitern:
   ist der ungetestete Teil und soll klein bleiben.
 - **Sammel-Aktionen arbeiten auf der Auswahl, nicht auf einem Block.**
   Verschieben, Löschen und Duplizieren nehmen alle gewählten Zeilen; beim
-  Duplizieren landen die Kopien **hinter der letzten** Gewählten und werden zur
-  neuen Auswahl. Jede Kopie einzeln hinter ihr Original zu setzen zerrisse eine
+  Duplizieren landen die Kopien **hinter der letzten** Gewählten (je Phase) und
+  werden zur neuen Auswahl. Jede Kopie einzeln hinter ihr Original zu setzen zerrisse eine
   Mehrfachauswahl in abwechselnd Original/Kopie. Kopiert wird tief
   (`copy.deepcopy`), **und die Kopie bekommt eigene Punkte**.
 
@@ -3207,9 +3235,23 @@ Regeln beim Erweitern:
     Fall „dieser eine Block soll einen *anderen* Knopf klicken". Dieselbe Bauart
     wie beim Duplizieren (`_points_copy_along`): Klick und Prüf-Pixel eines
     FARBE+KLICK-Blocks wandern gemeinsam.
-- **Die Auswahl lebt in genau einer Phase** (`sel_lane` + `sel_rows`). Eine Auswahl
-  quer über INIT und END hätte bei „eine Position hoch" keine Bedeutung, und die
-  Sammelaktionen wären nicht mehr eindeutig.
+- **Die Auswahl darf über Phasen reichen, die Sammelaktionen arbeiten je Phase.**
+  Hier stand „die Auswahl lebt in genau einer Phase", weil „eine Position hoch"
+  quer über Phasen keine Bedeutung hätte. Das kostete genau den Fall, für den man
+  sie braucht: nach einer Aufnahme mit vier Loops dieselbe Wartezeit an zehn
+  Blöcke setzen — viermal, Phase für Phase. Heute nimmt STRG+Klick in einer
+  anderen Phase dazu (`sel_lane`/`sel_rows` = die Phase des letzten Klicks,
+  `sel_other` = die übrigen), und **jede Sammelaktion fragt
+  `_selection_groups()`** statt `sel_lane` direkt: Wartezeit und Löschen
+  wirken auf alle, ALT+↑/↓ schiebt jede Phase in sich (wer an der Kante steht,
+  bleibt stehen, ohne die anderen aufzuhalten), Duplikate landen hinter der
+  letzten Gewählten **ihrer** Phase, Ziehen sammelt alles in Board-Reihenfolge
+  am Ziel ein. Umschalt+Klick bleibt ein Bereich **innerhalb** einer Phase — die
+  Phasen stehen nebeneinander, ein Bereich quer darüber hätte keine sichtbare
+  Reihenfolge. Die Seite zählt `S.selection.count`, nie `rows.length` (das sind
+  nur die Zeilen der letzten Phase). Phasen werden an der **Identität** erkannt
+  (`_lane_index()`), nicht mit `lanes.index()`: `Lane` ist eine Dataclass, und
+  zwei gleich aussehende Phasen fand `index()` immer als die erste.
 - **Die Karte zeigt wenig, der Inspektor alles.** Auf die Karte gehört, was man beim
   Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);
   alles Weitere steht rechts. Eine Wartezeit von 0 kommt gar nicht erst auf die Karte —
@@ -3458,6 +3500,19 @@ Regeln beim Erweitern:
   ungenutzte sind blass, „ungenutzt" ist ein Filterwort, und
   `tool_points_prune()` löscht sie in einem Griff (mit Abzug). Die Zieh-Geste
   steht als Zeile unter der Liste — `cursor: grab` liest niemand.
+
+  **Ein ungenutzter Punkt lässt sich direkt in der Liste löschen** (× am
+  Zeilenende, `point_delete`, `call()`-Kanal mit Rückgängig). Vorher ging
+  das nur im Werkzeuge-Reiter, und der zog die Editor-Liste nicht nach: der
+  Punkt stand weiter da, der Ungespeichert-Punkt fehlte, und weil der Reiter
+  keinen Speichern-Knopf hat, sah das Löschen wirkungslos aus — beim
+  Schliessen landete es nur in der Notsicherung. Drei Regeln: **eine
+  Löschregel** für beide Wege (`_point_remove()`: nur unbenutzte, Referenzen
+  nie still brechen), **das × gibt es nur, wo es wirkt** (verwendete Zeilen
+  halten mit `.point-delete-slot` nur den Platz frei, damit Zähler und
+  Koordinaten auf einer Kante bleiben), und **Punkt-Werkzeuge ziehen die
+  Momentaufnahme nach** (`TOOL_POINT_COMMANDS` in `callTool`, ein Test hält
+  die Liste gegen die `tool_point*`-Methoden der Brücke).
 - **Ein leeres Board sagt, wie man anfängt** (`startCard()`: Aufnehmen oder
   von Hand bauen, dazu der Import), und die Tastenkürzel stehen in EINER Tafel
   (`shortcutTable()`, Taste `?` und `#btn-help`). Die Scan-Modi nehmen ihre

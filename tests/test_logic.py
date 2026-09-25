@@ -5116,8 +5116,22 @@ _color_fields13 = set(_fws13(_StW13(), _SS(delay_before=0), _wc13, (9, 9, 9), 4.
 import autoclicker.runtime.actions as _act13
 _time_source13 = _inspect13.getsource(_act13._wait_loop)
 _time_fields13 = set(_re13.findall(r'"(\w+)":', _time_source13))
-_box13 = _html13[_html13.index("function waitBox("):]
-_box13 = _box13[:_box13.index("\nfunction ")]
+# Der Live-Pixel beim Zeitwarten kommt aus `_live_point` — mit DENSELBEN
+# Namen wie beim Farb-Warten, denn die Seite zeichnet beide mit einer Funktion.
+_live_fields13 = set(_re13.findall(r'"(\w+)":', _inspect13.getsource(_act13._live_point)))
+check("der Live-Pixel beim Zeitwarten benutzt die Namen des Farb-Wartens",
+      len(_live_fields13) >= 5 and _live_fields13 <= _color_fields13)
+_time_fields13 |= _live_fields13
+
+
+def _js_function13(name):
+    """Quelltext einer Funktion aus app.js — bis zur nächsten."""
+    part = _html13[_html13.index("function " + name + "("):]
+    return part[:part.index("\nfunction ", 1)]
+
+
+# `livePixelBox` gehört dazu: sie liest dasselbe `w`, nur eine Funktion tiefer.
+_box13 = _js_function13("waitBox") + _js_function13("livePixelBox")
 _read13 = set(_re13.findall(r"\bw\.([a-z_]+)", _box13))
 check("der Warte-Kasten liest ueberhaupt Felder", len(_read13) >= 6)
 _unknown13 = sorted(_read13 - _color_fields13 - _time_fields13)
@@ -6530,6 +6544,9 @@ import tests.contract.session_limit         # noqa: F401,E402
 import tests.contract.block_import          # noqa: F401,E402
 import tests.contract.sequence_names        # noqa: F401,E402
 import tests.contract.run_lifecycle         # noqa: F401,E402
+import tests.contract.point_surface         # noqa: F401,E402
+import tests.contract.live_wait             # noqa: F401,E402
+import tests.contract.cross_phase_selection  # noqa: F401,E402
 
 
 import shutil as _shD

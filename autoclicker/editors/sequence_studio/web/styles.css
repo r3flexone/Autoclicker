@@ -302,6 +302,14 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .point .uses{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;
   background:var(--sub);color:var(--muted);flex:none}
 .point .uses.none{background:none;border:1px dashed var(--dim);color:var(--dim)}
+/* Loeschen am Zeilenende — nur bei ungenutzten Punkten. Rahmen, damit es als
+   Knopf erkennbar ist; rot erst beim Zeigen, weil es in einer Liste mit
+   vierzig Zeilen sonst lauter ist als alles, woran man arbeitet. */
+.point .point-delete{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;padding:0;border:1px solid var(--line);border-radius:4px;
+  background:none;color:var(--dim);cursor:pointer}
+.point .point-delete:hover{color:var(--err);border-color:var(--err)}
+.point .point-delete-slot{flex:none;width:18px}
 .point.unused{opacity:.55;border-style:dashed}
 /* Angeklickt: die Zeile traegt den Ring, ihre Bloecke im Board tragen ihn in
    Punktfarbe. `in-use`: die Punkte des gewaehlten Blocks — die Gegenrichtung. */
@@ -429,7 +437,10 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .insp-header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
   align-items:center;gap:8px}
 .bulk-editor{padding:14px;display:flex;flex-direction:column;gap:12px}
-.bulk-quick{gap:6px;flex-wrap:wrap}
+/* Vier gleiche Spalten statt Textbreite: acht Kacheln in einer Reihe ohne
+ * Raster lägen je nach Beschriftung („0 s" vs. „0,5 s") auf verschiedenen
+ * Kanten. */
+.bulk-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .insp-point{width:9px;height:9px;border-radius:2px;flex:none}
 .type-chip{
   font-family:var(--mono);font-size:9.5px;text-align:center;padding:7px 3px;border-radius:4px;
@@ -1192,8 +1203,11 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
 .wz-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
 .wz-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
+/* Der Befehl steht an der RECHTEN Kante, nicht hinter dem Titel: dort sass er je
+ * nach Titellänge an einer anderen Stelle, und sechs Marken auf sechs Kanten
+ * lesen sich wie Zufall. Rechtsbündig bilden sie eine Spalte. */
 .wz-command{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
-  border-radius:9px;padding:1px 5px}
+  border-radius:9px;padding:1px 5px;margin-left:auto;flex:none}
 .wz-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
 .wz-nav:hover .wz-nav-arrow,.wz-nav.on .wz-nav-arrow{color:var(--accent);transform:translateX(2px)}
 /* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows

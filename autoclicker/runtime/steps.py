@@ -30,6 +30,7 @@ from ..winapi import check_failsafe
 from .actions import (
     safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, wait_while_paused, execute_else_action, input_refused,
+    pixel_crop, _LIVE_INTERVAL,
 )
 from . import status
 from .debug import (
@@ -410,7 +411,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     wc = step.wait_condition
     actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
-        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps, "Vor Farbprüfung"):
+        if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
+                                    "Vor Farbprüfung", point=(wc.pixel[0], wc.pixel[1], wc.color)):
             # Hier stand `return False` — der Aufrufer vergleicht mit den drei
             # Gates, und `False != GATE_RUN` lief zufaellig als Stopp durch.
             return GATE_STOP
@@ -504,7 +506,7 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
         # beantwortet die nächste Frage: was ist da statt dessen zu sehen?
         now = time.time()
         if now - last_image >= _LIVE_INTERVAL:
-            last_image, image = now, _pixel_crop(wc.pixel[0], wc.pixel[1])
+            last_image, image = now, pixel_crop(wc.pixel[0], wc.pixel[1])
         status.waiting_for(state, _color_wait_status(state, step, wc, current_color, dist,
                                                start_time, timeout, image))
 
@@ -517,36 +519,6 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
             return GATE_STOP
 
     return GATE_STOP
-
-
-# Kantenlänge des Live-Ausschnitts in Pixeln (ungerade, damit die Stelle genau
-# in der Mitte liegt). 49×49 ist gross genug, um den Knopf drumherum zu erkennen,
-# und klein genug, dass das PNG in eine Statusdatei passt: rund 3 KB.
-_LIVE_RADIUS = 24
-# Höchstens einmal pro Sekunde ein neues Bild — die Warteschleife läuft
-# schneller (`pixel_check_interval`), und der Ausschnitt ist das Einzige daran,
-# das mehr als ein paar Byte kostet.
-_LIVE_INTERVAL = 1.0
-
-
-def _pixel_crop(x: int, y: int):
-    """Bildausschnitt um eine Stelle als Data-URL — oder `None`.
-
-    „RGB(30, 32, 34)" beantwortet nicht, WAS da zu sehen ist; der Ausschnitt tut
-    es. Kostet einen BitBlt über 49×49 Pixel plus PNG-Kodierung; ohne Pillow kein Bild.
-    """
-    img = take_screenshot((x - _LIVE_RADIUS, y - _LIVE_RADIUS,
-                           x + _LIVE_RADIUS + 1, y + _LIVE_RADIUS + 1))
-    if img is None:
-        return None
-    try:
-        import base64
-        from io import BytesIO
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
-    except (OSError, ValueError, AttributeError):
-        return None
 
 
 def _color_wait_status(state: AutoClickerState, step: SequenceStep, wc,
@@ -935,7 +907,7 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         actual_delay = step.get_actual_delay()
         if actual_delay > 0:
             if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                        _wait_text(step)):
+                                        _wait_text(step), point=_live_target(step)):
                 return False
 
     if state.stop_event.is_set():
@@ -1045,6 +1017,20 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
     if step.else_config is not None:
         return _gate_after_else(state, step, phase, step_num, total_steps) != GATE_STOP
     return True
+
+
+def _live_target(step: SequenceStep):
+    """`(x, y, Farbe)` des Punkts, den der Schritt nach dem Warten klickt — oder `None`.
+
+    Die Live-Ansicht zeigt beim Farb-Warten einen Ausschnitt um die Stelle;
+    bei einer reinen Wartezeit fehlte er, obwohl die Frage dieselbe ist: steht
+    da, wo gleich geklickt wird, das Richtige? Eine Taste hat keine Stelle, ein
+    Punkt ins Leere (`unresolved`) auch nicht — dort gibt es kein Bild statt
+    eines von (0, 0).
+    """
+    if step.key_press or step.point_id is None or step.unresolved:
+        return None
+    return step.x, step.y, step.recorded_color
 
 
 def _wait_text(step: SequenceStep) -> str:

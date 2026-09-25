@@ -101,6 +101,82 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int] | None:
     return get_screen_pixel(int(x), int(y))
 
 
+# Wie weit um einen aufgenommenen Klick die Fläche gemessen wird (in jede
+# Richtung). Gemessen an einer echten Aufnahme: sechs Klicks auf denselben
+# breiten Knopf lagen bis 55 px auseinander — ein Radius von 8 px legte dafür
+# fünf Punkte an. 64 reicht für den Knopf und kostet einen BitBlt über 129×129
+# Pixel (rund 12 ms, im Maus-Hook unbedenklich).
+SURFACE_RADIUS = 64
+
+
+def capture_surface(x: int, y: int) -> Optional[tuple]:
+    """`(links, oben, Bild)` um eine Stelle — oder `None` (kein Pillow, kein Bild).
+
+    Aufgenommen wird im Maus-Hook, also bevor das Spiel den Klick überhaupt
+    sieht: der Knopf steht noch so da, wie ihn der Klick getroffen hat.
+    """
+    left, top = int(x) - SURFACE_RADIUS, int(y) - SURFACE_RADIUS
+    try:
+        image = capture_screen((left, top, int(x) + SURFACE_RADIUS + 1,
+                                int(y) + SURFACE_RADIUS + 1))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if image is None:
+        return None
+    return left, top, image
+
+
+def click_surface(patch, x: int, y: int, color, tolerance: int) -> Optional[frozenset]:
+    """Die zusammenhängende Farbfläche um `(x, y)` — in Bildschirm-Koordinaten.
+
+    „Derselbe Knopf" ist keine Frage des Abstands, sondern der Fläche: zwei
+    Klicks auf einen breiten Knopf liegen weit auseinander, zwei gleichfarbige
+    Knöpfe übereinander dicht beieinander — aber zwischen ihnen liegt ein Rand
+    in anderer Farbe. Gefüllt wird deshalb vom Klick aus (4er-Nachbarschaft),
+    solange jede Farbe höchstens `tolerance` je Kanal von der Klickfarbe
+    abweicht. Beschriftung auf dem Knopf sind Löcher, um die herum gefüllt wird.
+
+    Verglichen wird mit der KLICKfarbe, nicht mit dem Nachbarpixel: sonst liefe
+    die Füllung über einen weichen Verlauf in die nächste Fläche hinein.
+    """
+    if patch is None or not color:
+        return None
+    left, top, image = patch
+    try:
+        width, height = image.size
+        data = image.convert("RGB").tobytes()
+    except (OSError, ValueError, AttributeError):
+        return None
+    cx, cy = int(x) - left, int(y) - top
+    if not (0 <= cx < width and 0 <= cy < height):
+        return None
+    r0, g0, b0 = (int(v) for v in color[:3])
+
+    def fits(index: int) -> bool:
+        o = index * 3
+        return (abs(data[o] - r0) <= tolerance and abs(data[o + 1] - g0) <= tolerance
+                and abs(data[o + 2] - b0) <= tolerance)
+
+    start = cy * width + cx
+    if not fits(start):
+        return None
+    seen = bytearray(width * height)
+    seen[start] = 1
+    stack = [start]
+    area = []
+    while stack:
+        index = stack.pop()
+        area.append(index)
+        px, py = index % width, index // width
+        for neighbor, inside in ((index - 1, px > 0), (index + 1, px < width - 1),
+                                 (index - width, py > 0), (index + width, py < height - 1)):
+            if inside and not seen[neighbor]:
+                seen[neighbor] = 1
+                if fits(neighbor):
+                    stack.append(neighbor)
+    return frozenset((left + i % width, top + i // width) for i in area)
+
+
 def color_distance(c1: tuple, c2: tuple) -> float:
     """Berechnet die Distanz zwischen zwei RGB-Farben."""
     return ((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2 + (c1[2]-c2[2])**2) ** 0.5

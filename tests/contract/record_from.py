@@ -266,3 +266,43 @@ import inspect as _insp
 _fin = _insp.getsource(_rec._finish_insert_recording)
 check("die Einfuegung setzt active_sequence nicht von Hand",
       "state.active_sequence =" not in _fin and "activate_sequence(state, seq)" in _fin)
+
+# =============================================================================
+section("Nach der Einfuege-Aufnahme sind die neuen Bloecke gewaehlt")
+# =============================================================================
+# An einer echten Einfuegung gemessen: drei Bloecke kamen an, im Fenster
+# wurden danach nur die letzten zwei gewaehlt und geloescht — der erste
+# Klick nach der Rueckkehr aus dem Spiel kam nicht an. Steht die Auswahl
+# schon, braucht es ihn nicht.
+_sandbox4 = _tmp.mkdtemp(prefix="einfuegen_auswahl_")
+_cwd4 = _os.getcwd()
+_os.chdir(_sandbox4)
+try:
+    _seq4 = _target_sequence()
+    _seq4.loop_phases[0].steps += [_STEP(key_press="a"), _STEP(key_press="b"),
+                                   _STEP(key_press="c")]
+    _path4 = sequence_file(_seq4.name)
+    _path4.parent.mkdir(parents=True, exist_ok=True)
+    save_sequence_file(_seq4, _path4)
+    _b4 = _SB(_seq4, _path4, "sequences")
+    _loop4 = next(i for i, ln in enumerate(_b4.board.lanes) if ln.kind == "loop")
+    _b4.select_range({"phase": _loop4, "row": 1, "count": 3})
+    check("select_range waehlt genau den Bereich",
+          _b4.sel_lane is _b4.board.lanes[_loop4] and _b4.sel_rows == {1, 2, 3})
+    _b4.select_range({"phase": _loop4, "row": 3, "count": 10})
+    check("ueber das Phasenende hinaus wird beschnitten", _b4.sel_rows == {3, 4})
+    _b4.select({"phase": _loop4, "row": 0})
+    _b4.select_range({"phase": 99, "row": 0, "count": 2})
+    check("eine unbekannte Phase laesst die Auswahl stehen", _b4.sel_rows == {0})
+finally:
+    _os.chdir(_cwd4)
+    _sh.rmtree(_sandbox4, ignore_errors=True)
+
+_web = studio_web_source()
+_after = _web[_web.index("async function selectInsertedBlocks"):]
+_after = _after[:_after.index("\nfunction ", 1)]
+check("die Seite waehlt nach dem Neuladen die hinzugekommenen Bloecke",
+      'call("select_range"' in _after and "target.row + 1" in _after
+      and "lane.blocks.length - target.before" in _after)
+check("und zwar direkt nach dem Laden im Waechter",
+      "await selectInsertedBlocks()" in _web[_web.index("function watchInsertRecording"):])
