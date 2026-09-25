@@ -43,11 +43,7 @@ def _rmtree_robust(path: Path) -> None:
         except OSError:
             pass
 
-    # onerror ist seit Python 3.12 zugunsten von onexc deprecated (gleiche 3 Args).
-    if sys.version_info >= (3, 12):
-        shutil.rmtree(path, onexc=_on_error)
-    else:
-        shutil.rmtree(path, onerror=_on_error)
+    shutil.rmtree(path, onexc=_on_error)
 
 
 # Serialisiert den gesamten Start/Stop-Pfad von handle_toggle, damit Countdown-Thread

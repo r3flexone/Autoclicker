@@ -47,10 +47,11 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # 3.10 ist die untere Grenze (PEP-604-Syntax `X | None` im Baum), und
-          # genau die gehoert geprueft: auf der neuesten Version zu testen sagt
-          # nichts darueber, ob die aelteste noch traegt.
-          python-version: "3.10"
+          # Die untere Grenze ist die Version, die wirklich benutzt wird: 3.14.
+          # Hier stand 3.10, ohne dass jemand 3.10 benutzt — und ein f-String,
+          # dessen Ausdruck ueber zwei Zeilen lief (erst ab 3.12 erlaubt), hielt
+          # die CI vier Laeufe lang rot, waehrend lokal alles gruen war.
+          python-version: "3.14"
 
       # headless: der Runner hat keine Anzeige, und das volle opencv-python zieht
       # GUI-Bibliotheken nach, die es dort nicht gibt.
@@ -97,7 +98,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.14"
       - run: python -m pip install pillow numpy opencv-python-headless playwright
       - run: python -m playwright install --with-deps chromium
       - run: python tests/all_tests.py --only smoke --smoke-required
@@ -111,7 +112,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.14"
       - run: pip install flake8
       # Nur die F-Regeln (das ist genau pyflakes: tote Importe, Tippfehler in Namen,
       # doppelte Definitionen) - kein Formatierer, ueber Stil entscheidet hier

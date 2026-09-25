@@ -141,8 +141,13 @@ Push und Pull Request auf jedem Branch, als Matrix auf Ubuntu und Windows. Dazu
 zwei eigene Jobs: die Rauchtests (Browser, nur Linux — es geht um die Seite, nicht
 um die Plattform) und `flake8 --select=F` (tote Importe, Tippfehler in Namen).
 Jeder Job muss grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
-Geprüft wird auf **Python 3.10**, der unteren Grenze — auf der neuesten Version
-zu testen sagt nichts darüber, ob die älteste noch trägt.
+Geprüft wird auf **Python 3.14**, der unteren Grenze — und die ist die Version,
+die wirklich benutzt wird. Hier stand 3.10, ohne dass jemand 3.10 benutzte: ein
+f-String, dessen `{…}` über zwei Zeilen lief (erst ab 3.12 erlaubt), hielt die
+CI vier Läufe lang rot, während jeder lokale Lauf grün war. Eine Grenze, die
+niemand benutzt, prüft nur, ob man sie einhält — nicht, ob das Programm läuft.
+README (`Python 3.14+`) und alle `python-version` in `tests.yml` nennen dieselbe
+Zahl; ein Test hält sie zusammen.
 
 **Der Test-Job läuft dreimal: `ohne`, `pillow` und `mit` Bildpaketen.** OpenCV und Pillow sind
 optional, und der Code degradiert sauber ohne sie — nur überspringt die Suite dann

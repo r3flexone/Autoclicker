@@ -6547,6 +6547,7 @@ import tests.contract.run_lifecycle         # noqa: F401,E402
 import tests.contract.point_surface         # noqa: F401,E402
 import tests.contract.live_wait             # noqa: F401,E402
 import tests.contract.cross_phase_selection  # noqa: F401,E402
+import tests.contract.python_floor          # noqa: F401,E402
 
 
 import shutil as _shD

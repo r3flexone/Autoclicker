@@ -52,7 +52,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 ## Voraussetzungen
 
 - Windows 10/11 **oder** Linux mit einer X11-Sitzung
-- Python 3.10+
+- Python 3.14+
 
 Wayland wird derzeit nicht unterstützt. Der Start erkennt Wayland, nennt die
 fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
