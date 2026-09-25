@@ -1964,6 +1964,19 @@ Sechs Regeln, an denen der Reiter hängt:
   aus ihr heraussuchen. Er heisst jetzt „↶ Zurück"; was zurückgenommen wird,
   liest im Tooltip, wer nachfragt, und *dass* es etwas gibt, sagt der aktive
   Zustand. Dieselbe Trennung wie sonst zwischen Text und ⓘ.
+- **Neben einem Auto-Speichern zeigt der Speichern-Knopf seinen Zustand**
+  (`scanSaveButton()`): amber „Speichern“, solange etwas offen ist, sonst
+  ruhig „✓ Gespeichert“. Der Reiter schreibt 900 ms nach jeder Änderung von
+  selbst und meldet dabei unten „… gespeichert.“ — ein Klick danach schrieb
+  dieselbe Meldung noch einmal, der Knopf blieb amber, und vorher und nachher
+  sahen gleich aus: gemeldet als „Speichern geht nicht“, obwohl die Datei
+  jedes Mal geschrieben war. Den Zustand trug bis dahin ein Stempel in der
+  Bildleiste, der ab 900 px Bühnenbreite ausgeblendet war — also bei jeder
+  gewöhnlichen Fenstergröße; er ist ersatzlos weg. Gesperrt wird der Knopf
+  nie: ein zweites Schreiben schadet nicht, und ein gesperrter Knopf liest
+  sich wie ein kaputter. Der Kopf-Knopf des Editors bleibt immer amber — dort
+  gibt es kein Auto-Speichern, und eine nie gespeicherte neue Sequenz ist
+  nicht `dirty`, hätte also fälschlich „Gespeichert“ gezeigt.
 - **Ein Attribut, das allein durch sein DASEIN wirkt, braucht einen Boolean.**
   `el()` setzte jeden nicht-falsy Wert per `setAttribute` — und
   `disabled="0"` sperrt genauso wie `disabled="1"`. Im Werkzeug „Punkte

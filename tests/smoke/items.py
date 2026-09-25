@@ -58,6 +58,22 @@ def run():
         expect(source_layout["knopf"] >= source_layout["breite"] - 1,
                f"der Vollbild-Knopf quetscht den Quellenstand ein: {source_layout}")
 
+        # **Der Speichern-Knopf zeigt, ob es etwas zu speichern gibt.** Er war
+        # immer amber und hiess immer „Speichern"; weil das Auto-Speichern kurz
+        # nach jeder Aenderung schon geschrieben hatte, sah ein Klick darauf
+        # vorher und nachher gleich aus — gemeldet als „Speichern geht nicht".
+        # Das Setup oben hat gelernt und nichts gespeichert, also ist etwas offen.
+        expect(f.page.evaluate("SC.dirty"), "das Setup sollte ungespeichert sein")
+        classes = f.page.get_attribute("#scan-save", "class") or ""
+        expect("primary" in classes and "Speichern" in f.text("#scan-save"),
+               f"offene Aenderungen, aber der Knopf sagt es nicht: {classes!r}")
+        f.click("#scan-save")
+        expect(not f.page.evaluate("SC.dirty"), "Speichern hat den Entwurf nicht geschrieben")
+        classes = f.page.get_attribute("#scan-save", "class") or ""
+        label = f.text("#scan-save")
+        expect("primary" not in classes and "Gespeichert" in label,
+               f"nach dem Speichern sieht der Knopf aus wie vorher: {classes!r} {label!r}")
+
         # Die Suchregion darf mit der zweiten Ecke aus dem Bild heraus in die
         # mittlere Buehne gezogen werden. Gespeichert wird der Bildrand, denn
         # nur innerhalb davon gibt es Pixel fuer die Erkennung.

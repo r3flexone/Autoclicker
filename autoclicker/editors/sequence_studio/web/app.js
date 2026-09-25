@@ -2762,8 +2762,6 @@ async function callScan(name, data) {
 function scanScheduleAutosave(cause) {
   clearTimeout(scanAutoSaveTimer);
   if (!SC || !SC.dirty || cause === "scan_save") return;
-  const stamp = $("scan-save-state");
-  if (stamp) { stamp.textContent = "Entwurf wird gespeichert …"; stamp.classList.add("open"); }
   scanAutoSaveTimer = setTimeout(async () => {
     const answer = await ask("scan_save");
     if (!answer) return;
@@ -2801,10 +2799,6 @@ function scanCanvasTools() {
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.tool_pinned));
   $("scan-pin-long").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
   $("scan-pin-short").textContent = "Pin";
-  const stamp = $("scan-save-state");
-  stamp.replaceChildren(SC.dirty ? "Wird gespeichert …" : icon("check"),
-                        SC.dirty ? null : "Gespeichert");
-  stamp.classList.toggle("open", !!SC.dirty);
 }
 
 function scanRenderResult() {
@@ -3950,6 +3944,30 @@ function scanInspector() {
   restoreFocus(memo);
 }
 
+/* **Der Knopf zeigt, ob es etwas zu speichern GIBT.** Der Reiter speichert
+ * 900 ms nach jeder Änderung von selbst (`scanScheduleAutosave`) und meldet
+ * dabei unten „… gespeichert." — ein Klick danach schrieb dieselbe Meldung
+ * noch einmal, und der Knopf blieb, wie er war: amber, „Speichern". Vorher
+ * und nachher sahen gleich aus, also sah das Speichern aus, als täte es
+ * nichts. Den Zustand trug nur ein Stempel in der Bildleiste, und der war ab
+ * 900 px Bühnenbreite ausgeblendet — also bei jeder gewöhnlichen Fenstergröße.
+ *
+ * Jetzt steht der Zustand AM Knopf: amber „Speichern", solange etwas offen
+ * ist (auch nach einem gescheiterten Schreiben — dann ist er der Weg zum
+ * erneuten Versuch), sonst ruhig „✓ Gespeichert". Klickbar bleibt er in
+ * beiden Fällen: ein zweites Schreiben schadet nicht, und ein gesperrter
+ * Knopf liest sich wie ein kaputter. */
+function scanSaveButton() {
+  const dirty = !!SC.dirty;
+  return el("button", {
+    class: dirty ? "btn primary" : "btn", id: "scan-save",
+    title: dirty
+      ? "Jetzt schreiben (STRG+S) — sonst speichert der Reiter kurz nach der letzten Änderung von selbst"
+      : "Alles ist auf Platte. Ein Klick schreibt trotzdem noch einmal (STRG+S).",
+    onclick: () => callScan("scan_save")},
+    icon(dirty ? "save" : "check"), dirty ? "Speichern" : "Gespeichert");
+}
+
 function scanBuildInspector() {
   const target = $("scan-insp");
   target.replaceChildren();
@@ -3975,8 +3993,7 @@ function scanBuildInspector() {
         el("button", {class: "btn", onclick: () => callScan("scan_reload",
                                                            {discard: true})},
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
-    el("button", {class: "btn primary", onclick: () => callScan("scan_save")},
-       "Speichern"),
+    scanSaveButton(),
     el("div", {class: "button-pair"},
       scanKind === "item"
         // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
