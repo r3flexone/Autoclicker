@@ -25,14 +25,10 @@ from ..editors.scan_services import (
     crop_screen_region, map_point_between_rects, map_region_between_rects,
 )
 from ..session_log import log_event
-from ..utils import col, err, dbg, warn, wait_while_paused, sanitize_filename
+from ..utils import col, err, dbg, warn, sanitize_filename
 from ..winapi import set_cursor_pos, get_screen_center, resolve_window
-from .actions import safe_click
+from .actions import safe_click, wait_while_paused
 from .debug import is_log_debug
-
-# Windows GetSystemMetrics-Indizes für den virtuellen Desktop (Multi-Monitor-Spannweite).
-# https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
-# Fallback-Indizes für den Primärbildschirm (wenn Virtual-Screen-Abfrage fehlschlägt)
 
 # Settle-Zeit nach Maus-Park bevor der Scan beginnt — verhindert dass ein noch
 # sichtbarer Hover-Tooltip die Erkennung verfälscht.
@@ -190,12 +186,37 @@ def runnable_scan_config(state: AutoClickerState, scan_name: str):
     return config
 
 
+class ScanSession:
+    """Was zwischen den Slots EINES Immediate-Durchgangs wiederverwendbar ist.
+
+    Der Immediate-Modus ruft `execute_item_scan` je Slot auf — und jeder Aufruf
+    parkte die Maus neu und nahm bei einer Fensterquelle das GANZE Fenster neu
+    auf: bei 45 Slots 45 `PrintWindow`-Aufnahmen für einen Durchgang, in dem
+    sich meist gar nichts bewegt hat. Bewegt hat sich nur nach einem KLICK etwas
+    (das Spiel rückt auf, die Maus steht auf dem Item) — genau dann ruft der
+    Durchgang `invalidate()`, und der nächste Slot sieht wieder frische Pixel.
+    So bleibt die Semantik des Modus („scan → klick → scan") erhalten, und die
+    Aufnahmen zählen nur noch die Klicks, nicht die Slots.
+    """
+
+    def __init__(self) -> None:
+        self.parked = False
+        self.window = None      # (Bild, Client-Rechteck) der letzten Aufnahme
+
+    def invalidate(self) -> None:
+        """Nach einem Klick: Maus neu parken, Fenster neu aufnehmen."""
+        self.parked = False
+        self.window = None
+
+
 def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_MODE_ALL,
-                      slots_override: list = None) -> list:
+                      slots_override: list = None, session: ScanSession = None) -> list:
     """Führt einen Item-Scan aus und gibt Liste von (position, item, priority) zurück.
 
     slots_override: Nur diese Slots scannen, Reverse-Reihenfolge ignorieren.
-                    Wird vom Immediate-Modus genutzt (ein Slot pro Aufruf)."""
+                    Wird vom Immediate-Modus genutzt (ein Slot pro Aufruf).
+    session:        Parkstand und Fensteraufnahme über mehrere Aufrufe hinweg
+                    (Immediate-Modus); ohne Session gilt jeder Aufruf für sich."""
     # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
     # während wir iterieren (RuntimeError bei dict/list changed during iteration).
     with state.lock:
@@ -226,14 +247,20 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     scan_delay = state.config.scan_slot_delay
     debug = is_log_debug(state)
 
-    _park_mouse_for_scan(state.config.scan_park_mouse)
+    if session is None or not session.parked:
+        _park_mouse_for_scan(state.config.scan_park_mouse)
+        if session is not None:
+            session.parked = True
 
     # Ein Fenster-Scan arbeitet auf EINEM eingefrorenen Bild — genau wie der
     # Editor. Damit können sich Items nicht mitten im Durchgang verschieben, und
     # beide Wege sehen wirklich dieselben Pixel aus derselben Aufnahmemethode.
     window_image = None
     window_rect = None
-    if window_title:
+    if window_title and session is not None and session.window is not None:
+        # Immediate-Modus, seit der letzten Aufnahme kein Klick: dieselben Pixel.
+        window_image, window_rect = session.window
+    elif window_title:
         window = resolve_window(window_title, window_index, window_reference)
         if window is None:
             print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' nicht "
@@ -258,7 +285,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             print(dbg(f"Fenster '{window_title}' einmal aufgenommen: "
                       f"{window_image.size[0]}x{window_image.size[1]}px "
                       f"in {screenshot_ms:.0f}ms"))
+        if session is not None:
+            session.window = (window_image, window_rect)
 
+    if window_image is not None:
         reference = window_reference or window_rect
         try:
             slots_to_scan = [ItemSlot(
@@ -285,7 +315,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             state.skip_event.clear()
             break
         if state.skip_step_event.is_set():
-            state.skip_step_event.clear()
+            # NICHT verbrauchen: der Block-Skip gehoert dem Dispatcher. Hier
+            # geleert, klickte der normale Modus die bis dahin gefundenen Items
+            # trotzdem, und im Immediate-Modus (ein Aufruf je Slot) fiel nur
+            # EIN Slot weg — der Rest des Blocks lief weiter.
             break
 
         if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
@@ -314,16 +347,10 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
 
         candidates = []
         for order, item in enumerate(items_snapshot):
-            result = _check_profile_match(
+            fits, quality = _check_profile_match(
                 item, img, color_tolerance, state, debug, "gefunden!",
                 return_score=True,
             )
-            # Kompatibel mit Tests/Erweiterungen, die den internen Bool-Helfer
-            # ersetzen: ein einfaches True ist ein vollwertiger Treffer.
-            if isinstance(result, tuple):
-                fits, quality = result
-            else:
-                fits, quality = bool(result), 1.0 if result else 0.0
             if fits:
                 candidates.append((quality, -order, item))
 
@@ -337,7 +364,7 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
                           f"({quality:.1%})"))
 
         if not matched and learn_unknown:
-            _learn_unknown_slot_item(state, slot, img, debug)
+            _learn_unknown_slot_item(state, slot, img, debug, config)
 
     if not found_items:
         return []
@@ -345,16 +372,29 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     return _filter_scan_results(state, found_items, mode, debug)
 
 
-def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) -> None:
-    """Lernt einen unbekannten Slot-Inhalt als neues globales Item (opt-in).
+def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
+                             config=None) -> None:
+    """Lernt einen unbekannten Slot-Inhalt als neues Item des LAUFENDEN Scans (opt-in).
 
-    Dedup per Template-Matching gegen alle globalen Items; Slots die nur die
-    Hintergrundfarbe zeigen gelten als leer und werden übersprungen. Neue Items
-    landen NUR in state.global_items (Kategorie 'Auto') — nicht in der
-    Scan-Config, damit sie nicht ungeprüft geklickt werden.
+    **In den Scan, der gerade laeuft — nicht in die Arbeitsansicht der Konsole.**
+    Hier stand `state.global_items`, und das ist seit dem Umzug auf
+    Besitzeinheiten nur noch die Ansicht auf `state.active_item_scan`, also den
+    Scan, den der Konsolen-Editor zuletzt offen hatte. Mit zwei Item-Scans in
+    einer Sequenz landete ein aus Scan B gelerntes Item damit in Scan A — samt
+    Dedup gegen die falsche Liste —, und ohne offenen Scan meldete jeder Zyklus
+    „Kein Item-Scan zum Speichern gewaehlt".
+
+    **Gelernt heisst geparkt** (`enabled=False`): das Item steht im Scan, wird
+    im Studio gezeigt und laesst sich dort einschalten — geklickt wird es erst
+    dann. Das ist das „wird NICHT geklickt", das die Zeit des globalen Bestands
+    versprach; dort lag das Item ausserhalb jedes Scans, heute gibt es dieses
+    Ausserhalb nicht mehr.
+
+    Dedup per Template-Matching gegen alle Items des Scans (auch geparkte);
+    Slots, die nur die Hintergrundfarbe zeigen, gelten als leer.
     """
     from ..imaging import OPENCV_AVAILABLE
-    if not OPENCV_AVAILABLE:
+    if not OPENCV_AVAILABLE or config is None:
         return
     # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
     # kein Import-Zyklus mit runtime/)
@@ -362,7 +402,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
         _find_matching_existing_item, _item_has_compatible_template,
         _prepare_learning_image,
     )
-    from ..persistence import save_global_items, active_templates_dir
+    from ..persistence import active_templates_dir
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
     masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
@@ -371,10 +411,9 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
         return
 
-    # Dedup: schon als globales Item bekannt (z.B. in früherem Zyklus gelernt)?
+    # Dedup: schon in DIESEM Scan bekannt (z.B. in früherem Zyklus gelernt)?
     with state.lock:
-        existing = [(n, it) for n, it in state.global_items.items()
-                    if it.template_names()]
+        existing = [(it.name, it) for it in config.items if it.template_names()]
     min_confidence = state.config.scan_min_confidence
     # **Der Vorlagenordner MUSS mit.** Ohne ihn faellt `_template_path()` auf den
     # globalen `items/templates/` zurueck, den es seit dem Umzug auf
@@ -386,18 +425,17 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
     known = _find_matching_existing_item(img, existing, min_confidence,
                                          templates_folder)
     if known:
-        with state.lock:
-            known_item = state.global_items.get(known)
+        known_item = next((it for name, it in existing if name == known), None)
         if known_item is not None and not _item_has_compatible_template(
                 known_item, img, templates_folder):
             width, height = img.size
             base_name = f"{sanitize_filename(known)}_{width}x{height}"
             template_file = f"{base_name}.png"
             number = 2
-            while (active_templates_dir(state) / template_file).exists():
+            while (templates_folder / template_file).exists():
                 template_file = f"{base_name}_{number}.png"
                 number += 1
-            template_path = active_templates_dir(state) / template_file
+            template_path = templates_folder / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 masked.save(template_path)
@@ -408,7 +446,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
             with state.lock:
                 if template_file not in known_item.template_variants:
                     known_item.template_variants.append(template_file)
-            save_global_items(state)
+            _save_learned(config)
             print(col(f"[AUTO-LERNEN] '{known}' kann jetzt auch in "
                       f"{width}×{height}-Slots erkannt werden", "green"))
             return
@@ -418,19 +456,20 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
 
     # Schnellen Namen vergeben — KEIN LLM während des Scans (würde den Worker
     # pro Item bis zu llm_timeout Sekunden blockieren). Sinnvolle Namen vergibt
-    # man danach manuell im Item-Editor ('autoname'), das die LLM-Benennung aus
-    # den gespeicherten Templates macht — wann man will, ohne den Lauf zu bremsen.
+    # man danach im Studio („Namen vorschlagen") oder im Item-Editor ('autoname').
     base = f"Auto {slot.name}"
 
     # Eindeutigen Namen vergeben + sofort reservieren (Worker/Editor-Race)
     item = ItemProfile(
         name="", marker_colors=marker_colors, category="Auto",
         priority=99, template=None, min_confidence=min_confidence,
+        enabled=False,
     )
     with state.lock:
+        taken = {it.name for it in config.items}
         name = base
         counter = 1
-        while name in state.global_items:
+        while name in taken:
             counter += 1
             name = f"{base} {counter}"
         item.name = name
@@ -439,21 +478,43 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool) ->
         # ``template`` nicht erst ausserhalb des Locks gesetzt werden.
         template_file = f"{sanitize_filename(name)}.png"
         item.template = template_file
-        state.global_items[name] = item
+        config.items.append(item)
+        # Die Konsolen-Arbeitsansicht zeigt auf denselben Scan? Dann muss sie
+        # das Item auch sehen — sonst schriebe ihr naechstes `done` die Liste
+        # ohne das Item zurueck (flush_item_scan_context ersetzt cfg.items).
+        if state.active_item_scan == config.name:
+            state.global_items[name] = item
 
-    template_path = active_templates_dir(state) / template_file
+    template_path = templates_folder / template_file
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
         masked.save(template_path)
     except (OSError, ValueError) as e:
         with state.lock:
-            state.global_items.pop(name, None)
+            config.items = [it for it in config.items if it is not item]
+            if state.active_item_scan == config.name:
+                state.global_items.pop(name, None)
         print(warn(f"Auto-Lernen: Template für '{name}' konnte nicht gespeichert werden: {e}"))
         return
 
-    save_global_items(state)
-    print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} gespeichert "
-              "(Kategorie 'Auto', wird nicht geklickt)", "green"))
+    _save_learned(config)
+    print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} in Scan "
+              f"'{config.name}' geparkt (Kategorie 'Auto', aus — im Studio "
+              "einschalten)", "green"))
+
+
+def _save_learned(config) -> bool:
+    """Schreibt den Scan nach dem Lernen — ein Fehler bremst den Lauf nicht.
+
+    `save_item_scan` wirft ohne Besitzer-Sequenz; im Worker riss das sonst den
+    ganzen Lauf ab, wegen eines Items, das nur nebenbei gelernt wurde.
+    """
+    from ..persistence import save_item_scan
+    try:
+        return bool(save_item_scan(config))
+    except (ValueError, OSError) as e:
+        print(warn(f"Auto-Lernen: Scan '{config.name}' konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 def _park_mouse_for_scan(park_pos) -> None:

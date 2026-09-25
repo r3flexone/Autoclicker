@@ -239,8 +239,11 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         with state.lock:
             state.item_scans[scan_name] = config
         bind_item_scan_context(state, scan_name)
-        save_item_scan(config)
-        print(f"\n{ok(f'Item-Scan {scan_name!r} angelegt.')} ")
+        if not save_item_scan(config):
+            print(err(f"Item-Scan {scan_name!r} angelegt, aber NICHT gespeichert — "
+                      "der nächste Speichervorgang versucht es erneut."))
+        else:
+            print(f"\n{ok(f'Item-Scan {scan_name!r} angelegt.')} ")
         print("         Lege jetzt seine Slots und danach seine Items an.")
         run_global_slot_editor(state)
     elif 1 <= choice < len(menu_options):
@@ -403,8 +406,8 @@ def _step_auto_learn(learn_unknown: bool) -> bool:
     """Schritt 4: Auto-Lernen unbekannter Slot-Inhalte (opt-in)."""
     print(header("SCHRITT 4: AUTO-LERNEN (optional)"))
     print("\n  Lernt beim Scannen unbekannte Slot-Inhalte automatisch als neue")
-    print("  globale Items (Kategorie 'Auto'). Diese werden NICHT geklickt —")
-    print("  Aktion/Kategorie ordnest du später im Item-Editor zu.")
+    print("  Items dieses Scans (Kategorie 'Auto', ausgeschaltet geparkt). Geklickt")
+    print("  wird erst, wenn du sie einschaltest — Name/Kategorie im Item-Editor.")
     print(f"  Aktuell: {'AN' if learn_unknown else 'AUS'}")
     learn_unknown = confirm("  Unbekannte Items automatisch lernen?", default=learn_unknown)
     if learn_unknown:
@@ -599,7 +602,9 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         state.active_item_scan = scan_name
         state.global_slots = {slot.name: slot for slot in slots}
         state.global_items = {item.name: item for item in items}
-    save_item_scan(config)
+    if not save_item_scan(config):
+        print(err("Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
+        return
 
     print(f"\n{ok(f'Scan {scan_name!r} gespeichert!')}")
     print(f"         {sum(slot.enabled for slot in slots)}/{len(slots)} Slots aktiv, "
@@ -676,7 +681,9 @@ def run_auto_scan_workflow(state: AutoClickerState) -> None:
     with state.lock:
         state.item_scans[scan_name] = config
 
-    save_item_scan(config)
+    if not save_item_scan(config):
+        print(err("Auto-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
+        return
 
     print(f"\n{ok(f'Auto-Scan komplett!')}")
     print(f"         Scan '{scan_name}': {len(slots)} Slots, {len(items)} Items")

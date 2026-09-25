@@ -21,7 +21,7 @@ class InputSynchronisationTest(unittest.TestCase):
         self._focus_pause(stop_flag=True)
 
     def _focus_pause(self, stop_flag):
-        for kind, arguments in (("click", (10, 20)), ("key", ("a",)), ("scroll", (1,))):
+        for kind, arguments in (("click", (10, 20)), ("key", ("a",))):
             with self.subTest(kind=kind), ExitStack() as mocks:
                 state = AutoClickerState()
                 state.config.humanize_enabled = False
@@ -58,7 +58,7 @@ class InputSynchronisationTest(unittest.TestCase):
 
                 sender = [mocks.enter_context(patch.object(actions, "send_" + name,
                                                           side_effect=sent))
-                          for name in ("click", "key", "scroll")]
+                          for name in ("click", "key")]
                 mocks.enter_context(patch.object(actions, "is_target_window_active", side_effect=focus))
                 mocks.enter_context(patch.object(actions, "get_foreground_window_title", return_value="Editor"))
                 mocks.enter_context(patch.object(actions, "wait_while_paused", side_effect=pause))

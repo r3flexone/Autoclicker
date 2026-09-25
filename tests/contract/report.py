@@ -126,14 +126,13 @@ _os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.config import CONFIG
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
     _st = _ST()
     _seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                 points=[_CP(id=1, x=10, y=20, name="A")])
-    _st.sequences["Farm"] = _seq
     _st.active_sequence = _seq
     _st.points = _seq.points
-    save_data(_st)
+    save_sequence_file(_seq, sequence_file(_seq.name))
     _b = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
 
     _old_dir, _old_market = CONFIG.session_log_dir, CONFIG.scan_market_value_file
@@ -300,15 +299,14 @@ _os.chdir(_sandbox2)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.config import CONFIG as _CFG, AppConfig as _AC, save_config as _sc
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
     _sc(_AC())
     _st = _ST()
     _seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                 points=[_CP(id=1, x=10, y=20, name="A")])
-    _st.sequences["Farm"] = _seq
     _st.active_sequence = _seq
     _st.points = _seq.points
-    save_data(_st)
+    save_sequence_file(_seq, sequence_file(_seq.name))
     _b2 = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
 
     _old_log, _old_tol = _CFG.session_log_enabled, _CFG.punkt_farbtoleranz

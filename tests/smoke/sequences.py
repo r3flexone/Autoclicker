@@ -22,24 +22,25 @@ def _sequence(name: str, note: str, phases: int, steps_list: int):
 
 def setup():
     from autoclicker.editors.sequence_studio.bridge import StudioBridge
-    from autoclicker.models import AutoClickerState, ClickPoint
-    from autoclicker.persistence.sequences import save_data
+    from autoclicker.models import ClickPoint
+    from autoclicker.persistence.sequences import save_sequence_file, sequence_file
 
     sandbox("rauch_sequenzen_")
-    state_value = AutoClickerState()
+    sequences = {}
     # Die MITTLERE Karte ohne Notiz — genau daran rutschte alles darunter hoch.
     for name, note, phases, steps_list in (("Alpha", "Mit einer Notiz", 1, 50),
                                           ("Beta", "", 11, 1),
                                           ("testaufnahme_mit_sehr_langem_namen_v2",
                                            "Auch mit Notiz", 1, 1)):
-        state_value.sequences[name] = _sequence(name, note, phases, steps_list)
+        sequences[name] = _sequence(name, note, phases, steps_list)
     # Genug Punkte, damit die linke Spalte laenger wird als das Fenster.
-    state_value.sequences["Alpha"].points = [
+    sequences["Alpha"].points = [
         ClickPoint(x=i, y=i, name=f"Punkt {i}", id=i) for i in range(1, 41)
     ]
-    save_data(state_value)
+    for name, seq in sequences.items():
+        save_sequence_file(seq, sequence_file(name))
     from autoclicker.persistence import list_available_sequences
-    return StudioBridge(state_value.sequences["Alpha"],
+    return StudioBridge(sequences["Alpha"],
                         dict(list_available_sequences())["Alpha"], "sequences")
 
 
@@ -181,11 +182,11 @@ def run():
                        "share", "tools", "settings"):
             f.tab(tab)
             visible = f.page.eval_on_selector_all(
-                "#seq-select, #btn-load, #btn-new",
+                "#seq-select, #btn-new",
                 "ns => ns.filter(n => n.offsetParent !== null).length")
-            expect(visible == 3,
+            expect(visible == 2,
                    f"im Reiter '{tab}' fehlt die Sequenz-Auswahl "
-                   f"({visible}/3 sichtbar)")
+                   f"({visible}/2 sichtbar)")
         # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
         f.tab("scans")
@@ -201,8 +202,9 @@ def run():
         f.click_text("#wz-left button", "Punkte nachklicken")
         expect("Alpha" in f.text("#wz-middle"),
                f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
+        # Die Auswahl laedt selbst - einen Laden-Knopf gibt es nicht mehr.
         f.page.select_option("#seq-select", "Beta")
-        f.click("#btn-load")
+        f.settle()
         expect(f.page.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
         expect("Beta" in f.text("#wz-middle"),

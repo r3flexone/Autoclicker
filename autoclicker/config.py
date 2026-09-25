@@ -66,6 +66,7 @@ class AppConfig:
     failsafe_enabled: bool = True                   # Fail-Safe: Maus in Ecke stoppt alles
     failsafe_x: int = 5                             # Fail-Safe X-Bereich (Maus x <= Wert)
     failsafe_y: int = 5                             # Fail-Safe Y-Bereich (Maus y <= Wert)
+    session_max_hours: float = 0                    # Nach N Stunden sanft beenden (0 = unbegrenzt)
 
     # === PIXEL-ERKENNUNG ===
     # Wann zwei Stellen derselbe Punkt sind. Radius 0 = nur exakt gleiche
@@ -149,12 +150,6 @@ class AppConfig:
     humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
     humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
 
-    # === AUFNAHME ===
-    # False = das Mausrad wird beim Aufnehmen ignoriert. Gedacht für Spiele, in denen
-    # das Rad nur die Ansicht dreht: solche Drehungen gehören nicht in die Sequenz,
-    # blähen sie aber auf. Der Hook lässt das Rad dann schon in winapi liegen.
-    record_scroll: bool = True                      # Mausrad mit aufzeichnen
-
     # === SESSION-LOG ===
     session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
     session_log_dir: str = "logs"                   # Verzeichnis für Log-Dateien
@@ -176,7 +171,7 @@ class AppConfig:
     debug_log: bool = False                         # Stufe 1: persistente Schritt-Ausgabe
     debug_detail: bool = False                      # Stufe 2: Zeiger + Detailausgabe
     debug_show_pixel_position: bool = False         # Zeiger kurz zum Prüf-Pixel beim Farbwarten
-    debug_save_templates: bool = False              # Speichert Scan+Template in items/debug/
+    debug_save_templates: bool = False              # Speichert Scan+Template in screenshots/debug/
 
     def __post_init__(self):
         """Validiert Config-Werte nach Erstellung."""
@@ -202,6 +197,9 @@ class AppConfig:
         if self.timing_pause_interval <= 0:
             warnings.append(f"timing_pause_interval={self.timing_pause_interval} → 0.1")
             self.timing_pause_interval = 0.1
+        if self.session_max_hours < 0:
+            warnings.append(f"session_max_hours={self.session_max_hours} → 0")
+            self.session_max_hours = 0
         if self.pixel_max_consecutive_timeouts < 0:
             warnings.append(f"pixel_max_consecutive_timeouts={self.pixel_max_consecutive_timeouts} → 0")
             self.pixel_max_consecutive_timeouts = 0
@@ -278,48 +276,19 @@ class AppConfig:
         """Konvertiert zu JSON-serialisierbarem dict."""
         return asdict(self)
 
-    # Alte → Neue Feldnamen (Migration alter config.json Dateien)
-    _FIELD_MIGRATION = {
-        "clicks_per_point": "click_per_point",
-        "max_total_clicks": "click_max_total",
-        "post_click_delay": "click_post_delay",
-        "max_consecutive_timeouts": "pixel_max_consecutive_timeouts",
-        "consecutive_timeout_action": "pixel_consecutive_action",
-        "show_pixel_delay": "pixel_show_delay",
-        "item_click_delay": "scan_item_click_delay",
-        "marker_count": "scan_marker_count",
-        "require_all_markers": "scan_require_all_markers",
-        "min_markers_required": "scan_min_markers_required",
-        "slot_hsv_tolerance": "scan_slot_hsv_tolerance",
-        "slot_inset": "scan_slot_inset",
-        "slot_color_distance": "scan_slot_color_distance",
-        "default_min_confidence": "scan_min_confidence",
-        "default_confirm_delay": "scan_confirm_delay",
-        "show_pixel_position": "debug_show_pixel_position",
-        # Alte Sammelflags: debug_detection war die reine Log-Variante, debug_mode die
-        # ausführlichere. debug_step war eine Zwischenstufe, die beides vermischte.
-        "debug_detection": "debug_log",
-        "debug_mode": "debug_detail",
-        "debug_step": "debug_detail",
-        "pause_check_interval": "timing_pause_interval",
-    }
-
     @classmethod
     def from_dict(cls, data: dict) -> 'AppConfig':
-        """Erstellt AppConfig aus einem dict. Migriert alte Feldnamen automatisch."""
-        migrated = {}
-        for k, v in data.items():
-            new_key = cls._FIELD_MIGRATION.get(k, k)
-            # Migrierten Alt-Key nur übernehmen wenn der neue Key NICHT bereits
-            # (direkt oder durch eine frühere Migration) gesetzt ist — sonst
-            # hängt das Ergebnis von der dict-Reihenfolge ab und ein alter
-            # Default könnte einen aktuellen Nutzerwert überschreiben.
-            if new_key != k and (new_key in migrated or new_key in data):
-                continue
-            migrated[new_key] = v
+        """Erstellt AppConfig aus einem dict. Unbekannte Schluessel fallen weg.
+
+        Hier stand `_FIELD_MIGRATION`, eine Tabelle alter Feldnamen
+        (`clicks_per_point` → `click_per_point` usw.). Der Start-Durchgang
+        schreibt `config.json` seit langem im aktuellen Format, also war die
+        Tabelle nach dem ersten Start wirkungslos — und ein alter Schluessel
+        ist heute, was jeder unbekannte ist: er faellt weg, das Feld bekommt
+        seinen Default. Dieselbe Regel wie bei jeder anderen Formataenderung.
+        """
         valid_keys = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in migrated.items() if k in valid_keys}
-        return cls(**filtered)
+        return cls(**{k: v for k, v in data.items() if k in valid_keys})
 
 
 # Abwärtskompatibel: DEFAULT_CONFIG als dict (für JSON-Serialisierung)
@@ -396,6 +365,7 @@ _CONFIG_SECTIONS = [
     ]),
     ("SICHERHEIT", [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
+        "session_max_hours",
     ]),
     ("PIXEL-ERKENNUNG", [
         "punkt_radius", "punkt_farbtoleranz",
@@ -433,9 +403,6 @@ _CONFIG_SECTIONS = [
         "humanize_micro_delay_min", "humanize_micro_delay_max",
         "humanize_break_interval_min",
         "humanize_break_duration_min", "humanize_break_duration_max",
-    ]),
-    ("AUFNAHME", [
-        "record_scroll",
     ]),
     ("SESSION-LOG", [
         "session_log_enabled", "session_log_dir",
@@ -483,8 +450,13 @@ def optional_fields() -> list:
     return [f.name for f in fields(AppConfig) if type(None) in get_args(f.type)]
 
 
-def save_config(config: AppConfig) -> None:
-    """Speichert Konfiguration in config.json — gruppiert nach Sektionen."""
+def save_config(config: AppConfig) -> bool:
+    """Speichert Konfiguration in config.json — gruppiert nach Sektionen.
+
+    Sagt, ob geschrieben wurde — wie jeder andere Saver. Ein Aufrufer, der
+    danach „gespeichert" meldet, prüft das; sonst steht die Meldung über einer
+    Datei, die es nicht gibt (im Studio genau so passiert).
+    """
     data = config.to_dict()
 
     entries = []
@@ -506,8 +478,10 @@ def save_config(config: AppConfig) -> None:
 
     try:
         atomic_write(CONFIG_FILE, "".join(lines))
+        return True
     except (IOError, OSError) as e:
         print(err(f"Config konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 # Konfiguration laden (wird beim Import ausgeführt)

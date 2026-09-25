@@ -20,34 +20,33 @@ weiterhin unverändert funktioniert.
 """
 
 from .boss_scans import (
-    ensure_boss_scans_dir, save_boss_scan, load_boss_scan_file,
+    save_boss_scan, load_boss_scan_file,
     list_available_boss_scans, load_all_boss_scans,
     save_global_bosses, load_global_bosses,
 )
 from .migration import (
     ALL_KINDS, KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, KIND_ICON_SCAN, KIND_ITEMS,
-    KIND_ITEM_SCAN, KIND_POINTS, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
+    KIND_ITEM_SCAN, KIND_SEQUENCE, KIND_SLOTS, SCHEMA_VERSION,
     file_version, migrate, needs_migration, stamp,
 )
 from .sweep import sweep, sweep_on_start, SweepResult
 from .icon_scans import (
-    ensure_icon_scans_dir, save_icon_scan, load_icon_scan_file,
+    save_icon_scan, load_icon_scan_file,
     list_available_icon_scans, load_all_icon_scans,
 )
 from .globals import (
-    save_global_slots, load_global_slots,
-    save_global_items, load_global_items,
+    save_global_slots, save_global_items,
     get_existing_categories, shift_category_priorities,
 )
 from .item_scans import (
-    ensure_item_scans_dir, save_item_scan, load_item_scan_file,
+    save_item_scan, load_item_scan_file,
     list_available_item_scans, load_all_item_scans,
     resolve_click_references,
     bind_item_scan_context, flush_item_scan_context,
 )
 from .paths import (
     BOSS_SCANS_DIR, ICON_SCANS_DIR, ITEM_SCANS_DIR, SLOTS_DIR, ITEMS_DIR,
-    SEQUENCE_SCREENSHOTS_DIR, TEMPLATES_DIR,
+    SEQUENCE_SCREENSHOTS_DIR,
     SLOT_PRESETS_DIR, ITEM_PRESETS_DIR,
     init_directories,
 )
@@ -56,12 +55,13 @@ from .presets import (
     list_item_presets, save_item_preset, load_item_preset, delete_item_preset,
 )
 from .sequences import (
-    ensure_sequences_dir, save_sequence_file, load_sequence_file,
-    list_available_sequences, save_data,
+    ensure_sequences_dir, save_sequence_file, load_sequence_file, locate_step,
+    free_sequence_name, confirm_new_sequence_name,
+    list_available_sequences, activate_sequence,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
     sequence_dir, sequence_file, sequence_templates_dir,
     active_sequence_dir, active_templates_dir,
-    point_for_position, reload_points, resolve,
+    point_for_position, resolve,
     resolve_point_references,
 )
 from .serialization import (
@@ -75,7 +75,7 @@ from .serialization import (
 __all__ = [
     # paths
     'BOSS_SCANS_DIR', 'ICON_SCANS_DIR', 'ITEM_SCANS_DIR', 'SLOTS_DIR', 'ITEMS_DIR',
-    'SEQUENCE_SCREENSHOTS_DIR', 'TEMPLATES_DIR',
+    'SEQUENCE_SCREENSHOTS_DIR',
     'SLOT_PRESETS_DIR', 'ITEM_PRESETS_DIR',
     'init_directories',
     # serialization
@@ -85,35 +85,35 @@ __all__ = [
     '_point_to_dict', '_item_scan_from_dict', '_item_scan_to_dict',
     '_boss_scan_to_dict', '_icon_scan_to_dict',
     # sequences
-    'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file',
-    'list_available_sequences', 'save_data',
+    'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file', 'locate_step',
+    'free_sequence_name', 'confirm_new_sequence_name',
+    'list_available_sequences', 'activate_sequence',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
     'sequence_dir', 'sequence_file', 'sequence_templates_dir',
     'active_sequence_dir', 'active_templates_dir',
-    'point_for_position', 'reload_points', 'resolve',
+    'point_for_position', 'resolve',
     'resolve_point_references',
     # item_scans
-    'ensure_item_scans_dir', 'save_item_scan', 'load_item_scan_file',
+    'save_item_scan', 'load_item_scan_file',
     'list_available_item_scans', 'load_all_item_scans',
     'resolve_click_references',
     'bind_item_scan_context', 'flush_item_scan_context',
     # boss_scans
-    'ensure_boss_scans_dir', 'save_boss_scan', 'load_boss_scan_file',
+    'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans', 'load_all_boss_scans',
     'save_global_bosses', 'load_global_bosses',
     # icon_scans
-    'ensure_icon_scans_dir', 'save_icon_scan', 'load_icon_scan_file',
+    'save_icon_scan', 'load_icon_scan_file',
     'list_available_icon_scans', 'load_all_icon_scans',
     # globals
-    'save_global_slots', 'load_global_slots',
-    'save_global_items', 'load_global_items',
+    'save_global_slots', 'save_global_items',
     'get_existing_categories', 'shift_category_priorities',
     # presets
     'list_slot_presets', 'save_slot_preset', 'load_slot_preset', 'delete_slot_preset',
     'list_item_presets', 'save_item_preset', 'load_item_preset', 'delete_item_preset',
     # migration
     'ALL_KINDS', 'KIND_BOSS_SCAN', 'KIND_GLOBAL_BOSSES', 'KIND_ICON_SCAN',
-    'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_POINTS', 'KIND_SEQUENCE', 'KIND_SLOTS',
+    'KIND_ITEMS', 'KIND_ITEM_SCAN', 'KIND_SEQUENCE', 'KIND_SLOTS',
     'SCHEMA_VERSION',
     'file_version', 'migrate', 'needs_migration', 'stamp',
     # sweep

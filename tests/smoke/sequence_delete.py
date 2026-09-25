@@ -19,7 +19,7 @@ def setup():
         LoopPhase, Sequence, SequenceStep,
     )
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_item_scan, sequence_dir,
+        list_available_sequences, save_sequence_file, sequence_file, save_item_scan, sequence_dir,
         sequence_templates_dir,
     )
 
@@ -29,10 +29,9 @@ def setup():
         st = AutoClickerState()
         seq = Sequence(name=name, loop_phases=[LoopPhase(name="A", steps=[
             SequenceStep(point_id=1)])], points=[ClickPoint(id=1, x=10, y=20)])
-        st.sequences[name] = seq
         st.active_sequence = seq
         st.points = seq.points
-        save_data(st)
+        save_sequence_file(seq, sequence_file(seq.name))
         return seq
 
     farm = create_one("Farm")
@@ -72,7 +71,8 @@ def run():
         # Rauchtest da: die Vertragssuite sieht die Klasse, nicht das Ergebnis.
         widths = f.page.eval_on_selector_all(
             ".seq-card .button-pair .btn", "ns => ns.map(n => n.getBoundingClientRect().width)")
-        expect(len(widths) == 4, f"4 Knoepfe erwartet, da: {len(widths)}")
+        # Drei je Karte: Duplizieren, Loeschen, Oeffnen.
+        expect(len(widths) == 6, f"6 Knoepfe erwartet, da: {len(widths)}")
         expect(widths and max(widths) - min(widths) < 0.5,
                f"die Knoepfe sind verschieden breit: {widths}")
         # Und jede Karte gibt dem Paar dieselbe Breite. Gemessen wird die

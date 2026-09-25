@@ -4,13 +4,13 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ...models import LoopPhase, Sequence
+from ...models import GATE_COMMANDS, LoopPhase, Sequence
 from ...persistence import (
     list_available_sequences,
     load_sequence_file,
     save_sequence_file,
 )
-from ...utils import sanitize_filename
+from ...utils import sanitize_filename, unique_name
 from .bridge_contract import (
     _same_value,
     _hex,
@@ -21,12 +21,46 @@ from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
+    ink_color,
     sequence_to_board,
 )
 
 
 class BridgeServicesMixin:
     """Kapselt Persistenz, Laufsteuerung und Konfiguration."""
+
+    # Kennzahlen je Sequenzdatei, gemerkt am Dateistand (Groesse + mtime). Die
+    # Uebersicht wird bei jedem Oeffnen des Reiters neu gezeichnet und lud dafuer
+    # jede Sequenz vollstaendig — samt Migration, Punkt-Aufloesung und den
+    # Warnzeilen, die `load_sequence_file` dabei auf die Konsole schreibt. Mit
+    # zwanzig Sequenzen ist das bei jedem Klick auf „Sequenzen" ein halbes
+    # Dutzend Dateiparser fuer Zahlen, die sich seit dem letzten Mal nicht
+    # geaendert haben. Was vom Stand der Datei abhaengt, steht im Cache; was
+    # von der Sitzung abhaengt (`open`, `last_run`, `scope`), wird je Aufruf gerechnet.
+    _sequence_facts_cache: dict = {}
+
+    def _sequence_facts(self, path: Path, stamp) -> Optional[dict]:
+        """Was in einer Sequenzdatei steht — aus dem Cache, wenn sie sich nicht geaendert hat."""
+        key = str(path)
+        cached = self._sequence_facts_cache.get(key)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        seq = load_sequence_file(path)
+        facts = None if seq is None else {
+            "name": seq.name,
+            "description": seq.description,
+            "cycles": seq.total_cycles,
+            "init": len(seq.init_steps),
+            "end": len(seq.end_steps),
+            "phases": [{"name": lp.name, "steps": len(lp.steps),
+                        "repeat": lp.repeat,
+                        "start": lp.scheduled_start or ""}
+                       for lp in seq.loop_phases],
+            "steps": seq.total_steps(),
+            "warnings": scan_warnings(sequence_to_board(seq)),
+        }
+        self._sequence_facts_cache[key] = (stamp, facts)
+        return facts
 
     def sequence_list(self, data: Optional[dict] = None) -> list[dict]:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
@@ -45,11 +79,12 @@ class BridgeServicesMixin:
         for path in files:
             saved_name = path.parent.name
             try:
-                changed = path.stat().st_mtime
+                st = path.stat()
+                changed, stamp = st.st_mtime, (st.st_mtime_ns, st.st_size)
             except OSError:
-                changed = 0.0
-            seq = load_sequence_file(path)
-            if seq is None:
+                changed, stamp = 0.0, None
+            facts = self._sequence_facts(path, stamp)
+            if facts is None:
                 # Auch die defekte bekommt ihren Umfang: sie ist der haeufigste
                 # Grund, ueberhaupt loeschen zu wollen — und dann will man
                 # wissen, was am Ordner sonst noch haengt.
@@ -58,24 +93,102 @@ class BridgeServicesMixin:
                              "scope": self._sequence_extent(path.parent)})
                 continue
             out.append({
-                "name": seq.name,
+                **facts,
                 "file": str(path),
                 "broken": False,
-                "description": seq.description,
-                "cycles": seq.total_cycles,
-                "init": len(seq.init_steps),
-                "end": len(seq.end_steps),
-                "phases": [{"name": lp.name, "steps": len(lp.steps),
-                            "repeat": lp.repeat,
-                            "start": lp.scheduled_start or ""}
-                           for lp in seq.loop_phases],
-                "steps": seq.total_steps(),
                 "changed": changed,
                 "open": path == self.filepath,
                 "scope": self._sequence_extent(path.parent),
-                "warnings": scan_warnings(sequence_to_board(seq)),
+                "last_run": self._last_run(facts["name"]),
             })
         return out
+
+    # Letzter Lauf je Sequenz, gemerkt am Log-Pfad und dessen Aenderungszeit:
+    # die Uebersicht wird bei jedem Oeffnen neu gezeichnet, und ein Log kann
+    # eine halbe Nacht lang sein.
+    _last_run_cache: dict = {}
+
+    def _last_run(self, name: str) -> Optional[dict]:
+        """Was der letzte Lauf dieser Sequenz hinterlassen hat — aus `logs/`.
+
+        Die Dateien heissen `<stamp>_<sanitize(name)>.csv`; genommen wird die
+        neueste mit diesem Ende, gerechnet mit `evaluate()` aus dem Werkzeug
+        (dieselbe Zahl wie im Bericht). Ohne Log, ohne Werkzeug oder ohne
+        Session-Log-Ordner gibt es `None` — die Karte lässt die Zeile dann weg,
+        statt „nie gelaufen" zu behaupten.
+        """
+        folder = self._report_folder()
+        if folder is None:
+            return None
+        suffix = f"_{sanitize_filename(name)}.csv"
+        candidates = [p for p in self._report_all_files(folder) if p.name.endswith(suffix)]
+        if not candidates:
+            return None
+        path = candidates[-1]
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            return None
+        key = str(path)
+        cached = self._last_run_cache.get(key)
+        if cached and cached[0] == stamp:
+            return cached[1]
+        evaluate, _ = self._report_tool()
+        if evaluate is None:
+            return None
+        try:
+            raw = evaluate([path])
+        except Exception:                                        # noqa: BLE001
+            return None
+        session = (raw.get("sessions") or [None])[0]
+        if not session:
+            return None
+        from datetime import datetime
+        try:
+            begin = datetime.strptime(session["begin"][:19], "%Y-%m-%d %H:%M:%S").timestamp()
+        except (ValueError, KeyError):
+            begin = stamp
+        out = {"begin": begin, "duration": session["duration"],
+               "clicks": session["clicks"], "timeouts": session["timeouts"],
+               "file": path.name}
+        self._last_run_cache[key] = (stamp, out)
+        return out
+
+    def sequence_duplicate(self, data: Optional[dict] = None) -> dict:
+        """Kopiert einen Sequenzordner — samt Scans, Vorlagen und Bildern.
+
+        Der Fall ist „dasselbe Spiel in einem zweiten Fenster": bis hierher
+        baute man die Sequenz nach oder ging über Export → Import. Die Punkte
+        sind sequenzlokal, es gibt nichts umzuhängen; nur der Name in der
+        Datei wird neu gesetzt (`unique_name`, wie überall bei Kollisionen).
+        Kein Momentaufnahme-Befehl: die Übersicht liest danach neu.
+        """
+        import json as _json
+        import shutil
+        from ...utils import atomic_write
+
+        name = str((data or {}).get("name") or "").strip()
+        folder = self._sequence_folder(name) if name else None
+        if folder is None or not (folder / "sequence.json").exists():
+            return {"ok": False, "message": f"'{name}' gibt es nicht (mehr)."}
+        taken = {n for n, _ in list_available_sequences()}
+        taken |= {p.name for p in Path(self.sequences_dir).iterdir()} \
+            if Path(self.sequences_dir).exists() else set()
+        new_name = unique_name(name, taken)
+        target = Path(self.sequences_dir) / sanitize_filename(new_name)
+        if target.exists():
+            return {"ok": False, "message": f"Ordner '{target.name}' gibt es schon."}
+        try:
+            shutil.copytree(folder, target)
+            path = target / "sequence.json"
+            raw = _json.loads(path.read_text(encoding="utf-8"))
+            raw["name"] = new_name
+            atomic_write(path, _json.dumps(raw, ensure_ascii=False, indent=1))
+        except (OSError, ValueError, shutil.Error) as error:
+            shutil.rmtree(target, ignore_errors=True)
+            return {"ok": False, "message": f"Konnte nicht kopieren: {error}"}
+        return {"ok": True, "message": f"'{name}' kopiert nach '{new_name}'.",
+                "name": new_name}
 
     # Was in einem Sequenzordner ausser der sequence.json noch liegt. Reihenfolge
     # = Anzeige; der Schluessel ist der Unterordner.
@@ -113,7 +226,7 @@ class BridgeServicesMixin:
     def _sequence_folder(self, name: str) -> Optional[Path]:
         """Ordner einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
 
-        **Der Ordner heisst nicht wie die Sequenz.** `save_data()` legt ihn
+        **Der Ordner heisst nicht wie die Sequenz.** `sequence_file()` legt ihn
         unter `sanitize_filename(name)` an: aus „Raid" wird `sequences/raid`,
         aus „Mein Lauf" wird `mein_lauf`. Wer den angezeigten Namen an den Pfad
         haengt, greift deshalb ins Leere — und im schlimmeren Fall daneben:
@@ -230,6 +343,7 @@ class BridgeServicesMixin:
         type_value = state_value.get("block_set_type")
         if type_value in BLOCK_COLORS:
             state_value["block_color"] = _hex(BLOCK_COLORS[type_value])
+            state_value["block_ink"] = ink_color(BLOCK_COLORS[type_value])
             state_value["block_badge"] = BLOCK_LABELS[type_value]
         return state_value
 
@@ -245,7 +359,8 @@ class BridgeServicesMixin:
     ALL_COMMANDS = RUN_COMMANDS + ("show", "config", "data_reload", "recording",
                                    "recording_stop",
                                    "quit_program",
-                                   "reclick", "reclick_stop", "block_test")
+                                   "reclick", "reclick_stop", "block_test", "start_from",
+                                   "record_from")
 
     def recording_start(self, data: Optional[dict] = None) -> dict:
         """Startet eine neue Sequenz-Aufnahme im Hauptprozess.
@@ -320,8 +435,16 @@ class BridgeServicesMixin:
         if command in ("start", "start_manual", "schedule"):
             if self._dirty:
                 state_value = self.save()
-                if state_value["status"]["kind"] == "err":
-                    return state_value      # Meldung steht schon drin, Start faellt aus
+                # Gestartet wird nur, was auch auf der Platte steht. Hier stand
+                # `kind == "err"` — und die Rueckfrage „Ausserhalb geaendert" ist
+                # kein Fehler: `save()` gab die Momentaufnahme mit der Frage
+                # zurueck, der Start lief trotzdem los (mit der Datei von der
+                # Platte, also der ALTEN Fassung), und weil `snapshot()` die
+                # Frage dabei verbraucht hat, sah die Seite den Dialog nie.
+                # Massstab ist deshalb `_dirty`: solange es gesetzt ist, wurde
+                # nicht geschrieben, und die Antwort traegt Fehler oder Frage.
+                if self._dirty:
+                    return state_value
             if not self.filepath.exists():
                 return self._report("Erst speichern — die Datei gibt es noch nicht.", "warn")
             arguments = {"file": str(self.filepath), "sequence": self.board.name}
@@ -332,7 +455,11 @@ class BridgeServicesMixin:
             arguments["time"] = time_value
         if command == "manual_action":
             action = str((data or {}).get("action") or "")
-            if action not in ("run", "skip", "continue", "stop"):
+            # Gegen die EINE Liste, nicht gegen eine getippte Kopie: hier
+            # standen vier der fuenf Entscheidungen, und „ab hier schrittweise"
+            # (`step`) kam als „Unbekannte manuelle Aktion" zurueck — die Tafel
+            # im Live-Run hatte eine Kachel, die nichts tat.
+            if action not in GATE_COMMANDS:
                 return self._report("Unbekannte manuelle Aktion.", "err")
             arguments["action"] = action
 
@@ -379,27 +506,87 @@ class BridgeServicesMixin:
             return self._report("Befehl konnte nicht abgelegt werden.", "err")
         return self._report(f"Maus zu #{point.id} ({point.x},{point.y}) — im Spiel nachsehen.")
 
-    def block_test(self, data: Optional[dict] = None) -> dict:
-        """Führt den gewählten Block einmal im Hauptprozess aus.
+    def _selected_position(self) -> Optional[dict]:
+        """Datei und Position des einen gewählten Blocks — nach dem Speichern.
 
         Gesendet werden nur Datei und Position, nicht ein frei konstruierter
-        Schritt. Der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
-        die auch ein echter Lauf verwenden würde.
+        Schritt: der Hauptprozess lädt dadurch dieselbe gespeicherte Fassung,
+        die auch ein echter Lauf verwenden würde. `None` heisst „keine
+        eindeutige Auswahl"; ein Dict mit `snapshot` heisst „nicht geschrieben"
+        (Fehler oder Rückfrage, s. `run_command`).
         """
         lane, row, step = self._single()
         if step is None or lane is None or row is None:
-            return self._report("Bitte genau einen Block wählen.", "warn")
+            return None
         if self._dirty:
             state_value = self.save()
-            if state_value["status"]["kind"] == "err":
-                return state_value
+            if self._dirty:
+                return {"snapshot": state_value}
         loop_index = ([ln for ln in self.board.lanes if ln.kind == "loop"].index(lane)
                       if lane.kind == "loop" else -1)
+        return {"file": str(self.filepath), "phase": lane.kind,
+                "phase_index": loop_index, "block": int(row)}
+
+    def block_test(self, data: Optional[dict] = None) -> dict:
+        """Führt den gewählten Block einmal im Hauptprozess aus."""
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
         from ...mailbox import send_command
-        if not send_command("block_test", file=str(self.filepath), phase=lane.kind,
-                     phase_index=loop_index, block=int(row)):
+        if not send_command("block_test", **position):
             return self._report("Block-Test konnte nicht gesendet werden.", "err")
         return self._report("Block-Test geschickt — echter Klick/Tastendruck möglich.", "warn")
+
+    def block_start(self, data: Optional[dict] = None) -> dict:
+        """Startet die Sequenz beim gewählten Block — alles davor wird übersprungen.
+
+        Derselbe Weg wie `block_test`, nur dass der Hauptprozess danach
+        weiterläuft: ab dem Block wie ein normaler Lauf, INIT eingeschlossen
+        übersprungen, wenn der Block in einer Loop-Phase liegt. Der Einstieg
+        gilt für diesen einen Start.
+        """
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
+        from ...mailbox import send_command
+        if not send_command("start_from", sequence=self.board.name, **position):
+            return self._report("Start konnte nicht gesendet werden.", "err")
+        lane, row, _step = self._single()
+        return self._report(f"'{self.board.name}' gestartet ab {lane.name} · Block {row + 1} "
+                            f"— alles davor wird übersprungen.")
+
+    def block_record_start(self, data: Optional[dict] = None) -> dict:
+        """Startet eine Aufnahme, die genau HINTER dem gewählten Block landet.
+
+        Derselbe Weg wie `block_start`: gesendet werden Datei und Position, der
+        Hauptprozess lädt von Platte und hängt die neuen Schritte dahinter ein
+        — mit allen Markern (Farbe, Screenshot, Beobachten) einer normalen
+        Aufnahme. Nur eine neue Phase (CTRL+ALT+SHIFT+P) ergibt hier keinen
+        Sinn und wird im Hauptprozess abgelehnt, denn eingefügt wird immer in
+        genau eine bestehende Phase.
+        """
+        position = self._selected_position()
+        if position is None:
+            return self._report("Bitte genau einen Block wählen.", "warn")
+        if "snapshot" in position:
+            return position["snapshot"]
+        # Die drei Zeilen der vorigen Aufnahme sollen nicht als neue aufblitzen —
+        # dieselbe Vorsichtsmassnahme wie bei `recording_start`.
+        from ...config import RECORD_STATUS_FILE
+        try:
+            Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
+        except OSError:
+            pass
+        from ...mailbox import send_command
+        if not send_command("record_from", **position):
+            return self._report("Aufnahme konnte nicht gestartet werden.", "err")
+        lane, row, _step = self._single()
+        return self._report(f"Aufnahme läuft — wird nach {lane.name} · Block {row + 1} "
+                            f"eingefügt. Ins Spiel wechseln, CTRL+ALT+J beendet.")
 
     # ------------------------------------------------------------ Einstellungen
 
@@ -520,7 +707,13 @@ class BridgeServicesMixin:
         corrections = [{"key": k, "sent": v, "became": done.get(k)}
                        for k, v in values.items()
                        if k in done and not _same_value(v, done[k])]
-        save_config(new)
+        if not save_config(new):
+            # Nichts anwenden, nichts melden: der Hauptprozess liest die DATEI,
+            # und die ist unveraendert — ein Prozess mit neuem Stand im Speicher
+            # neben einem mit altem waere genau die zweite Wahrheit.
+            return {"ok": False,
+                    "message": "config.json konnte nicht geschrieben werden — "
+                               "nichts geändert (Konsole des Hauptprozesses zeigt den Fehler)."}
         # **Der Schreiber war der Einzige, der sich selbst nicht neu lud.** Der
         # Hauptprozess bekommt den Briefkasten-Befehl unten und ruft
         # `command_config()`; DIESER Prozess hat die Datei geschrieben und blieb
@@ -728,7 +921,7 @@ class BridgeServicesMixin:
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
-        # `save_data()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
+        # `save_points()` schreibt die Sequenz. Ohne diese Frage gewinnt einfach
         # der Zweite, und die Arbeit des Ersten ist weg — ohne ein Wort.
         foreign = self._changed_externally(old)
         if foreign and not (data or {}).get("force"):
@@ -747,11 +940,22 @@ class BridgeServicesMixin:
         old_folder = old.parent
         new_folder = new.parent
         moved = False
-        if renamed and old.exists():
-            if new_folder.exists():
-                return self._report(
-                    f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
-                    "err")
+        # **Die Pruefung gilt fuer JEDES Umbenennen, nicht nur fuer eines mit
+        # alter Datei.** Sie stand im Zweig `old.exists()` — eine frisch
+        # angelegte, nie gespeicherte Sequenz kam daran vorbei: „Neu", den Namen
+        # einer vorhandenen eintippen, Speichern, und deren sequence.json war
+        # ueberschrieben (Schritte und Punkte weg, gemeldet als „Gespeichert").
+        if renamed and new_folder.exists():
+            return self._report(
+                f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
+                "err")
+        # Verschoben wird, sobald es den alten ORDNER gibt: auch eine nie
+        # gespeicherte Sequenz kann dort schon gemerkte Bildschirme haben. Aber
+        # nur ein eigener Unterordner von `sequences/` — bei einem flachen Pfad
+        # (`sequences/x.json`) waere der „alte Ordner" der Sequenzordner selbst.
+        own_folder = (old_folder.is_dir() and old_folder.resolve().parent
+                      == Path(self.sequences_dir).resolve())
+        if renamed and own_folder:
             try:
                 old_folder.rename(new_folder)
                 moved = True
@@ -771,9 +975,15 @@ class BridgeServicesMixin:
             return self._report("Speichern fehlgeschlagen!", "err")
 
         self.filepath = new
-        if moved:
-            self._scan_init()
-            self._scan_load()
+        if moved and self._scan_loaded:
+            # Alles im Scans-Reiter leitet seine Pfade bei Gebrauch aus
+            # `self.filepath` ab — nach dem Verschieben stimmen sie von selbst.
+            # Veraltet ist nur der gemerkte Plattenstand (er haengt an den alten
+            # Pfaden und meldete sonst eine Fremdaenderung). Hier stand
+            # `_scan_init()` + `_scan_load()`: das warf Screenshot, Auswahl,
+            # Erkennung, Rueckgaengig und ungespeicherte Scan-Aenderungen weg,
+            # und die rechte Spalte sprang mitten in der Arbeit auf „Slots".
+            self._disk_track()
         self._saved = True
         self._dirty = False
         self._state_remember()
@@ -808,6 +1018,11 @@ class BridgeServicesMixin:
         # dreimal gesetzt und nirgends gelesen wurde — ein Rest aus der
         # Zeit der eigenen `points.json`.
         self._state_file = _mtime(self.filepath)
+        # Laden, Anlegen und Speichern leeren den Rückgängig-Stapel: ein Zurück
+        # über einen Ladevorgang hinweg beschriebe einen Stand, den es nicht
+        # mehr gibt; nach dem Speichern wäre „zurück" ein Stand, der nicht auf
+        # der Platte steht — und die Datei ist die Wahrheit.
+        self._edit_reset()
 
     def rescue_write(self) -> Optional[Path]:
         """Sichert ungespeicherte Änderungen beim Schliessen des Fensters.

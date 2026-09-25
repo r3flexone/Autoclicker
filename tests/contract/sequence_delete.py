@@ -33,7 +33,7 @@ _os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
     from autoclicker.persistence import (
-        list_available_sequences, save_data, save_item_scan, sequence_dir,
+        list_available_sequences, save_sequence_file, sequence_file, save_item_scan, sequence_dir,
         sequence_templates_dir,
     )
 
@@ -41,10 +41,9 @@ try:
         st = _ST()
         seq = _SEQ(name=name, loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                    points=[_CP(id=1, x=10, y=20)])
-        st.sequences[name] = seq
         st.active_sequence = seq
         st.points = seq.points
-        save_data(st)
+        save_sequence_file(seq, sequence_file(seq.name))
         return seq
 
     _farm = _create("Farm")

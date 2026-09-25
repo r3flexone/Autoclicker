@@ -68,6 +68,31 @@ check("und die Seite fuehrt dieselbe Liste",
       _js_kinds is not None
       and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_ARTEN))
 
+# **Der Fallback eines Boss-Scans kann weniger als ein Boss.** Ohne erkannten
+# Boss gibt es keinen Punkt und keine Taste — die Felder dafuer sitzen am
+# Boss, nicht am Scan. Das Studio bot trotzdem alle sechs Kacheln an:
+# „Punkt klicken" liess sich waehlen und speichern, und die Laufzeit
+# (`_execute_boss_scan_step`) tat damit nichts. Laufzeit, Konsole und Studio
+# lesen jetzt dieselbe Liste.
+from autoclicker.models import (VALID_BOSS_DEFAULT_ACTIONS as _VBDA,
+                                BOSS_ACTION_CLICK as _BAC, BOSS_ACTION_KEY as _BAK)
+import autoclicker.runtime.steps as _steps_mod
+from autoclicker.editors.boss_scan_editor import edit_boss_scan as _console_editor
+check("Klick und Taste sind als Fallback nicht vorgesehen",
+      _BAC not in _VBDA and _BAK not in _VBDA and len(_VBDA) == 4)
+_runtime_src = _inspect.getsource(_steps_mod._execute_boss_scan_step)
+check("die Laufzeit kennt jeden Fallback-Wert der Liste",
+      all(name in _runtime_src for name in
+          ("BOSS_ACTION_SKIP_CYCLE", "BOSS_ACTION_RESTART", "BOSS_ACTION_SCAN"))
+      and "VALID_BOSS_DEFAULT_ACTIONS" in _runtime_src)
+_console_src = _inspect.getsource(_console_editor)
+check("der Konsolen-Editor bietet genau diese vier an",
+      "default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, "
+      "BOSS_ACTION_SCAN]" in _console_src)
+check("die Seite nimmt die Fallback-Kacheln aus der eigenen Liste",
+      "SC.actions.boss_default" in _web
+      and "detActionTiles(SC.actions.boss, c.default_action" not in _web)
+
 # ---------------------------------------------------------------------------
 section("Boss- und Icon-Scans: anlegen, Region, Felder, Bibliothek")
 
@@ -114,6 +139,15 @@ try:
     check("und sie sagt warum", _z["status"]["kind"] == "warn")
     _z = _b.boss_scan_set({"name": "Bossfarm", "field": "region", "value": ["a", 1, 2, 3]})
     check("Buchstaben in einer Region sind ein Fehler", _z["status"]["kind"] == "err")
+
+    # --- Fallback ohne erkannten Boss: kein Klick, keine Taste ---
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "click"})
+    check("'Punkt klicken' wird als Fallback abgelehnt — die Laufzeit koennte es nicht",
+          _z["status"]["kind"] == "err" and _b.boss_scans["Bossfarm"].default_action == "skip")
+    _z = _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "restart"})
+    check("ein ausfuehrbarer Fallback wird gesetzt",
+          _b.boss_scans["Bossfarm"].default_action == "restart")
+    _b.boss_scan_set({"name": "Bossfarm", "field": "default_action", "value": "skip"})
 
     # --- Bosse ---
     _b.boss_new({"name": "Ancient Dragon"})
@@ -394,11 +428,10 @@ section("Slot-Farben, ELSE und die Werkzeugleiste")
 
 # **Amber gehoert der Auswahl.** „Nichts erkannt" stand auf #FF9500 und war
 # damit kaum vom Akzent #F59E0B zu unterscheiden — „hier ist zu tun" und
-# „gewaehlt" sahen gleich aus. Und --slot-ok/--slot-foreign lagen als
-# #00FF9C/#2DD4BF so dicht beieinander, dass man sie im Bild nicht trennen
-# konnte. Die drei Familien stehen hier fest, damit sie nicht zurueckwandern.
-_expected_colors = {"--slot-ok": "#00E58A", "--slot-foreign": "#22D3EE",
-                "--slot-empty": "#F43F5E"}
+# „gewaehlt" sahen gleich aus. Die beiden Familien stehen hier fest, damit sie
+# nicht zurueckwandern. Ein drittes Paar (--slot-foreign, „erkannt, aber nicht
+# in diesem Scan") hatte keinen Ausloeser mehr und ist ersatzlos geloescht.
+_expected_colors = {"--slot-ok": "#00E58A", "--slot-empty": "#F43F5E"}
 for _var, _value in _expected_colors.items():
     _matches = re.search(re.escape(_var) + r":\s*(#[0-9A-Fa-f]{6})", _web)
     check(f"{_var} ist {_value}",
@@ -408,6 +441,21 @@ for _var, _value in _expected_colors.items():
           _f is not None and _f.group(1)[:7].upper() == _value)
 check("der Akzent gehoert weiterhin der Auswahl — keine Slot-Farbe liegt darauf",
       "#F59E0B" not in _expected_colors.values())
+check("--slot-foreign ist samt Klasse und SLOT_COLOR-Eintrag weg",
+      "var(--slot-foreign" not in _web and "--slot-foreign:" not in _web
+      and "foreign-item" not in _web)
+
+# **Eine Farbe, eine Bedeutung.** --init war Byte fuer Byte dasselbe wie --ok:
+# im Live-Run stand die INIT-Kachel damit neben einem gruenen ok-Zaehler und
+# sah aus wie ein Zustand. Die drei Phasenfarben muessen sich voneinander UND
+# von den drei Zustandsfarben unterscheiden.
+_roles = {k: re.search(re.escape(k) + r":\s*(#[0-9A-Fa-f]{6})", _web).group(1).upper()
+          for k in ("--ok", "--accent", "--err", "--init", "--loop", "--end")}
+check("keine Phasenfarbe ist eine Zustandsfarbe",
+      not ({_roles["--init"], _roles["--loop"], _roles["--end"]}
+           & {_roles["--ok"], _roles["--accent"], _roles["--err"]}))
+check("und die Phasenfarben sind drei verschiedene",
+      len({_roles["--init"], _roles["--loop"], _roles["--end"]}) == 3)
 
 # **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** Zwei Tabellen fuer
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen

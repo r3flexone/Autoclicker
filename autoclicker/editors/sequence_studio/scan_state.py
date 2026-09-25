@@ -175,9 +175,9 @@ class ScanStateMixin:
     def _disk_track(self, *paths) -> None:
         """Der eigene Schreibvorgang zählt nicht als Fremdänderung.
 
-        Das gemerkte Bild liegt unter `item_scans/bilder/`, und das Anlegen des
-        Unterordners dreht die Änderungszeit des Elternordners weiter — sonst meldete
-        der Reiter direkt nach der eigenen Aufnahme eine Fremdänderung.
+        Ein eigenes Schreiben (Scan-Datei, gemerktes Bild, Löschen) dreht die
+        Änderungszeit des Ordners weiter — sonst meldete der Reiter direkt nach
+        der eigenen Aktion eine Fremdänderung.
 
         Ohne Argumente der ganze Stand (nach dem Speichern), mit Argumenten nur die
         genannten Pfade — sonst verschluckt es eine fremde Änderung anderswo.
@@ -565,13 +565,12 @@ class ScanStateMixin:
         slots = self._scan_slots()
         slot_name_set = {s.name for s in slots}
         match = {n: t for n, t in self._matches.items() if n in slot_name_set}
-        detected = [n for n, t in match.items() if t.get("name") and not t.get("foreign")]
-        foreign = [n for n, t in match.items() if t.get("name") and t.get("foreign")]
+        detected = [n for n, t in match.items() if t.get("name")]
         unknown = [n for n, t in match.items() if not t.get("name")]
         return {
-            "total": len(slots), "detected": len(detected), "foreign": len(foreign),
+            "total": len(slots), "detected": len(detected),
             "unknown": len(unknown), "detected_slots": detected,
-            "foreign_slots": foreign, "unknown_slots": unknown,
+            "unknown_slots": unknown,
         }
 
     def _review_json(self) -> Optional[dict]:

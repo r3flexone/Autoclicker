@@ -37,7 +37,7 @@ CASES = {
         "_humanize_delay(state)\n        if not _input_allowed(state, label):\n            return False",
         "_humanize_delay(state)",
         RUNTIME + "test_stopp_im_mikrodelay_verhindert_jede_eingabe")
-       for kind in ("click", "key", "scroll")},
+       for kind in ("click", "key")},
     "worker-run-status": (
         "autoclicker.runtime.worker", "sequence_worker",
         "state.is_running = False", "state.is_running = True",
@@ -55,6 +55,21 @@ CASES = {
         "autoclicker.import_export", "_ImportTransaction.rollback",
         "from .config import apply_config", "return\n    from .config import apply_config",
         "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_state_and_files"),
+    "loader-scans": (
+        "autoclicker.editors.sequence_editor.loader", "run_sequence_loader",
+        "activate_sequence(state, seq)",
+        "state.active_sequence = seq; state.points = seq.points",
+        RUNTIME + "test_konsolen_loader_laedt_die_scans_der_sequenz"),
+    "new-sequence-collision": (
+        "autoclicker.editors.sequence_studio.bridge_services", "BridgeServicesMixin.save",
+        "if renamed and new_folder.exists():",
+        "if renamed and old.exists() and new_folder.exists():",
+        STUDIO + "test_neue_sequenz_ueberschreibt_keine_vorhandene"),
+    "scan-block-skip": (
+        "autoclicker.runtime.item_scan", "execute_item_scan",
+        "Rest des Blocks lief weiter.\n            break",
+        "Rest des Blocks lief weiter.\n            state.skip_step_event.clear()\n            break",
+        RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
 }
 
 

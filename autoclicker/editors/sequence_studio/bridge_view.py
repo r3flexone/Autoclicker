@@ -46,6 +46,7 @@ from .model import (
     LANE_LOOP,
     Lane,
     PalettePoint,
+    ink_color,
 )
 
 
@@ -63,6 +64,9 @@ class BridgeViewMixin:
         """
         text, kind = self._status
         ask, self._ask = self._ask, None
+        # Die Auswahl gehört zum Stand, den die Seite gerade sieht: Auswählen
+        # legt keinen Abzug ab, also merkt sich der nächste Abzug sie von hier.
+        self._edit_current["sel"] = self._edit_selection()
         return {
             "file": str(self.filepath),
             "start_view": self.start_view,
@@ -70,6 +74,7 @@ class BridgeViewMixin:
             "description": self.board.description,
             "cycles": self.board.total_cycles,
             "dirty": self._dirty,
+            "undo": self._edit_json(),
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
@@ -79,7 +84,8 @@ class BridgeViewMixin:
             "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_names": self._scan_names(),
             "types": [{"key": t, "label": BLOCK_LABELS[t],
-                       "color": _hex(BLOCK_COLORS[t])} for t in TYPE_ORDER],
+                       "color": _hex(BLOCK_COLORS[t]),
+                       "ink": ink_color(BLOCK_COLORS[t])} for t in TYPE_ORDER],
             "scan_modes": SCAN_MODES,
             "else_actions": ELSE_ACTIONS,
             "without_else": self._without_else(),
@@ -145,14 +151,49 @@ class BridgeViewMixin:
             BLOCK_BOSS_WATCHER: bosses,
         }
 
+    def _lane_index(self, lane) -> Optional[int]:
+        """Stelle einer Phase im Board — über die IDENTITÄT, nicht über Gleichheit.
+
+        `Lane` ist eine Dataclass: zwei leere Loop-Phasen sind gleich, und
+        `lanes.index()` fände immer die erste.
+        """
+        return next((i for i, ln in enumerate(self.board.lanes) if ln is lane), None)
+
     def _sel_index(self) -> Optional[int]:
-        if self.sel_lane is None or self.sel_lane not in self.board.lanes:
-            return None
-        return self.board.lanes.index(self.sel_lane)
+        return None if self.sel_lane is None else self._lane_index(self.sel_lane)
+
+    def _selected_rows(self, lane) -> list[int]:
+        """Die gewählten Zeilen EINER Phase — sortiert und nur gültige."""
+        if lane is None:
+            return []
+        if lane is self.sel_lane:
+            rows = self.sel_rows
+        else:
+            rows = next((r for ln, r in self.sel_other if ln is lane), ())
+        return sorted(r for r in rows if 0 <= r < len(lane.steps))
+
+    def _selection_groups(self) -> list:
+        """Alle gewählten Blöcke je Phase: `[(Phase, Zeilen)]` in Board-Reihenfolge.
+
+        Die EINE Stelle, an der eine Sammelaktion erfährt, worauf sie wirkt.
+        Seit die Auswahl über Phasen reichen darf, gäbe es sonst zwei Antworten:
+        „löschen" nähme alle Phasen und „Wartezeit" nur die zuletzt angeklickte.
+        """
+        groups = []
+        for lane in self.board.lanes:
+            rows = self._selected_rows(lane)
+            if rows:
+                groups.append((lane, rows))
+        return groups
 
     def _point_json(self, p: PalettePoint) -> dict:
+        # `usages`: wie oft der Punkt gebraucht wird — die Liste zeigte es nicht,
+        # obwohl `_point_usages()` es fuer den Inspektor laengst rechnete. Ein
+        # Punkt, den vier Bloecke teilen, ist genau der, den man vor dem
+        # Verschieben kennen will; einer mit 0 ist ein Rest der Aufnahme.
         return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
-                "color": _hex(p.color), "source": p.source}
+                "color": _hex(p.color), "source": p.source,
+                "usages": len(self._point_usages(p.id))}
 
     def _phase_json(self, index: int, lane: Lane) -> dict:
         return {
@@ -166,12 +207,15 @@ class BridgeViewMixin:
         }
 
     def _selection_json(self) -> dict:
-        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor."""
-        rows = sorted(self.sel_rows)
-        steps = [] if self.sel_lane is None else [
-            self.sel_lane.steps[row] for row in rows
-            if 0 <= row < len(self.sel_lane.steps)
-        ]
+        """Auswahl samt gemeinsamen Werten für den Sammel-Inspektor.
+
+        `phase`/`rows` beschreiben die Phase, in der zuletzt geklickt wurde;
+        `count` und `phases` die ganze Auswahl — die Ansicht fragt nach der
+        Anzahl, nicht nach der Länge von `rows`, sonst hiesse eine Auswahl über
+        zwei Phasen „1 Block gewählt".
+        """
+        groups = self._selection_groups()
+        steps = [lane.steps[row] for lane, rows in groups for row in rows]
 
         def shared(field: str):
             values = [getattr(step, field) for step in steps]
@@ -182,7 +226,9 @@ class BridgeViewMixin:
         delay_max, max_mixed = shared("delay_max")
         return {
             "phase": self._sel_index(),
-            "rows": rows,
+            "rows": self._selected_rows(self.sel_lane),
+            "count": len(steps),
+            "phases": len(groups),
             "delay_before": delay_before,
             "delay_before_mixed": before_mixed,
             "delay_max": delay_max,
@@ -200,13 +246,16 @@ class BridgeViewMixin:
             "type": type_value,
             "label": BLOCK_LABELS[type_value],
             "color": _hex(BLOCK_COLORS[type_value]),
+            # Die Schriftfarbe der Kopfzeile folgt der Typfarbe — fest dunkel
+            # fiel sie auf Boss-Watcher (2,2:1) und vier weiteren Typen durch.
+            "ink": ink_color(BLOCK_COLORS[type_value]),
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
             "title": step.name or "",
             "rows": self._lines(step, type_value),
             "checks": step.verify_condition is not None,
             "breakpoint": bool(step.breakpoint),
-            "selected": self.sel_lane is lane and row in self.sel_rows,
+            "selected": row in self._selected_rows(lane),
             # **Die Farbe des Punkts steht auf jeder Karte, die einen hat.** Sie
             # stand nur an der Farb-Bedingung („wartet bis RGB(…) da"); ein reiner
             # Klick zeigte Koordinaten — und Koordinaten unterscheidet niemand
@@ -215,6 +264,14 @@ class BridgeViewMixin:
             # (`_lines`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
             "point_color": _hex(point.color) if point is not None else None,
+            # Alle Punkte, an denen der Block haengt (Stelle, Pruef-Pixel,
+            # Nachpruefung, ELSE): die Punkte-Liste markiert damit, wer einen
+            # Punkt benutzt — in beide Richtungen.
+            "points": sorted({pid for pid in (
+                step.point_id, wc.point_id if wc else None,
+                step.verify_condition.point_id if step.verify_condition else None,
+                step.else_config.point_id if step.else_config else None,
+            ) if pid is not None}),
             "color_swatch": _hex(wc.color) if wc else None,
             "color_text": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
@@ -227,35 +284,38 @@ class BridgeViewMixin:
         }
         return block
 
-    def _lines(self, step: SequenceStep, type_value: str) -> list[str]:
-        """Ein bis drei knappe Zeilen im Kartenkörper.
+    def _lines(self, step: SequenceStep, type_value: str) -> list[dict]:
+        """Ein bis drei knappe Zeilen im Kartenkörper, je `{label, text}`.
 
         Die Wartezeit steht nur da, wenn es eine gibt: „sofort" unter jedem
         zweiten Block ist Rauschen, und in der Liste zählt, dass 50 Karten
         untereinander lesbar bleiben.
 
+        **Jede Zeile trägt ein Etikett** (STELLE, WARTE, …). Bei fünfzig Karten
+        untereinander findet das Auge das Etikett schneller als den Wert — und
+        „+1.5s" ohne Etikett musste man erst als Wartezeit erkennen.
+
         Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
         hängt die Ansicht das Farbfeldchen des Punkts (`point_color`).
         """
+        def row(label: str, text: str) -> dict:
+            return {"label": label, "text": text}
+
         if type_value == BLOCK_SCREENSHOT:
             r = step.screenshot_region
-            return [f"Bereich {r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild"]
+            return [row("BEREICH", f"{r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild")]
         if type_value in SCAN_FIELD:
             name = (getattr(step, SCAN_FIELD[type_value]) or "").strip() or "(kein Name)"
             mode = f" · {step.item_scan_mode}" if type_value == BLOCK_ITEM_SCAN else ""
-            lines = [f"{name}{mode}"]
+            lines = [row("SCAN", f"{name}{mode}")]
         elif type_value == BLOCK_KEY:
-            lines = [f"Taste „{step.key_press}“"]
+            lines = [row("TASTE", f"„{step.key_press}“")]
         elif type_value == BLOCK_WAIT:
             lines = []
         else:
-            lines = [_position(step)]
-        if step.scroll:
-            # Das Rad kann kein Editor setzen, eine Aufnahme bringt es aber mit.
-            # Ungenannt sähe der Block aus wie ein gewöhnlicher Klick.
-            lines.append(f"Rad {step.scroll:+d}")
+            lines = [row("STELLE", _position(step))]
         if step.delay_before or step.delay_max or not lines:
-            lines.append(_wait_text(step))
+            lines.append(row("WARTE", _wait_text(step)))
         return lines
 
     def _trigger_text(self, wc: WaitCondition) -> str:
@@ -277,13 +337,16 @@ class BridgeViewMixin:
                 ELSE_RESTART: "sonst: Sequenz neu starten"}.get(ec.action, f"sonst: {ec.action}")
 
     def _single(self) -> tuple[Optional[Lane], int, Optional[SequenceStep]]:
-        """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind."""
-        if self.sel_lane is None or len(self.sel_rows) != 1:
+        """Der eine gewählte Schritt — oder nichts, wenn es keiner oder mehrere sind.
+
+        „Mehrere" zählt über ALLE Phasen: ein Block in Loop 1 und einer in
+        Loop 2 sind zwei, auch wenn in jeder Phase nur einer gewählt ist.
+        """
+        groups = self._selection_groups()
+        if len(groups) != 1 or len(groups[0][1]) != 1:
             return None, -1, None
-        row = next(iter(self.sel_rows))
-        if not (0 <= row < len(self.sel_lane.steps)):
-            return None, -1, None
-        return self.sel_lane, row, self.sel_lane.steps[row]
+        lane, rows = groups[0]
+        return lane, rows[0], lane.steps[rows[0]]
 
     def _block_detail(self) -> Optional[dict]:
         """Alle Felder des gewählten Schritts für die Eigenschaften-Spalte."""
@@ -323,7 +386,6 @@ class BridgeViewMixin:
             "boss_watcher": step.boss_watcher or "",
             "wait_only": step.wait_only,
             "breakpoint": bool(step.breakpoint),
-            "scroll": step.scroll or 0,
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),
             "trigger_point": wc.point_id if wc else None,
@@ -339,13 +401,21 @@ class BridgeViewMixin:
 
     # --------------------------------------------------------------- Zustand
 
-    def _report(self, text: str, kind: str = "ok") -> dict:
+    def _report(self, text: str, kind: str = "ok", *, offer: bool = False) -> dict:
         self._status = (text, kind)
+        self._edit_offer = offer
         return self.snapshot()
 
-    def _changed(self, text: str = "", kind: str = "ok") -> dict:
-        self._dirty = True
-        return self._report(text, kind)
+    def _changed(self, text: str = "", kind: str = "ok", *, group: Optional[str] = None,
+                 offer: bool = False, what: str = "") -> dict:
+        """Eine Änderung an Board oder Punkten: Abzug ablegen, melden.
+
+        `what` benennt den Schritt auf dem Rückgängig-Stapel, wenn der
+        Meldungstext dafür nicht taugt (leer oder eine Warnung); `offer` hängt
+        den Rückgängig-Knopf an die Meldung (löschen, Typwechsel, verschieben).
+        """
+        self._edit_commit(what or text.rstrip("."), group)
+        return self._report(text, kind, offer=offer)
 
     def _point(self, point_id) -> Optional[PalettePoint]:
         if point_id is None:

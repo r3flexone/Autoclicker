@@ -67,6 +67,17 @@ TIMEOUT_TEXT = {
     TIMEOUT_STOP: "Sequenz stoppen",
 }
 
+# Die fuenf Entscheidungen des Gates im manuellen Modus bzw. am Haltepunkt:
+# dieselben Woerter, die der Briefkasten aus dem Studio bringt
+# (`command_manual_action`). Konsole und Studio sind zwei Wege zu EINER
+# Entscheidung, nicht zwei Gates. Stehen hier und nicht in `runtime/debug.py`,
+# weil die Studio-Bruecke sie ebenfalls prueft — und `runtime/` zoege den
+# Worker samt `imaging` und `winapi` nach. Eine getippte Kopie in der Bruecke
+# hatte genau eines der fuenf vergessen („ab hier schrittweise").
+# run = ausfuehren, skip = ueberspringen, continue = Schrittmodus aus,
+# step = ab hier Schritt fuer Schritt, stop = Lauf abbrechen.
+GATE_COMMANDS = ("run", "skip", "continue", "step", "stop")
+
 # consecutive_timeout_action (Config)
 CONSEC_STOP = "stop"
 CONSEC_QUIT = "quit"
@@ -87,6 +98,14 @@ BOSS_ACTION_SKIP_CYCLE = ACTION_SKIP_CYCLE
 BOSS_ACTION_RESTART = ACTION_RESTART
 VALID_BOSS_ACTIONS = {BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
                       BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART}
+# BossScanConfig.default_action — was passiert, wenn KEIN Boss erkannt wird.
+# Eine Teilmenge: ein Klick oder eine Taste braeuchten einen Punkt bzw. eine
+# Taste AM SCAN, und die Felder dafuer gibt es dort nicht (nur am Boss).
+# Das Studio bot trotzdem alle sechs Kacheln an; „Punkt klicken" liess sich
+# waehlen und speichern und tat zur Laufzeit nichts. Laufzeit, Konsole und
+# Studio lesen jetzt dieselbe Liste.
+VALID_BOSS_DEFAULT_ACTIONS = (BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE,
+                              BOSS_ACTION_RESTART, BOSS_ACTION_SCAN)
 
 # IconScanConfig.action — Aktion wenn ein Icon (z.B. rotes "!") erkannt wird
 ICON_ACTION_CLICK = ACTION_CLICK
@@ -150,6 +169,11 @@ class ElseConfig:
     delay: float = 0                     # Delay vor Fallback
     key: Optional[str] = None            # Taste für Fallback
     name: str = ""                       # abgeleitet: Name des Fallback-Punkts
+    # Arbeitswert, nie gespeichert: der Punkt hinter `point_id` fehlt. Die
+    # Laufzeit behandelt den Klick dann wie `skip` — das Feld selbst bleibt,
+    # wie es in der Datei steht. Vorher schrieb `resolve()` beim LADEN
+    # `action = skip` hinein, und das naechste Speichern machte es dauerhaft.
+    unresolved: bool = False
 
 
 @dataclass
@@ -165,6 +189,10 @@ class WaitCondition:
     # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
     # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
     check_only: bool = False
+    # Arbeitswert, nie gespeichert: der Punkt hinter `point_id` fehlt. Als
+    # Vorbedingung heisst das „Schritt uebersprungen" (das setzt `resolve()` am
+    # Schritt), als Nachpruefung „nicht geprueft" — ohne das Feld zu loeschen.
+    unresolved: bool = False
 
 
 @dataclass
@@ -196,10 +224,10 @@ class SequenceStep:
     delay_max: Optional[float] = None    # None = feste Zeit, sonst Bereich
     # Optional: Tastendruck statt Mausklick
     key_press: Optional[str] = None      # z.B. "enter", "space", "f1"
-    # Optional: Mausrad drehen statt klicken. Positiv = hoch, negativ = runter,
-    # Betrag = Rasterstufen. Gescrollt wird an (x, y), weil Windows das Rad-Event an
-    # das Fenster UNTER dem Cursor liefert.
-    scroll: Optional[int] = None
+    # Hier stand `scroll` (Mausrad drehen). Ersatzlos gestrichen — es drehte in
+    # Idle Clans nur die Ansicht und war in jeder Aufnahme nur Ballast. Ein
+    # `"scroll"` in einer alten Datei ignoriert der Loader wie jeden unbekannten
+    # Schluessel; der Schritt wird zum Klick auf seinen Punkt.
     # Optional: Fallback/Else-Aktion wenn Bedingung fehlschlägt
     else_config: Optional[ElseConfig] = None
     # Optional: Boss-Scan ausführen (erkennt Boss → bedingte Aktion)
@@ -243,11 +271,6 @@ class SequenceStep:
             return "SCREENSHOT (Vollbild)"
         if self.key_press:
             return (f"{self._trigger_str()} → drücke Taste '{self.key_press}'{else_str}")
-        if self.scroll:
-            direction = "hoch" if self.scroll > 0 else "runter"
-            target = f"{self.name} " if self.name else ""
-            return (f"{self._trigger_str()} → scrolle {direction} x{abs(self.scroll)} "
-                    f"bei {target}({self.x}, {self.y}){else_str}")
         if self.boss_scan:
             return f"BOSS-SCAN '{self.boss_scan}'{else_str}"
         if self.icon_scan:
@@ -290,7 +313,7 @@ class SequenceStep:
     def _trigger_str(self) -> str:
         """Was VOR der Aktion passiert: Farb-Bedingung und/oder Wartezeit.
 
-        Taste und Scroll zeigten hier früher nur die Wartezeit. Eine Farb-Bedingung
+        Die Taste zeigte hier früher nur die Wartezeit. Eine Farb-Bedingung
         an so einem Schritt war damit unsichtbar — man konnte sie im edit-Menü setzen
         und sah sie in der Schritt-Liste nirgends wieder.
         """
@@ -532,8 +555,9 @@ class ItemScanConfig:
     slots: list[ItemSlot] = field(default_factory=list)
     items: list[ItemProfile] = field(default_factory=list)
     color_tolerance: int = 40  # Farbtoleranz für Erkennung
-    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue globale
-    # Items lernen (Kategorie 'Auto', wird NICHT geklickt).
+    # Opt-in: unbekannte Slot-Inhalte beim Scannen automatisch als neue Items
+    # DIESES Scans lernen (Kategorie 'Auto', geparkt mit enabled=False — geklickt
+    # wird erst, wenn jemand sie einschaltet).
     learn_unknown: bool = False
     # Slots von hinten nach vorn abarbeiten. Sinnvoll, wenn das Spiel den Bestand
     # nach vorn aufrueckt. Gehoert zum Scan, nicht in die Config: sonst gaelte die
@@ -700,11 +724,10 @@ class IconScanConfig:
 # SEQUENZ-AUFNAHME
 # =============================================================================
 # Ereignisarten der Aufnahme. Frueher war jedes Ereignis ein Linksklick und lag als
-# nacktes (t, x, y, color)-Tupel in der Liste; seit auch Tastendruck, Mausrad und
+# nacktes (t, x, y, color)-Tupel in der Liste; seit auch Tastendruck und
 # Farb-Warten mitgeschnitten werden, muss die Art mitgefuehrt werden.
 REC_CLICK = "click"         # Linksklick an (x, y)
 REC_KEY = "key"             # Tastendruck (key)
-REC_SCROLL = "scroll"       # Mausrad an (x, y), scroll = Rasterstufen (+ = hoch)
 # Warte-Marker: "ab hier warte ich". Hat BEWUSST keine eigene Stelle — beim Drücken
 # parkt die Maus irgendwo, und diese Stelle waere Zufall. Er haengt sich an den
 # naechsten Klick und laesst DEN auf seine eigene Farbe warten.
@@ -724,9 +747,10 @@ REC_REGION = "region"
 # (man legt die Maus auf das Ding, das man beobachtet), deshalb bekommt er einen Punkt.
 # Entspricht `wait pixel` im Sequenz-Editor.
 REC_WATCH = "watch"
-# Phasengrenze: "ab hier beginnt die naechste Phase". Erster Marker trennt INIT von
-# LOOP, zweiter LOOP von END. Er wird selbst kein Schritt — er schneidet die fertige
-# Schrittliste. Ohne ihn landet alles wie bisher in einer einzigen Loop-Phase.
+# Phasengrenze: "ab hier beginnt die naechste Loop-Phase" — jeder Druck macht eine
+# weitere auf, ohne Obergrenze (INIT und END befuellt die Aufnahme nicht). Er wird
+# selbst kein Schritt — er schneidet die fertige Schrittliste. Ohne ihn landet alles
+# in einer einzigen Loop-Phase.
 REC_PHASE = "phase"
 
 
@@ -744,16 +768,16 @@ class RecordEvent:
     y: int = 0
     color: Optional[tuple[int, int, int]] = None
     key: Optional[str] = None                   # nur REC_KEY
-    scroll: int = 0                             # nur REC_SCROLL, Rasterstufen
     # nur REC_SCREENSHOT: (x1, y1, x2, y2) oder None = Vollbild
     region: Optional[tuple[int, int, int, int]] = None
+    # nur REC_CLICK: `(links, oben, Bild)` rund um den Klick, aufgenommen im
+    # Hook (`imaging.capture_surface`). Daraus entscheidet `points_for_events()`,
+    # ob ein vorhandener Punkt auf DEMSELBEN Knopf liegt. None = kein Bild.
+    patch: Optional[tuple] = None
 
     def __str__(self) -> str:
         if self.kind == REC_KEY:
             return f"Taste '{self.key}'"
-        if self.kind == REC_SCROLL:
-            direction = "hoch" if self.scroll > 0 else "runter"
-            return f"Scroll {direction} x{abs(self.scroll)} bei ({self.x}, {self.y})"
         if self.kind == REC_WAIT_COLOR:
             return "Warte-Marker (nächster Klick wartet auf seine Farbe)"
         if self.kind == REC_SCREENSHOT:
@@ -798,9 +822,19 @@ class AutoClickerState:
     # oder Haltepunkt). Daran erkennen CTRL+ALT+G und der Briefkasten, dass ein
     # "weiter" gerade das Gate meint und nicht die Pause.
     gate_waiting: bool = False
+    # Einstieg mitten in der Sequenz: `(Art, Phasen-Index, Block)` mit Art
+    # "init"/"loop"/"end", Block 0-basiert. Gilt fuer den EINEN naechsten
+    # Start und wird vom Worker beim Lesen verbraucht — alles davor wird
+    # uebersprungen, ab dort laeuft die Sequenz normal (auch der zweite Zyklus
+    # von vorn). Ein Neustart (`restart_event`) faengt wieder bei INIT an.
+    start_from: Optional[tuple] = None
 
-    # Gespeicherte Sequenzen
-    sequences: dict[str, Sequence] = field(default_factory=dict)
+    # Hier stand `sequences: dict[str, Sequence]` — ein Cache, den nur ein Teil
+    # der Ladewege pflegte (Konsolen-Editor, Aufnahme, Import), und den
+    # `save_data()` komplett zurueckschrieb: eine Aufnahme von vorhin kam so
+    # aus dem Speicher zurueck auf die Platte, obwohl das Studio sie laengst
+    # geaendert hatte. Es gibt EINE geladene Sequenz — `active_sequence` —,
+    # alles andere steht auf der Platte und wird von dort gelesen.
 
     # Globale Slots und Items (wiederverwendbar)
     global_slots: dict[str, ItemSlot] = field(default_factory=dict)
@@ -852,6 +886,9 @@ class AutoClickerState:
     restart_event: threading.Event = field(default_factory=threading.Event)
     skip_cycle_event: threading.Event = field(default_factory=threading.Event)
     finish_event: threading.Event = field(default_factory=threading.Event)
+    # Das sanfte Ende kam vom Zeitlimit (`session_max_hours`), nicht vom
+    # Nutzer — nur damit die Zusammenfassung den richtigen Grund nennt.
+    session_limit_hit: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Eigener Lock NUR für Maus/Tastatur-Eingaben (SetCursorPos + SendInput).
     # Garantiert echte Mutual-Exclusion zwischen Sequenz-Worker und dem
@@ -895,11 +932,21 @@ class AutoClickerState:
     # Liste von RecordEvent. Zugriff unter state.lock - der Maus- und der
     # Tastatur-Hook schreiben aus der Message-Pump, die Hotkey-Handler lesen.
     recording_events: list = field(default_factory=list)
+    # Rechtsklicke waehrend der Aufnahme — gezaehlt, nicht aufgezeichnet: der
+    # Autoclicker kann keinen ausfuehren, aber wer sie im Spiel gebraucht hat,
+    # soll am Ende hoeren, dass sie in der Sequenz fehlen.
+    recording_right_clicks: int = 0
     # Vorgaben einer im Studio gestarteten Aufnahme. Leer bedeutet: klassischer
     # TUI-Weg mit den bisherigen Konsolenfragen beim Stoppen.
     recording_ui_name: str = ""
     recording_ui_cycles: int = 0
     recording_ui_description: str = ""
+    # Ziel einer Einfüge-Aufnahme (Studio-Knopf "Ab hier aufnehmen"): das Dict aus
+    # `locate_step()` (file/phase/phase_index/block). Gesetzt heisst: die
+    # aufgezeichneten Schritte werden beim Stoppen NICHT zu einer neuen Sequenz,
+    # sondern hinter diesen Block in die bestehende Datei gespleisst. Leer (None)
+    # ist der Normalfall jeder anderen Aufnahme.
+    recording_insert: Optional[dict] = None
 
     # Punkte nachklicken (Kalibrier-Runde, Maus-Hook wie bei der Aufnahme).
     # Rein transient: die Runde beschreibt einen Vorgang, keinen Bestand — sie

@@ -12,7 +12,8 @@ from typing import Optional
 
 from ...models import LoopPhase, Sequence, AutoClickerState
 from ...persistence import (
-    list_available_sequences, load_sequence_file, save_data,
+    activate_sequence, confirm_new_sequence_name, list_available_sequences,
+    load_sequence_file, save_points,
 )
 from ...utils import (
     breadcrumb, col, confirm, err, header, hint, interactive_select, safe_input,
@@ -26,10 +27,11 @@ def run_sequence_editor(state: AutoClickerState) -> None:
     print(header("SEQUENZ-EDITOR"))
     print(f"  {breadcrumb('Hauptmenü', 'Sequenz-Editor')}")
 
-    with state.lock:
-        if not state.points:
-            print(f"\n{err('Erst Punkte aufnehmen')} {hint('(CTRL+ALT+A)')}")
-            return
+    # Ob es Punkte gibt, entscheidet sich erst nach der Wahl: eine bestehende
+    # Sequenz bringt ihre eigenen mit (`edit_sequence` aktiviert sie), nur eine
+    # neue braucht die der gerade aktiven. Hier stand die Pruefung vor dem
+    # Menue — und sperrte das Bearbeiten einer Sequenz mit vierzig Punkten,
+    # weil die gerade aktive keine hatte.
 
     # Bestehende Sequenzen einmal laden und cachen
     available_sequences = list_available_sequences()
@@ -69,6 +71,14 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     """Bearbeitet eine Sequenz (neu oder bestehend) mit Start + mehreren Loop-Phasen."""
 
     if existing:
+        # **Erst aktivieren, dann bearbeiten.** Der Editor arbeitet durchgehend
+        # auf `state.points` — und das waren die Punkte der gerade AKTIVEN
+        # Sequenz, nicht die von `existing`. Wer B bearbeitete, waehrend A aktiv
+        # war, waehlte aus A's Punkten, und beim Speichern bekam B A's Pool:
+        # B's eigene Punkte waren weg, seine `point_id`s zeigten ins Falsche.
+        # `activate_sequence` stellt Punkte UND Scans um — der Scan-Befehl im
+        # Editor soll die Scans DIESER Sequenz anbieten.
+        activate_sequence(state, existing)
         print(f"\n--- Bearbeite Sequenz: {existing.name} ---")
         seq_name = existing.name
         init_steps = list(existing.init_steps)
@@ -78,14 +88,22 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         description = existing.description
     else:
         print("\n--- Neue Sequenz erstellen ---")
-        seq_name = safe_input("Name der Sequenz: ").strip()
-        if not seq_name:
-            seq_name = f"Sequenz_{int(time.time())}"
+        seq_name = confirm_new_sequence_name(
+            safe_input("Name der Sequenz: ").strip() or f"Sequenz_{int(time.time())}")
+        if seq_name is None:
+            print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
+            return
         init_steps = []
         loop_phases = []
         end_steps = []
         total_cycles = 1
         description = ""
+
+    with state.lock:
+        has_points = bool(state.points)
+    if not has_points:
+        print(f"\n{err('Erst Punkte aufnehmen')} {hint('(CTRL+ALT+A)')}")
+        return
 
     # Beschreibung (optional) — hilft beim Wiederfinden und beim Weitergeben
     if existing and description:
@@ -168,11 +186,20 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         # (sequenzlokale Punkte) hat auch `new()` im Studio die Punkte der
         # VORIGEN Sequenz erben lassen — hier fehlt, was dort zu viel war.
         new_sequence.points = list(state.points)
-        state.sequences[seq_name] = new_sequence
-        state.active_sequence = new_sequence
-        state.points = new_sequence.points
+    # Aktiv samt Punkten und Scans — bei einer neuen Sequenz sind das die
+    # (noch leeren) Scans ihres eigenen Ordners, nicht die der vorigen.
+    activate_sequence(state, new_sequence)
 
-    save_data(state)
+    # Nur DIESE Sequenz schreiben. Ein frueheres `save_data()` schrieb alles,
+    # was je in einem Sequenz-Cache gelandet war — auch eine Aufnahme von vorhin,
+    # die das Studio inzwischen geaendert hatte: die kam aus dem Speicher
+    # zurueck auf die Platte, ohne dass hier jemand an ihr gearbeitet haette.
+    if not save_points(state):
+        # Der Saver hat den Fehler genannt; „[ERFOLG] gespeichert!" darunter
+        # waere die Zeile, die man liest. Im Speicher ist die Sequenz aktiv.
+        print(err(f"Sequenz '{seq_name}' ist geladen, aber NICHT auf Platte — "
+                  "'done' im Editor versucht es erneut."))
+        return
 
     _print_post_save_summary(seq_name, init_steps, loop_phases, end_steps, total_cycles)
 

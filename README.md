@@ -52,7 +52,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 ## Voraussetzungen
 
 - Windows 10/11 **oder** Linux mit einer X11-Sitzung
-- Python 3.10+
+- Python 3.14+
 
 Wayland wird derzeit nicht unterstützt. Der Start erkennt Wayland, nennt die
 fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
@@ -196,7 +196,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+A` | Mausposition als Punkt speichern |
 | `CTRL+ALT+U` | Letzten Punkt entfernen (Undo) |
 | `CTRL+ALT+C` | Alle Punkte löschen |
-| `CTRL+ALT+J` | Sequenz aufnehmen (Klicks per Maus-Hook) |
+| `CTRL+ALT+J` | Sequenz aufnehmen (Linksklicks und Tasten per Hook; Rechtsklicks werden nur gezählt und beim Stoppen gemeldet) |
 | `CTRL+ALT+SHIFT+M` | Aufnahme: Marker „auf Farbe warten" (Maus über die Stelle) |
 | `CTRL+ALT+SHIFT+D` | Aufnahme: Screenshot-Marker (Vollbild) |
 | `CTRL+ALT+SHIFT+R` | Aufnahme: Screenshot-Bereich (2× drücken = zwei Ecken) |
@@ -225,6 +225,7 @@ Im Sequenz-Editor:
 | `CTRL+ALT+F` | Sanft beenden (Zyklus abschliessen, dann END + Stop) |
 | `CTRL+ALT+G` | Pause/Resume |
 | `CTRL+ALT+K` | Skip (aktuelle Wartezeit überspringen) |
+| `CTRL+ALT+SHIFT+K` | Block überspringen (samt Klick/Taste/Scan — weiter mit dem nächsten) |
 | `CTRL+ALT+W` | Quick-Switch (schnell Sequenz wechseln) |
 | `CTRL+ALT+Z` | Zeitplan (Start zu bestimmter Zeit) |
 
@@ -475,7 +476,6 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `wait <Nr> colorgone` | Warten bis die Punkt-Farbe VERSCHWINDET, KEIN Klick |
 | `wait pixel` | Auf Farbe an der aktuellen Mausposition warten, KEIN Klick |
 | `wait pixelgone` | Warten bis Farbe an der Mausposition VERSCHWINDET, KEIN Klick |
-| `scroll <Punkt-Nr> <Stufen>` | Mausrad am Punkt drehen, `+` hoch / `-` runter (z.B. `scroll 3 -5`) |
 | `<Punkt-Nr> checkcolor` | Farbe **einmal** prüfen: passt sie → klicken, sonst Schritt überspringen |
 | `<Punkt-Nr> checkgone` | einmal prüfen, ob die Farbe **weg** ist – sonst überspringen |
 | `key <Taste>` | Taste sofort drücken (z.B. `key enter`) |
@@ -854,6 +854,18 @@ Während eine Sequenz läuft:
 - **CTRL+ALT+F** - Sanfter Abbruch (aktuellen Zyklus abschliessen, dann END-Phase + Stop)
 - **CTRL+ALT+G** - Pausiert/Setzt fort (Fortschritt bleibt erhalten); steht der Lauf an einem Haltepunkt, heisst es „weiter"
 - **CTRL+ALT+K** - Überspringt die aktuelle Wartezeit
+- **CTRL+ALT+SHIFT+K** - Überspringt den ganzen Block, samt Klick/Taste/Scan
+  (dasselbe wie „Block überspringen" im Live-Run des Studios)
+
+### Ab einem Block starten
+
+Im Studio einen Block wählen und im Inspektor **„Ab hier starten"** drücken: die
+Sequenz läuft ab genau diesem Block — alles davor wird übersprungen, bei einem
+Block in einer Loop-Phase auch INIT. Danach läuft sie wie ein normaler Start
+weiter: die restlichen Durchläufe der Phase und alle folgenden Phasen vollständig,
+der nächste Zyklus wieder von vorn. Der Einstieg gilt für diesen einen Start; der
+Live-Run zeigt ihn im Kopf („ab Loop 'X' · Block 3"). Wer nur EINEN Block sehen
+will, nimmt daneben „Block einmal testen" — das führt ihn aus und hört auf.
 
 ### Haltepunkte
 
@@ -1073,6 +1085,7 @@ Wird beim ersten Start automatisch erstellt:
   "failsafe_enabled": true,
   "failsafe_x": 5,
   "failsafe_y": 5,
+  "session_max_hours": 0,
   "pixel_wait_tolerance": 10,
   "pixel_wait_timeout": 300,
   "pixel_timeout_action": "skip_cycle",
@@ -1153,6 +1166,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `failsafe_enabled` | Fail-Safe: Maus in Ecke stoppt alles |
 | `failsafe_x` | Fail-Safe X-Bereich: Maus x <= Wert löst aus (Standard: 5) |
 | `failsafe_y` | Fail-Safe Y-Bereich: Maus y <= Wert löst aus (Standard: 5) |
+| `session_max_hours` | Nach N Stunden sanft beenden — Zyklus fertig, dann END-Phase (`0` = unbegrenzt) |
 
 ### Farb-/Pixel-Erkennung
 
@@ -1258,7 +1272,6 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 
 | Option | Beschreibung |
 |--------|--------------|
-| `record_scroll` | Mausrad mit aufnehmen (Standard: true). Aus für Spiele, in denen das Rad nur die Ansicht dreht |
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
 | `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
 | `scan_catalog_file` | Pfad zu `catalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/catalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
@@ -1270,7 +1283,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `debug_log` | **Beobachten.** Alle Schritt-Ausgaben persistent (Status-Zeile wird nicht überschrieben) + Erkennungs-Details bei Item/Boss/Icon-Scans. Läuft ohne Eingriff durch |
 | `debug_detail` | **Stufe 2.** Zusätzlich springt der Zeiger vor jedem Schritt auf den Zielpunkt (ohne Klick) und es wird ausgeschrieben, *was* dort passieren soll — mit Farbquadrat bei Farb-Bedingungen. Läuft weiter durch |
 | `debug_show_pixel_position` | Maus kurz zum Prüf-Pixel bewegen beim Start |
-| `debug_save_templates` | Speichert Scan+Template in `items/debug/` für Debugging |
+| `debug_save_templates` | Speichert Scan+Template in `screenshots/debug/` für Debugging |
 
 ## Dateistruktur
 

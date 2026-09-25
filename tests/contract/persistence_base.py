@@ -143,7 +143,6 @@ try:
     _st_r = _ST_P()
     _seq_r = _SEQ_R(name="Farm")
     _st_r.active_sequence = _seq_r
-    _st_r.sequences["Farm"] = _seq_r
     _scan_r = _ISC_R(name="Inventar", owner_sequence="Farm")
     _st_r.item_scans["Inventar"] = _scan_r
     _bind_r(_st_r, "Inventar")

@@ -63,7 +63,6 @@ def _show_data_overview(state: AutoClickerState) -> None:
     with state.lock:
         print(f"\n  {col('Aktiver State (wird beim Export mitgenommen):', 'bold')}")
         print(f"    Punkte:      {len(state.points)}")
-        print(f"    Sequenzen:   {len(state.sequences)}")
         print(f"    Slots:       {len(state.global_slots)}")
         print(f"    Items:       {len(state.global_items)}")
         print(f"    Item-Scans:  {len(state.item_scans)}")
@@ -400,25 +399,17 @@ def _run_import(state: AutoClickerState) -> None:
         print(f"  Verschiebung: ({off_x:+.0f}, {off_y:+.0f}) Pixel")
         print()
 
-    # Was importieren?
+    # Was importieren? Ein Buendel hat zwei Teile: Sequenzordner (mit Punkten,
+    # Scans und Vorlagen) und die Config. Hier standen acht Fragen fuer das
+    # Layout aus der Zeit des globalen Bestands — fuer ein Buendel, das
+    # `import_bundle()` ohnehin ablehnt.
     import_flags = {}
     print(f"  {col('Was importieren?', 'bold')}")
-    new_layout = manifest.get("layout") == "sequence-folders"
-    parts = ([('sequences', 'Sequenzordner inkl. Punkte, Scans und Vorlagen'),
-              ('config', 'Config')]
-             if new_layout else
-             [("points", "Punkte"), ("sequences", "Sequenzen"), ("slots", "Slots"),
-              ("items", "Items"), ("item_scans", "Item-Scans"),
-              ("boss_scans", "Boss-Scans"), ("icon_scans", "Icon-Scans"),
-              ("config", "Config")])
-    for key, label in parts:
+    for key, label in (('sequences', 'Sequenzordner inkl. Punkte, Scans und Vorlagen'),
+                       ('config', 'Config')):
         if key in contents:
             choice = safe_input(f"    {label}? (j/n, Enter = ja): ").strip().lower()
             import_flags[f"import_{key}"] = choice != "n"
-    if new_layout:
-        whole = import_flags.get("import_sequences", False)
-        for key in ("points", "slots", "items", "item_scans", "boss_scans", "icon_scans"):
-            import_flags[f"import_{key}"] = whole
 
     # Merge oder ersetzen?
     print("\n  Bestehende Daten:")

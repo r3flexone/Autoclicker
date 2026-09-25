@@ -54,6 +54,9 @@ BLOCK_LABELS = {
 # einer Karte nebeneinander waren sie nicht auseinanderzuhalten, und genau das ist
 # der Zweck der Farbe. Die beiden Boss-Typen bleiben bewusst verwandt (sie tun
 # Verwandtes), unterscheiden sich aber jetzt deutlich in der Helligkeit.
+# Grau und Blau sind um ein paar Stufen dunkler als zuerst (120er-Grau,
+# 60/120/200): so knapp unter der Leuchtdichte 0,2, dass helle Schrift darauf
+# 4,5:1 erreicht — auf dem alten Wert lagen beide Schriftfarben bei 4,4.
 BLOCK_COLORS = {
     BLOCK_SCREENSHOT: (150, 90, 200),   # Lila
     BLOCK_BOSS_WATCHER: (140, 40, 45),  # Dunkelrot (dauerhaft beobachten)
@@ -61,9 +64,9 @@ BLOCK_COLORS = {
     BLOCK_ITEM_SCAN: (215, 185, 60),    # Gelb
     BLOCK_ICON_SCAN: (45, 165, 160),    # Türkis
     BLOCK_KEY: (225, 115, 55),          # Orange
-    BLOCK_WAIT: (120, 120, 120),        # Grau
+    BLOCK_WAIT: (110, 110, 110),        # Grau
     BLOCK_WAIT_CLICK: (60, 170, 110),   # Grün
-    BLOCK_CLICK: (60, 120, 200),        # Blau
+    BLOCK_CLICK: (50, 110, 190),        # Blau
 }
 
 
@@ -81,6 +84,30 @@ def hex_color(rgb) -> Optional[str]:
     except (TypeError, ValueError):
         return None
     return f"#{r:02X}{g:02X}{b:02X}"
+
+
+# Schrift auf einer Typfarbe: die Grundfarbe ist dunkel (#0C0F14), und auf
+# den dunklen Typfarben fiel sie durch — Boss-Watcher (140, 40, 45) kam auf
+# 2,2:1, Boss-Scan auf 3,9, Klick/Warten/Screenshot auf ~4,2. Die Schwelle
+# liegt bei einer relativen Leuchtdichte von 0,2 (WCAG-Formel): darunter hell,
+# darüber dunkel. Auf allen neun Typfarben ergibt das mindestens 4,5:1.
+INK_DARK = "#0C0F14"
+INK_LIGHT = "#FFFFFF"
+_INK_THRESHOLD = 0.2
+
+
+def ink_color(rgb) -> str:
+    """Schriftfarbe, die auf `rgb` lesbar ist: hell auf dunklen Flächen, sonst dunkel."""
+    try:
+        r, g, b = (max(0, min(255, int(v))) / 255 for v in tuple(rgb)[:3])
+    except (TypeError, ValueError):
+        return INK_DARK
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    return INK_LIGHT if luminance < _INK_THRESHOLD else INK_DARK
 
 
 def rgb_value(hex_value) -> Optional[tuple]:

@@ -66,7 +66,6 @@ _seq = _SEQ(
         _PHASE(name="B", steps=[
             _STEP(point_id=4, wait_only=True),              # beobachtet, klickt nicht
             _STEP(point_id=5, else_config=_ELSE(action="click", point_id=6)),
-            _STEP(point_id=7, scroll=-3),                   # Rad, kein Klick
             _STEP(item_scan="Inventar"),
         ]),
     ],
@@ -78,13 +77,11 @@ check("die Klick-Punkte stehen in der Reihenfolge des Laufs",
 check("ein Punkt kommt nur EINMAL vor, auch wenn zweimal geklickt",
       _clicks.count(2) == 1)
 check("ein Wait-only-Schritt klickt nicht", 4 not in _clicks)
-check("ein Rad-Schritt auch nicht", 7 not in _clicks)
 # **Was eine Runde nicht erreicht, wird gesagt.** Es zu verschweigen wäre die
 # schlimmere Hälfte: man hielte die Sequenz für repariert.
 check("beobachtete Stellen stehen als unerreichbar da", 4 in _others)
 check("ELSE-Klicks ebenso", 6 in _others)
 check("Nachprüfungen ebenso", 9 in _others)
-check("und der Rad-Schritt", 7 in _others)
 check("eine Stelle steht in genau einer der beiden Listen",
       not (set(_clicks) & set(_others)))
 # Der Trigger-Punkt eines Farb-Trigger-Klicks IST der Klickpunkt — er darf nicht
@@ -460,7 +457,7 @@ try:
     _ruesten(_s9)
     _click(_s9, 3030, 16, (99, 99, 99))       # Titelleiste erwischt
     check("die Stelle ist erfasst", len(_s9.reclick_set) == 1)
-    _stop(_s9, "Fenster zu", apply_config=False)
+    _stop(_s9, "Fenster zu", apply_result=False)
     check("verworfen lässt den Punkt in Ruhe",
           (_s9.points[0].x, _s9.points[0].y) == (100, 100))
     check("und die Farbe auch", _s9.points[0].color == (1, 2, 3))
@@ -649,3 +646,108 @@ try:
 finally:
     _os.chdir(_cwd_zk)
     shutil.rmtree(_sandbox_zk, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken: ein gescheitertes Speichern heisst nicht „gespeichert“")
+
+# `save_sequence_file` meldet seinen Fehler selbst — aber darunter stand
+# trotzdem „N Punkt(e) neu gesetzt und gespeichert", und `.reclick.json` sagte
+# dem Studio `applied: True` ueber einer Datei, die nie geschrieben wurde. Im
+# Speicher sind die Punkte dann gesetzt, auf der Platte nicht: der naechste
+# Start klickt daneben, und niemand hat es gesagt.
+import json as _json_sv
+import io as _io_sv
+import contextlib as _cl_sv
+import autoclicker.persistence.sequences as _pseq
+
+_sandbox_sv = tempfile.mkdtemp(prefix="nachklick_speichern_")
+_cwd_sv = _os.getcwd()
+_os.chdir(_sandbox_sv)
+try:
+    Path("sequences").mkdir()
+
+    def _round(save_ok: bool):
+        st = _ST()
+        _active(st, _SEQ(name="Platte", loop_phases=[_PHASE(name="A", steps=[
+            _STEP(point_id=1), _STEP(point_id=2)])]),
+               [_point(1, 100, 100), _point(2, 200, 200)])
+        _ruesten(st)
+        _click(st, 640, 480, None)
+        old_write = _pseq.atomic_write
+        if not save_ok:
+            def _broken(*a, **k):
+                raise OSError("Platte voll")
+            _pseq.atomic_write = _broken
+        buffer = _io_sv.StringIO()
+        try:
+            with _cl_sv.redirect_stdout(buffer):
+                _stop(st, "übernommen")
+        finally:
+            _pseq.atomic_write = old_write
+        with open(_nk.RECLICK_STATUS_FILE, "r", encoding="utf-8") as f:
+            status = _json_sv.load(f)
+        return buffer.getvalue(), status
+
+    _txt_ok, _st_ok = _round(True)
+    check("geglueckt: die Meldung sagt gespeichert", "gespeichert." in _txt_ok)
+    check("und der Stand fuer das Studio sagt applied",
+          _st_ok["active"] is False and _st_ok["applied"] is True)
+
+    _txt_bad, _st_bad = _round(False)
+    check("gescheitert: die Meldung sagt NICHT gespeichert",
+          "NICHT gespeichert" in _txt_bad and "und gespeichert." not in _txt_bad)
+    check("und nennt den Weg, es nachzuholen", "CTRL+ALT+E" in _txt_bad)
+    check("der Stand fuer das Studio sagt applied: False",
+          _st_bad["active"] is False and _st_bad["applied"] is False)
+finally:
+    _os.chdir(_cwd_sv)
+
+
+# ---------------------------------------------------------------------------
+section("Nachklicken aus dem Studio: der Hauptprozess sieht das Ergebnis")
+
+# Die Runde aus dem Studio arbeitet auf einer eigenen Kopie von der Platte
+# (`command_reclick` laedt die Datei, die geladene Sequenz wechselt nicht). War
+# dieselbe Sequenz hier geladen, hielt der Speicher nach dem Übernehmen die
+# ALTEN Stellen: ein Start per Hotkey klickte daneben, und das naechste
+# `save_points()` (CTRL+ALT+A, CTRL+ALT+U, Editor `done`) schrieb sie zurueck.
+import contextlib as _cl_st
+import io as _io_st
+from autoclicker.persistence import (
+    activate_sequence as _activate_st, load_sequence_file as _load_st,
+    save_points as _save_points_st, save_sequence_file as _save_st,
+    sequence_file as _file_st,
+)
+
+_cwd_st = _os.getcwd()
+_sandbox_st = tempfile.mkdtemp(prefix="nachklick_studio_")
+_os.chdir(_sandbox_st)
+try:
+    _path_st = _file_st("Farm")
+    _path_st.parent.mkdir(parents=True)
+    _save_st(_SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
+                  points=[_point(1, 10, 10)]), _path_st)
+    _s_st = _ST()
+    _s_st.config.window_focus_title = ""               # kein Fensterfilter im Test
+    with _cl_st.redirect_stdout(_io_st.StringIO()):
+        _activate_st(_s_st, _load_st(_path_st))             # Hauptprozess hat Farm geladen
+        _ruesten(_s_st, _load_st(_path_st))                 # Runde aus dem Studio: eigene Kopie
+        _click(_s_st, 500, 500, None)
+        _stop(_s_st, "übernommen")
+    _disk_st = _load_st(_path_st).points[0]
+    _mem_st = _s_st.active_sequence.points[0]
+    check("übernommen steht die neue Stelle auf der Platte",
+          (_disk_st.x, _disk_st.y) == (500, 500))
+    check("und im Speicher des Hauptprozesses — ein Hotkey-Start klickt dort",
+          (_mem_st.x, _mem_st.y) == (500, 500)
+          and (_s_st.active_sequence.loop_phases[0].steps[0].x,
+               _s_st.active_sequence.loop_phases[0].steps[0].y) == (500, 500))
+    with _cl_st.redirect_stdout(_io_st.StringIO()):
+        _save_points_st(_s_st)                              # z.B. CTRL+ALT+A danach
+    _disk_st = _load_st(_path_st).points[0]
+    check("das naechste Speichern im Hauptprozess dreht die Runde nicht zurueck",
+          (_disk_st.x, _disk_st.y) == (500, 500))
+finally:
+    _os.chdir(_cwd_st)
+    shutil.rmtree(_sandbox_st, ignore_errors=True)

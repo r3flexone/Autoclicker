@@ -17,8 +17,8 @@ from .common import (
     HOTKEY_RECORD_PAUSE, HOTKEY_RECORD_SCREENSHOT, HOTKEY_RECORD_SEQ,
     HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH, HOTKEY_RESET,
     HOTKEY_SCAN_STUDIO, HOTKEY_SCHEDULE, HOTKEY_SEQUENCE_STUDIO,
-    HOTKEY_SHOW, HOTKEY_SKIP, HOTKEY_SWITCH, HOTKEY_TOGGLE, HOTKEY_UNDO,
-    PlatformError, WHEEL_STEP,
+    HOTKEY_SHOW, HOTKEY_SKIP, HOTKEY_SKIP_STEP, HOTKEY_SWITCH, HOTKEY_TOGGLE,
+    HOTKEY_UNDO, PlatformError,
 )
 
 logger = logging.getLogger("autoclicker")
@@ -54,8 +54,6 @@ VK_CODES = {
     **{chr(97 + i): 0x41 + i for i in range(26)},
 }
 
-WHEEL_DELTA = WHEEL_STEP
-
 # =============================================================================
 # DPI-AWARENESS (muss früh gesetzt werden)
 # =============================================================================
@@ -72,7 +70,7 @@ except (AttributeError, OSError):
 WM_HOTKEY = 0x0312
 WM_SETICON = 0x0080
 WM_LBUTTONDOWN = 0x0201
-WM_MOUSEWHEEL = 0x020A
+WM_RBUTTONDOWN = 0x0204
 WM_KEYDOWN = 0x0100
 WM_SYSKEYDOWN = 0x0104     # Taste mit gedruecktem ALT (z.B. ALT+F4)
 
@@ -80,7 +78,6 @@ WM_SYSKEYDOWN = 0x0104     # Taste mit gedruecktem ALT (z.B. ALT+F4)
 INPUT_MOUSE = 0
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
-MOUSEEVENTF_WHEEL = 0x0800
 
 # Keyboard Input
 INPUT_KEYBOARD = 1
@@ -277,9 +274,17 @@ del _name, _vk
 def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
     """Liest die Pixelfarbe an einer Bildschirmposition.
 
-    Schneller GDI-Pfad zuerst (ideal in Aufnahme-Callbacks). GetDC(None) ist
-    aber am primären Monitor verankert und liefert bei negativen/grossen
-    Koordinaten CLR_INVALID — dann Fallback auf Pillow mit all_screens=True.
+    Schneller GDI-Pfad zuerst (ideal in Aufnahme-Callbacks). Liefert GetPixel
+    CLR_INVALID — ausserhalb jedes Monitors, etwa in den toten Zonen eines
+    virtuellen Desktops mit drei verschieden hohen Bildschirmen —, kommt der
+    Bildschirm-Aufnehmer mit einem 1×1-Ausschnitt dran.
+
+    **Hier stand `imaging.get_pixel_color()` als Rueckfall — und das ist
+    genau diese Funktion**: `imaging.get_pixel_color` ruft `get_screen_pixel`
+    ueber die Fassade. Beide riefen einander, bis `RecursionError` kam, und
+    jede Ebene schluckte ihn mit `except Exception: return None`. Gemessen:
+    3,5 s fuer ein `None`. Im Maus-Hook haette Windows den Hook dafuer
+    ausgehaengt.
     """
     try:
         hdc = user32.GetDC(None)
@@ -289,23 +294,23 @@ def get_screen_pixel(x: int, y: int) -> tuple[int, int, int] | None:
             return (colorref & 0xFF, (colorref >> 8) & 0xFF, (colorref >> 16) & 0xFF)
     except (OSError, AttributeError):
         pass
-    # Fallback: virtueller Desktop (zweiter Monitor, negative Koordinaten)
     try:
-        from ..imaging import get_pixel_color
-        return get_pixel_color(x, y)
-    except Exception:
+        image = capture_screen((x, y, x + 1, y + 1))
+        if image is None:
+            return None
+        return tuple(int(v) for v in image.getpixel((0, 0))[:3])
+    except (OSError, ValueError, TypeError, AttributeError, IndexError):
         return None
 
 
-def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
-    """Installiert einen systemweiten Low-Level-Maus-Hook für Linksklicks und Mausrad.
+def install_mouse_hook(on_lbutton_down, on_rbutton_down=None) -> bool:
+    """Installiert einen systemweiten Low-Level-Maus-Hook für Mausklicks.
 
     `on_lbutton_down(x, y, color)` bei jedem Linksklick (color ist (r,g,b) oder
-    None). `on_wheel(x, y, delta)` bekommt die ROHE Windows-Distanz — hochauf-
-    loesende Raeder senden Bruchteile, die einzeln abgerundet null ergaeben, also
-    summiert der Aufrufer erst und teilt dann. `None` ignoriert das Rad.
-
-    Rechtsklicks fehlen bewusst: `send_click` kann gar keine ausfuehren.
+    None). `on_rbutton_down(x, y)` bei jedem Rechtsklick — ohne Farbe, denn
+    aufgezeichnet wird er nicht (`send_click` kann keinen ausfuehren); die
+    Aufnahme zaehlt ihn nur, um am Ende zu sagen, was ihr fehlt. Das Mausrad
+    ist ersatzlos gestrichen — es gab keinen Schritt mehr, der es abspielt.
     """
     global _mouse_hook_handle, _mouse_hook_proc
 
@@ -321,16 +326,10 @@ def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
                 on_lbutton_down(x, y, color)
             except Exception:
                 pass
-        elif nCode >= 0 and wParam == WM_MOUSEWHEEL and on_wheel is not None:
+        elif nCode >= 0 and wParam == WM_RBUTTONDOWN and on_rbutton_down is not None:
             info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-            # Die Rad-Distanz steht im HIGH word von mouseData und ist VORZEICHENBEHAFTET.
-            # mouseData ist ein DWORD (unsigned), deshalb von Hand ins Zweierkomplement
-            # zurueckrechnen - sonst wird jedes Runterscrollen zu einem riesigen Plus.
-            delta = (info.mouseData >> 16) & 0xFFFF
-            if delta >= 0x8000:
-                delta -= 0x10000
             try:
-                on_wheel(info.pt.x, info.pt.y, delta)
+                on_rbutton_down(info.pt.x, info.pt.y)
             except Exception:
                 pass
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
@@ -506,40 +505,6 @@ def send_click(x: int, y: int, move_delay: float = 0.01,
         return False
 
     # Warte nach dem Klick damit das Ziel-Programm den Klick verarbeiten kann
-    if post_delay > 0:
-        time.sleep(post_delay)
-    return True
-
-
-def send_scroll(clicks: int, x: int = None, y: int = None,
-                move_delay: float = 0.01, post_delay: float = 0.05) -> bool:
-    """Dreht das Mausrad um `clicks` Rasterstufen. Positiv = hoch, negativ = runter.
-
-    Windows liefert das Scroll-Event an das Fenster UNTER dem Cursor, nicht an das
-    fokussierte - deshalb muss der Zeiger vorher auf die Zielposition. Ohne x/y wird
-    dort gescrollt, wo die Maus gerade steht.
-    """
-    if not clicks:
-        return True
-    if x is not None and y is not None:
-        if not set_cursor_pos(x, y):
-            logger.error("Mausposition fürs Scrollen nicht gesetzt: (%s, %s)", x, y)
-            return False
-        time.sleep(move_delay)
-
-    inputs = (INPUT * 1)()
-    inputs[0].type = INPUT_MOUSE
-    inputs[0].union.mi.dwFlags = MOUSEEVENTF_WHEEL
-    # mouseData ist ein DWORD (unsigned). Runterscrollen braucht einen negativen Delta,
-    # der als Zweierkomplement in 32 Bit passen muss - explizit maskieren statt auf die
-    # Breite von c_ulong zu vertrauen (auf Windows 32 Bit, anderswo 64).
-    inputs[0].union.mi.mouseData = (clicks * WHEEL_DELTA) & 0xFFFFFFFF
-
-    sent = user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
-    if sent != 1:
-        logger.warning(f"SendInput Scroll: {sent}/1 Events gesendet ({clicks} Stufen)")
-        return False
-
     if post_delay > 0:
         time.sleep(post_delay)
     return True
@@ -835,6 +800,7 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_REC_PHASE, MOD_REC, VK_P, "CTRL+ALT+SHIFT+P (Aufnahme: neue Phase)"),
     (HOTKEY_REC_REGION, MOD_REC, VK_R, "CTRL+ALT+SHIFT+R (Aufnahme: Bereichs-Ecke)"),
     (HOTKEY_REC_WATCH, MOD_REC, VK_B, "CTRL+ALT+SHIFT+B (Aufnahme: beobachten ohne Klick)"),
+    (HOTKEY_SKIP_STEP, MOD_REC, VK_K, "CTRL+ALT+SHIFT+K (Lauf: Block überspringen)"),
 ]
 
 # Windows-Fehlercode: Hotkey ist bereits registriert (von einem anderen Programm)

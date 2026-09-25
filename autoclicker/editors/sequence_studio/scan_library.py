@@ -268,13 +268,8 @@ class ScanLibraryMixin:
 
         # Scan-Aktionen können neue Sequenzpunkte anlegen, ohne einen Ablaufblock
         # zu verändern. Darum muss derselbe Knopf zuerst auch `sequence.json`
-        # schreiben. Beim Umbenennen lädt `save()` den verschobenen Ordner
-        # neu; die noch ungespeicherten Scan-Objekte halten wir über diesen
-        # kurzen Schritt fest und schreiben sie danach in den neuen Ordner.
-        working_set = (
-            self.slots, self.items, self.scans, self.boss_scans,
-            self.icon_scans, self.global_bosses, self.open_scan,
-        )
+        # schreiben. Beim Umbenennen verschiebt `save()` den Ordner und laesst
+        # die Scan-Objekte im Speicher stehen — sie landen unten im neuen.
         sequence_answer = self.save(data)
         if sequence_answer.get("question"):
             return self._scan_report(
@@ -285,8 +280,6 @@ class ScanLibraryMixin:
             return self._scan_report(
                 sequence_status.get("text") or "Sequenz konnte nicht gespeichert werden.",
                 "err")
-        (self.slots, self.items, self.scans, self.boss_scans,
-         self.icon_scans, self.global_bosses, self.open_scan) = working_set
 
         error = []
         self._sync_objects()

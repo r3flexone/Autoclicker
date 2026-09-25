@@ -9,21 +9,35 @@
      amber umrandet heisst „gewählt" (Karte) bzw. „läuft gerade" (Kachel im
      Live-Run). Jeder Loop-Kopf sah damit dauerhaft aus wie der eine, der gerade
      dran ist — eine Markierung, die immer an ist, markiert nichts. Violett ist
-     weit genug von Grün und Himmelblau weg, um daneben zu bestehen. */
-  --init:#3ED07A; --loop:#A78BFA; --end:#38BDF8;
+     weit genug von Himmelblau weg, um daneben zu bestehen.
+
+     INIT war #3ED07A — Byte für Byte dasselbe wie --ok. Grün hätte damit drei
+     Bedeutungen gehabt (in Ordnung · INIT · erkannter Slot), und im Live-Run
+     steht die INIT-Kachel direkt neben einem grünen ok-Zähler. Pink ist die
+     einzige Hue, die sonst nirgends im Studio vorkommt: die Phasen sind damit
+     eine kühle Dreiergruppe, und keine davon ist eine Zustandsfarbe. */
+  --init:#F472B6; --loop:#A78BFA; --end:#38BDF8;
   /* Die Slot-Zustaende im Scans-Reiter. Sie liegen auf einem SPIELBILD, nicht
      auf dem Panel — deshalb greller als der Rest der Palette. Jeweils Strich
      und Fuellung (Suffix -f), damit beides aus einer Quelle kommt. */
   --slot-ok:#00E58A;     --slot-ok-f:#00E58A26;      /* erkannt und im Scan */
-  --slot-foreign:#22D3EE;  --slot-foreign-f:#22D3EE26;   /* erkannt, nicht im Scan */
   /* „Nichts erkannt" war #FF9500 und damit fast der Akzent #F59E0B: „hier ist
      zu tun" und „gewaehlt" sahen gleich aus, und Amber gehoert der Auswahl.
-     --slot-ok und --slot-foreign lagen als #00FF9C/#2DD4BF ausserdem zu dicht
-     beieinander, um sie im Bild auseinanderzuhalten. */
+     Ein drittes Paar (--slot-foreign, „erkannt, aber nicht in diesem Scan")
+     ist ersatzlos weg: seit der Scan seine Items besitzt, gibt es nichts,
+     was erkannt und trotzdem fremd waere. */
   --slot-empty:#F43F5E;  --slot-empty-f:#F43F5E1F;   /* nichts erkannt: zu tun */
   --mono:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* Die Seite ist dunkel — das muss auch der Browser wissen. Aufgeklappte
+   Auswahllisten, Bildlaufleisten und Datumsfelder malt er selbst, und ohne
+   diese Angabe hell: die Einträge erbten die helle Schrift (--text) und
+   standen weiss auf weiss. Die Farben der Einträge stehen zusätzlich fest,
+   weil `.seq-chip select` seinen Hintergrund auf `none` setzt. */
+:root{color-scheme:dark}
+option,optgroup{background:var(--panel);color:var(--text)}
+option:disabled{color:var(--dim)}
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--text); overflow:hidden;
@@ -43,10 +57,31 @@ body{
 .divider{width:1px;height:24px;background:var(--line);flex:none}
 
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+/* inline-flex, damit ein Symbol (icon()) und der Text auf einer Linie stehen
+   — ein SVG als Inline-Element saesse sonst einen Pixel zu tief. */
 .btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
   padding:6px 12px;border-radius:5px;background:var(--sub);
   border:1px solid var(--line);color:var(--text);white-space:nowrap;
 }
+.icon{flex:none;display:inline-block;vertical-align:-1px}
+/* Starten hat eine eigene Farbe: gruen umrandet, nicht gefuellt. Es ist die
+   zweite Aktion nach Speichern, aber die einzige, die im Spiel etwas tut. Als
+   Stoppen traegt derselbe Knopf Rot (.danger). Heisst `launch`, nicht `run`:
+   `.run` ist die Live-Run-Ansicht, und der Knopf erbte deren Polster. */
+.btn.launch{border-color:var(--ok);color:var(--ok);font-weight:600}
+.btn.launch:hover{background:#3ED07A1A}
+.btn.launch.danger{border-color:var(--err);color:var(--err)}
+.btn.launch.danger:hover{background:#EF44441A}
+/* **Der Tastaturfokus ist sichtbar — ueberall.** Eingabefelder wechselten nur
+   die Rahmenfarbe, Knoepfe, Kacheln und Karten gar nichts: wer mit TAB durch
+   den Inspektor ging, sah nicht, wo er steht. Eine Regel fuer alles
+   Fokussierbare, derselbe Ring wie am Kippschalter. `:focus-visible`, damit
+   ein Mausklick ihn nicht zeigt. */
+button:focus-visible,[tabindex]:focus-visible,a:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
 .btn:hover{border-color:var(--dim)}
 /* Ein Knopf, der einen MODUS einschaltet, muss zeigen, dass er an ist — sonst
    klickt man ihn ein zweites Mal und wundert sich. Ringsum wie ueberall. */
@@ -153,7 +188,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    schlimmer als eine zweite Zeile. Deshalb auch keine feste Hoehe mehr — die
    waere bei zwei Zeilen eine Zusicherung, die nicht mehr stimmt. */
 .header{
-  min-height:56px;flex:none;display:flex;align-items:center;gap:14px;
+  min-height:56px;flex:none;display:flex;align-items:center;gap:10px;
   padding:6px 14px;flex-wrap:wrap;
   background:var(--panel);border-bottom:1px solid var(--line);
 }
@@ -161,6 +196,21 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .badge img{display:block;width:100%;height:100%}
 .title{font-size:13px;letter-spacing:.15em;font-weight:700}
 .dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+/* Die Sequenz als EIN Bedienelement: Kuerzel, Auswahl, Ungespeichert-Punkt
+   und „Neu" in einer Kachel. Die Auswahl darin traegt keinen eigenen Rahmen —
+   die Kachel ist der Rahmen. Steht rechts (margin-left:auto), zusammen mit
+   den Aktionen, die dieselbe Sequenz meinen. */
+.seq-chip{margin-left:auto;display:flex;align-items:center;gap:8px;padding:0 0 0 10px;
+  background:var(--bg);border:1px solid var(--line);border-radius:5px;overflow:hidden;
+  flex:none}
+.seq-chip-label{font-size:9.5px;letter-spacing:.1em;color:var(--dim);flex:none;cursor:pointer}
+.seq-chip select{width:160px;border:none;background:none;padding:6px 0;font-weight:600;
+  border-radius:0}
+.seq-chip select:focus-visible{outline-offset:-2px}
+.seq-chip-new{padding:6px 10px;border-left:1px solid var(--line);color:var(--muted);
+  font-size:12.5px;flex:none}
+.seq-chip-new:hover{background:var(--sub);color:var(--text)}
+.header .actions{flex:none}
 /* Nimmt den freien Platz statt einer festen Zeichenzahl: der Deckel stand bei
    46ch, und daneben lag ein Abstandhalter, der den ganzen Rest der Kopfzeile
    aufbrauchte. Eine Meldung wie "Nicht gespeichert: ITEM-SCAN in 'Loop 1'
@@ -169,10 +219,25 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   background:var(--panel);border-top:1px solid var(--line);font-size:11.5px}
 .lamp-small{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
 .lamp-small.open{background:var(--accent)}
-.status{min-width:0;font-size:11.5px;color:var(--muted);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.status.kind-ok{color:var(--ok)} .status.kind-warn{color:var(--accent)}
-.status.kind-err{color:var(--err)}
+/* Die Art VOR dem Inhalt, als Kachel mit Symbol: Farbe allein liest man erst,
+   wenn man schon weiss, was sie heisst. Der Text bleibt in Grundfarbe. */
+.status-kind{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;
+  border-radius:10px;font-size:10.5px;font-weight:600;flex:none;
+  background:#94A3B81F;color:var(--muted)}
+.status-kind.kind-ok{background:#3ED07A1F;color:var(--ok)}
+.status-kind.kind-warn{background:#F59E0B1F;color:var(--accent)}
+.status-kind.kind-err{background:#EF44441F;color:var(--err)}
+/* Zwei Zeilen statt drei Punkten: die eine Meldung, die man lesen MUSS, ist
+   die lange (ein fehlender Scan-Name samt dem Weg zur Abhilfe), und genau
+   die war abgeschnitten. */
+.status{min-width:0;font-size:11.5px;color:var(--text);line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.status.kind-info{color:var(--muted)}
+/* Der Rueckweg an der Meldung: Akzent-Umriss, damit er neben der Warnung als
+   Handgriff und nicht als weitere Meldung gelesen wird. */
+.status-action{border-color:var(--accent);color:var(--accent);font-size:11.5px;
+  padding:3px 9px;font-weight:600;flex:none}
+.status-action:hover{background:#F59E0B1A;color:var(--accent)}
 
 /* -------------------------------------------------------------------- Rumpf */
 .body{flex:1;display:flex;min-height:0}
@@ -232,6 +297,28 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .point .nr{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
 .point .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .point .xy{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
+/* Der Verwendungszaehler; 0× ist blass und gestrichelt — ein Rest, kein Punkt,
+   an dem etwas haengt. */
+.point .uses{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;
+  background:var(--sub);color:var(--muted);flex:none}
+.point .uses.none{background:none;border:1px dashed var(--dim);color:var(--dim)}
+/* Loeschen am Zeilenende — nur bei ungenutzten Punkten. Rahmen, damit es als
+   Knopf erkennbar ist; rot erst beim Zeigen, weil es in einer Liste mit
+   vierzig Zeilen sonst lauter ist als alles, woran man arbeitet. */
+.point .point-delete{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;padding:0;border:1px solid var(--line);border-radius:4px;
+  background:none;color:var(--dim);cursor:pointer}
+.point .point-delete:hover{color:var(--err);border-color:var(--err)}
+.point .point-delete-slot{flex:none;width:18px}
+.point.unused{opacity:.55;border-style:dashed}
+/* Angeklickt: die Zeile traegt den Ring, ihre Bloecke im Board tragen ihn in
+   Punktfarbe. `in-use`: die Punkte des gewaehlten Blocks — die Gegenrichtung. */
+.point.highlight{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.point.in-use{background:var(--sub)}
+.points-unused{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;
+  background:#F59E0B1F;color:var(--accent);flex:none}
+.points-hint{display:flex;align-items:center;gap:6px;padding:6px 8px;margin-top:4px;
+  border:1px dashed var(--line);border-radius:4px;font-size:11px;color:var(--dim)}
 
 /* -------------------------------------------------------------------- Board */
 .board{
@@ -292,32 +379,45 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    darin: eine Phase liest sich dann als Streifenmuster, statt dass man jede
    Karte einzeln entziffern muss. Alles darin steht deshalb auf dunkler Schrift
    (#0C0F14) — die Grundfarben sind hell. */
+/* Die Kopfzeile bekommt Hintergrund UND Schriftfarbe aus der Bruecke (`ink`):
+   dunkle Schrift auf jeder Typfarbe fiel auf Boss-Watcher mit 2,2:1 und auf
+   vier weiteren Typen unter 4,5:1 durch. Alles darin erbt `currentColor`;
+   Abstufungen laufen ueber Deckkraft, nicht ueber eine zweite Farbe. */
 .card-header{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:none}
-.card-type{font-family:var(--mono);font-size:10px;letter-spacing:.09em;font-weight:600;
-  color:#0C0F14;padding:0;background:none;flex:none;opacity:.75}
-.card-title{font-size:12px;font-weight:600;color:#0C0F14;flex:1;min-width:0;
+/* Der Typ ist eine MARKE, kein Wort im Fluss: umrandet, damit Typ und Titel
+   nebeneinander nicht als ein Wortstrom gelesen werden. */
+.card-type{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;font-weight:600;
+  color:inherit;padding:1px 5px;border-radius:3px;border:1px solid currentColor;
+  background:none;flex:none;opacity:.85}
+.card-title{font-size:12px;font-weight:600;color:inherit;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* margin-left:auto haelt die Nummer rechts, auch wenn die Karte keinen Titel
    hat und damit das flex:1-Element fehlt, das sie sonst hinueberschiebt. Mit
    Titel ist die Regel wirkungslos — der nimmt den freien Platz schon weg. */
-.card-nr{font-family:var(--mono);font-size:10px;color:#0C0F1499;margin-left:auto;flex:none}
-.card-body{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
-.card-row{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.card-nr{font-family:var(--mono);font-size:10px;color:inherit;opacity:.7;margin-left:auto;flex:none}
+/* Zweispaltig: links das Etikett (STELLE, WARTE, ELSE), rechts der Wert. Bei
+   fuenfzig Karten untereinander findet das Auge das Etikett schneller als den
+   Wert; die Spalte kostet 40 px und keinen Umbruch. */
+.card-body{padding:9px 11px;display:grid;grid-template-columns:auto minmax(0,1fr);
+  gap:5px 10px;align-items:center}
+.card-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
+.card-label.else{color:var(--accent)}
+.card-label.dead{color:var(--dim)}
+.card-row{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-width:0}
 .card-row.with-color,
 .card-color{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
 .card-row.with-color{font-size:11.5px}
 .card-row .swatch,
 .card-color .swatch{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
-.card-else{display:flex;align-items:center;gap:6px;padding-top:6px;
-  border-top:1px dashed var(--line);color:var(--accent);font-size:11px}
+.card-else{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:11px;min-width:0}
 .card-else.dead{color:var(--dim)}
 /* Die Marken sitzen jetzt auf der farbigen Kopfzeile, also dunkel auf hell. Die
    Warnmarke stand vorher auf Amber — auf einem ITEM-SCAN (ebenfalls Amber) waere
    das Amber auf Amber gewesen, also unlesbar genau dort, wo sie am haeufigsten
    auftaucht. Sie hebt sich deshalb ueber ein helles Feld ab, nicht ueber Farbe. */
 .badge-small{font-family:var(--mono);font-size:9.5px;padding:1px 4px;border-radius:3px;
-  border:1px solid #0C0F1440;color:#0C0F14AA;flex:none}
-.badge-small.warn{color:#0C0F14;border-color:#0C0F14;background:#FFFFFF55}
+  border:1px solid currentColor;color:inherit;opacity:.8;flex:none}
+.badge-small.warn{opacity:1;background:#FFFFFF55;color:#0C0F14;border-color:#0C0F14}
 /* Ein Haltepunkt ist ein Zustand, den man beim Ueberfliegen finden muss —
    deshalb dunkel gefuellt statt nur umrandet: ueber jeder Typfarbe gleich
    sichtbar, und nicht mit der Warnung (hell) zu verwechseln. */
@@ -337,7 +437,10 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .insp-header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
   align-items:center;gap:8px}
 .bulk-editor{padding:14px;display:flex;flex-direction:column;gap:12px}
-.bulk-quick{gap:6px;flex-wrap:wrap}
+/* Vier gleiche Spalten statt Textbreite: acht Kacheln in einer Reihe ohne
+ * Raster lägen je nach Beschriftung („0 s" vs. „0,5 s") auf verschiedenen
+ * Kanten. */
+.bulk-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .insp-point{width:9px;height:9px;border-radius:2px;flex:none}
 .type-chip{
   font-family:var(--mono);font-size:9.5px;text-align:center;padding:7px 3px;border-radius:4px;
@@ -372,14 +475,32 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .info.on{color:var(--accent)}
 .with-info{display:flex;align-items:center;gap:5px}
 .empty{padding:24px 14px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7}
+/* Die leere Buehne im Scans-Reiter: Bild, Titel, ein Satz, der Knopf — in
+   der Luecke, nicht 400 px weiter links im Assistenten. */
+#scan-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;min-height:260px;padding:32px 24px}
+#scan-empty[hidden]{display:none}
+#scan-empty b{font-size:13.5px;color:var(--text)}
+#scan-empty > span{max-width:340px;font-size:12px;color:var(--muted);line-height:1.5}
+#scan-empty .btn{margin-top:6px}
+#scan-empty small{font-size:11px;color:var(--dim)}
 
 /* ---------------------------------------------------------------- Ansichten */
 /* Die Umschaltleiste im Kopf. Welche Ansicht offen ist, ist reiner
    Oberflaechenzustand — er gehoert nicht in die Momentaufnahme und nicht in
    die Bruecke, denn er aendert nichts an der Sequenz. */
-.tabs{display:flex;gap:2px;background:var(--bg);border:1px solid var(--line);
+.tabs{display:flex;align-items:center;gap:2px;background:var(--bg);border:1px solid var(--line);
   border-radius:6px;padding:3px;flex:none}
-.tab{padding:4px 12px;border-radius:4px;font-size:12.5px;color:var(--muted)}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:4px;
+  font-size:12.5px;color:var(--muted)}
+/* Die Gliederung der Reiter: BAUEN · BEOBACHTEN · VERWALTEN. Ein Strich, kein
+   Wort — die Gruppen erklaeren sich an ihren Mitgliedern. */
+.tab-gap{width:1px;height:16px;background:var(--line);margin:0 3px;flex:none}
+/* Die Lampe des laufenden Laufs am Live-Run-Reiter: leer, solange nichts
+   laeuft — ein Punkt, der immer da ist, markiert nichts. */
+.tab-lamp{width:7px;height:7px;border-radius:50%;background:transparent;flex:none;
+  margin-left:-2px}
+.tab-lamp.on{background:var(--ok);box-shadow:0 0 0 3px #3ED07A26}
 .tab:hover{color:var(--text)}
 .tab.on{background:var(--sub);color:var(--accent);font-weight:600}
 
@@ -397,12 +518,27 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    `align-content:start` in jeder Zelle waere falsch: die Fusszeile soll unten
    stehen, und genau dafuer ist die vierte Zeile `1fr`. */
 .seq-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
-  padding:16px;display:grid;gap:12px;grid-row:span 5;
+  padding:16px;display:grid;gap:12px;grid-row:span 6;
   grid-template-rows:subgrid}
+/* Filter und Ordnung ueber der ganzen Breite des Rasters. */
+.seq-toolbar{grid-column:1/-1;display:flex;align-items:center;gap:10px}
+.seq-toolbar input{flex:1 1 auto;min-width:0}
+.seq-toolbar .segment{flex:none}
+.seq-toolbar .segment button{padding:5px 10px}
+/* Geaendert / letzter Lauf: Etikett links, Wert rechts — dieselbe
+   zweispaltige Form wie der Kartenkoerper im Board. */
+.seq-history{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;
+  align-items:center;font-size:11.5px;color:var(--muted);padding-top:6px;
+  border-top:1px dashed var(--line)}
+.seq-history:empty{min-height:0;padding:0;border:none}
+.seq-history-label{font-size:9.5px;letter-spacing:.1em;color:var(--dim)}
+.seq-run-badge{font-family:var(--mono);font-size:10px;padding:0 5px;border-radius:8px;white-space:nowrap}
+.seq-run-badge.ok{background:#3ED07A1F;color:var(--ok)}
+.seq-run-badge.warn{background:#F59E0B1F;color:var(--accent)}
 .cards{grid-auto-rows:auto}
 /* Ohne subgrid: dieselbe Aufteilung, nur ohne Abgleich zwischen den Karten. */
 @supports not (grid-template-rows: subgrid) {
-  .seq-card{grid-template-rows:auto auto auto 1fr auto;grid-row:auto}
+  .seq-card{grid-template-rows:auto auto auto auto 1fr auto;grid-row:auto}
 }
 /* Leere Zeilen sollen keine Hoehe erfinden — sie sind nur der Platzhalter,
    damit die Nachbarkarte ihre Zeile an derselben Stelle hat. */
@@ -423,7 +559,12 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-numbers{display:flex;flex-wrap:wrap;gap:6px}
 .num{font-family:var(--mono);font-size:10.5px;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:4px;padding:2px 6px}
-.seq-footer{display:flex;align-items:center;gap:8px;align-self:end;min-width:0}
+/* Ordnername oben, darunter drei gleiche Spalten: Duplizieren, Loeschen,
+   Oeffnen. Als `button-pair` brachen die drei bei 320 px Kartenbreite um
+   (auto-fit, min. 118 px) — eine feste Dreiteilung passt, weil die laengste
+   Beschriftung („Duplizieren") in 100 px steht. */
+.seq-footer{display:flex;flex-direction:column;gap:6px;align-self:end;min-width:0}
+.seq-toolbar .segment button{white-space:nowrap}
 /* Ein langer Sequenzpfad darf weder den Öffnen-Knopf aus der Karte drücken noch
    sichtbar über ihn und die Nachbarkarte malen. `min-width:0` allein lässt das
    Flex-Element nur schrumpfen — seinen Text zeichnet es ohne overflow trotzdem
@@ -637,26 +778,16 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-slot.selected{stroke:#fff;stroke-width:3}
 /* Erkannt UND im Scan: erledigt, kuemmere dich um den Rest. */
 .scan-slot.match{stroke:var(--slot-ok)}
-/* Erkannt, aber noch kein Mitglied dieses Scans: ein anderer Zustand als
-   „passt" und deshalb eine andere Farbe. Gruen zu faerben hiesse behaupten,
-   der Scan finde es — er sieht dieses Item gar nicht an. Verwandt zum Gruen
-   (erkannt ist erkannt), aber klar unterscheidbar. */
-.scan-slot.foreign-item{stroke:var(--slot-foreign)}
 /* Nichts erkannt = hier ist zu tun. Das ist der haeufigste Zustand vor dem
    Lernen und muss deshalb der auffaelligste sein, nicht der blasseste. */
 .scan-slot.empty{stroke:var(--slot-empty)}
 .scan-fill{fill:var(--slot-empty-f);stroke:none}
 .scan-fill.match{fill:var(--slot-ok-f)}
-.scan-fill.foreign-item{fill:var(--slot-foreign-f)}
 .scan-fill.empty{fill:var(--slot-empty-f)}
 .scan-fill.selected{fill:#FFFFFF2E}
 .scan-slot.off{stroke:var(--dim);stroke-dasharray:4 3;opacity:.65}
 .scan-fill.off{fill:#64748B12}
 .scan-badge.off,.scan-cross.off{opacity:.45}
-/* Ist ein Item-Scan offen, zeigt das Bild, WELCHE Slots er ansieht — genau die
-   Frage, fuer die man sonst zwischen Liste und Bild hin und her sieht. */
-.scan-slot.foreign{stroke:var(--dim);stroke-dasharray:3 3;opacity:.5}
-.scan-badge.foreign{opacity:.45}
 .scan-badge{font-family:var(--mono);fill:var(--text);paint-order:stroke;
   stroke:#0C0F14;stroke-width:3px;stroke-linejoin:round}
 .scan-cross{stroke:#fff;stroke-width:1.2;vector-effect:non-scaling-stroke}
@@ -1020,6 +1151,29 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .dialog h2{font-size:14px}
 .dialog p{font-size:12.5px;color:var(--muted);line-height:1.6}
 .dialog .buttons{display:flex;gap:8px;justify-content:flex-end}
+/* Die Tastenkuerzel-Tafel: breiter als eine Rueckfrage, zwei Spalten. */
+.dialog.wide{width:760px;max-width:calc(100vw - 40px)}
+.shortcut-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px}
+.shortcut-group{display:flex;flex-direction:column;gap:5px;padding-bottom:10px}
+.shortcut-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:12px;color:var(--text)}
+.shortcut-row kbd{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:4px;
+  border:1px solid var(--line);background:var(--bg);color:var(--muted);white-space:nowrap;
+  flex:none}
+.btn.help{width:30px;padding:5px 0;font-weight:700;margin-left:4px}
+/* Die Einstiegskarte auf dem leeren Board. */
+.start-card{width:460px;flex:none;background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.start-head{display:flex;flex-direction:column;gap:3px;text-align:center}
+.start-head b{font-size:15px}
+.start-head span{font-size:12px;color:var(--muted)}
+.start-ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.start-way{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;
+  display:flex;flex-direction:column;gap:8px}
+.start-way.primary{border-color:var(--accent)}
+.start-way-title{display:flex;align-items:center;gap:8px;font-size:13px}
+.start-way > span{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1 1 auto}
+.start-import{align-self:center;font-size:11.5px}
 [hidden]{display:none !important}
 
 /* --- Werkzeuge -----------------------------------------------------------
@@ -1049,8 +1203,11 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
 .wz-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
 .wz-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
+/* Der Befehl steht an der RECHTEN Kante, nicht hinter dem Titel: dort sass er je
+ * nach Titellänge an einer anderen Stelle, und sechs Marken auf sechs Kanten
+ * lesen sich wie Zufall. Rechtsbündig bilden sie eine Spalte. */
 .wz-command{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
-  border-radius:9px;padding:1px 5px}
+  border-radius:9px;padding:1px 5px;margin-left:auto;flex:none}
 .wz-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
 .wz-nav:hover .wz-nav-arrow,.wz-nav.on .wz-nav-arrow{color:var(--accent);transform:translateX(2px)}
 /* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows
@@ -1325,8 +1482,19 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
    den Ertrag. Name links, Wert rechts, Balken darunter ueber die volle Breite:
    der Balken traegt das Verhaeltnis, die Zahl den Wert. Getrennte Gestalten je
    Liste haetten dieselbe Sache viermal verschieden aussehen lassen. */
-.rep-rank{display:grid;grid-template-columns:1fr auto;gap:3px 10px;
+.rep-rank{display:grid;grid-template-columns:1fr auto auto;gap:3px 10px;align-items:center;
   padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+/* Der Sprungknopf: klein, gedaempft, mit Pfeil — ein Weg, keine Aktion an den
+   Daten. Ueberall dieselbe Gestalt: Befund, Rangzeile, Warnmarke. */
+.btn.jump{font-size:11px;padding:2px 8px;gap:5px}
+.wz-finding-jump{grid-column:2;display:flex}
+.badge-small.jump{cursor:pointer;font:inherit;font-family:var(--mono);font-size:9.5px}
+.badge-small.jump:hover{background:#FFFFFF88}
+/* Der gezeigte Punkt blinkt einmal — die Liste ist lang, und „da ist er"
+   muss man sehen, nicht suchen. */
+.point.flash{animation:point-flash 1.6s ease-out}
+@keyframes point-flash{0%,60%{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent)}
+  100%{box-shadow:none}}
 .rep-rank:last-child{border-bottom:none}
 .rep-rank-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rep-rank-value{color:var(--text);font-weight:600}
@@ -1355,9 +1523,9 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
    160 px unterscheiden. Nah genug beieinander, dass es wie ein Rundungsfehler
    aussieht statt wie Absicht; dieselbe Falle wie einmal im Phasenkopf. */
 #rep-middle .share-card{max-width:880px}
-/* Zwei Knoepfe in der Fusszeile einer Sequenzkarte teilen sich gleiche Spalten:
-   „Öffnen" und „Löschen" sind verschieden lang, und zwei verschieden breite
-   Knoepfe nebeneinander lesen sich als zwei Rangstufen. `flex:none`, damit das
-   Paar dem Pfad daneben keine Breite wegnimmt — der schrumpft schon selbst. */
-.seq-footer .button-pair{flex:none;grid-template-columns:repeat(2,82px)}
+/* Die drei Knoepfe der Fusszeile (Duplizieren, Loeschen, Oeffnen) teilen sich
+   gleiche Spalten: verschieden breite Knoepfe nebeneinander lesen sich als
+   Rangstufen. Der Ordnername steht darueber, nicht daneben — drei Knoepfe
+   und ein Pfad passen in 320 px nicht in eine Zeile. */
+.seq-footer .button-pair{grid-template-columns:repeat(3,minmax(0,1fr))}
 .seq-footer .button-pair > .btn{white-space:nowrap;padding-left:0;padding-right:0}

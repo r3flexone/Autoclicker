@@ -25,9 +25,11 @@ from ..models import (
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
 )
 from ..session_log import log_event
-from ..utils import col, err, dbg, warn, wait_while_paused
+from ..utils import col, err, dbg, warn
 from ..winapi import check_failsafe
-from .actions import safe_click, safe_key, _step_status, is_verbose_debug
+from .actions import (
+    safe_click, safe_key, _step_status, is_verbose_debug, wait_while_paused, input_refused,
+)
 from .debug import is_log_debug
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
 
@@ -455,6 +457,8 @@ def _execute_detection_action(state: AutoClickerState, *, subject: str, action: 
             if safe_key(state, key, label=label):
                 with state.lock:
                     state.key_presses += 1
+            elif input_refused(state):
+                return False       # verweigert — sonst bliebe ein Block-Skip haengen
 
     elif action == BOSS_ACTION_SKIP:
         if debug:

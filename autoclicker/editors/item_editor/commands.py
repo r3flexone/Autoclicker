@@ -219,50 +219,62 @@ def handle_templates_command(state: AutoClickerState) -> None:
 
 
 def handle_template_command(state: AutoClickerState, cmd: str) -> None:
-    """Verarbeitet den template-Befehl im Item-Editor (setzen/entfernen/capturen)."""
+    """Verarbeitet den template-Befehl im Item-Editor (setzen/entfernen/capturen).
+
+    **Der Lock wird nur zum Nachschlagen gehalten, nicht während der Eingabe.**
+    `state.lock` ist ein `threading.Lock`, kein RLock: hier lag vorher der
+    ganze Dialog samt `safe_input()` darunter — und `capture` rief
+    `_capture_template_for_item()`, das den Lock ein zweites Mal nimmt. Der
+    Main-Thread stand damit auf sich selbst, und mit ihm jeder Hotkey: das
+    Programm liess sich nur noch von aussen beenden.
+    """
     templates_dir = active_templates_dir(state)
     try:
         item_num = int(cmd[9:])
-        with state.lock:
-            item_names = list(state.global_items.keys())
-            if 1 <= item_num <= len(item_names):
-                name = item_names[item_num - 1]
-                item = state.global_items[name]
-
-                templates = list(templates_dir.glob("*.png")) if templates_dir.exists() else []
-                if templates:
-                    print("\n  Verfügbare Templates:")
-                    for i, t in enumerate(sorted(templates)):
-                        print(f"    {i+1}. {t.name}")
-
-                current = ", ".join(item.template_names()) or "Keins"
-                print(f"\n  Item: {item.name}")
-                print(f"  Aktuelles Template: {current}")
-                print(f"  Aktuelle Konfidenz: {item.min_confidence:.0%}")
-
-                print("\n  Optionen:")
-                print("    <Dateiname.png> - Template setzen")
-                print("    <Nr>            - Template aus Liste wählen")
-                print("    capture         - Screenshot als Template speichern")
-                print("    remove          - Template entfernen")
-                print("    Enter           - Abbrechen")
-
-                template_input = safe_input("  Template: ").strip()
-                if not template_input:
-                    return
-
-                if template_input.lower() == "remove":
-                    item.template = None
-                    item.template_variants.clear()
-                    print("  + Alle Vorlagen entfernt!")
-                elif template_input.lower() == "capture":
-                    _capture_template_for_item(state, item)
-                else:
-                    _assign_template_to_item(item, template_input, templates)
-            else:
-                print("  -> Ungültiges Item!")
     except ValueError:
         print("  -> Format: template <Nr>")
+        return
+    with state.lock:
+        item_names = list(state.global_items.keys())
+        item = (state.global_items[item_names[item_num - 1]]
+                if 1 <= item_num <= len(item_names) else None)
+    if item is None:
+        print("  -> Ungültiges Item!")
+        return
+
+    templates = list(templates_dir.glob("*.png")) if templates_dir.exists() else []
+    if templates:
+        print("\n  Verfügbare Templates:")
+        for i, t in enumerate(sorted(templates)):
+            print(f"    {i+1}. {t.name}")
+
+    current = ", ".join(item.template_names()) or "Keins"
+    print(f"\n  Item: {item.name}")
+    print(f"  Aktuelles Template: {current}")
+    print(f"  Aktuelle Konfidenz: {item.min_confidence:.0%}")
+
+    print("\n  Optionen:")
+    print("    <Dateiname.png> - Template setzen")
+    print("    <Nr>            - Template aus Liste wählen")
+    print("    capture         - Screenshot als Template speichern")
+    print("    remove          - Template entfernen")
+    print("    Enter           - Abbrechen")
+
+    template_input = safe_input("  Template: ").strip()
+    if not template_input:
+        return
+
+    if template_input.lower() == "remove":
+        with state.lock:
+            item.template = None
+            item.template_variants.clear()
+        print("  + Alle Vorlagen entfernt!")
+    elif template_input.lower() == "capture":
+        _capture_template_for_item(state, item)
+    else:
+        # Fragt selbst nach der Konfidenz — also nicht unter dem Lock. Der
+        # Worker laeuft waehrend des Editors ohnehin nicht (_block_if_running).
+        _assign_template_to_item(item, template_input, templates)
 
 
 def _capture_template_for_item(state: AutoClickerState, item) -> None:

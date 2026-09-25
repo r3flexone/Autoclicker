@@ -121,6 +121,12 @@ META: dict = {
     "failsafe_y": M(
         "Fail-Safe Y", CONTROL_INT, "Löst aus, sobald die Maus-Y-Koordinate "
         "kleiner oder gleich diesem Wert ist.", unit="px", dep="failsafe_enabled"),
+    "session_max_hours": M(
+        "Laufzeit maximal", CONTROL_FLOAT,
+        "Nach so vielen Stunden endet der Lauf sanft: der laufende Zyklus wird "
+        "fertig, danach läuft die END-Phase — wie CTRL+ALT+F. Gezählt wird die "
+        "Uhrzeit seit dem Start, Pausen eingeschlossen.",
+        unit="h", empty="unbegrenzt"),
 
     # === PIXEL-ERKENNUNG ===
     "punkt_radius": M(
@@ -398,12 +404,6 @@ META: dict = {
         "Pausendauer max", CONTROL_FLOAT, "Obere Grenze der Pausendauer.",
         unit="min", dep="humanize_enabled"),
 
-    # === AUFNAHME ===
-    "record_scroll": M(
-        "Mausrad aufzeichnen", CONTROL_BOOL,
-        "Aus für Spiele, in denen das Rad nur die Ansicht dreht — solche "
-        "Drehungen blähen die Aufnahme auf, ohne etwas zu bewirken."),
-
     # === SESSION-LOG ===
     "session_log_enabled": M(
         "Session-Log", CONTROL_BOOL,
@@ -442,7 +442,7 @@ META: dict = {
         "setzen — so sieht man, ob überhaupt die richtige Stelle geprüft wird."),
     "debug_save_templates": M(
         "Scan-Bilder sichern", CONTROL_BOOL,
-        "Legt Slot-Ausschnitt und Template bei jedem Vergleich in items/debug/ "
+        "Legt Slot-Ausschnitt und Template bei jedem Vergleich in screenshots/debug/ "
         "ab. Zum Nachsehen, warum ein Item nicht erkannt wird — füllt den "
         "Ordner schnell."),
 }

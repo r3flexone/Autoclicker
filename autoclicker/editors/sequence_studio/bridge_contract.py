@@ -79,7 +79,6 @@ _FIELDS = {
     "boss_watcher": lambda v: str(v or ""),
     "wait_only": lambda v: bool(v),
     "breakpoint": lambda v: bool(v),
-    "scroll": lambda v: (int(v) if int(v or 0) != 0 else None),
 }
 
 
@@ -100,7 +99,9 @@ def _wait_text(step: SequenceStep) -> str:
     if step.delay_max and step.delay_max > step.delay_before:
         return f"{step.delay_before:g}–{step.delay_max:g}s zufällig"
     if step.delay_before:
-        return f"+{step.delay_before:g}s"
+        # Ohne „+": die Zeile trägt das Etikett WARTE, das Vorzeichen sagte
+        # dasselbe noch einmal.
+        return f"{step.delay_before:g}s"
     return "sofort"
 
 

@@ -161,7 +161,6 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(mutated, [b"neues Bild"])
         self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
-        self.assertEqual(state.sequences, {})
         self.assertEqual((original / "sequence.json").read_bytes(), before)
         self.assertFalse((original / "templates/neu.png").exists())
         self.assertFalse(Path("sequences/defekt").exists())
@@ -215,13 +214,10 @@ class ImportExportSecurityTest(unittest.TestCase):
             # nachdem "Bestand" bereits ersetzt wurde.
             zf.writestr("sequences/ZDefekt/templates/item.png", b"beliebig")
         state = AutoClickerState()
-        inventory = Sequence(name="Bestand")
-        state.sequences[inventory.name] = inventory
 
         ok, _ = import_bundle(state, "bundle.zip", import_config=False)
 
         self.assertFalse(ok)
-        self.assertEqual(list(state.sequences), ["Bestand"])
         self.assertEqual(marker.read_text(encoding="utf-8"), '{"name": "Alt"}')
         self.assertEqual(template.read_bytes(), b"altes bild")
 
@@ -247,12 +243,8 @@ class ImportExportSecurityTest(unittest.TestCase):
         transform = {"scale_x": 2.0, "scale_y": 2.0,
                      "offset_x": 5, "offset_y": 7}
         state = AutoClickerState()
-        ok, _ = import_bundle(
-            state, "bundle.zip", transform=transform,
-            import_points=False, import_sequences=False, import_items=False,
-            import_boss_scans=False, import_icon_scans=False,
-            import_config=False,
-        )
+        ok, _ = import_bundle(state, "bundle.zip", transform=transform,
+                              import_config=False)
 
         self.assertTrue(ok)
         # Der Besitzordner heisst, was `sanitize_filename()` daraus macht
@@ -270,7 +262,6 @@ class ImportExportSecurityTest(unittest.TestCase):
     def test_calibration_moves_slot_and_its_window_anchor_together(self):
         state = AutoClickerState()
         sequence = Sequence(name="Farm")
-        state.sequences[sequence.name] = sequence
         state.active_sequence = sequence
         slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
         state.global_slots[slot.name] = slot

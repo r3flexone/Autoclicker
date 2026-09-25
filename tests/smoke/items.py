@@ -248,7 +248,7 @@ def run():
                f"die Liste sortiert beim Tippen um: {before_prio} -> {after_prio}")
         # Gegenprobe zur Gegenprobe: der Knopf muss sie sehr wohl umsortieren,
         # sonst misst der Test oben nur eine Liste, die sich ohnehin nicht regt.
-        f.click_text("#scan-insp .scan-header button", "↕ Sortieren")
+        f.click_text("#scan-insp .scan-header button", "Sortieren")
         sortiert = f.page.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
         expect(sortiert != before_prio,

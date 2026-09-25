@@ -1006,13 +1006,13 @@ class ScanLearningMixin:
             return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
         if not any(slot.enabled for slot in self._scan_slots()):
             return self._scan_report("Keine aktiven Slots vorhanden.", "warn")
-        found, checked, tolerance, _, total = self._detect_run()
+        found, checked, tolerance, total = self._detect_run()
         return self._scan_report(
             f"{found} von {total} Slot(s) erkannt "
             f"(Toleranz {tolerance}, {checked} Item(s) geprüft).")
 
     def _detect_run(self) -> tuple:
-        """Füllt `_matches`; liefert `(gefunden, geprüft, Toleranz, fremd, gesamt)`.
+        """Füllt `_matches`; liefert `(gefunden, geprüft, Toleranz, gesamt)`.
 
         Getrennt von `scan_recognize()`, weil es zwei Anlässe gibt und nur einer eine
         eigene Meldung schreibt — die Rechnung darf es trotzdem nur einmal geben.
@@ -1049,9 +1049,8 @@ class ScanLearningMixin:
                 self._matches[slot.name] = {
                     "name": match.name,
                     "color": hex_color(match.marker_colors[0]) if match.marker_colors else None,
-                    "foreign": False,
                 }
-        return found, len(candidates), tolerance, 0, len(slots)
+        return found, len(candidates), tolerance, len(slots)
 
     def _candidates(self) -> list:
         """Welche Items geprüft werden — die des gewählten Scans, sonst alle.

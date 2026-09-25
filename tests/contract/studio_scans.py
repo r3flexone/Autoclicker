@@ -467,10 +467,10 @@ try:
                 check("und die Meldung sagt, was noch unbekannt ist",
                       "bekanntem Item" in _z18["status"]["text"]
                       and "unbekannt" in _z18["status"]["text"])
-                # Der Treffer gehoert zum offenen Scan (das Lernen hat ihn
-                # eingetragen), ist also NICHT fremd.
-                check("ein Item des offenen Scans gilt nicht als fremd",
-                      _green18[0]["match"].get("foreign") is False)
+                # Es gibt kein „fremd" mehr: der Treffer traegt nur Name und
+                # Farbe. Ein drittes Feld, das immer False war, ist weg.
+                check("der Treffer traegt kein totes foreign-Feld",
+                      "foreign" not in _green18[0]["match"])
 
                 # --- Ein neuer Scan faengt leer an, erkannte tauchen auf ---
                 # Vorher standen im Inspektor eines frischen Scans alle Slots
@@ -497,7 +497,7 @@ try:
                 _z18 = _b18.scan_data()
 
                 check("ein Item des Scans braucht keinen Mitgliedschaftsschalter",
-                      all(s["match"].get("foreign") is False for s in _green18))
+                      all("foreign" not in s["match"] for s in _green18))
                 _b18.slots.pop("Draussen", None)
                 _b18.items.clear()
                 _b18.items.update(_items_before18)
@@ -1067,7 +1067,7 @@ try:
     check("Alle ein schaltet wirklich jedes Item ein",
           all(i.enabled for i in _bN.items.values()))
     check("der wechselnde Sammelknopf steht direkt bei der Sortierung",
-          '"↕ Sortieren"' in _html18
+          'icon("sort"), "Sortieren"' in _html18
           and 'anyOn ? "Alle aus" : "Alle ein"' in _html18
           and 'const anyOn = entries.some((e) => !!e.active)' in _html18
           and '{kind: kind, active: !anyOn}' in _html18)
@@ -1396,7 +1396,7 @@ check("und der Wechsel wird an der Maske angesagt",
 # und dort ist die Kategorie wieder der erste Schluessel.
 check("frisch geordnet gruppiert wieder nach Kategorie",
       ': ((a.category || "").localeCompare(b.category || "", "de")' in _html18)
-check("es gibt einen Knopf dafuer", '"↕ Sortieren"' in _html18)
+check("es gibt einen Knopf dafuer", 'icon("sort"), "Sortieren"' in _html18)
 # Der Phasen-Papierkorb stand früher in einer zu breiten Werkzeugzeile und lief
 # optisch unter END. Loop-Phasen werden wie Blöcke ausgewählt und mit Entf
 # gelöscht; ein zweiter Löschweg in der Kachel wäre nur wieder uneindeutig.
@@ -1432,7 +1432,7 @@ check("mit eigenem Hintergrund", "background:var(--panel)}" in
 # Beschriftung: sie wurde zweizeilig, wechselte bei jeder Aenderung ihre Laenge,
 # und was der Knopf TUT, musste man aus ihr heraussuchen.
 check("der Rueckgaengig-Knopf traegt einen festen Namen",
-      '"↶ Zurück")));' in _html18)
+      'icon("undo"), "Zurück")));' in _html18)
 check("und die Beschreibung steht im Tooltip",
       '"STRG+Z — nimmt zurück: " + SC.undo.what' in _html18)
 # Der Schalter bekommt dieselbe Flaeche wie seine Nachbarn — sonst haengt er als

@@ -11,20 +11,13 @@ from ..models import ClickPoint, ItemScanConfig, AutoClickerState
 from .migration import KIND_ITEM_SCAN, migrate
 from .sequences import sequence_dir
 from .serialization import _item_scan_from_dict, _item_scan_to_dict
-from ._scan_store import ensure_dir, write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
+from ._scan_store import write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
 
 def _item_scans_dir(owner: str) -> Path:
     return sequence_dir(owner) / "item_scans"
-
-
-def ensure_item_scans_dir(owner: str = "") -> Path:
-    """Stellt sicher, dass der Item-Scans-Ordner existiert."""
-    if not owner:
-        return Path("sequences")
-    return ensure_dir(_item_scans_dir(owner))
 
 
 def save_item_scan(config: ItemScanConfig) -> bool:
@@ -127,10 +120,10 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             bosses += list(cfg.bosses)
         icons = list(state.icon_scans.values())
 
-    def fetch_value(pid, wo):
+    def fetch_value(pid, where):
         point = points.get(pid)
         if point is None:
-            messages.append(f"{wo} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
+            messages.append(f"{where} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
                              f"- Klick entfaellt")
         return point
 

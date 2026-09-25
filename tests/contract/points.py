@@ -39,16 +39,15 @@ _cwd = _os.getcwd()
 _os.chdir(_sandbox)
 try:
     Path("sequences").mkdir(exist_ok=True)
-    from autoclicker.persistence import list_available_sequences, save_data
+    from autoclicker.persistence import list_available_sequences, save_sequence_file, sequence_file
 
     def _bridge(steps, points):
         st = _ST()
         seq = _SEQ(name="Farm", loop_phases=[_PHASE(name="A", steps=steps)],
                    points=points)
-        st.sequences["Farm"] = seq
         st.active_sequence = seq
         st.points = seq.points
-        save_data(st)
+        save_sequence_file(seq, sequence_file(seq.name))
         return _SB(seq, dict(list_available_sequences())["Farm"], "sequences")
 
     def _choose(b, *rows):
@@ -210,10 +209,9 @@ try:
     _seq = _SEQ(name="Konsole",
                 loop_phases=[_PHASE(name="A", steps=[_STEP(point_id=1)])],
                 points=[_CP(id=1, x=11, y=22, name="Bank")])
-    _st.sequences["Konsole"] = _seq
     _st.active_sequence = _seq
     _st.points = _seq.points
-    save_data(_st)
+    save_sequence_file(_seq, sequence_file(_seq.name))
 
     _old = (_ED.safe_input, _LOOPS.safe_input, _STEPS.safe_input)
     _ED.safe_input = _LOOPS.safe_input = _STEPS.safe_input = _next
@@ -258,9 +256,8 @@ try:
         _STEP(icon_scan="lupe", name="Icon:lupe"),
         _STEP(boss_scan="wache", name="Mein eigener Name"),
     ])])
-    _st_ref.sequences["Ref"] = _seq_ref
     _st_ref.active_sequence = _seq_ref
-    save_data(_st_ref)
+    save_sequence_file(_seq_ref, sequence_file(_seq_ref.name))
     _br = _SB(_seq_ref, dict(list_available_sequences())["Ref"], "sequences")
     with _cl_ref.redirect_stdout(_io_ref.StringIO()):
         _br._scan_load()
@@ -329,7 +326,14 @@ _cards = _br_pf.snapshot()["phases"][1]["blocks"]
 check("ein Klick-Block traegt die Farbe seines Punkts",
       _cards[0]["point_color"] == "#20876F")
 check("und die Stelle steht in seiner ersten Zeile",
-      _cards[0]["rows"][0].startswith("#1 "))
+      _cards[0]["rows"][0]["text"].startswith("#1 "))
+# **Jede Zeile traegt ein Etikett.** Bei fuenfzig Karten untereinander findet
+# das Auge „WARTE" schneller als „1.5s" - und ohne Etikett musste man das
+# Vorzeichen als Wartezeit erkennen.
+check("jede Zeile hat ein Etikett und einen Wert",
+      all(set(z) == {"label", "text"} and z["label"] for c in _cards for z in c["rows"]))
+check("die erste Zeile eines Klicks heisst STELLE, die Taste TASTE",
+      _cards[0]["rows"][0]["label"] == "STELLE" and _cards[2]["rows"][0]["label"] == "TASTE")
 check("ohne gemessene Farbe kein Feldchen", _cards[1]["point_color"] is None)
 check("ein Block ohne Punkt hat keins", _cards[2]["point_color"] is None)
 check("FARBE+KLICK traegt beides: Punktfarbe und Bedingung",
@@ -340,6 +344,47 @@ check("die Ansicht haengt das Feldchen an die erste Zeile",
       "block.point_color" in _web_pf and "card-row with-color" in _web_pf)
 check("und zeichnet es wie das an der Bedingung",
       ".card-row .swatch,\n.card-color .swatch{" in _web_pf)
+
+# ----------------------------------------------------------------------
+section("Die Schrift auf der Typfarbe ist lesbar")
+
+# Die Kopfzeile traegt die Typfarbe ueber die volle Breite, und die Schrift
+# darauf war fest dunkel (#0C0F14) - auf Boss-Watcher (140, 40, 45) sind das
+# 2,2:1, auf Boss-Scan 3,9, auf Klick/Warten/Screenshot rund 4,2. Die Farbe
+# folgt deshalb der Leuchtdichte der Flaeche, und die Bruecke liefert sie mit.
+from autoclicker.editors.sequence_studio.model import (
+    BLOCK_COLORS as _BC_INK, INK_DARK as _DARK, INK_LIGHT as _LIGHT, ink_color as _ink,
+)
+
+
+def _lum(rgb):
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast(a, b):
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+_ink_lum = {_DARK: _lum((12, 15, 20)), _LIGHT: _lum((255, 255, 255))}
+_weak = {name: round(_contrast(_lum(rgb), _ink_lum[_ink(rgb)]), 2)
+         for name, rgb in _BC_INK.items()
+         if _contrast(_lum(rgb), _ink_lum[_ink(rgb)]) < 4.5}
+check(f"auf jeder Typfarbe erreicht die Schrift 4,5:1 ({_weak or 'alle'})", not _weak)
+check("dunkle Flaechen bekommen helle Schrift, helle dunkle",
+      _ink((140, 40, 45)) == _LIGHT and _ink((215, 185, 60)) == _DARK)
+check("Unbrauchbares ergibt die Grundfarbe statt eines Fehlers",
+      _ink(None) == _DARK and _ink("x") == _DARK)
+check("jede Karte und jede Typ-Kachel bringt ihre Schriftfarbe mit",
+      all(c["ink"] in (_DARK, _LIGHT) for c in _cards)
+      and all(t["ink"] in (_DARK, _LIGHT) for t in _br_pf.snapshot()["types"]))
+check("und die Ansicht benutzt sie statt einer festen Farbe",
+      '";color:" + block.ink' in _web_pf and '";color:" + t.ink' in _web_pf
+      and "#0C0F14" not in _web_pf.split(".card-type{")[1].split(".card-body{")[0])
 
 # ----------------------------------------------------------------------
 section("Ein geteilter Punkt sagt, dass er geteilt ist")
@@ -410,3 +455,139 @@ check("ein zweites Abtrennen tut nichts und sagt es",
 _web_gp = _web_src()
 check("die Ansicht zeigt die Verwendungen und den Abtrennen-Knopf",
       "b.point_others" in _web_gp and 'call("point_detach")' in _web_gp)
+
+
+# =============================================================================
+section("Laden aendert keine Daten: tote Nachpruefung und toter Else-Klick bleiben")
+# =============================================================================
+# `resolve()` setzte beim LADEN `verify_condition = None` bzw. `else.action =
+# skip` — Modellzustand, den das naechste Speichern in die Datei schrieb. Ein
+# Aufraeumer, der ungefragt an fremden Daten arbeitet, ist stiller
+# Datenverlust; `point_id` und die Vorbedingung behandelte derselbe Code
+# richtig (nur ein Flag). Jetzt gilt das fuer alle vier Referenzen.
+import contextlib as _cl_r
+import io as _io_r
+from autoclicker.persistence import resolve as _resolve
+from autoclicker.persistence.serialization import _step_to_dict as _s2d_r
+import autoclicker.runtime.steps as _stp_r
+import autoclicker.runtime.actions as _act_r
+
+_seq_r = _SEQ("r", points=[_CP(5, 5, "P1", 1)], loop_phases=[_PHASE("L", steps=[
+    _STEP(point_id=1, delay_before=0,
+          verify_condition=_WAIT(point_id=99),
+          else_config=_ELSE(action="click", point_id=98))])])
+_step_r = _seq_r.loop_phases[0].steps[0]
+_messages_r = _resolve({p.id: p for p in _seq_r.points}, _seq_r, quiet=True)
+check("beide toten Referenzen werden gemeldet",
+      any("#99" in m for m in _messages_r) and any("#98" in m for m in _messages_r))
+check("die Nachpruefung bleibt am Schritt — als unaufgeloest markiert",
+      _step_r.verify_condition is not None and _step_r.verify_condition.unresolved is True)
+check("der Else-Klick bleibt ein Klick auf #98 — als unaufgeloest markiert",
+      _step_r.else_config.action == "click" and _step_r.else_config.point_id == 98
+      and _step_r.else_config.unresolved is True)
+_saved_r = _s2d_r(_step_r)
+check("und das Speichern schreibt beide unveraendert zurueck",
+      _saved_r.get("verify_point_id") == 99 and _saved_r.get("else_point_id") == 98
+      and _saved_r.get("else_action") == "click" and "unresolved" not in str(_saved_r))
+check("der Schritt selbst laeuft weiter (Zusatz, keine Vorbedingung)",
+      _step_r.unresolved is False)
+
+# Zur Laufzeit: nicht geprueft, nicht geklickt — aber auch nicht abgebrochen.
+_st_r = _ST()
+_st_r.is_running = True
+_calls_r = []
+_orig_r = (_act_r.send_click, _stp_r.check_failsafe, _stp_r.take_screenshot)
+try:
+    _act_r.send_click = lambda x, y, *a: _calls_r.append(("click", x, y)) or True
+    _stp_r.check_failsafe = lambda s: False
+    _stp_r.take_screenshot = lambda *a, **k: _calls_r.append(("shot",)) or None
+    with _cl_r.redirect_stdout(_io_r.StringIO()):
+        _ok_r = _stp_r.execute_step(_st_r, _step_r, 1, 1, "Loop")
+    check("der Klick laeuft, die tote Nachpruefung macht keinen Screenshot",
+          _ok_r is True and _calls_r == [("click", 5, 5)])
+    _calls_r.clear()
+    _else_step = _STEP(point_id=1, delay_before=0,
+                       else_config=_ELSE(action="click", point_id=98, unresolved=True))
+    with _cl_r.redirect_stdout(_io_r.StringIO()):
+        _ok_r = _act_r.execute_else_action(_st_r, _else_step, "Loop", 1, 1)
+    check("ein toter Else-Klick wirkt wie skip statt auf (0, 0) zu klicken",
+          _ok_r is True and _calls_r == [])
+finally:
+    _act_r.send_click, _stp_r.check_failsafe, _stp_r.take_screenshot = _orig_r
+
+# Kommt der Punkt zurueck (Studio: Rueckgaengig), ist die Referenz wieder scharf.
+_seq_r.points.append(_CP(7, 7, "P99", 99))
+_resolve({p.id: p for p in _seq_r.points}, _seq_r, quiet=True)
+check("taucht der Punkt wieder auf, ist die Nachpruefung wieder aktiv",
+      _step_r.verify_condition.unresolved is False
+      and _step_r.verify_condition.pixel == (7, 7))
+
+# =============================================================================
+section("Ein Schritt ohne Klick-Punkt wird wieder aufgeloest")
+# =============================================================================
+# `resolve()` setzte `unresolved` nur im Zweig mit Klick-Punkt zurueck. Ein
+# „Beobachten"-Schritt (nur Pruef-Pixel), dessen Punkt einmal fehlte, blieb
+# damit uebersprungen — auch nachdem der Punkt wieder da war, bis zum
+# naechsten Laden von der Platte.
+_seq_w = _SEQ("w", points=[], loop_phases=[_PHASE("L", steps=[
+    _STEP(wait_only=True, name="Beobachten", wait_condition=_WAIT(point_id=4))])])
+_step_w = _seq_w.loop_phases[0].steps[0]
+_resolve({p.id: p for p in _seq_w.points}, _seq_w, quiet=True)
+check("fehlt der Punkt des Pruef-Pixels, wird der Schritt uebersprungen", _step_w.unresolved)
+_seq_w.points.append(_CP(8, 9, "P4", 4, color=(1, 2, 3)))
+_resolve({p.id: p for p in _seq_w.points}, _seq_w, quiet=True)
+check("taucht er wieder auf, laeuft der Schritt wieder",
+      _step_w.unresolved is False and _step_w.wait_condition.pixel == (8, 9))
+
+# =============================================================================
+section("Punkte-Liste im Editor: ungenutzte Punkte direkt loeschen")
+# =============================================================================
+# Die Reste einer Aufnahme stehen dort als „0×" — loeschen liessen sie sich nur
+# im Werkzeuge-Reiter, und der zog die Liste nicht nach: der Punkt stand weiter
+# da, der Ungespeichert-Punkt fehlte, und das Loeschen sah wirkungslos aus.
+_seq_d = _SEQ("d", points=[_CP(10, 10, "benutzt", 1), _CP(20, 20, "Rest", 2)],
+              loop_phases=[_PHASE("L", steps=[_STEP(point_id=1)])])
+_b_d = _SB(_seq_d, Path("sequences/d/sequence.json"), "sequences")
+_b_d._dirty = False
+_snap_d = _b_d.point_delete({"point_id": 2})
+check("ein ungenutzter Punkt wird geloescht — die Momentaufnahme weiss es sofort",
+      [p.id for p in _b_d.points] == [1] and [p["id"] for p in _snap_d["points"]] == [1])
+check("die Sequenz gilt danach als ungespeichert", _b_d._dirty and _snap_d["dirty"])
+check("und die Meldung bietet Rueckgaengig an",
+      _snap_d["status"]["kind"] == "ok" and "#2" in _snap_d["status"]["text"])
+_b_d.undo()
+check("STRG+Z holt ihn zurueck", sorted(p.id for p in _b_d.points) == [1, 2])
+
+_snap_d = _b_d.point_delete({"point_id": 1})
+check("ein verwendeter Punkt bleibt — sein Block zeigte sonst ins Leere",
+      sorted(p.id for p in _b_d.points) == [1, 2]
+      and _snap_d["status"]["kind"] == "warn"
+      and "L · Block 1 · Stelle" in _snap_d["status"]["text"])
+check("Werkzeug und Liste verweigern mit derselben Regel",
+      _b_d.tool_point_delete({"point_id": 1})["ok"] is False
+      and _b_d.tool_point_delete({"point_id": 99})["message"] == "Punkt nicht gefunden.")
+
+_app_d = _web_src()
+_render_d = _app_d[_app_d.index("function renderPoints()"):]
+_render_d = _render_d[:_render_d.index("\nfunction ", 1)]
+check("die Liste bietet das Loeschen nur bei ungenutzten Punkten an",
+      'p.usages ? el("span", {class: "point-delete-slot"}) : el("button"' in _render_d
+      and 'call("point_delete", {point_id: p.id})' in _render_d)
+check("und der Knopf loest nicht zugleich das Hervorheben der Zeile aus",
+      "e.stopPropagation()" in _render_d)
+
+# Der Werkzeuge-Reiter: nach einer Punkt-Aktion holt die Seite die
+# Momentaufnahme nach — jede Punkt-Methode des Werkzeugs muss in der Liste
+# stehen, sonst bleibt genau sie stumm.
+import re as _re_d
+_tool_d = _app_d[_app_d.index("const TOOL_POINT_COMMANDS"):]
+_tool_d = _tool_d[:_tool_d.index("]);")]
+_listed_d = set(_re_d.findall(r'"(tool_points?_\w+)"', _tool_d))
+_bridge_d = {n for n in dir(_SB) if n.startswith(("tool_point_", "tool_points_"))
+             and n not in ("tool_point_show",)}
+check("jedes Punkt-Werkzeug, das aendert, zieht den Editor nach",
+      _listed_d == _bridge_d)
+_call_tool_d = _app_d[_app_d.index("async function callTool"):]
+_call_tool_d = _call_tool_d[:_call_tool_d.index("\n}\n")]
+check("und zwar ueber die Momentaufnahme — samt Hinweis aufs Speichern",
+      'await call("snapshot")' in _call_tool_d and "im Editor speichern" in _call_tool_d)

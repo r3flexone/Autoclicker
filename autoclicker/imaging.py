@@ -23,22 +23,43 @@ from .winapi import (
 logger = logging.getLogger("autoclicker")
 
 # Verzeichnisse (importiert aus persistence um Duplizierung zu vermeiden)
-from .persistence import ITEMS_DIR, TEMPLATES_DIR
+from .persistence import SEQUENCE_SCREENSHOTS_DIR
+
+# Vorlagenordner, wenn ein Aufrufer keinen mitgibt. Bewusst `None`: Vorlagen
+# liegen je Sequenz unter `sequences/<name>/templates/`, einen programmweiten
+# Ordner gibt es seit dem Umzug auf Besitzeinheiten nicht mehr. Hier stand als
+# Rueckfall `items/templates/` — ein Pfad, der absichtlich ins Leere zeigte,
+# „damit es auffaellt"; aufgefallen ist er als „Template nicht gefunden" im
+# Rauschen. Ohne Ordner gibt es jetzt keinen Pfad und eine Zeile, die das sagt.
+# Wer Vorlagen sucht, nimmt `active_templates_dir(state)` bzw.
+# `sequence_templates_dir(name)`; Tests setzen die Variable fuer einen Sandkasten.
+TEMPLATES_DIR: str | None = None
+_missing_root_reported = False
 
 
 def _template_path(template_name: str, template_root=None) -> str | None:
-    """Löst einen Template-Namen sicher innerhalb von ``TEMPLATES_DIR`` auf.
+    """Löst einen Template-Namen sicher innerhalb des Vorlagenordners auf.
 
     Scan-Dateien sind normale JSON-Dateien und können auch von Hand verändert
     werden. Absolute Pfade und ``..`` dürfen den Template-Ordner deshalb niemals
-    verlassen.
+    verlassen. Ohne Ordner (weder Argument noch `TEMPLATES_DIR`) gibt es keinen
+    Pfad — und einmal je Prozess eine Zeile, die den fehlenden Ordner nennt.
     """
+    global _missing_root_reported
     if not isinstance(template_name, str) or not template_name.strip():
         return None
     relative = Path(template_name)
     if relative.is_absolute():
         return None
-    root = Path(template_root or TEMPLATES_DIR).resolve()
+    base = template_root or TEMPLATES_DIR
+    if not base:
+        if not _missing_root_reported:
+            _missing_root_reported = True
+            logger.warning("Vorlage '%s' ohne Vorlagenordner angefragt — der Aufrufer "
+                           "muss `template_root` mitgeben (sequence_templates_dir).",
+                           template_name)
+        return None
+    root = Path(base).resolve()
     candidate = (root / relative).resolve()
     try:
         candidate.relative_to(root)
@@ -78,6 +99,82 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int] | None:
     if not PILLOW_AVAILABLE:
         return None
     return get_screen_pixel(int(x), int(y))
+
+
+# Wie weit um einen aufgenommenen Klick die Fläche gemessen wird (in jede
+# Richtung). Gemessen an einer echten Aufnahme: sechs Klicks auf denselben
+# breiten Knopf lagen bis 55 px auseinander — ein Radius von 8 px legte dafür
+# fünf Punkte an. 64 reicht für den Knopf und kostet einen BitBlt über 129×129
+# Pixel (rund 12 ms, im Maus-Hook unbedenklich).
+SURFACE_RADIUS = 64
+
+
+def capture_surface(x: int, y: int) -> Optional[tuple]:
+    """`(links, oben, Bild)` um eine Stelle — oder `None` (kein Pillow, kein Bild).
+
+    Aufgenommen wird im Maus-Hook, also bevor das Spiel den Klick überhaupt
+    sieht: der Knopf steht noch so da, wie ihn der Klick getroffen hat.
+    """
+    left, top = int(x) - SURFACE_RADIUS, int(y) - SURFACE_RADIUS
+    try:
+        image = capture_screen((left, top, int(x) + SURFACE_RADIUS + 1,
+                                int(y) + SURFACE_RADIUS + 1))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if image is None:
+        return None
+    return left, top, image
+
+
+def click_surface(patch, x: int, y: int, color, tolerance: int) -> Optional[frozenset]:
+    """Die zusammenhängende Farbfläche um `(x, y)` — in Bildschirm-Koordinaten.
+
+    „Derselbe Knopf" ist keine Frage des Abstands, sondern der Fläche: zwei
+    Klicks auf einen breiten Knopf liegen weit auseinander, zwei gleichfarbige
+    Knöpfe übereinander dicht beieinander — aber zwischen ihnen liegt ein Rand
+    in anderer Farbe. Gefüllt wird deshalb vom Klick aus (4er-Nachbarschaft),
+    solange jede Farbe höchstens `tolerance` je Kanal von der Klickfarbe
+    abweicht. Beschriftung auf dem Knopf sind Löcher, um die herum gefüllt wird.
+
+    Verglichen wird mit der KLICKfarbe, nicht mit dem Nachbarpixel: sonst liefe
+    die Füllung über einen weichen Verlauf in die nächste Fläche hinein.
+    """
+    if patch is None or not color:
+        return None
+    left, top, image = patch
+    try:
+        width, height = image.size
+        data = image.convert("RGB").tobytes()
+    except (OSError, ValueError, AttributeError):
+        return None
+    cx, cy = int(x) - left, int(y) - top
+    if not (0 <= cx < width and 0 <= cy < height):
+        return None
+    r0, g0, b0 = (int(v) for v in color[:3])
+
+    def fits(index: int) -> bool:
+        o = index * 3
+        return (abs(data[o] - r0) <= tolerance and abs(data[o + 1] - g0) <= tolerance
+                and abs(data[o + 2] - b0) <= tolerance)
+
+    start = cy * width + cx
+    if not fits(start):
+        return None
+    seen = bytearray(width * height)
+    seen[start] = 1
+    stack = [start]
+    area = []
+    while stack:
+        index = stack.pop()
+        area.append(index)
+        px, py = index % width, index // width
+        for neighbor, inside in ((index - 1, px > 0), (index + 1, px < width - 1),
+                                 (index - width, py > 0), (index + width, py < height - 1)):
+            if inside and not seen[neighbor]:
+                seen[neighbor] = 1
+                if fits(neighbor):
+                    stack.append(neighbor)
+    return frozenset((left + i % width, top + i // width) for i in area)
 
 
 def color_distance(c1: tuple, c2: tuple) -> float:
@@ -346,9 +443,11 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
             logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_at_size(template_path, template_cv, iw, ih)
 
-        # Debug: Scan-Bild und Template speichern zum Vergleich
+        # Debug: Scan-Bild und Template speichern zum Vergleich. Unter den
+        # Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit dem
+        # Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
         if CONFIG.debug_save_templates:
-            debug_dir = os.path.join(ITEMS_DIR, "debug")
+            debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
             os.makedirs(debug_dir, exist_ok=True)
             # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
             base_name = Path(template_path).stem

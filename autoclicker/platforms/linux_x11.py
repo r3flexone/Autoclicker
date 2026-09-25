@@ -14,7 +14,7 @@ import threading
 import time
 
 from .common import (
-    APP_ID, HOTKEY_BINDINGS, KEY_NAMES, PlatformError, WHEEL_STEP,
+    APP_ID, HOTKEY_BINDINGS, KEY_NAMES, PlatformError,
 )
 from ..config import CONFIG
 from ..utils import err, warn
@@ -180,24 +180,6 @@ def send_click(x: int, y: int, move_delay: float = 0.01,
         return False
 
 
-def send_scroll(clicks: int, x: int = None, y: int = None,
-                move_delay: float = 0.01, post_delay: float = 0.05) -> bool:
-    if not clicks:
-        return True
-    try:
-        _, mouse = _pynput()
-        controller = mouse.Controller()
-        if x is not None and y is not None:
-            controller.position = (int(x), int(y))
-            time.sleep(max(0.0, move_delay))
-        controller.scroll(0, int(clicks))
-        time.sleep(max(0.0, post_delay))
-        return True
-    except (ImportError, OSError, RuntimeError) as error:
-        logger.error("Linux-Scrollen fehlgeschlagen: %s", error)
-        return False
-
-
 def _keyboard_key(keyboard, name: str):
     special_keys = {
         "enter": keyboard.Key.enter, "return": keyboard.Key.enter,
@@ -230,7 +212,7 @@ def send_key(key_name: str) -> bool:
         return False
 
 
-def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
+def install_mouse_hook(on_lbutton_down, on_rbutton_down=None) -> bool:
     global _mouse_listener
     if _mouse_listener is not None:
         return True
@@ -238,14 +220,14 @@ def install_mouse_hook(on_lbutton_down, on_wheel=None) -> bool:
         _, mouse = _pynput()
 
         def on_click(x, y, button, pressed):
-            if pressed and button == mouse.Button.left:
+            if not pressed:
+                return
+            if button == mouse.Button.left:
                 on_lbutton_down(int(x), int(y), get_screen_pixel(int(x), int(y)))
+            elif button == mouse.Button.right and on_rbutton_down is not None:
+                on_rbutton_down(int(x), int(y))
 
-        def on_scroll(x, y, _dx, dy):
-            if on_wheel is not None:
-                on_wheel(int(x), int(y), int(dy) * WHEEL_STEP)
-
-        _mouse_listener = mouse.Listener(on_click=on_click, on_scroll=on_scroll)
+        _mouse_listener = mouse.Listener(on_click=on_click)
         _mouse_listener.start()
         return True
     except (ImportError, OSError, RuntimeError) as error:
