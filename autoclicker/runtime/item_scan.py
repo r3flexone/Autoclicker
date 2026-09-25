@@ -25,7 +25,7 @@ from ..editors.scan_services import (
     crop_screen_region, map_point_between_rects, map_region_between_rects,
 )
 from ..session_log import log_event
-from ..utils import col, err, dbg, warn, sanitize_filename
+from ..utils import col, err, dbg, info, warn, sanitize_filename
 from ..winapi import set_cursor_pos, get_screen_center, resolve_window
 from .actions import safe_click, wait_while_paused
 from .debug import is_log_debug
@@ -390,6 +390,20 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     versprach; dort lag das Item ausserhalb jedes Scans, heute gibt es dieses
     Ausserhalb nicht mehr.
 
+    **Und das gilt fuer JEDE Vorlage, nicht nur fuer neue Items.** Findet die
+    Dedup-Pruefung ein bekanntes Item nur ueber eine skalierte Vorlage (anderer
+    Slot-Typ), wurde die neue Groesse als Variante an dieses Item gehaengt — und
+    war es eingeschaltet, klickte der naechste Zyklus sie ungeprueft. Genau das
+    Ergebnis, das `_check_profile_match()` fuer Items ausdruecklich verweigert
+    („keine halbgueltigen Resize-Ergebnisse"). An ein EINGESCHALTETES Item wird
+    deshalb nichts gehaengt; die Vorlage wird ein eigenes, geparktes Item, und
+    die Meldung nennt, wem es aehnelt. Zusammenlegen ist dann eine Entscheidung
+    im Studio („Namen vorschlagen" haengt ein gleichnamiges Doppel als Variante
+    an). An ein GEPARKTES Item darf die Variante direkt — es wird ja ohnehin
+    erst nach dem Hinsehen eingeschaltet.
+
+    **Auto-Lernen aendert also nie, was geklickt wird.**
+
     Dedup per Template-Matching gegen alle Items des Scans (auch geparkte);
     Slots, die nur die Hintergrundfarbe zeigen, gelten als leer.
     """
@@ -424,10 +438,18 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     templates_folder = active_templates_dir(state)
     known = _find_matching_existing_item(img, existing, min_confidence,
                                          templates_folder)
+    resembles = None
     if known:
         known_item = next((it for name, it in existing if name == known), None)
-        if known_item is not None and not _item_has_compatible_template(
-                known_item, img, templates_folder):
+        needs_variant = known_item is not None and not _item_has_compatible_template(
+            known_item, img, templates_folder)
+        with state.lock:
+            known_active = known_item is not None and known_item.enabled
+        if needs_variant and known_active:
+            # Nur ueber eine skalierte Vorlage erkannt — ungeprueft an ein
+            # Item gehaengt, das geklickt wird, waere es sofort scharf.
+            resembles = known
+        elif needs_variant:
             width, height = img.size
             base_name = f"{sanitize_filename(known)}_{width}x{height}"
             template_file = f"{base_name}.png"
@@ -447,12 +469,13 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
                 if template_file not in known_item.template_variants:
                     known_item.template_variants.append(template_file)
             _save_learned(config)
-            print(col(f"[AUTO-LERNEN] '{known}' kann jetzt auch in "
+            print(col(f"[AUTO-LERNEN] '{known}' (geparkt) kann jetzt auch in "
                       f"{width}×{height}-Slots erkannt werden", "green"))
             return
-        if debug:
-            print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
-        return
+        else:
+            if debug:
+                print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
+            return
 
     # Schnellen Namen vergeben — KEIN LLM während des Scans (würde den Worker
     # pro Item bis zu llm_timeout Sekunden blockieren). Sinnvolle Namen vergibt
@@ -501,6 +524,12 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} in Scan "
               f"'{config.name}' geparkt (Kategorie 'Auto', aus — im Studio "
               "einschalten)", "green"))
+    if resembles:
+        width, height = img.size
+        print(info(f"Ähnelt '{resembles}' (dort keine {width}×{height}-Vorlage) — "
+                   f"nicht angehängt, weil '{resembles}' eingeschaltet ist und "
+                   "sonst ungeprüft geklickt würde. Im Studio ansehen, dann "
+                   "einschalten oder löschen."))
 
 
 def _save_learned(config) -> bool:

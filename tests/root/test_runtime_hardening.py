@@ -509,6 +509,51 @@ class RuntimeHardeningTest(unittest.TestCase):
         flush_item_scan_context(state)
         self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
 
+    def _learn_size_variant(self, known_item):
+        """Ein Slot in neuer Groesse, den die Dedup-Pruefung nur skaliert erkennt."""
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        scan = ItemScanConfig(name="Beutel", items=[known_item], owner_sequence="farm")
+        slot = ItemSlot("Slot 7", (0, 0, 62, 57), (31, 28))
+        image = Mock(size=(62, 57))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                      return_value=(image, [(1, 2, 3)], False)), \
+                patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                      return_value=known_item.name), \
+                patch("autoclicker.editors.item_editor.markers._item_has_compatible_template",
+                      return_value=False), \
+                patch("autoclicker.persistence.active_templates_dir",
+                      return_value=Path(directory)), \
+                patch("autoclicker.persistence.save_item_scan"):
+            item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
+        return scan
+
+    def test_auto_lernen_haengt_keine_variante_an_ein_eingeschaltetes_item(self):
+        """Nur skaliert erkannt = ungeprueft. An ein Item, das geklickt wird, darf
+        das nicht — sonst klickt der naechste Zyklus eine Vorlage, die niemand
+        angesehen hat. Sie wird ein eigenes, geparktes Item."""
+        bow = ItemProfile(name="Bogen", template="bogen_62x60.png")
+        scan = self._learn_size_variant(bow)
+        self.assertEqual(bow.template_variants, [], "das eingeschaltete Item bleibt, wie es war")
+        self.assertTrue(bow.enabled)
+        self.assertEqual([it.name for it in scan.items], ["Bogen", "Auto Slot 7"])
+        learned = scan.items[1]
+        self.assertFalse(learned.enabled, "gelernt heisst geparkt, auch als Variante")
+        self.assertEqual(learned.category, "Auto")
+        self.assertEqual([it.name for it in scan.items if it.enabled], ["Bogen"],
+                         "Auto-Lernen aendert nie, was geklickt wird")
+
+    def test_auto_lernen_haengt_die_variante_an_ein_geparktes_item(self):
+        """Ein geparktes Item wird ohnehin erst nach dem Hinsehen eingeschaltet —
+        dort darf die neue Groesse direkt dazu, statt ein Doppel anzulegen."""
+        parked = ItemProfile(name="Auto Slot 1", template="auto_slot_1.png", enabled=False)
+        scan = self._learn_size_variant(parked)
+        self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
+        self.assertEqual(parked.template_variants, ["auto_slot_1_62x57.png"])
+        self.assertFalse(parked.enabled)
+
     def test_geparkte_items_werden_im_scan_nicht_geklickt_aber_dedupliziert(self):
         """Der Scan sieht nur eingeschaltete Items; die Dedup-Liste alle."""
         state = AutoClickerState()
