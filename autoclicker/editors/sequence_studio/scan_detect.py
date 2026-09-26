@@ -43,7 +43,10 @@ from ...persistence.boss_scans import boss_scan_name_allowed
 from .model import hex_color, rgb_value
 from .scan_contract import (
     KIND_ITEM,
+    clean_scan_name,
+    free_scan_name,
     rename_references,
+    scan_name_taken,
     MIN_REGION,
     MODE_ACTION,
     MODE_REGION,
@@ -332,8 +335,8 @@ class ScanDetectMixin:
     def boss_scan_new(self, data: Optional[dict] = None) -> dict:
         """Ein neuer Boss-Scan — leer, mit eindeutigem Namen, sofort offen."""
         self._scan_load()
-        name = unique_name(str((data or {}).get("name") or "Neuer Boss-Scan"),
-                                self.boss_scans)
+        name = free_scan_name(clean_scan_name((data or {}).get("name"))
+                              or "Neuer Boss-Scan", self.boss_scans)
         if not boss_scan_name_allowed(name):
             return self._scan_report("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         self._remember("Boss-Scan angelegt")
@@ -578,8 +581,8 @@ class ScanDetectMixin:
     def icon_scan_new(self, data: Optional[dict] = None) -> dict:
         """Ein neuer Icon-Scan — das kleinste Modell: Region, Erkennung, Aktion."""
         self._scan_load()
-        name = unique_name(str((data or {}).get("name") or "Neuer Icon-Scan"),
-                                self.icon_scans)
+        name = free_scan_name(clean_scan_name((data or {}).get("name"))
+                              or "Neuer Icon-Scan", self.icon_scans)
         self._remember("Icon-Scan angelegt")
         self.icon_scans[name] = IconScanConfig(name=name, owner_sequence=self.board.name)
         self.icon_open = name
@@ -710,13 +713,14 @@ class ScanDetectMixin:
         Es läuft deshalb wie beim Item-Scan: Referenzen nachziehen, dann die
         alte Datei entfernen.
         """
-        new = sanitize_filename(str(value or "").strip())
+        new = clean_scan_name(value)
         if inventory is self.boss_scans and not boss_scan_name_allowed(new):
             return self._scan_report("'bibliothek' ist für die Boss-Bibliothek reserviert.", "err")
         if not new or new == cfg.name:
             return self.scan_data()
-        if new in inventory:
-            return self._scan_report(f"'{new}' gibt es schon.", "warn")
+        clash = scan_name_taken(new, inventory, old=cfg.name)
+        if clash:
+            return self._scan_report(f"'{clash}' gibt es schon.", "warn")
         self._remember(f"{word} '{cfg.name}' umbenannt")
         old = cfg.name
         new_inventory = {(new if k == old else k): v for k, v in inventory.items()}
@@ -731,6 +735,11 @@ class ScanDetectMixin:
         # Der Name IST die Referenz — Blöcke und Beschriftungen ziehen mit.
         hit = rename_references(self.board, "boss" if is_boss else "icon",
                                           old, new)
+        extra = f" ({hit}× in der Sequenz nachgezogen)" if hit else ""
+        # Nur Schreibweise geändert = dieselbe Datei; sie zu löschen hiesse,
+        # die einzige zu löschen (s. `scan_set` beim Item-Scan).
+        if sanitize_filename(old) == sanitize_filename(new):
+            return self._scan_changed(f"'{old}' heisst jetzt '{new}'.{extra}")
         subfolder = "boss_scans" if is_boss else "icon_scans"
         old_path = (self.filepath.parent / subfolder
                     / f"{sanitize_filename(old)}.json")
@@ -739,7 +748,6 @@ class ScanDetectMixin:
         except OSError:
             return self._scan_report(
                 f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
-        extra = f" ({hit}× in der Sequenz nachgezogen)" if hit else ""
         return self._scan_changed(f"'{old}' heisst jetzt '{new}'.{extra}")
 
     def _region_set(self, cfg, value, who: str) -> dict:

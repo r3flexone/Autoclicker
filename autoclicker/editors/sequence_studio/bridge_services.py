@@ -6,6 +6,7 @@ from typing import Optional
 
 from ...models import GATE_COMMANDS, LoopPhase, Sequence
 from ...persistence import (
+    free_sequence_name,
     list_available_sequences,
     load_sequence_file,
     save_sequence_file,
@@ -372,13 +373,17 @@ class BridgeServicesMixin:
         """
         from ...mailbox import send_command
         data = data or {}
-        name = str(data.get("name") or "").strip()
+        name = " ".join(str(data.get("name") or "").split())
         if not name:
             return {"ok": False, "message": "Bitte zuerst einen Namen eingeben."}
-        safe_name = sanitize_filename(name)
-        target = Path(self.sequences_dir) / safe_name / "sequence.json"
+        # **Der Name geht so mit, wie er getippt wurde.** Hier wurde der
+        # bereinigte (`sanitize_filename`) verschickt, und der ist für den
+        # ORDNER gedacht: aus „Abrechnung mit den Göttern" wurde der Anzeigename
+        # `abrechnung_mit_den_göttern`. Den Ordner leitet `sequence_file()` beim
+        # Speichern ohnehin selbst ab.
+        target = Path(self.sequences_dir) / sanitize_filename(name) / "sequence.json"
         if target.exists():
-            return {"ok": False, "message": f"'{safe_name}' gibt es bereits."}
+            return {"ok": False, "message": f"'{name}' gibt es bereits."}
         try:
             cycles = max(0, int(data.get("cycles") or 0))
         except (TypeError, ValueError):
@@ -390,10 +395,10 @@ class BridgeServicesMixin:
             Path(RECORD_STATUS_FILE).unlink(missing_ok=True)
         except OSError:
             pass
-        if not send_command("recording", name=safe_name, cycles=cycles,
+        if not send_command("recording", name=name, cycles=cycles,
                      description=str(data.get("description") or "").strip()):
             return {"ok": False, "message": "Aufnahme konnte nicht gestartet werden."}
-        return {"ok": True, "name": safe_name,
+        return {"ok": True, "name": name,
                 "message": "Aufnahme startet — jetzt ins Spiel wechseln."}
 
     def recording_stop(self, data: Optional[dict] = None) -> dict:
@@ -411,10 +416,10 @@ class BridgeServicesMixin:
             with open(RECORD_STATUS_FILE, "r", encoding="utf-8") as f:
                 status = json.load(f)
         except (OSError, ValueError):
-            return {"active": False, "paused": False, "count": 0,
+            return {"active": False, "busy": False, "paused": False, "count": 0,
                     "events": []}
         return status if isinstance(status, dict) else {
-            "active": False, "paused": False, "count": 0, "events": []}
+            "active": False, "busy": False, "paused": False, "count": 0, "events": []}
 
     def run_command(self, data: dict) -> dict:
         """Start, Pause oder Stopp — als Auftrag an den Hauptprozess.
@@ -863,7 +868,8 @@ class BridgeServicesMixin:
                                    "Vor dem Anlegen speichern?",
                            "proceed_label": "Verwerfen", "save": True}
             return self.snapshot()
-        base_name = f"Sequenz_{int(time.time())}"
+        # Ein Name, den man stehen lassen kann — nicht `Sequenz_1727312345`.
+        base_name = free_sequence_name("Neue Sequenz")
         # Mit einer Loop-Phase, nicht nur INIT und END: fast jede Sequenz braucht
         # sie, und wer sie nicht braucht, laesst sie leer — eine leere Phase kostet
         # zur Laufzeit nichts (der Worker geht durch null Schritte). Ohne sie war
@@ -975,7 +981,7 @@ class BridgeServicesMixin:
             return self._report("Speichern fehlgeschlagen!", "err")
 
         self.filepath = new
-        if moved and self._scan_loaded:
+        if moved and (self._scan_loaded or self._scan_configs_loaded):
             # Alles im Scans-Reiter leitet seine Pfade bei Gebrauch aus
             # `self.filepath` ab — nach dem Verschieben stimmen sie von selbst.
             # Veraltet ist nur der gemerkte Plattenstand (er haengt an den alten

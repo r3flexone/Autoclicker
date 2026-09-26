@@ -5,7 +5,9 @@ import re
 import time
 from typing import Optional
 
-from ...models import BLOCK_WAIT_CLICK, SequenceStep, WaitCondition
+from ...models import (
+    BLOCK_WAIT_CLICK, POSITIONLESS_BLOCKS, SequenceStep, WaitCondition, block_type,
+)
 from .bridge_contract import (
     ELSE_ACTIONS,
     TRIGGER_PRESENT,
@@ -20,12 +22,15 @@ from .bridge_contract import (
 from .model import (
     BLOCK_LABELS,
     LANE_LOOP,
+    PHASE_KIND_NAMES,
+    PHASE_KIND_WHEN,
     Lane,
     PalettePoint,
     ensure_else,
     set_block_type,
     step_from_point,
 )
+from ...utils import unique_name
 
 
 # Wie viele Stände das Rückgängig hält — dieselbe Tiefe wie im Scans-Reiter.
@@ -157,12 +162,152 @@ class BridgeEditingMixin:
         return self._changed(f"Phase '{lane.name}' angelegt.")
 
     def phase_delete(self, data: dict) -> dict:
+        """Löscht eine Phase — bei START und ABSCHLUSS heisst das: leeren.
+
+        START und ABSCHLUSS gibt es im Modell immer genau einmal; „keine
+        Startphase" IST eine leere, und die Ansicht blendet sie dann aus. Hier
+        stand „INIT und END lassen sich nicht löschen" — richtig über das
+        Modell, falsch über das, was man sieht: eine eingeblendete leere
+        START-Phase liess sich nicht mehr loswerden, und eine volle nur Block
+        für Block.
+        """
         lane = self._lane((data or {}).get("phase"))
-        if lane is None or lane.kind != LANE_LOOP:
-            return self._report("INIT und END lassen sich nicht löschen.", "warn")
-        self.board.delete_loop_lane(lane)
+        if lane is None:
+            return self._report("Phase nicht gefunden.", "err")
         self._selection_clear()
+        if lane.kind != LANE_LOOP:
+            label = PHASE_KIND_NAMES[lane.kind]
+            if not lane.steps:
+                return self._report(f"{label} ausgeblendet — sie war leer.", "info")
+            count = len(lane.steps)
+            lane.steps = []
+            return self._changed(f"{label} gelöscht — {_blocks(count)} entfernt.",
+                                 offer=True, what=f"{label} gelöscht")
+        self.board.delete_loop_lane(lane)
         return self._changed(f"Phase '{lane.name}' gelöscht.", offer=True)
+
+    def phase_convert(self, data: dict) -> dict:
+        """Stellt eine Phase auf START, Loop oder ABSCHLUSS um — hin und zurück.
+
+        Der Fall dahinter: ein Start, der nur einmal lief, muss doch in jedem
+        Zyklus laufen — und umgekehrt. Von Hand hiess das, eine Phase anzulegen
+        und die Blöcke hinüberzuziehen, und eine neue Loop-Phase stand dann
+        HINTER allen anderen: angelegt wird immer am Ende, und umsortieren
+        lassen sich Phasen nicht. Die Regeln stehen in `convert_lane()`.
+        """
+        data = data or {}
+        lane = self._lane(data.get("phase"))
+        kind = str(data.get("to") or "")
+        if lane is None or kind not in PHASE_KIND_NAMES:
+            return self._report("Phase oder Ziel nicht gefunden.", "err")
+        if kind == lane.kind:
+            return self.snapshot()
+        source = self._phase_label(lane)
+        if not lane.steps:
+            return self._report(f"{source} ist leer — es gibt nichts umzustellen.", "info")
+        target = self.board.special_lane(kind) if kind != LANE_LOOP else None
+        if target is not None and target.steps:
+            return self._report(
+                f"{PHASE_KIND_NAMES[kind]} hat schon {_blocks(len(target.steps))} — "
+                "erst dort umstellen oder leeren. Zusammengelegt wird nicht: "
+                "welche Folge zuerst liefe, wäre geraten.", "warn")
+        # Eine Loop-Phase trägt Einstellungen, die eine Sonderphase nicht kennt.
+        lost = []
+        if lane.kind == LANE_LOOP and lane.repeat > 1:
+            lost.append(f"{lane.repeat} Läufe je Zyklus")
+        if lane.kind == LANE_LOOP and lane.scheduled_start:
+            lost.append(f"Start ab {lane.scheduled_start}")
+        # Die Auswahl hält Phase und Zeilen; die Zeilen gehören ab jetzt einer
+        # anderen Phase, und eine Auswahl auf einer verschwundenen wäre keine.
+        count = len(lane.steps)
+        target = self.board.convert_lane(lane, kind)
+        if target is None:
+            return self._report(f"{source} lässt sich nicht nach "
+                                f"{PHASE_KIND_NAMES[kind]} umstellen.", "warn")
+        self._selection_clear()
+        self._phase_focus = self.board.position(target)
+        text = (f"{_blocks(count)} aus {source} nach {self._phase_label(target)} "
+                f"verschoben — sie laufen jetzt {PHASE_KIND_WHEN[kind]}.")
+        if lost:
+            text += " Entfallen: " + ", ".join(lost) + "."
+        return self._changed(text, "warn" if lost else "ok", offer=True,
+                             what=f"{source} → {PHASE_KIND_NAMES[kind]}")
+
+    def phase_duplicate(self, data: dict) -> dict:
+        """Legt eine Kopie der Phase an — um darin weiterzubauen.
+
+        **Die Kopie bekommt eigene Punkte**, aus demselben Grund wie beim
+        Duplizieren von Blöcken (`selection_duplicate`): man kopiert, um zu
+        ändern, und eine geteilte Stelle verstellte beim Nachjustieren das
+        Original mit. EINE Abbildung für die ganze Phase, damit Blöcke, die
+        denselben Knopf klicken, das in der Kopie auch tun.
+
+        Die Kopie ist immer eine Loop-Phase — START und ABSCHLUSS gibt es genau
+        einmal — und steht dort, wo das Original läuft: hinter einer Loop-Phase,
+        als erste hinter START, als letzte vor ABSCHLUSS.
+        """
+        lane = self._lane((data or {}).get("phase"))
+        if lane is None:
+            return self._report("Phase nicht gefunden.", "err")
+        if not lane.steps and lane.kind != LANE_LOOP:
+            return self._report(f"{self._phase_label(lane)} ist leer — "
+                                "es gibt nichts zu duplizieren.", "info")
+        before = len(self.points)
+        mapping: dict = {}
+        steps = []
+        for step in lane.steps:
+            copy_of = copy.deepcopy(step)
+            self._points_copy_along(copy_of, mapping)
+            steps.append(copy_of)
+        base = lane.name if lane.kind == LANE_LOOP else PHASE_KIND_NAMES[lane.kind].title()
+        loop = lane.kind == LANE_LOOP
+        # „(Kopie)" statt eines Zählers: aus „Loop 1" würde sonst „Loop 1 2" —
+        # eine Zahl, die man für eine Nummerierung hält.
+        new_lane = Lane(kind=LANE_LOOP,
+                        name=unique_name(f"{base} (Kopie)",
+                                         {ln.name for ln in self.board.loop_lanes()}),
+                        steps=steps, repeat=lane.repeat if loop else 1,
+                        scheduled_start=lane.scheduled_start if loop else None)
+        self.board.insert_loop_lane(new_lane, near=lane)
+        self._points_apply()
+        self._selection_clear()
+        self._phase_focus = self.board.position(new_lane)
+        fresh = len(self.points) - before
+        points_text = f", {fresh} eigene Punkte" if fresh else ""
+        return self._changed(
+            f"„{new_lane.name}“ angelegt — Kopie von {self._phase_label(lane)}: "
+            f"{_blocks(len(steps))}{points_text}.",
+            offer=True, what=f"Phase „{new_lane.name}“ dupliziert")
+
+    def phase_move(self, data: dict) -> dict:
+        """Verschiebt eine Loop-Phase um eine Stelle nach links oder rechts.
+
+        Die Reihenfolge der Loop-Phasen IST der Ablauf eines Zyklus — und sie
+        liess sich bis hierhin gar nicht ändern: eine neue Phase stand immer
+        hinten, und ein Duplikat, das weiter vorn laufen sollte, musste man
+        leer anlegen und Block für Block hinüberziehen.
+        """
+        data = data or {}
+        lane = self._lane(data.get("phase"))
+        if lane is None or lane.kind != LANE_LOOP:
+            return self._report("Nur Loop-Phasen lassen sich verschieben — START läuft "
+                                "immer zuerst, ABSCHLUSS immer zuletzt.", "warn")
+        try:
+            delta = int(data.get("delta") or 0)
+        except (TypeError, ValueError):
+            delta = 0
+        if not self.board.move_loop_lane(lane, delta):
+            self._phase_focus = self.board.position(lane)
+            return self.snapshot()
+        self._phase_focus = self.board.position(lane)
+        return self._changed(f"„{lane.name}“ nach {'links' if delta < 0 else 'rechts'} "
+                             "verschoben.", group="phase-move",
+                             what=f"„{lane.name}“ verschoben")
+
+    @staticmethod
+    def _phase_label(lane: Lane) -> str:
+        return (f"Loop-Phase „{lane.name}“" if lane.kind == LANE_LOOP
+                else PHASE_KIND_NAMES[lane.kind])
 
     def phase_set(self, data: dict) -> dict:
         """Name, Wiederholungen oder Startzeit einer Phase ändern."""
@@ -712,19 +857,32 @@ class BridgeEditingMixin:
         FARBE+KLICK braucht einen Punkt — er ist die Quelle für Stelle UND Farbe.
         Ohne Punkt wird der Wechsel abgelehnt: lieber gar keine Bedingung als eine,
         die niemand mehr nachziehen kann.
+
+        Die schon markierte Kachel ist kein Wechsel: kein Abzug auf dem
+        Rückgängig-Stapel, keine Meldung — sonst tut STRG+Z danach einmal
+        scheinbar nichts.
         """
         type_value = (data or {}).get("type")
         lane, row, step = self._single()
         if step is None or type_value not in BLOCK_LABELS:
             return self.snapshot()
+        if block_type(step) == type_value:
+            return self.snapshot()
         if (type_value == BLOCK_WAIT_CLICK and step.wait_condition is None
                 and step.point_id is None):
             return self._report("FARBE+KLICK braucht einen Punkt — erst eine Stelle wählen.",
                                "warn")
+        had_point = step.point_id
         set_block_type(step, type_value)
         self._points_apply()
+        notes = []
+        if had_point is not None and step.point_id is None:
+            notes.append(f"Punkt #{had_point} gelöst — ein {BLOCK_LABELS[type_value]} "
+                         "hat keine eigene Stelle. Zurück holt ihn wieder.")
         gone = self._else_cleanup(step)
-        return self._changed(gone, "warn" if gone else "ok", offer=True,
+        if gone:
+            notes.append(gone)
+        return self._changed(" ".join(notes), "warn" if gone else "ok", offer=True,
                              what=f"Typ → {BLOCK_LABELS[type_value]}")
 
     def block_set(self, data: dict) -> dict:
@@ -838,6 +996,11 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
+        # VOR dem Warten auf ENTER: sonst fährt man erst eine Stelle an, die
+        # dann abgelehnt wird.
+        refused = self._no_position(step)
+        if refused:
+            return refused
 
         x, y, message = self._await_position()
         if x is None:
@@ -917,6 +1080,19 @@ class BridgeEditingMixin:
             return self._report(message, "warn")
         return self._changed(message, offer=True, what=message.rstrip("."))
 
+    def _no_position(self, step: SequenceStep) -> Optional[dict]:
+        """Absage für einen Block ohne eigene Stelle, sonst `None`.
+
+        Dieselbe Regel wie beim Typwechsel (`POSITIONLESS_BLOCKS`): ein Scan,
+        eine Taste und ein Screenshot haben keinen Punkt — auch nicht über
+        einen der Wege, die sonst einen setzen.
+        """
+        kind = block_type(step)
+        if kind not in POSITIONLESS_BLOCKS:
+            return None
+        return self._report(f"Ein {BLOCK_LABELS[kind]} hat keine eigene Stelle — "
+                            "für einen Punkt erst den Typ auf Klick stellen.", "warn")
+
     def block_point(self, data: dict) -> dict:
         """Setzt den Punkt des Schritts — Stelle, Name und Farbe kommen mit.
 
@@ -928,6 +1104,9 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
+        refused = self._no_position(step)
+        if refused:
+            return refused
         point = self._point(data.get("point"))
         if point is None:
             return self._report("Punkt nicht gefunden.", "warn")
@@ -973,6 +1152,20 @@ class BridgeEditingMixin:
             cond.until_gone = (choice == TRIGGER_GONE)
         if "check_only" in data:
             cond.check_only = bool(data["check_only"])
+        if "timeout" in data and field == "wait_condition":
+            # Leer = die Einstellung gilt (None), 0 = ohne Grenze — dieselbe
+            # Bedeutung wie bei `pixel_wait_timeout`.
+            raw = data["timeout"]
+            if raw is None or str(raw).strip() == "":
+                cond.timeout = None
+            else:
+                try:
+                    seconds = float(str(raw).replace(",", "."))
+                except ValueError:
+                    return self._report(f"Timeout '{raw}' ist keine Zahl.", "warn")
+                if seconds < 0:
+                    return self._report("Der Timeout kann nicht negativ sein.", "warn")
+                cond.timeout = seconds
         if data.get("point") is not None:
             point = self._point(data["point"])
             if point is not None:
@@ -1056,6 +1249,9 @@ class BridgeEditingMixin:
         lane, row, step = self._single()
         if step is None:
             return self.snapshot()
+        refused = self._no_position(step)
+        if refused:
+            return refused
         try:
             x, y = int(data.get("x", 0)), int(data.get("y", 0))
         except (TypeError, ValueError):

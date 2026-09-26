@@ -153,6 +153,33 @@ try:
     check("und sein Eintrag kommt danach trotzdem an",
           _status._state.get("from_other") == 1 and not _probe["other"].is_alive())
     _status._state.clear()
+
+    # =========================================================================
+    section("Das sanfte Ende steht im Laufstatus — der Knopf rastet ein")
+    # =========================================================================
+    # „Zyklus abschliessen" wirkt erst am Zyklusende; bis dahin sieht der Lauf
+    # unveraendert aus, und ein Knopf ohne Rueckmeldung wird ein zweites und
+    # drittes Mal gedrueckt. Gelesen wird der Zustand aus dem Laufstatus,
+    # damit auch CTRL+ALT+F im Studio ankommt.
+    import autoclicker.handlers as _hnd
+
+    def _read_status():
+        return _json.loads(_P(_status.STATUS_PATH).read_text(encoding="utf-8"))
+
+    _st = _ST()
+    _st.is_running = True
+    _status.write_status(_st, {"active": True, "sequence": "s"}, immediately=True)
+    check("vor dem Druck steht kein sanftes Ende an",
+          _read_status().get("finishing") is False)
+    with _cl.redirect_stdout(_io.StringIO()):
+        _hnd.handle_finish(_st)
+    check("nach dem Druck steht es SOFORT im Laufstatus (ohne auf den Takt zu warten)",
+          _read_status().get("finishing") is True)
+    with _cl.redirect_stdout(_io.StringIO()):
+        _status.finish_run(_st, "sanft beendet", 1, 1.0)
+    check("die Zusammenfassung traegt den Merker nicht mehr",
+          "finishing" not in _read_status())
+    _status._state.clear()
 finally:
     _W.execute_step = _orig_execute
     _os.chdir(_cwd)
@@ -222,3 +249,9 @@ check("ein Studio-Befehl, der wirft, laesst die Schleife stehen", _survived)
 check("und die Hotkeys gehen denselben Weg",
       'run_safely("Hotkey-Aktion", hotkey_handlers[hk_id], state)'
       in _P(_main.__file__).read_text(encoding="utf-8"))
+
+from ._harness import studio_web_source as _web_source  # noqa: E402
+_controls = _web_source()[_web_source().index("function controls(running, stamp)"):]
+_controls = _controls[:_controls.index("\nfunction ", 1)]
+check("der Knopf liest den Merker aus dem Laufstatus und rastet ein",
+      "stamp.finishing" in _controls and '"Wird abgeschlossen …", "finish", "on"' in _controls)

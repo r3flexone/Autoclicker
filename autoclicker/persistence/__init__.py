@@ -60,7 +60,7 @@ from .sequences import (
     list_available_sequences, activate_sequence,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
     sequence_dir, sequence_file, sequence_templates_dir,
-    active_sequence_dir, active_templates_dir,
+    active_sequence_dir, active_templates_dir, free_template_file,
     point_for_position, resolve,
     resolve_point_references,
 )
@@ -90,7 +90,7 @@ __all__ = [
     'list_available_sequences', 'activate_sequence',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',
     'sequence_dir', 'sequence_file', 'sequence_templates_dir',
-    'active_sequence_dir', 'active_templates_dir',
+    'active_sequence_dir', 'active_templates_dir', 'free_template_file',
     'point_for_position', 'resolve',
     'resolve_point_references',
     # item_scans

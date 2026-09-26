@@ -43,7 +43,11 @@ from .bridge_contract import (
 from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
+    LANE_END,
+    LANE_INIT,
     LANE_LOOP,
+    PHASE_KIND_NAMES,
+    PHASE_KIND_WHEN,
     Lane,
     PalettePoint,
     ink_color,
@@ -64,6 +68,7 @@ class BridgeViewMixin:
         """
         text, kind = self._status
         ask, self._ask = self._ask, None
+        focus, self._phase_focus = self._phase_focus, None
         # Die Auswahl gehört zum Stand, den die Seite gerade sieht: Auswählen
         # legt keinen Abzug ab, also merkt sich der nächste Abzug sie von hier.
         self._edit_current["sel"] = self._edit_selection()
@@ -81,12 +86,17 @@ class BridgeViewMixin:
             "wait_timeout": WAIT_TIMEOUT,
             "status": {"text": text, "kind": kind},
             "question": ask,
+            "phase_focus": focus,
             "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_names": self._scan_names(),
             "types": [{"key": t, "label": BLOCK_LABELS[t],
                        "color": _hex(BLOCK_COLORS[t]),
                        "ink": ink_color(BLOCK_COLORS[t])} for t in TYPE_ORDER],
             "scan_modes": SCAN_MODES,
+            # Die Auswahl „Art" im Phasenkopf — Reihenfolge des Ablaufs.
+            "phase_kinds": [{"key": k, "label": PHASE_KIND_NAMES[k],
+                             "when": PHASE_KIND_WHEN[k]}
+                            for k in (LANE_INIT, LANE_LOOP, LANE_END)],
             "else_actions": ELSE_ACTIONS,
             "without_else": self._without_else(),
             "phases": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
@@ -241,6 +251,7 @@ class BridgeViewMixin:
         wc = step.wait_condition
         field = SCAN_FIELD.get(type_value)
         point = self._point(step.point_id)
+        rows = self._lines(step, type_value)
         block = {
             "row": row,
             "type": type_value,
@@ -252,7 +263,7 @@ class BridgeViewMixin:
             # Kein Rückfall aufs Typ-Label: das steht schon als Marke daneben, und
             # zweimal dasselbe Wort auf einer Karte ist keine Information.
             "title": step.name or "",
-            "rows": self._lines(step, type_value),
+            "rows": rows,
             "checks": step.verify_condition is not None,
             "breakpoint": bool(step.breakpoint),
             "selected": row in self._selected_rows(lane),
@@ -263,7 +274,13 @@ class BridgeViewMixin:
             # Ansicht hängt sie an die erste Zeile, denn dort steht die Stelle
             # (`_lines`). Ohne gemessene Farbe kein Feldchen: ein leeres
             # Kästchen sagt nichts, was der Inspektor nicht besser sagt.
-            "point_color": _hex(point.color) if point is not None else None,
+            # **Nur, wenn die erste Zeile wirklich die STELLE ist.** Hier stand
+            # „jeder Block mit Punkt" — und ein Warten-Block trug das Feldchen
+            # vor seiner Wartezeit, ein Scan mit einem Rest-Punkt aus einem
+            # Typwechsel vor seinem Scan-Namen.
+            "point_color": (_hex(point.color)
+                            if point is not None and rows and rows[0]["label"] == "STELLE"
+                            else None),
             # Alle Punkte, an denen der Block haengt (Stelle, Pruef-Pixel,
             # Nachpruefung, ELSE): die Punkte-Liste markiert damit, wer einen
             # Punkt benutzt — in beide Richtungen.
@@ -295,8 +312,8 @@ class BridgeViewMixin:
         untereinander findet das Auge das Etikett schneller als den Wert — und
         „+1.5s" ohne Etikett musste man erst als Wartezeit erkennen.
 
-        Bei einem Block mit Punkt ist die **erste** Zeile seine Stelle — daran
-        hängt die Ansicht das Farbfeldchen des Punkts (`point_color`).
+        Bei KLICK und FARBE+KLICK ist die **erste** Zeile die Stelle — nur dort
+        hängt die Ansicht das Farbfeldchen des Punkts an (`point_color`).
         """
         def row(label: str, text: str) -> dict:
             return {"label": label, "text": text}
@@ -321,7 +338,12 @@ class BridgeViewMixin:
     def _trigger_text(self, wc: WaitCondition) -> str:
         what = "prüft" if wc.check_only else "wartet bis"
         where_to = "weg" if wc.until_gone else "da"
-        return f"{what} RGB{tuple(wc.color)} {where_to}"
+        text = f"{what} RGB{tuple(wc.color)} {where_to}"
+        # Eine EIGENE Zeitgrenze steht auf der Karte — sie ist die Ausnahme, und
+        # beim Überfliegen soll man sehen, welcher Block länger warten darf.
+        if wc.timeout is not None and not wc.check_only:
+            text += " · ohne Timeout" if wc.timeout == 0 else f" · max {wc.timeout:g} s"
+        return text
 
     def _else_text(self, step: SequenceStep) -> str:
         ec = step.else_config
@@ -390,6 +412,8 @@ class BridgeViewMixin:
             "trigger": trigger_name(wc),
             "trigger_point": wc.point_id if wc else None,
             "trigger_check": wc.check_only if wc else False,
+            # None = Einstellung (`without_else.seconds`), 0 = ohne Grenze.
+            "trigger_timeout": wc.timeout if wc else None,
             "verify": trigger_name(vc),
             "verify_point": vc.point_id if vc else None,
             "else_action": ec.action if ec else "",

@@ -267,8 +267,10 @@ try:
     _job = _bf.fetch_command()
     check("und schickt genau den begrenzten Aufnahme-Befehl",
           _job is not None and _job["command"] == "recording")
-    check("alle Angaben stehen vor dem Spielen fest",
-          _job["arguments"] == {"name": "aufnahme_ui", "cycles": 3,
+    # Der Name geht so mit, wie er getippt wurde: hier stand `aufnahme_ui`,
+    # also der ORDNERname — und genau der stand danach als Anzeigename da.
+    check("alle Angaben stehen vor dem Spielen fest — der Name wie getippt",
+          _job["arguments"] == {"name": "Aufnahme UI", "cycles": 3,
                                      "description": "sichtbar"})
     check("auch Stoppen geht sichtbar im Studio", _b.recording_stop()["ok"])
     _stopp = _bf.fetch_command()
@@ -422,7 +424,7 @@ try:
     _st = _State()
     _st.recording_active = True
     _st.recording_events = [_RE(_RC, _time.monotonic(), 321, 456, (11, 22, 33))]
-    _st.recording_ui_name = "aufnahme_ui"
+    _st.recording_ui_name = "Abrechnung mit den Göttern"
     _st.recording_ui_cycles = 2
     _st.recording_ui_description = "ohne Konsole"
     _old_input = _rec.safe_input
@@ -438,10 +440,16 @@ try:
         _rec.safe_input = _old_input
         _rec.remove_mouse_hook = _old_mouse_gone
         _rec.remove_keyboard_hook = _old_keys_gone
-    check("die UI-Vorgaben speichern ohne safe_input", _saved == "aufnahme_ui")
+    check("die UI-Vorgaben speichern ohne safe_input",
+          _saved == "Abrechnung mit den Göttern")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
-    _loaded = _load_sequence_file(_rec.recording_file("aufnahme_ui"))
+    _file = _rec.recording_file("Abrechnung mit den Göttern")
+    _loaded = _load_sequence_file(_file)
     check("die Aufnahme wird wirklich zur Sequenz", _loaded is not None)
+    # Der Ordner ist bereinigt, der NAME nicht: er wird angezeigt.
+    check("Ordner bereinigt, Name wie getippt",
+          _file.parent.name == "abrechnung_mit_den_göttern"
+          and _loaded.name == "Abrechnung mit den Göttern")
     check("Zyklen und Notiz kommen aus dem UI",
           _loaded.total_cycles == 2 and _loaded.description == "ohne Konsole")
     check("und aus dem Ereignis entsteht ein Block", _loaded.total_steps() == 1)

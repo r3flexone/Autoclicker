@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..models import ItemProfile, ItemScanConfig, AutoClickerState
 from ..config import CONFIG
-from ..utils import safe_input, sanitize_filename, next_free_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint
+from ..utils import safe_input, next_free_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, header, breadcrumb, suggest_command, cancel_hint, hint
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
 )
@@ -16,7 +16,7 @@ from ..persistence import (
     save_item_scan, list_available_item_scans, load_item_scan_file,
     bind_item_scan_context,
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
-    save_global_items, active_templates_dir
+    save_global_items, active_templates_dir, free_template_file
 )
 from ._item_fields import ask_confirm_click, ask_priority
 from .slot_editor import run_global_slot_editor
@@ -347,8 +347,7 @@ def _new_item_from_template(state: AutoClickerState, user_input: str,
             return None
         print(f"  -> '{item_name}' wird überschrieben")
 
-    safe_name = sanitize_filename(item_name)
-    template_file = f"{safe_name}.png"
+    template_file = free_template_file(active_templates_dir(state), item_name)
     template_path = active_templates_dir(state) / template_file
     template_path.parent.mkdir(parents=True, exist_ok=True)
     template_img.save(template_path)

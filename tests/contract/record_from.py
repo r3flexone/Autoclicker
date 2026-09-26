@@ -110,6 +110,73 @@ finally:
     _sh.rmtree(_sandbox, ignore_errors=True)
 
 # =============================================================================
+section("Stoppen: 'nicht mehr aktiv' heisst erst nach dem Schreiben 'fertig'")
+# =============================================================================
+# An einer echten Einfuegung gemessen: die Konsole meldete zwei neue Bloecke
+# in START, das Studio zeigte keinen. `stop_recording()` schrieb `active:
+# False` VOR `_finish_insert_recording`, der Waechter der Seite las daraus
+# „fertig" und lud die Datei neu, bevor sie die Bloecke enthielt. Gemessen
+# wird der Live-Stand GENAU in dem Moment, in dem gespeichert wird.
+import json as _json
+_sandbox_s = _tmp.mkdtemp(prefix="einfuegen_status_")
+_cwd_s = _os.getcwd()
+_os.chdir(_sandbox_s)
+_orig_status = _rec._RECORDING_STATUS
+_orig_save = _rec.save_sequence_file
+_orig_hooks = (_rec.remove_mouse_hook, _rec.remove_keyboard_hook)
+try:
+    _seq_s = _target_sequence()
+    _path_s = sequence_file(_seq_s.name)
+    _path_s.parent.mkdir(parents=True, exist_ok=True)
+    save_sequence_file(_seq_s, _path_s)
+    _rec._RECORDING_STATUS = _P("recording.json")
+    _rec.remove_mouse_hook = _rec.remove_keyboard_hook = lambda: None
+    _seen_at_save: list = []
+
+    def _save_and_look(seq, path):
+        _seen_at_save.append(_json.loads(_rec._RECORDING_STATUS.read_text("utf-8")))
+        return _orig_save(seq, path)
+
+    _rec.save_sequence_file = _save_and_look
+    _st_s = _ST()
+    _st_s.recording_active = True
+    _st_s.recording_insert = {"file": str(_path_s), "phase": "loop",
+                              "phase_index": 0, "block": 0}
+    _st_s.recording_events = [_RE(_R_CLICK, 0.0, 30, 30, (9, 9, 9))]
+    with _cl.redirect_stdout(_io.StringIO()):
+        _rec.stop_recording(_st_s)
+    _after_s = _json.loads(_rec._RECORDING_STATUS.read_text("utf-8"))
+    check("beim Speichern steht die Aufnahme als 'busy' (gestoppt, noch nicht geschrieben)",
+          len(_seen_at_save) == 1 and _seen_at_save[0]["active"] is False
+          and _seen_at_save[0]["busy"] is True)
+    check("danach ist sie fertig: weder aktiv noch busy",
+          _after_s["active"] is False and _after_s["busy"] is False)
+
+    # Auch ein Abbruch ohne Speichern (nichts Verwertbares) darf 'busy' nicht
+    # stehen lassen — sonst wartete die Seite ewig.
+    _st_e = _ST()
+    _st_e.recording_active = True
+    _st_e.recording_insert = {"file": str(_path_s), "phase": "loop",
+                              "phase_index": 0, "block": 0}
+    with _cl.redirect_stdout(_io.StringIO()):
+        _rec.stop_recording(_st_e)
+    check("eine leere Aufnahme hinterlaesst ebenfalls kein 'busy'",
+          _json.loads(_rec._RECORDING_STATUS.read_text("utf-8"))["busy"] is False)
+finally:
+    _rec._RECORDING_STATUS = _orig_status
+    _rec.save_sequence_file = _orig_save
+    _rec.remove_mouse_hook, _rec.remove_keyboard_hook = _orig_hooks
+    _os.chdir(_cwd_s)
+    _sh.rmtree(_sandbox_s, ignore_errors=True)
+
+_web_s = studio_web_source()
+_watch_s = _web_s[_web_s.index("function watchInsertRecording"):]
+_watch_s = _watch_s[:_watch_s.index("\nfunction ", 1)]
+check("der Waechter laedt erst neu, wenn 'busy' weg ist",
+      "status.busy" in _watch_s
+      and _watch_s.index("status.busy") < _watch_s.index('call("load"'))
+
+# =============================================================================
 section("mark_phase lehnt eine neue Grenze waehrend der Einfuegung ab")
 # =============================================================================
 _st3 = _ST()

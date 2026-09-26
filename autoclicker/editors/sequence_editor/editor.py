@@ -7,13 +7,12 @@ delegiert an edit_sequence. edit_sequence führt durch die drei Phasen
 und speichert die fertige Sequenz.
 """
 
-import time
 from typing import Optional
 
 from ...models import LoopPhase, Sequence, AutoClickerState
 from ...persistence import (
-    activate_sequence, confirm_new_sequence_name, list_available_sequences,
-    load_sequence_file, save_points,
+    activate_sequence, confirm_new_sequence_name, free_sequence_name,
+    list_available_sequences, load_sequence_file, save_points,
 )
 from ...utils import (
     breadcrumb, col, confirm, err, header, hint, interactive_select, safe_input,
@@ -89,7 +88,7 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     else:
         print("\n--- Neue Sequenz erstellen ---")
         seq_name = confirm_new_sequence_name(
-            safe_input("Name der Sequenz: ").strip() or f"Sequenz_{int(time.time())}")
+            safe_input("Name der Sequenz: ").strip() or free_sequence_name("Neue Sequenz"))
         if seq_name is None:
             print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
             return

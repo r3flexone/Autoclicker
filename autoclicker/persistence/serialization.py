@@ -421,6 +421,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "wait_color": None if (wc is None or wait_at_point) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
+            "wait_timeout": wc.timeout if wc else None,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
             "boss_watcher": s.boss_watcher,
@@ -461,6 +462,7 @@ _STEP_DEFAULTS = {
     "wait_color": None,
     "wait_until_gone": False,
     "wait_check_only": False,
+    "wait_timeout": None,
     "verify_point_id": None,
     "verify_pixel": None,
     "verify_color": None,
@@ -534,17 +536,26 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
         # Farbe nach - pixel/color bleiben hier leer und fuellt resolve_point_references().
         wait_cond = None
         wait_point_id = s.get("wait_point_id")
+        # Eigene Zeitgrenze des Blocks; fehlt sie oder ist sie unlesbar, gilt
+        # die Config — ein kaputter Wert soll den Block nicht ohne Grenze lassen.
+        wait_timeout = s.get("wait_timeout")
+        try:
+            wait_timeout = max(0.0, float(wait_timeout)) if wait_timeout is not None else None
+        except (TypeError, ValueError):
+            wait_timeout = None
         if wait_point_id is not None:
             wait_cond = WaitCondition(
                 point_id=wait_point_id,
                 until_gone=s.get("wait_until_gone", False),
                 check_only=s.get("wait_check_only", False),
+                timeout=wait_timeout,
             )
         elif wait_pixel and wait_color:
             wait_cond = WaitCondition(
                 pixel=wait_pixel, color=wait_color,
                 until_gone=s.get("wait_until_gone", False),
                 check_only=s.get("wait_check_only", False),
+                timeout=wait_timeout,
             )
         # Nachpruefung ("hat der Klick gewirkt?") - gleiche Bauart wie wait_condition.
         verify_cond = None

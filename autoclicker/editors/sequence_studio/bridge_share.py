@@ -264,7 +264,7 @@ class BridgeShareMixin:
     def _after_import(self) -> None:
         """Fenster und Hauptprozess auf den neuen Stand bringen."""
         self.points = self._points_new()
-        self._scan_loaded = False
+        self._scan_unload()
         self._scan_dirty = False
         self._undo = []
         self._edit_reset()

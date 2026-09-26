@@ -12,10 +12,10 @@ ohne die Daten zu verlieren.
 
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import active_templates_dir
+from ...persistence import active_templates_dir, free_template_file
 from ...utils import (
     confirm, unique_name, is_cancel, next_free_name, ok,
-    safe_input, sanitize_filename,
+    safe_input,
 )
 from .._item_fields import (
     CANCELLED, ask_confirm_click, ask_priority,
@@ -92,8 +92,8 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
             if use_template and OPENCV_AVAILABLE:
                 template_img = take_screenshot(slot.scan_region)
                 if template_img:
-                    safe_name = sanitize_filename(item_name)
-                    template_file = f"{safe_name}.png"
+                    template_file = free_template_file(active_templates_dir(state),
+                                                       item_name)
                     template_path = active_templates_dir(state) / template_file
                     template_path.parent.mkdir(parents=True, exist_ok=True)
                     template_img.save(template_path)
@@ -222,8 +222,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
 
     # Gecachtes Template dem Item zuweisen und umbenennen
     if cached_template_path and cached_template_path.exists():
-        safe_name = sanitize_filename(item_name)
-        template_file = f"{safe_name}.png"
+        template_file = free_template_file(active_templates_dir(state), item_name)
         final_path = active_templates_dir(state) / template_file
         try:
             cached_template_path.rename(final_path)

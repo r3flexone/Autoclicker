@@ -64,6 +64,13 @@ def write_status(state, part: dict, immediately: bool = False) -> None:
         _last = now
         try:
             _state["counters"] = _counters(state)
+            # Das sanfte Ende ist angefordert (CTRL+ALT+F oder der Knopf) —
+            # gelesen wie die Zaehler bei jedem Schreiben, damit es auch der
+            # Hotkey-Weg im Studio zeigt, nicht nur der eigene Klick.
+            # `getattr`: ein fehlendes Event darf nie das ganze Schreiben
+            # kosten — der AttributeError fiele unten stumm durch.
+            finish = getattr(state, "finish_event", None)
+            _state["finishing"] = bool(finish is not None and finish.is_set())
             _state["stamp"] = time.time()
             atomic_write(STATUS_PATH, compact_json(_state))
         except (OSError, TypeError, ValueError, AttributeError):
@@ -174,7 +181,7 @@ def end_schedule() -> None:
 # zweite Frage nach "warum". Die Phasenleiste zeigt sie in der Zusammenfassung
 # als Stelle, an der Schluss war.
 _MOMENT_FIELDS = ("block", "blocks", "block_title", "block_label", "block_set_type",
-                  "block_since", "waiting", "pass_index", "manual")
+                  "block_since", "waiting", "pass_index", "manual", "finishing")
 
 
 def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:

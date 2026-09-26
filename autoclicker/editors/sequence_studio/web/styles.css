@@ -338,6 +338,10 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-header.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
 .phase-header.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
 .phase-header.loop.selected{box-shadow:0 0 0 1px var(--loop),0 0 0 5px #F59E0B26}
+/* Gewählt werden können alle drei Arten — ihr Menü steht dann rechts. */
+.phase-header.init.selected{box-shadow:0 0 0 1px var(--init),0 0 0 5px #F59E0B26}
+.phase-header.end.selected{box-shadow:0 0 0 1px var(--end),0 0 0 5px #F59E0B26}
+.phase-header{cursor:pointer}
 .phase-header.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}

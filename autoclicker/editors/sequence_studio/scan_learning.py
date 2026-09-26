@@ -450,9 +450,61 @@ class ScanLearningMixin:
         old = item.name
         self.items = {(new if k == old else k): v for k, v in self.items.items()}
         item.name = new
+        failed = self._templates_follow_name(item, old, new)
         self._sync_objects()
         self.scan_name = new
+        if failed:
+            return self._scan_changed(
+                f"'{old}' heisst jetzt '{new}' — {failed} Vorlage(n) konnten nicht "
+                "umbenannt werden und behalten ihren alten Dateinamen.", "warn")
         return self._scan_changed(f"'{old}' heisst jetzt '{new}'")
+
+    def _templates_follow_name(self, item: ItemProfile, old: str, new: str) -> int:
+        """Die Vorlagen eines umbenannten Items bekommen seinen neuen Namen.
+
+        **Sonst gehört ein Dateiname danach zu einem fremden Namen.** Aus
+        „Auto Slot 19 2" wurde „Überlegener Edelstein", die Vorlage hiess weiter
+        `auto_slot_19_2.png` — und das nächste Auto-Lernen in Slot 19 nahm den
+        wieder freien Namen und schrieb eine Truhe in genau diese Datei. Das
+        Überschreiben verhindert inzwischen `free_template_file()`; hier geht es
+        darum, dass Name und Datei gar nicht erst auseinanderlaufen.
+
+        **Kopiert, nicht verschoben.** Rückgängig (`_remember`) und „Verwerfen &
+        neu laden" drehen nur den Speicher bzw. die JSON zurück, nie die Platte:
+        nach einem Verschieben zeigte das zurückgeholte Item auf eine Datei, die
+        es nicht mehr gibt. Die alte Datei bleibt deshalb liegen — dieselbe
+        Haltung wie beim Löschen einer Vorlage („bleibt als Sicherung").
+        Ein Grössen-Anhang (`_62x57`) wandert mit. Gibt `Anzahl Fehlschläge`
+        zurück; eine Vorlage, die sich nicht kopieren lässt, behält ihren Namen.
+        """
+        import shutil
+        from pathlib import Path
+        from ...persistence import free_template_file
+        from ...utils import sanitize_filename
+        folder = Path(self.filepath).parent / "templates"
+        old_stem, new_stem = sanitize_filename(old), sanitize_filename(new)
+        renamed: dict[str, str] = {}
+        failed = 0
+        for file_name in item.template_names():
+            stem = Path(file_name).stem
+            target = (new_stem + stem[len(old_stem):] if stem.startswith(old_stem)
+                      else new_stem)
+            if target == stem or not (folder / file_name).is_file():
+                continue
+            new_file = free_template_file(folder, target)
+            try:
+                shutil.copy2(folder / file_name, folder / new_file)
+            except OSError:
+                failed += 1
+                continue
+            renamed[file_name] = new_file
+            if file_name in self._preview:
+                self._preview[new_file] = self._preview[file_name]
+        if renamed:
+            if item.template in renamed:
+                item.template = renamed[item.template]
+            item.template_variants = [renamed.get(v, v) for v in item.template_variants]
+        return failed
 
     def scan_item_delete(self, data: Optional[dict] = None) -> dict:
         name = self.scan_name if self.scan_kind == KIND_ITEM else ""

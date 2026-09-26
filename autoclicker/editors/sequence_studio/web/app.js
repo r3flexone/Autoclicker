@@ -539,7 +539,10 @@ let S = null;             // letzte Momentaufnahme
 let drag = null;        // was gerade gezogen wird
 let activeDropZone = null;  // hervorgehobene Einfügestelle
 let openQuestion = null;
-let selectedPhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
+// Die angeklickte Phase: rechts steht ihr Menü, Entf löscht eine Loop-Phase.
+// Oberflächenzustand; nach einem Phasen-Befehl sagt die Brücke, welche es ist
+// (`S.phase_focus`), denn Duplizieren und Verschieben ändern die Indizes.
+let selectedPhase = null;
 const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 // Einfüge-Aufnahme ("Ab hier aufnehmen"): reiner Oberflächenzustand wie
@@ -671,6 +674,9 @@ async function ask(name, data) {
 function adopt(next) {
   if (!next) return;
   S = next;
+  // Nach einem Phasen-Befehl sagt die Brücke, welche Phase gewählt bleibt —
+  // Duplizieren, Umstellen und Verschieben ändern die Indizes.
+  if (S.phase_focus !== null && S.phase_focus !== undefined) selectedPhase = S.phase_focus;
   render();
   if (S.question) showQuestion(S.question);
 }
@@ -906,9 +912,7 @@ function renderPoints() {
 function renderPhases() {
   const target = $("phases");
   target.replaceChildren();
-  if (!S.phases.some((p) => p.index === selectedPhase && p.kind === "loop")) {
-    selectedPhase = null;
-  }
+  if (!S.phases.some((p) => p.index === selectedPhase)) selectedPhase = null;
   // **Ein leeres Board sagt, wie man anfaengt.** Vorher stand links als
   // einziger Hinweis der umstaendlichste der drei Wege (CTRL+ALT+A im
   // Hauptprozess); die Aufnahme, die das Studio selbst starten kann, kam nicht
@@ -934,12 +938,18 @@ function renderPhases() {
 }
 
 function renderPhase(phase) {
-  const phaseSelected = phase.kind === "loop" && phase.index === selectedPhase;
+  // **Jeder Phasenkopf ist anklickbar, auch START und ABSCHLUSS** — rechts
+  // steht dann das Phasen-Menü (`renderPhaseInspector`): Art umstellen,
+  // duplizieren, verschieben, löschen. Die Art stand kurz als Auswahl IM Kopf
+  // und nahm dem Namen den Platz („Sammeln Ev…"); was man selten tut, gehört
+  // in den Inspektor, nicht in jede Spalte.
+  const phaseSelected = phase.index === selectedPhase;
   const head = el("div", {
     class: "phase-header " + phase.kind + (phaseSelected ? " selected" : ""),
-    title: phase.kind === "loop" ? "Phase auswählen — Entf löscht sie" : "",
+    title: "Phase auswählen — rechts umstellen, duplizieren, verschieben"
+           + (phase.kind === "loop" ? " · Entf löscht sie" : ""),
     onclick: (e) => {
-      if (phase.kind !== "loop" || e.target.closest("input, button")) return;
+      if (e.target.closest("input, button, select")) return;
       selectedPhase = phase.index;
       call("selection_clear");
     }});
@@ -1014,15 +1024,16 @@ function renderPhase(phase) {
         onclick: (e) => call("phase_selection",
                              {phase: phase.index, add: e.ctrlKey || e.metaKey})},
         all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
-    if (phase.kind === "loop") {
-      bulk.appendChild(el("button", {
-        class: "btn quiet",
-        title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
-        onclick: () => {
-          const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-          if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
-        }}, "Zeiten skalieren …"));
-    }
+    // In JEDER Phase dieselbe Knopfzeile: auch die Zeiten von START und
+    // ABSCHLUSS lassen sich skalieren, und seit Phasen ihre Art wechseln
+    // können, wäre eine Zeile, die je nach Art anders aussieht, eine Sonderform.
+    bulk.appendChild(el("button", {
+      class: "btn quiet",
+      title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
+      onclick: () => {
+        const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+        if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
+      }}, "Zeiten skalieren …"));
     head.appendChild(bulk);
   }
 
@@ -1833,17 +1844,30 @@ function manualControls(m) {
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
-  const button = (text, command, cls, sym) => el("button", {
+  const button = (text, command, cls, sym, title) => el("button", {
     class: "btn" + (cls ? " " + cls : ""),
+    title: title || null,
     onclick: () => sendRun(command),
   }, sym ? icon(sym) : null, text);
+  // Das sanfte Ende ist ein Zustand, kein einmaliger Befehl: bis der Zyklus
+  // durch ist, läuft der Lauf scheinbar unverändert weiter. Der Knopf rastet
+  // deshalb ein (`on`, derselbe Ring wie überall) — gesetzt aus dem
+  // Laufstatus, also auch nach CTRL+ALT+F. Nicht gesperrt: `disabled` blasst
+  // ihn auf 40 % ab, und genau dann sähe man den Zustand nicht.
+  const finishing = !!(running && stamp && stamp.finishing);
   const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
     !running && !(stamp && stamp.countdown) ? button("Starten", "start", "primary", "play") : null,
     !running && !(stamp && stamp.countdown) ? button("Schrittweise", "start_manual", "", "play") : null,
     running ? button("Pause", "pause", "", "pause") : null,
     running ? button("Warten überspringen", "skip") : null,
     running ? button("Block überspringen", "skip_step") : null,
-    running ? button("Zyklus abschliessen", "finish", "", "check") : null,
+    running ? (finishing
+      ? button("Wird abgeschlossen …", "finish", "on", "check",
+               "Sanftes Ende angefordert: der laufende Zyklus läuft zu Ende, "
+               + "dann die Abschluss-Phase, dann Stopp. Stoppen bricht sofort ab.")
+      : button("Zyklus abschliessen", "finish", "", "check",
+               "Sanftes Ende (CTRL+ALT+F): den laufenden Zyklus zu Ende führen, "
+               + "dann Abschluss-Phase und Stopp")) : null,
     running ? button("Stoppen", "stop", "danger", "stop") : null,
     !running && stamp && stamp.countdown ? button("Zeitplan abbrechen", "stop", "danger", "stop") : null,
     el("span", {class: "small"},
@@ -1876,6 +1900,92 @@ function pointList(current, withEmpty) {
   return values;
 }
 
+/* Entf bzw. „löschen" auf der gewählten Phase. Bei START und ABSCHLUSS leert
+ * die Brücke die Phase — und leer ist sie unsichtbar, also fällt sie hier auch
+ * aus `openSpecialPhases`, sonst stünde eine leere Hülle da, die sich nicht
+ * mehr wegbekommen lässt. */
+function deleteSelectedPhase() {
+  const phase = selectedPhase;
+  const kind = S && S.phases[phase] ? S.phases[phase].kind : null;
+  if (kind && kind !== "loop") openSpecialPhases.delete(kind);
+  selectedPhase = null;
+  return call("phase_delete", {phase: phase});
+}
+
+/* Steht rechts das Menü einer Phase? Nur, solange kein Block gewählt ist — ein
+ * Klick auf einen Block ist die jüngere Absicht. */
+function phaseInInspector() {
+  return selectedPhase !== null && !!S && !S.block && !(S.selection && S.selection.count)
+    && !!S.phases[selectedPhase];
+}
+
+/* Das Phasen-Menü: was man mit einer GANZEN Phase tut — selten genug, dass es
+ * nicht in jeden Kopf gehört. Dort stand die Art kurz als Auswahl und nahm dem
+ * Namen den Platz. Oben duplizieren und löschen: dieselben Knöpfe wie beim
+ * Block, weil es dieselbe Frage ist, nur mit einem grösseren Gegenstand. */
+function renderPhaseInspector(target, phase) {
+  const kinds = S.phase_kinds || [];
+  const own = kinds.find((k) => k.key === phase.kind) || {label: "", when: ""};
+  const loop = phase.kind === "loop";
+  $("insp-point").style.background = "var(--" + phase.kind + ")";
+  $("insp-title").textContent = "PHASE · " + (loop ? phase.name.toUpperCase() : own.label);
+  const copyBtn = $("btn-block-copy"), deleteBtn = $("btn-block-delete");
+  copyBtn.disabled = !loop && !phase.blocks.length;
+  copyBtn.title = "Phase duplizieren (STRG+D) — die Kopie ist eine Loop-Phase "
+                  + "mit eigenen Punkten";
+  deleteBtn.disabled = false;
+  deleteBtn.title = loop ? "Phase löschen (Entf)"
+    : own.label + " löschen (Entf) — die Blöcke gehen weg, die leere Phase "
+      + "verschwindet; neu anlegen über „+ " + (phase.kind === "init"
+        ? "Startphase" : "Abschlussphase") + "“";
+
+  target.appendChild(el("p", {class: "hint"},
+    phase.blocks.length + " Blöcke · läuft " + own.when
+    + (loop && phase.repeat > 1 ? ", " + phase.repeat + "× je Zyklus" : "")
+    + (loop && phase.start ? ", ab " + phase.start : "")));
+
+  // Feste kurze Auswahl als Kacheln — dieselbe Regel wie beim Block-Typ. Die
+  // markierte ist die eigene Art; ein belegtes START/ABSCHLUSS ist gesperrt.
+  target.appendChild(heading("ART",
+    "START läuft einmal vor allen Zyklen, ABSCHLUSS einmal nach dem letzten — beide " +
+    "gibt es genau einmal. Umstellen nimmt alle Blöcke mit. Ist START bzw. " +
+    "ABSCHLUSS schon belegt, ist die Kachel gesperrt: zwei Blockfolgen " +
+    "zusammenzulegen hiesse zu raten, welche zuerst läuft.", "phasekind"));
+  target.appendChild(el("div", {class: "grid3"}, kinds.map((kind) => {
+    const current = kind.key === phase.kind;
+    const other = S.phases.find((p) => p.kind === kind.key);
+    const busy = !current && kind.key !== "loop" && !!other && other.blocks.length > 0;
+    return el("button", {
+      class: "type-chip",
+      style: "border-color:var(--" + kind.key + ")" + (current
+        ? ";background:var(--" + kind.key + ");color:#0C0F14;font-weight:600" : ""),
+      disabled: busy || (!current && !phase.blocks.length),
+      title: current ? "läuft " + kind.when
+        : busy ? kind.label + " hat schon Blöcke — erst dort umstellen oder leeren"
+        : "Umstellen — läuft danach " + kind.when,
+      onclick: () => { if (!current) call("phase_convert", {phase: phase.index, to: kind.key}); },
+    }, kind.label);
+  })));
+
+  if (loop) {
+    const loops = S.phases.filter((p) => p.kind === "loop");
+    const at = loops.findIndex((p) => p.index === phase.index);
+    target.appendChild(heading("REIHENFOLGE",
+      "Die Loop-Phasen laufen von links nach rechts — das ist der Ablauf eines " +
+      "Zyklus. START läuft immer davor, ABSCHLUSS immer danach; an ihnen vorbei " +
+      "geht es nicht.", "phase-order"));
+    target.appendChild(el("div", {class: "button-pair"},
+      el("button", {class: "btn", disabled: at <= 0, title: "läuft danach früher im Zyklus",
+                    onclick: () => call("phase_move", {phase: phase.index, delta: -1})},
+         "← nach links"),
+      el("button", {class: "btn", disabled: at >= loops.length - 1,
+                    title: "läuft danach später im Zyklus",
+                    onclick: () => call("phase_move", {phase: phase.index, delta: 1})},
+         "nach rechts →")));
+  }
+  applyHelps(target);
+}
+
 function renderInspector() {
   const target = $("inspector");
   target.replaceChildren();
@@ -1886,6 +1996,9 @@ function renderInspector() {
 
   $("btn-block-delete").disabled = selected === 0;
   $("btn-block-copy").disabled = selected === 0;
+  $("btn-block-copy").title = "Auswahl duplizieren (STRG+D)";
+  $("btn-block-delete").title = "Auswahl löschen (Entf)";
+  if (phaseInInspector()) return renderPhaseInspector(target, S.phases[selectedPhase]);
   if (!b) {
     $("insp-point").style.background = "#2A3245";
     $("insp-title").textContent = selected > 1 ? selected + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
@@ -2136,6 +2249,8 @@ async function selectInsertedBlocks() {
  * an — die erste Fassung sah beim ersten Blick nach 500 ms oft noch nichts,
  * erklärte die Aufnahme für beendet und liess sie unsichtbar weiterlaufen.
  * Kommt gar kein Lebenszeichen, wird das gesagt statt still aufgegeben.
+ * Und „nicht aktiv" allein heisst noch nicht „geschrieben": solange `busy`
+ * steht, baut der Hauptprozess die Blöcke noch zusammen.
  * `quick` (nach „Stoppen") weiss schon, dass sie lief. */
 function watchInsertRecording(quick) {
   const number = ++insertRecordingPoll;
@@ -2150,6 +2265,13 @@ function watchInsertRecording(quick) {
       insertRecordingLive = status;
       wzFillRecordingOutput($("insert-recording-output"), insertRecordingLive, true);
       return void setTimeout(poll, quick ? 300 : 500);
+    }
+    // Gestoppt, aber noch nicht geschrieben: jetzt neu zu laden hiesse, die
+    // Datei VOR dem Einfügen zu lesen — die Konsole meldete die Blöcke, das
+    // Board zeigte sie nicht (s. `busy` in `stop_recording()`).
+    if (status && status.busy) {
+      seen = true;
+      return void setTimeout(poll, 200);
     }
     if (!seen) {
       if (++attempts < INSERT_RECORDING_START_ATTEMPTS) return void setTimeout(poll, 500);
@@ -2414,6 +2536,20 @@ function buildTrigger(target, b, withTrigger) {
       "andere Farbe geprüft werden, ist das ein eigener Punkt.", "trigger"));
     target.appendChild(toggle("nur prüfen, nicht warten", b.trigger_check,
       (on) => call("block_trigger", {choice: b.trigger, check_only: on})));
+    // Die Zeitgrenze DIESES Blocks. Leer = die Einstellung; der Platzhalter
+    // nennt ihren Wert, damit man nicht nachsehen muss, was „leer" gerade heisst.
+    // Beim „nur prüfen" wird nicht gewartet — dort gäbe es nichts zu begrenzen.
+    if (!b.trigger_check) {
+      const standard = (S.without_else || {}).seconds;
+      target.appendChild(field("Timeout (s)", b.trigger_timeout,
+        (v) => call("block_trigger", {choice: b.trigger, timeout: v === "" ? null : v}),
+        {type: "number", min: "0", step: "1",
+         placeholder: standard > 0 ? "Einstellung: " + standard + " s"
+                    : standard === 0 ? "Einstellung: ohne Timeout" : "Einstellung"},
+        "Wie lange dieser Block auf die Farbe wartet, bevor der Timeout greift " +
+        "(dann ELSE bzw. pixel_timeout_action). Leer = die Einstellung " +
+        "pixel_wait_timeout für alle Blöcke, 0 = ohne Grenze.", "trigger-timeout"));
+    }
   } else if (b.point_id === null || b.point_id === undefined) {
     target.appendChild(el("p", {class: "hint"},
       "Ohne Punkt gibt es nichts zu prüfen — erst eine Stelle wählen."));
@@ -2442,11 +2578,13 @@ function buildVerification(target, b) {
  * ab. Der Unterschied entscheidet, ob man ELSE ueberhaupt braucht — also gehoert
  * die echte Einstellung hierher und nicht ein allgemeiner Satz.
  */
-function withoutElseText() {
+function withoutElseText(ownTimeout) {
   const o = S.without_else || {};
   if (!o.consequence) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
                        "pixel_timeout_action in der config.json.";
-  const time = o.seconds > 0 ? o.seconds + " s" : "ohne Timeout";
+  // Hat der Block eine EIGENE Zeitgrenze, gilt die — sonst die Einstellung.
+  const seconds = ownTimeout !== null && ownTimeout !== undefined ? ownTimeout : o.seconds;
+  const time = seconds > 0 ? seconds + " s" : "ohne Timeout";
   return "Ohne ELSE wartet der Schritt bis zum Timeout (" + time + "), danach: " +
          o.consequence + " (config.json: pixel_timeout_action)." +
          (o.emergency_stop > 0 ? " Nach " + o.emergency_stop + " Timeouts in Folge greift " +
@@ -2476,7 +2614,7 @@ function buildElse(target, b) {
   // nicht sieht, steht es im Hinweis darunter und im Tooltip der Kachel.
   const effect = b.else_action
     ? ELSE_DESCRIPTIONS[b.else_action]
-    : withoutElseText();
+    : withoutElseText(b.trigger_timeout);
   target.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
     "eigene Aktion des Schritts. " + effect +
@@ -2537,7 +2675,7 @@ function shortcutTable() {
       ["Auswahl duplizieren", "STRG D"],
       ["Auswahl verschieben", "ALT ↑ · ALT ↓"],
       ["Dazu wählen · bis hierher wählen", "STRG+Klick · SHIFT+Klick"],
-      ["Phase löschen (bei gewähltem Phasenkopf)", "ENTF"],
+      ["Phase löschen · duplizieren (bei gewähltem Phasenkopf)", "ENTF · STRG D"],
     ]],
     ["Scans · Items", [
       ["Modus: " + modes, SCAN_MODES.map((m) => m.shortcut).join(" · ")],
@@ -6395,7 +6533,8 @@ function wzBuildColors() {
 
 function wzNewRecordingName() {
   const d = new Date(), z = (n) => String(n).padStart(2, "0");
-  return "aufnahme_" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+  // Ein Name, den man stehen lassen kann; der Ordner wird daraus abgeleitet.
+  return "Aufnahme " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
 }
 
 function wzBuildRecording() {
@@ -7562,8 +7701,13 @@ function wire() {
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-run").addEventListener("click", () => sendRun(runWasRunning ? "stop" : "start"));
-  $("btn-block-delete").addEventListener("click", () => call("selection_delete"));
-  $("btn-block-copy").addEventListener("click", () => call("selection_duplicate"));
+  // Dieselben zwei Knöpfe für Blöcke und Phasen: was sie meinen, sagt das,
+  // was rechts gerade steht.
+  $("btn-block-delete").addEventListener("click", () =>
+    phaseInInspector() ? deleteSelectedPhase() : call("selection_delete"));
+  $("btn-block-copy").addEventListener("click", () =>
+    phaseInInspector() ? call("phase_duplicate", {phase: selectedPhase})
+                       : call("selection_duplicate"));
 
   $("seq-name").addEventListener("change", (e) =>
     call("sequence_set", {field: "name", value: e.target.value}));
@@ -7887,13 +8031,12 @@ function keyboard(e) {
   }
   if (e.key === "Delete" && selectedPhase !== null) {
     e.preventDefault();
-    const phase = selectedPhase;
-    selectedPhase = null;
-    return call("phase_delete", {phase: phase});
+    return deleteSelectedPhase();
   }
   if (e.key === "Delete") { e.preventDefault(); return call("selection_delete"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an
+    if (phaseInInspector()) return call("phase_duplicate", {phase: selectedPhase});
     return call("selection_duplicate");
   }
   if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); return call("selection_move", {delta: -1}); }

@@ -532,6 +532,10 @@ def handle_finish(state: AutoClickerState) -> None:
             print(f"\n{col('[FINISH]', 'yellow')} Sanfter Abbruch bereits aktiv...")
             return
     state.finish_event.set()
+    # Sofort in den Laufstatus, nicht erst beim naechsten Lebenszeichen: der
+    # Knopf im Studio soll zeigen, dass er gewirkt hat.
+    from .runtime import status as run_status
+    run_status.write_status(state, {}, immediately=True)
     print(f"\n{col('[FINISH]', 'yellow')} Zyklus wird abgeschlossen, dann END-Phase und Stop.")
 
 

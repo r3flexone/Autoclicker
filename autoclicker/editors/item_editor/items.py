@@ -12,10 +12,11 @@ from ...imaging import (
     OPENCV_AVAILABLE, take_screenshot, select_region,
 )
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import get_existing_categories, active_templates_dir
+from ...persistence import (
+    get_existing_categories, active_templates_dir, free_template_file,
+)
 from ...utils import (
     confirm, info, is_cancel, next_free_name, safe_input,
-    sanitize_filename,
 )
 from .._item_fields import ask_confirm_click, ask_priority
 
@@ -87,8 +88,8 @@ def create_item(state: AutoClickerState) -> Optional[ItemProfile]:
             if region:
                 img = take_screenshot(region)
                 if img:
-                    safe_name = sanitize_filename(item_name)
-                    template_file = f"{safe_name}.png"
+                    template_file = free_template_file(active_templates_dir(state),
+                                                       item_name)
                     template_path = active_templates_dir(state) / template_file
                     template_path.parent.mkdir(parents=True, exist_ok=True)
                     img.save(template_path)
@@ -178,8 +179,8 @@ def edit_item(state: AutoClickerState, item: ItemProfile) -> Optional[ItemProfil
                 if region:
                     img = take_screenshot(region)
                     if img:
-                        safe_name = sanitize_filename(new_name)
-                        new_template = f"{safe_name}.png"
+                        new_template = free_template_file(active_templates_dir(state),
+                                                          new_name)
                         template_path = active_templates_dir(state) / new_template
                         template_path.parent.mkdir(parents=True, exist_ok=True)
                         img.save(template_path)

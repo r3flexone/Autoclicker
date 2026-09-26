@@ -89,7 +89,13 @@ class BridgeToolsMixin:
         `except_step` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
         benutzt diesen Punkt SONST noch", denn dass der gewählte Block ihn
         benutzt, weiss man dort schon.
+
+        **Die Scans gehören dazu, auch wenn ihr Reiter nie offen war**
+        (`_scan_configs_load()`), und zwar ALLE Item-Scans, nicht nur der
+        offene (`_all_items()`). Sonst galt der Bestätigungsklick eines Items
+        als ungenutzt, und das Lösch-× in der Punkte-Liste brach ihn still.
         """
+        self._scan_configs_load()
         out = []
         for lane in self.board.lanes:
             for nr, step in enumerate(lane.steps, 1):
@@ -104,9 +110,9 @@ class BridgeToolsMixin:
                     out.append(base_name + " · Nachprüfung")
                 if step.else_config and step.else_config.point_id == point_id:
                     out.append(base_name + " · ELSE")
-        for item in self.items.values():
+        for scan, item in self._all_items():
             if item.confirm_point_id == point_id:
-                out.append(f"Item '{item.name}' · Bestätigung")
+                out.append(f"Item '{item.name}' in '{scan}' · Bestätigung")
         for name, cfg in self.boss_scans.items():
             for boss in cfg.bosses:
                 if boss.action_point_id == point_id:

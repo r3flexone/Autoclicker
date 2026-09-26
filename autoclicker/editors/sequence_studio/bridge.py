@@ -107,6 +107,10 @@ class StudioBridge(
         self._saved = False
         self._status = ("", "info")
         self._ask: Optional[dict] = None
+        # Welche Phase die Seite nach einem Phasen-Befehl gewählt halten soll
+        # (Duplikat, Umstellen, Verschieben ändern die Indizes). Einmal
+        # ausgeliefert wie `_ask`, danach wieder leer.
+        self._phase_focus: Optional[int] = None
         # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber
         # er kommt von aussen: CTRL+ALT+V startet denselben Prozess wie
         # CTRL+ALT+B, nur mit "scans".

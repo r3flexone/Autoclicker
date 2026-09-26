@@ -25,7 +25,7 @@ from ..editors.scan_services import (
     crop_screen_region, map_point_between_rects, map_region_between_rects,
 )
 from ..session_log import log_event
-from ..utils import col, err, dbg, info, warn, sanitize_filename
+from ..utils import col, err, dbg, info, warn
 from ..winapi import set_cursor_pos, get_screen_center, resolve_window
 from .actions import safe_click, wait_while_paused
 from .debug import is_log_debug
@@ -416,7 +416,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
         _find_matching_existing_item, _item_has_compatible_template,
         _prepare_learning_image,
     )
-    from ..persistence import active_templates_dir
+    from ..persistence import active_templates_dir, free_template_file
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
     masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
@@ -451,12 +451,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
             resembles = known
         elif needs_variant:
             width, height = img.size
-            base_name = f"{sanitize_filename(known)}_{width}x{height}"
-            template_file = f"{base_name}.png"
-            number = 2
-            while (templates_folder / template_file).exists():
-                template_file = f"{base_name}_{number}.png"
-                number += 1
+            template_file = free_template_file(templates_folder, f"{known}_{width}x{height}")
             template_path = templates_folder / template_file
             try:
                 template_path.parent.mkdir(parents=True, exist_ok=True)
@@ -499,7 +494,10 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
         # Das Objekt wird ab hier für Editor und Worker sichtbar. Deshalb muss
         # es schon vollständig initialisiert sein; insbesondere darf
         # ``template`` nicht erst ausserhalb des Locks gesetzt werden.
-        template_file = f"{sanitize_filename(name)}.png"
+        # Frei auf der PLATTE, nicht nur im Namen: ein umbenanntes Item behält
+        # seine Vorlage `auto_slot_19_2.png`, und „Auto Slot 19 2" ist dann
+        # wieder frei — die Datei aber nicht (s. `free_template_file`).
+        template_file = free_template_file(templates_folder, name)
         item.template = template_file
         config.items.append(item)
         # Die Konsolen-Arbeitsansicht zeigt auf denselben Scan? Dann muss sie

@@ -318,24 +318,68 @@ def with_background_mask(img: 'Image.Image', background) -> 'Image.Image':
     return result
 
 
-def _masked_confidence(image, template, mask) -> float:
+# Wie weit das Item im Ausschnitt gegen die Vorlage verrutscht sein darf.
+MASK_SHIFT = 2
+
+
+def _masked_confidence(image, template, mask, shift: int = MASK_SHIFT) -> float:
     """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
 
     Von Hand statt `cv2.matchTemplate(..., mask=)`: mit Maske kann OpenCV nur
     `TM_SQDIFF`/`TM_CCORR_NORMED`, deren Zahlen etwas anderes bedeuten — jede
-    gespeicherte `min_confidence` verschöbe sich still. Template und Ausschnitt
-    sind hier immer gleich gross, also genau eine Korrelation und keine Suche.
+    gespeicherte `min_confidence` verschöbe sich still.
+
+    **Gesucht wird über ±`shift` Pixel, nicht an genau einer Stelle.** Template
+    und Ausschnitt sind gleich gross, und die erste Fassung rechnete deshalb
+    genau eine Korrelation. Gemessen an echten Doppeln eines Bestands: derselbe
+    Gegenstand in zwei Slots liegt oft 1 px versetzt im Ausschnitt (die Slots
+    eines Rasters sind nicht pixelgenau gleich weit auseinander), und dieser
+    eine Pixel drückte die Übereinstimmung von ~97 % auf ~75 % — unter die
+    Schwelle. Der Scan erkannte das Item nicht, das Auto-Lernen legte es neu an,
+    und so stand derselbe Anglerfisch zweimal im Bestand. Mit der Suche kommen
+    dieselben Paare wieder auf 88–97 %. Das Bild wird dafür am Rand fortgesetzt
+    (`BORDER_REPLICATE`); bei Versatz 0 ist es exakt die Zahl von früher.
+
+    **Gerechnet wird mit drei `cv2.matchTemplate(TM_CCORR)`-Aufrufen statt 25
+    einzelner Korrelationen.** Der Zähler ist die Kreuzkorrelation mit der
+    zentrierten, maskierten Vorlage (deren Summe ist 0, der Mittelwert des
+    Ausschnitts fällt also heraus); der Nenner braucht Summe und
+    Quadratsumme des Ausschnitts unter der Maske. In reinem numpy kostete ein
+    Vergleich 3,7 ms — bei 26 Slots × 47 Items über 4 s je Scan.
     """
     choice = mask > 127
-    if int(choice.sum()) < 16:
+    count = int(choice.sum())
+    if count < 16:
         # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
         return 0.0
-    a = template[choice].astype(np.float64).ravel()
-    b = image[choice].astype(np.float64).ravel()
-    a -= a.mean()
-    b -= b.mean()
-    denominator = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
-    return float((a * b).sum() / denominator) if denominator > 0 else 0.0
+    channels = template.shape[2] if template.ndim == 3 else 1
+    m = choice.astype(np.float32)
+    if channels > 1:
+        m = np.repeat(m[:, :, None], channels, axis=2)
+    t = template.astype(np.float32)
+    a = (t - float(t[m > 0].mean())) * m
+    sum_a2 = float((a.astype(np.float64) ** 2).sum())
+    if sum_a2 <= 0:
+        return 0.0
+    # Mittelwert abziehen haelt die Quadratsummen klein: in float32 frisst
+    # `S2 - S1²/n` sonst die Stellen, auf die es ankommt.
+    img = image.astype(np.float32)
+    img = img - float(img.mean())
+    padded = cv2.copyMakeBorder(img, shift, shift, shift, shift, cv2.BORDER_REPLICATE)
+    if padded.ndim == 2 and channels > 1:
+        padded = padded[:, :, None]
+    n = float(count * channels)
+    numerator = cv2.matchTemplate(padded, a, cv2.TM_CCORR).astype(np.float64)
+    s1 = cv2.matchTemplate(padded, m, cv2.TM_CCORR).astype(np.float64)
+    s2 = cv2.matchTemplate(padded * padded, m, cv2.TM_CCORR).astype(np.float64)
+    variance = np.maximum(s2 - s1 * s1 / n, 0.0)
+    denominator = np.sqrt(sum_a2 * variance)
+    valid = denominator > 0
+    if not valid.any():
+        return 0.0
+    # Negativ bleibt negativ: `_size_hint` liest „unter 0" als „keine
+    # Ähnlichkeit", und das darf die Suche nicht glattbügeln.
+    return float((numerator[valid] / denominator[valid]).max())
 
 
 def _template_at_size(template_path: str, image, width: int, height: int):

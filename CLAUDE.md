@@ -512,6 +512,32 @@ nicht laufen. `verify_condition.point_id` (Nachprüfung) und `else_config.point_
 (Ersatzaktion) sind Zusatz — fehlt deren Punkt, läuft der Schritt weiter, nur eben
 ungeprüft bzw. mit `else = skip`. Gemeldet wird beides.
 
+**Ein Block ohne Stelle hat keinen Klick-Punkt** (`POSITIONLESS_BLOCKS` in
+`models.py`: Item-, Boss-, Icon-Scan, Boss-Watcher, Taste, Screenshot). Ein Scan
+klickt, was er findet — seine Punkte hängen an Items, Bossen und Icons, nicht am
+Block. `set_block_type()` liess die `point_id` beim Wechsel in einen solchen Typ
+stehen („damit der Punkt seine Position behält"), und der Rest landete in der
+Datei: an einem echten Item-Scan-Block, entstanden aus einem duplizierten Klick,
+stand ein Farbfeld vor dem Scan-Namen, der Punkt galt als „verwendet“, die
+Live-Ansicht zeigte vor dem Scan dessen Pixel, und hätte er gefehlt, wäre der
+ganze Scan übersprungen worden. Heute: der Typwechsel gibt den Punkt ab
+(`drop_position()`, der Name bleibt als eigener des Blocks, STRG+Z holt ihn
+zurück), `block_point`/`point_capture`/`point_create` lehnen bei solchen Blöcken
+ab, und der Loader nimmt einen Rest aus dem Altbestand ab
+(`drop_position_leftovers()`, jede Stelle gemeldet). Nachprüfung und ELSE-Klick
+sind eigene Referenzen und bleiben — die darf jeder Typ haben.
+
+**Das ist die eine Ausnahme von „nie beim Laden“** (s. u. bei `resolve()`), und
+sie ist es, weil der Rest wirkte statt nur dazustehen. Ein wirkungsloses ELSE
+schadet niemandem und bleibt stehen, bis der Nutzer entscheidet; eine
+Punkt-Referenz an einem Scan zählte, zeigte und übersprang.
+
+Am selben Ort sass ein zweiter Fehler: die **schon markierte** Typ-Kachel noch
+einmal anzuklicken löschte den Scan-Namen (bzw. setzte eine Taste auf „enter“),
+weil die Diskriminatoren erst zurückgesetzt und danach „erhalten“ wurden.
+`set_block_type()` merkt sie sich jetzt vorher, und `block_set_type()` tut bei
+gleichem Typ gar nichts — kein Abzug auf dem Rückgängig-Stapel.
+
 **Es gibt bewusst keinen Rückfallwert.** Zeigt eine `point_id` ins Leere, setzt
 `resolve()` `step.unresolved = True`; `step_gate()` überspringt den Schritt und sagt
 warum. Ein Schritt, der ersatzweise auf eine veraltete Kopie klickt, ist schlimmer als
@@ -1598,6 +1624,18 @@ das Löschen „hat geklappt" meldete. Gesucht wird deshalb wie beim Laden über
 Datei steht dort nicht, und genau die will man am häufigsten löschen).
 `_sequence_folder()` ist die eine Stelle dafür; sie schliesst nebenbei den Pfad,
 denn `name` kommt aus dem Fenster.
+
+**Umgekehrt ist der Name kein Ordnername — `sanitize_filename()` gehört an den
+Pfad, nie an den Anzeigenamen.** Drei Wege hatten das vertauscht, und heraus
+kamen Namen wie `abrechnung_mit_den_göttern` und `item_scan_raid` in jeder
+Liste: der Aufnahme-Start im Studio (`recording_start` schickte den bereinigten
+Namen an den Hauptprozess, und der speicherte ihn als Namen) und das Umbenennen
+von Item-, Boss- und Icon-Scans. Dazu vorgeschlagene Namen mit Unterstrich
+(`Sequenz_1727…`, `aufnahme_214638`); heute heissen sie „Neue Sequenz“ bzw.
+„Aufnahme 21:46:38“. Bei Scans heisst das eine zweite Regel: **belegt ist, was
+in DIESELBE Datei schriebe** (`scan_name_taken()` in `scan_contract.py`) — „Raid
+Scan“ und „raid scan“ sind zwei Namen, aber eine Datei. Und ein Umbenennen, das
+nur die Schreibweise ändert, darf die alte Datei nicht löschen: es ist dieselbe.
 
 **Auf Windows war das unsichtbar.** Das Dateisystem ist dort nicht
 gross-/kleinschreibungsempfindlich, also *ist* `sequences/Raid` derselbe Ordner
@@ -3276,14 +3314,17 @@ Regeln beim Erweitern:
   „sofort" unter jedem zweiten Block ist Rauschen.
 
   **Zum Ziel gehört die Farbe des Punkts** (`point_color`, das Feldchen vor der
-  Stelle) — bei jedem Block, der einen Punkt hat, nicht nur an der
-  Farb-Bedingung. Dort stand sie zuerst allein („wartet bis RGB(…) da"), und ein
-  reiner Klick zeigte nur Koordinaten: beim Umsortieren einer Aufnahme
-  unterscheidet niemand `(4405,555)` von `(4419,550)`, den grünen Knopf vom
-  roten schon. Ohne gemessene Farbe kein Feldchen — ein leeres Kästchen sagt
-  nichts, was der Inspektor nicht besser sagt. Die Stelle ist bei einem Block
-  mit Punkt immer die **erste** Zeile (`_lines`); daran hängt die Ansicht das
-  Feldchen, mit derselben CSS-Regel wie das an der Bedingung.
+  Stelle) — bei jedem Block mit einer STELLE-Zeile (Klick, Farbe+Klick), nicht
+  nur an der Farb-Bedingung. Dort stand sie zuerst allein („wartet bis RGB(…)
+  da"), und ein reiner Klick zeigte nur Koordinaten: beim Umsortieren einer
+  Aufnahme unterscheidet niemand `(4405,555)` von `(4419,550)`, den grünen Knopf
+  vom roten schon. Ohne gemessene Farbe kein Feldchen — ein leeres Kästchen sagt
+  nichts, was der Inspektor nicht besser sagt. Die Stelle ist bei diesen Blöcken
+  die **erste** Zeile (`_lines`); daran hängt die Ansicht das Feldchen, mit
+  derselben CSS-Regel wie das an der Bedingung. Hier stand „jeder Block, der
+  einen Punkt hat" — und ein Warten-Block trug das Feldchen vor seiner
+  Wartezeit, ein Item-Scan mit einem Rest-Punkt vor seinem Scan-Namen. Deshalb
+  prüft `_block_json` jetzt, dass die erste Zeile wirklich STELLE heisst.
 - **Diskrete Bedienelemente melden sofort, Tipp-Felder erst beim Verlassen** (`change`,
   nicht `input`). Jede Meldung baut die Ansicht neu, und ein Neuaufbau mitten in der
   Eingabe nimmt das Feld weg, in das gerade getippt wird. Dieselbe Regel galt schon in
@@ -3326,6 +3367,17 @@ Regeln beim Erweitern:
   sich bei „warten" selbst aus. Wer ihn eingeschaltet hatte, fand nichts mehr, um ihn
   auszuschalten. Genau diese Falltür darf es hier nicht geben — und deshalb bleibt auch
   ein Farb-Trigger sichtbar, der an einem Typ hängt, der ihn gar nicht auswertet.
+- **Ein Farb-Warten kann seine eigene Zeitgrenze haben** (`WaitCondition.timeout`,
+  in der Datei `wait_timeout`, Feld „Timeout (s)“ unter dem Farb-Trigger).
+  Leer = `pixel_wait_timeout` aus der Config, 0 = ohne Grenze — dieselbe
+  Bedeutung wie dort, damit „0“ nicht zweierlei heisst. Vorher galt EINE Grenze
+  für alle Blöcke, und ein Block, der auf das Ende eines Kampfs wartet, bekam
+  dieselbe Zeit wie einer, der auf einen Knopf wartet. Gelesen wird an einer
+  Stelle (`effective_timeout()` in `runtime/steps.py`); die Karte nennt eine
+  eigene Grenze („max 600 s“), und der ELSE-Hinweis rechnet mit ihr. Nur für
+  die VORbedingung: die Nachprüfung hat `verify_timeout` und nimmt keine
+  eigene an. Ein unlesbarer Wert in der Datei fällt auf die Config zurück
+  statt den Block ohne Grenze zu lassen.
 - **Ein Bedienelement steht nur da, wo die Laufzeit es auswertet.** Den Farb-Trigger
   gibt es bei Klick, Warten und **Taste**: `runtime/steps.py` wartet für die drei an
   genau einer Stelle, und dass die Taste dazugehört, war einmal ein Fehler und ist
@@ -3531,6 +3583,59 @@ Regeln beim Erweitern:
   Koordinaten auf einer Kante bleiben), und **Punkt-Werkzeuge ziehen die
   Momentaufnahme nach** (`TOOL_POINT_COMMANDS` in `callTool`, ein Test hält
   die Liste gegen die `tool_point*`-Methoden der Brücke).
+
+  **Die Scans zählen mit, auch wenn ihr Reiter nie offen war.** Das Studio
+  lädt sie verzögert (`_scan_load()`, wegen des gemerkten Bildes), und bis
+  dahin zählte die Liste nur Blöcke: ein Punkt, den nur Bestätigungsklicks von
+  Items benutzen, stand als „0× ungenutzt“ mit Lösch-× da — an einer echten
+  Sequenz drei Items auf einem Punkt. `_scan_configs_load()` holt deshalb nur
+  die Konfigurationen (1 ms statt 147 ms mit Bild), und `_all_items()` zählt
+  ALLE Item-Scans, nicht nur den offenen. Wer `_scan_loaded` zurücksetzt,
+  nimmt `_scan_unload()` — sonst bleiben die früh geladenen Konfigurationen
+  beim Neuladen stehen.
+- **Jede Phase hat ein Menü rechts** (`renderPhaseInspector()`): ein Klick auf
+  den Phasenkopf — auch START und ABSCHLUSS — wählt sie, und statt „KEIN
+  BLOCK“ stehen dort Art, Reihenfolge und oben „duplizieren“/„löschen“
+  (dieselben Knöpfe wie beim Block, STRG+D und Entf ebenso). Die Art stand
+  kurz als Auswahl IM Kopf und nahm dem Namen den Platz („Sammeln Ev…“); was
+  man selten tut, gehört in den Inspektor, nicht in jede Spalte. Nach einem
+  Phasen-Befehl ändern sich die Indizes — die Brücke sagt deshalb, welche
+  Phase gewählt bleibt (`phase_focus`, einmal ausgeliefert wie `question`).
+
+  **Duplizieren** (`phase_duplicate`) legt die Kopie hinter das Original, mit
+  eigenen Punkten nach derselben Regel wie beim Block-Duplikat (EINE
+  Abbildung für die ganze Phase), Name „… (Kopie)“ — ein Zähler machte aus
+  „Loop 1“ ein „Loop 1 2“. Eine Kopie von START oder ABSCHLUSS ist eine
+  Loop-Phase. **Löschen** geht auch bei START und ABSCHLUSS und heisst dort
+  leeren (mit Rückgängig): im Modell gibt es beide immer, „keine Startphase“
+  IST eine leere, und die Ansicht blendet sie aus (`openSpecialPhases`). Hier
+  stand „INIT und END lassen sich nicht löschen“ — eine über „+ Startphase“
+  eingeblendete leere START-Phase liess sich damit nicht mehr loswerden.
+  **Verschieben** (`phase_move`, `move_loop_lane()`) geht nur unter
+  den Loop-Phasen: START ist der Anfang, ABSCHLUSS das Ende. Gesucht wird eine
+  Phase dabei über ihre Identität (`position()`), nicht über `lanes.index()`:
+  nach einem Duplikat gibt es gleich aussehende.
+- **Jede Phase kann ihre Art wechseln — START ↔ Loop-Phase ↔ ABSCHLUSS, hin
+  und zurück** (`phase_convert`, Kacheln „Art“ im Phasen-Menü,
+  `convert_lane()` in `model.py`). Von Hand ging das nicht: eine neue
+  Loop-Phase entsteht immer hinten, und Phasen liessen sich nicht umsortieren.
+  Vier Regeln:
+  - **→ Loop** legt eine neue Phase an **derselben Stelle** im Ablauf an: aus
+    START die erste, aus ABSCHLUSS die letzte; die Sonderphase bleibt leer für
+    einen neuen Aufbau.
+  - **→ START / ABSCHLUSS nur, wenn das Ziel leer ist.** Beide gibt es genau
+    einmal, und zwei Blockfolgen zusammenzulegen hiesse zu raten, welche zuerst
+    läuft. In der Auswahl steht ein belegtes Ziel als „(belegt)“ gesperrt da.
+  - **Was eine Sonderphase nicht kennt, wird gesagt**: Läufe je Zyklus und
+    Startzeit einer Loop-Phase fallen weg, und die Meldung nennt sie (`warn`).
+  - **Umbenannt wird nichts.** `delete_loop_lane()` zählt Namen wie „Loop 2“
+    neu durch; eine Umstellung ist kein Löschen, und die übrigen Phasen
+    behalten ihre Namen.
+
+  Namen und Laufzeitpunkt der drei Arten stehen in `PHASE_KIND_NAMES` /
+  `PHASE_KIND_WHEN` und kommen über die Momentaufnahme (`phase_kinds`) — die
+  Seite erfindet sie nicht. Die Knopfzeile im Kopf ist in allen Phasen
+  dieselbe: „Zeiten skalieren …“ gibt es auch bei START und ABSCHLUSS.
 - **Ein leeres Board sagt, wie man anfängt** (`startCard()`: Aufnehmen oder
   von Hand bauen, dazu der Import), und die Tastenkürzel stehen in EINER Tafel
   (`shortcutTable()`, Taste `?` und `#btn-help`). Die Scan-Modi nehmen ihre

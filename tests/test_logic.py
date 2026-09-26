@@ -4564,6 +4564,12 @@ check("jeder Typ laesst sich auch einstellen", _error10b == [])
 # block_trigger schon hatte.
 _b10.select({"phase": 1, "row": 0})
 _b10.block_set_type({"type": "click"})
+# Das Durchschalten oben endete auf einem Typ OHNE Stelle, und der gibt den
+# Punkt ab (tests/contract/positionless_blocks.py) — zurück bekommt ihn der
+# Klick-Block ausdrücklich, wie im Inspektor. (Die Sequenz hat keine
+# Punktliste; `point_create` legt #1 an und hängt ihn an.)
+check("nach Scans und Taste ist der Punkt weg", _seq10.loop_phases[0].steps[0].point_id is None)
+_b10.point_create({"x": 1, "y": 2})
 _b10.block_set_type({"type": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
 check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
@@ -5888,6 +5894,32 @@ else:
         _other = _imgm.match_template_in_image(_slot_image(_HG_M, 2), "gelernt.png", 0.8)
         check("ein anderes Symbol passt nicht", not _other[0])
 
+        # **Ein Pixel Versatz ist dasselbe Item.** An echten Doppeln gemessen:
+        # derselbe Gegenstand lag in zwei Slots 1 px versetzt im Ausschnitt,
+        # der Vergleich rechnete an genau EINER Stelle und fiel von ~97 % auf
+        # ~75 % — das Auto-Lernen legte ihn als neues Item an.
+        def _shifted(dx, dy):
+            import random
+            b = _PILm.new("RGB", (40, 40), _HG_M)
+            r = random.Random(1)
+            for x in range(14, 26):
+                for y in range(14, 26):
+                    b.putpixel((x + dx, y + dy), (r.randrange(120, 256), r.randrange(120, 256),
+                                                  r.randrange(120, 256)))
+            return b
+        _one_px = _imgm.match_template_in_image(_shifted(1, 0), "gelernt.png", 0.8)
+        _two_px = _imgm.match_template_in_image(_shifted(-2, 2), "gelernt.png", 0.8)
+        check("um 1 px verrutscht wird es trotzdem erkannt", _one_px[0] and _one_px[1] > 0.99)
+        check("um 2 px schraeg ebenso", _two_px[0] and _two_px[1] > 0.99)
+        _far = _imgm.match_template_in_image(_shifted(6, 0), "gelernt.png", 0.8)
+        check("aber nicht beliebig weit: 6 px daneben ist kein Treffer", not _far[0])
+        _other_shifted = max(_imgm._masked_confidence(
+            _imgm.cv2.cvtColor(_imgm.np.array(_slot_image(_HG_M, _s)), _imgm.cv2.COLOR_RGB2BGR),
+            _imgm.cv2.cvtColor(_imgm.np.array(_m.convert("RGB")), _imgm.cv2.COLOR_RGB2BGR),
+            _imgm.np.array(_m.getchannel("A"))) for _s in range(2, 12))
+        check(f"die Suche macht fremde Symbole nicht aehnlich (bestes {_other_shifted:.0%})",
+              _other_shifted < 0.5)
+
         # Ohne Maske (Template ohne Alpha) bleibt es beim alten Verhalten - und
         # genau dann zieht der Hintergrund die Uebereinstimmung hoch.
         # --- Marker sehen dieselbe Flaeche wie das Template ---
@@ -6548,6 +6580,9 @@ import tests.contract.point_surface         # noqa: F401,E402
 import tests.contract.live_wait             # noqa: F401,E402
 import tests.contract.cross_phase_selection  # noqa: F401,E402
 import tests.contract.python_floor          # noqa: F401,E402
+import tests.contract.positionless_blocks   # noqa: F401,E402
+import tests.contract.phase_convert        # noqa: F401,E402
+import tests.contract.block_timeout        # noqa: F401,E402
 
 
 import shutil as _shD

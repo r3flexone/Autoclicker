@@ -9,7 +9,7 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import save_global_items, active_templates_dir
+from ...persistence import save_global_items, active_templates_dir, free_template_file
 from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
                       clean_item_name, ok, err, info, hint)
 
@@ -315,20 +315,16 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
     from ...imaging import template_size
     matching = [name for name in item.template_names()
                 if template_size(name, active_templates_dir(state)) == tuple(img.size)]
-    safe_name = sanitize_filename(item.name)
     if matching:
-        # Dieselbe Slot-Groesse wird bewusst aktualisiert.
+        # Dieselbe Slot-Groesse wird bewusst aktualisiert — die Datei gehoert
+        # diesem Item.
         template_file = matching[0]
     elif item.template_names():
         width, height = img.size
-        base_name = f"{safe_name}_{width}x{height}"
-        template_file = f"{base_name}.png"
-        number = 2
-        while (active_templates_dir(state) / template_file).exists():
-            template_file = f"{base_name}_{number}.png"
-            number += 1
+        template_file = free_template_file(active_templates_dir(state),
+                                           f"{item.name}_{width}x{height}")
     else:
-        template_file = f"{safe_name}.png"
+        template_file = free_template_file(active_templates_dir(state), item.name)
     template_path = active_templates_dir(state) / template_file
     template_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(template_path)

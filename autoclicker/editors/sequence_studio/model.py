@@ -20,7 +20,8 @@ from typing import Optional
 from ...models import (
     BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER, BLOCK_CLICK, BLOCK_ICON_SCAN,
     BLOCK_ITEM_SCAN, BLOCK_KEY, BLOCK_SCREENSHOT, BLOCK_WAIT, BLOCK_WAIT_CLICK,
-    ElseConfig, LoopPhase, Sequence, SequenceStep, WaitCondition,
+    POSITIONLESS_BLOCKS, ElseConfig, LoopPhase, Sequence, SequenceStep, WaitCondition,
+    drop_position,
 )
 
 # Die Block-Typen und `block_type()` selbst liegen in `models.py`: die Laufzeit
@@ -32,6 +33,14 @@ from ...models import (
 LANE_INIT = "init"
 LANE_LOOP = "loop"
 LANE_END = "end"
+
+# Die drei Arten einer Phase, wie die Oberfläche sie nennt, und wann sie laufen.
+# Die Seite bekommt beides über die Momentaufnahme (`phase_kinds`) — sie
+# erfindet keine eigenen Namen.
+PHASE_KIND_NAMES = {LANE_INIT: "START", LANE_LOOP: "Loop-Phase", LANE_END: "ABSCHLUSS"}
+PHASE_KIND_WHEN = {LANE_INIT: "einmal vor allen Zyklen",
+                   LANE_LOOP: "in jedem Zyklus",
+                   LANE_END: "einmal nach dem letzten Zyklus"}
 
 
 # Anzeige-Label je Block-Typ (kurz, für die Listenzeile)
@@ -180,6 +189,81 @@ class SequenceBoard:
         self.lanes.insert(end_idx, new_lane)
         return new_lane
 
+    def special_lane(self, kind: str) -> Optional[Lane]:
+        """START bzw. ABSCHLUSS — beide gibt es in jeder Sequenz genau einmal."""
+        return next((ln for ln in self.lanes if ln.kind == kind), None)
+
+    def convert_lane(self, lane: Lane, kind: str) -> Optional[Lane]:
+        """Stellt eine Phase auf eine andere Art um — die Lane, in der die Blöcke
+        danach stehen, oder `None`, wenn es nicht geht.
+
+        Drei Arten, jede in jede, und die Blöcke gehen mit:
+
+        - **→ Loop**: eine NEUE Loop-Phase an derselben Stelle im Ablauf — aus
+          START wird die erste, aus ABSCHLUSS die letzte. `add_loop_lane()`
+          taugte dafür nicht: es hängt immer hinten an, und Phasen lassen sich
+          nicht umsortieren.
+        - **→ START / ABSCHLUSS**: nur, wenn das Ziel LEER ist. Beide gibt es
+          genau einmal; zwei Blockfolgen zusammenzulegen hiesse zu raten, welche
+          zuerst läuft. Eine Loop-Phase verschwindet dabei (samt Wiederholungen
+          und Startzeit — die hat eine Sonderphase nicht), eine Sonderphase
+          bleibt leer zurück, für einen neuen Aufbau.
+
+        Umbenannt wird dabei nichts: `delete_loop_lane()` zählt Namen wie
+        „Loop 2" neu durch — hier behalten die übrigen Phasen ihre Namen.
+        """
+        if self.position(lane) is None or kind == lane.kind \
+                or kind not in (LANE_INIT, LANE_LOOP, LANE_END):
+            return None
+        if kind == LANE_LOOP:
+            target = Lane(kind=LANE_LOOP,
+                          name="Start" if lane.kind == LANE_INIT else "Abschluss",
+                          steps=[], repeat=1)
+            self.insert_loop_lane(target, near=lane)
+        else:
+            target = self.special_lane(kind)
+            if target is None or target.steps:
+                return None
+        target.steps = list(lane.steps)
+        if lane.kind == LANE_LOOP:
+            del self.lanes[self.position(lane)]
+        else:
+            lane.steps = []
+        return target
+
+    def position(self, lane: Lane) -> Optional[int]:
+        """Wo die Phase steht — über ihre IDENTITÄT, nicht über Gleichheit.
+
+        `Lane` ist eine Dataclass: `lanes.index()` fände von zwei gleich
+        aussehenden Phasen (nach einem Duplizieren der Normalfall) immer die
+        erste.
+        """
+        return next((i for i, ln in enumerate(self.lanes) if ln is lane), None)
+
+    def insert_loop_lane(self, new_lane: Lane, near: Lane) -> None:
+        """Setzt eine Loop-Phase dorthin, wo `near` im Ablauf steht.
+
+        Hinter eine Loop-Phase (Duplikat), als ERSTE hinter START, als LETZTE vor
+        ABSCHLUSS — dieselbe Stelle, an der ihre Blöcke vorher liefen.
+        """
+        at = self.position(near)
+        self.lanes.insert(at if near.kind == LANE_END else at + 1, new_lane)
+
+    def move_loop_lane(self, lane: Lane, delta: int) -> bool:
+        """Verschiebt eine Loop-Phase um eine Stelle unter den Loop-Phasen.
+
+        START bleibt vorn und ABSCHLUSS hinten: an ihnen vorbei geht es nicht,
+        sie SIND der Anfang und das Ende. Gibt zurück, ob sich etwas bewegt hat.
+        """
+        at = self.position(lane)
+        if at is None or lane.kind != LANE_LOOP or delta not in (-1, 1):
+            return False
+        other = at + delta
+        if not (0 <= other < len(self.lanes)) or self.lanes[other].kind != LANE_LOOP:
+            return False
+        self.lanes[at], self.lanes[other] = self.lanes[other], self.lanes[at]
+        return True
+
     def delete_loop_lane(self, lane: Lane) -> None:
         """Entfernt eine Loop-Lane (INIT/END bleiben immer erhalten)."""
         if lane.kind == LANE_LOOP and lane in self.lanes:
@@ -307,9 +391,25 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     """Stellt die diskriminierenden Felder eines Schritts auf einen neuen Typ um.
 
     Setzt alle Typ-Felder zurück und aktiviert nur die zum gewählten Typ
-    passenden. Erhaltene Felder (x, y, name, delay_before, else_config) bleiben
-    unangetastet, damit ein in einen Block gesetzter Punkt seine Position behält.
+    passenden. Zwischen den Typen MIT Stelle (Klick, Farbe+Klick, Warten) bleibt
+    der Punkt stehen — das sind zwei Schalter an demselben Block, und ein Schalter
+    darf die Stelle nicht wegwerfen.
+
+    **Ein Typ ohne Stelle verliert den Punkt** (`POSITIONLESS_BLOCKS`). Er blieb
+    hier stehen, „damit der Punkt seine Position behält", und landete damit als
+    `point_id` an einem Scan in der Datei: Farbfeld auf der Karte neben dem
+    Scan-Namen, der Punkt galt als „verwendet", und vor dem Scan zeigte die
+    Live-Ansicht dessen Pixel. Zurück zum Klick holt ihn STRG+Z (bzw. der Knopf
+    an der Meldung). Der Name bleibt — er ist dann der eigene des Blocks.
+
+    **Derselbe Typ noch einmal ändert nichts.** Die Diskriminatoren wurden erst
+    zurückgesetzt und danach mit `step.item_scan or ""` „erhalten" — da waren
+    sie aber schon `None`: ein Klick auf die schon markierte Kachel löschte den
+    Scan-Namen, und eine Taste wurde wieder „enter".
     """
+    previous = {"item_scan": step.item_scan, "icon_scan": step.icon_scan,
+                "boss_scan": step.boss_scan, "boss_watcher": step.boss_watcher,
+                "key_press": step.key_press}
     # Alle Diskriminatoren zurücksetzen
     step.screenshot_only = False
     step.boss_watcher = None
@@ -339,23 +439,26 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
         # wait_condition bleibt optional erhalten (Farb-Trigger-Feature).
         step.wait_only = True
     elif new_type == BLOCK_KEY:
-        step.key_press = step.key_press or "enter"
+        step.key_press = previous["key_press"] or "enter"
         step.wait_condition = None
     elif new_type == BLOCK_ITEM_SCAN:
-        step.item_scan = step.item_scan or ""
+        step.item_scan = previous["item_scan"] or ""
         step.wait_condition = None
     elif new_type == BLOCK_ICON_SCAN:
-        step.icon_scan = step.icon_scan or ""
+        step.icon_scan = previous["icon_scan"] or ""
         step.wait_condition = None
     elif new_type == BLOCK_BOSS_SCAN:
-        step.boss_scan = step.boss_scan or ""
+        step.boss_scan = previous["boss_scan"] or ""
         step.wait_condition = None
     elif new_type == BLOCK_BOSS_WATCHER:
-        step.boss_watcher = step.boss_watcher or ""
+        step.boss_watcher = previous["boss_watcher"] or ""
         step.wait_condition = None
     elif new_type == BLOCK_SCREENSHOT:
         step.screenshot_only = True
         step.wait_condition = None
+
+    if new_type in POSITIONLESS_BLOCKS:
+        drop_position(step)
 
 
 def ensure_else(step: SequenceStep, action: str) -> ElseConfig:

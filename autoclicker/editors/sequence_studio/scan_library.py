@@ -3,8 +3,11 @@
 from typing import Optional
 
 from ...models import ItemScanConfig
-from ...utils import unique_name, sanitize_filename
-from .scan_contract import KIND_ITEM, KIND_SCAN, KIND_SLOT, rename_references
+from ...utils import sanitize_filename
+from .scan_contract import (
+    KIND_ITEM, KIND_SCAN, KIND_SLOT, clean_scan_name, free_scan_name,
+    rename_references, scan_name_taken,
+)
 
 
 class ScanLibraryMixin:
@@ -69,7 +72,8 @@ class ScanLibraryMixin:
         aufgerufen aber sehr wohl.
         """
         self._scan_load()
-        name = unique_name(str((data or {}).get("name") or "Neuer Scan"), self.scans)
+        name = free_scan_name(clean_scan_name((data or {}).get("name")) or "Neuer Scan",
+                              self.scans)
         self._remember("Scan angelegt")
         self.scans[name] = ItemScanConfig(name=name)
         self.scans[name].owner_sequence = self.board.name
@@ -98,11 +102,12 @@ class ScanLibraryMixin:
             return self._scan_report(f"Scan '{name}' gibt es nicht.", "err")
 
         if field == "name":
-            new = sanitize_filename(str(value or "").strip())
+            new = clean_scan_name(value)
             if not new or new == cfg.name:
                 return self.scan_data()
-            if new in self.scans:
-                return self._scan_report(f"'{new}' gibt es schon.", "warn")
+            clash = scan_name_taken(new, self.scans, old=cfg.name)
+            if clash:
+                return self._scan_report(f"'{clash}' gibt es schon.", "warn")
             self._remember(f"Scan '{cfg.name}' umbenannt")
             old = cfg.name
             self.scans = {(new if k == old else k): v for k, v in self.scans.items()}
@@ -118,6 +123,11 @@ class ScanLibraryMixin:
             for boss_cfg in getattr(self, "boss_scans", {}).values():
                 if boss_cfg.default_scan == old:
                     boss_cfg.default_scan = new
+            # **Nur Schreibweise geändert = dieselbe Datei.** Aus `item_scan_raid`
+            # wird „Item Scan Raid", und beide heissen `item_scan_raid.json`:
+            # die alte Datei zu löschen hiesse, die einzige zu löschen.
+            if sanitize_filename(old) == sanitize_filename(new):
+                return self._scan_changed(f"'{old}' heisst jetzt '{new}'.")
             # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
             try:
                 self._photo_path(old).replace(self._photo_path(new))

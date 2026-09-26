@@ -9,9 +9,9 @@ mit dem rename-Befehl angepasst werden.
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import save_global_items, active_templates_dir
+from ...persistence import save_global_items, active_templates_dir, free_template_file
 from ...utils import (
-    col, confirm, err, header, hint, safe_input, sanitize_filename,
+    col, confirm, err, header, hint, safe_input,
 )
 from .._item_fields import ask_confirm_click
 from ..scan_services import crop_screen_region
@@ -209,12 +209,8 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
             if item is not None and not _item_has_compatible_template(
                     item, template_img, active_templates_dir(state)):
                 width, height = template_img.size
-                safe_name = sanitize_filename(f"{matched_item}_{width}x{height}")
-                template_file = f"{safe_name}.png"
-                number = 2
-                while (active_templates_dir(state) / template_file).exists():
-                    template_file = f"{safe_name}_{number}.png"
-                    number += 1
+                template_file = free_template_file(active_templates_dir(state),
+                                                   f"{matched_item}_{width}x{height}")
                 template_path = active_templates_dir(state) / template_file
                 template_path.parent.mkdir(parents=True, exist_ok=True)
                 template_img.save(template_path)
@@ -238,8 +234,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                 item_name = f"{base_name} {counter}"
 
         # Template speichern
-        safe_name = sanitize_filename(item_name)
-        template_file = f"{safe_name}.png"
+        template_file = free_template_file(active_templates_dir(state), item_name)
         template_path = active_templates_dir(state) / template_file
         template_path.parent.mkdir(parents=True, exist_ok=True)
         template_img.save(template_path)

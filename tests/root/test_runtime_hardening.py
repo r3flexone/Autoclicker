@@ -439,6 +439,48 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertEqual(config.items[0].name, "Auto Slot")
         self.assertEqual(config.items[0].template, "auto_slot.png")
 
+    def test_auto_lernen_ueberschreibt_keine_vorlage_eines_umbenannten_items(self):
+        """Ein freier NAME ist noch keine freie DATEI.
+
+        An einem echten Lauf gemessen: „Auto Slot 19 2" wurde im Studio zu
+        „Überlegener Edelstein" umbenannt und behielt seine Vorlage
+        `auto_slot_19_2.png`. Der Name „Auto Slot 19 2" war damit wieder frei,
+        das nächste Auto-Lernen in Slot 19 nahm ihn — und schrieb seine Vorlage
+        (eine Truhe) über die des eingeschalteten Edelsteins. Danach zeigten
+        beide Items auf dieselbe Datei, und der Edelstein stand als Truhe da.
+        """
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        gem = ItemProfile(name="Überlegener Edelstein", template="auto_slot_19_2.png")
+        scan = ItemScanConfig(name="Raid", owner_sequence="farm", items=[
+            ItemProfile(name="Auto Slot 19", template="auto_slot_19.png", enabled=False),
+            gem,
+        ])
+        slot = ItemSlot("Slot 19", (0, 0, 62, 57), (31, 28))
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "auto_slot_19.png").write_bytes(b"alt")
+            (folder / "auto_slot_19_2.png").write_bytes(b"edelstein")
+            image = Mock(size=(62, 57))
+            image.save.side_effect = lambda path: Path(path).write_bytes(b"truhe")
+            with patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                    patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                          return_value=(image, [], False)), \
+                    patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                          return_value=None), \
+                    patch("autoclicker.persistence.active_templates_dir",
+                          return_value=folder), \
+                    patch("autoclicker.persistence.save_item_scan"):
+                item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
+
+            learned = scan.items[-1]
+            self.assertEqual(learned.name, "Auto Slot 19 2")
+            self.assertNotEqual(learned.template, "auto_slot_19_2.png",
+                                "die Datei gehört schon dem umbenannten Item")
+            self.assertEqual((folder / "auto_slot_19_2.png").read_bytes(), b"edelstein")
+            self.assertEqual((folder / learned.template).read_bytes(), b"truhe")
+            self.assertEqual(gem.template, "auto_slot_19_2.png")
+
     def test_auto_lernen_schreibt_in_den_laufenden_scan_nicht_in_die_arbeitsansicht(self):
         """Zwei Item-Scans in einer Sequenz: gelernt wird in dem, der LAEUFT.
 

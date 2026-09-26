@@ -395,6 +395,12 @@ def _execute_key(state: AutoClickerState, step: SequenceStep,
 # WAIT-FOR-COLOR STEP
 # =============================================================================
 
+def effective_timeout(wc, config) -> float:
+    """Die Zeitgrenze eines Farb-Wartens: die des Blocks, sonst die der Config."""
+    own = getattr(wc, "timeout", None)
+    return config.pixel_wait_timeout if own is None else own
+
+
 def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> str:
     """Wartet auf eine Farbe an einer Pixel-Position.
@@ -435,7 +441,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     if getattr(wc, "check_only", False):
         return _check_color_once(state, step, step_num, total_steps, phase)
 
-    timeout = state.config.pixel_wait_timeout
+    timeout = effective_timeout(wc, state.config)
     start_time = time.time()
     expected_name = get_color_name(wc.color)
     if debug:

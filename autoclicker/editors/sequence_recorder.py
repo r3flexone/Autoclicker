@@ -95,8 +95,12 @@ def _status_events(events: list) -> list[dict]:
 
 
 def _write_status(state: AutoClickerState, events: list | None = None,
-                       active: bool | None = None) -> None:
-    """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören."""
+                       active: bool | None = None, busy: bool = False) -> None:
+    """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören.
+
+    `busy` heisst „gestoppt, aber die Blöcke sind noch nicht geschrieben" —
+    s. `stop_recording()`.
+    """
     try:
         with state.lock:
             listing = list(state.recording_events) if events is None else list(events)
@@ -106,6 +110,7 @@ def _write_status(state: AutoClickerState, events: list | None = None,
             right_clicks = state.recording_right_clicks
         atomic_write(_RECORDING_STATUS, compact_json({
             "active": bool(running),
+            "busy": bool(busy),
             "paused": bool(paused and running),
             "name": name,
             "count": len(listing),
@@ -651,8 +656,25 @@ def stop_recording(state: AutoClickerState) -> str | None:
     remove_keyboard_hook()
     # Der Zaehler bleibt bis hierher stehen, damit die Zusammenfassung ihn
     # noch mitschreibt - erst der naechste Start setzt ihn zurueck.
-    _write_status(state, events, active=False)
+    #
+    # **„Nicht mehr aktiv" heisst noch nicht „geschrieben".** Hier stand
+    # `active=False` allein, und das Studio las daraus „fertig": die
+    # Einfüge-Aufnahme lud die Sequenz neu, BEVOR `_finish_insert_recording`
+    # sie gespeichert hatte — in der Konsole stand der Block, im Studio nicht,
+    # und das nächste Speichern dort hätte ihn überschrieben. `busy` bleibt
+    # stehen, bis der Aufbau durch ist, egal auf welchem Weg er endet.
+    _write_status(state, events, active=False, busy=True)
+    try:
+        return _build_recording(state, events, right_clicks, ui_name, ui_cycles,
+                                ui_description, insert_target)
+    finally:
+        _write_status(state, events, active=False)
 
+
+def _build_recording(state: AutoClickerState, events: list, right_clicks: int,
+                     ui_name: str, ui_cycles: int, ui_description: str,
+                     insert_target: dict | None) -> str | None:
+    """Wertet die Ereignisse einer gestoppten Aufnahme aus und speichert sie."""
     # VOR der Auswertung, nicht danach: eine Aufnahme aus lauter Rechtsklicks
     # ist "nichts aufgezeichnet", und genau dann muss der Grund dastehen.
     if right_clicks:
@@ -745,7 +767,7 @@ def stop_recording(state: AutoClickerState) -> str | None:
         description = ui_description
     else:
         # Klassischer TUI-Weg — absichtlich als zweite Bedienart erhalten.
-        auto_name = f"Aufnahme_{datetime.now().strftime('%H%M%S')}"
+        auto_name = f"Aufnahme {datetime.now().strftime('%H:%M:%S')}"
         print(f"\nSequenz-Name (Enter = {col(auto_name, 'cyan')}, {col('cancel', 'yellow')} = verwerfen):")
         try:
             name_input = safe_input("> ").strip()

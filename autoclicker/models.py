@@ -189,6 +189,12 @@ class WaitCondition:
     # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
     # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
     check_only: bool = False
+    # Wie lange gewartet wird, bevor der Timeout greift — nur für die
+    # VORbedingung (`wait_condition`). None = `pixel_wait_timeout` aus der Config,
+    # 0 = ohne Grenze (dieselbe Bedeutung wie dort). Ein Block, der auf einen
+    # langsamen Kampf wartet, braucht mehr Zeit als einer, der auf einen Knopf
+    # wartet; eine Grenze für alle passte nur einem von beiden.
+    timeout: Optional[float] = None
     # Arbeitswert, nie gespeichert: der Punkt hinter `point_id` fehlt. Als
     # Vorbedingung heisst das „Schritt uebersprungen" (das setzt `resolve()` am
     # Schritt), als Nachpruefung „nicht geprueft" — ohne das Feld zu loeschen.
@@ -388,6 +394,17 @@ BLOCK_WAIT = "wait"              # wait_only ohne Klick
 BLOCK_WAIT_CLICK = "wait_click"  # wait_condition + Klick
 BLOCK_CLICK = "click"            # einfacher Klick (evtl. mit Zeit-Delay)
 
+# **Typen ohne eigene Stelle — und damit ohne `point_id`.** Ein Scan klickt,
+# was er findet (Slots, Boss-/Icon-Aktion), eine Taste und ein Screenshot
+# klicken gar nicht. Ein Punkt am Schritt ist dort kein Merkmal, sondern ein
+# Rest aus einem Typwechsel — und er wirkte: Farbfeld auf der Karte, Punkt als
+# „verwendet" gezählt, Live-Pixel vor dem Scan. Nachprüfung und ELSE-Klick
+# bleiben davon unberührt: das sind eigene Referenzen, die jeder Typ haben darf.
+POSITIONLESS_BLOCKS = frozenset({
+    BLOCK_SCREENSHOT, BLOCK_BOSS_WATCHER, BLOCK_BOSS_SCAN,
+    BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_KEY,
+})
+
 
 def block_type(step: "SequenceStep") -> str:
     """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
@@ -413,6 +430,19 @@ def block_type(step: "SequenceStep") -> str:
     if step.wait_condition is not None:
         return BLOCK_WAIT_CLICK
     return BLOCK_CLICK
+
+
+def drop_position(step: "SequenceStep") -> None:
+    """Nimmt einem Schritt ohne Stelle den Punkt und seine abgeleiteten Werte.
+
+    `x`/`y`/`recorded_color` sind Arbeitswerte des Punkts; ohne `point_id`
+    schriebe der Serializer sie als Koordinaten-Kopie in die Datei. Der Name
+    bleibt — ohne Punkt ist er der eigene des Blocks.
+    """
+    step.point_id = None
+    step.x = step.y = 0
+    step.recorded_color = None
+    step.unresolved = False
 
 
 @dataclass

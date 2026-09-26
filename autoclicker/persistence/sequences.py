@@ -12,7 +12,10 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import SEQUENCES_DIR
-from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
+from ..models import (
+    POSITIONLESS_BLOCKS, ClickPoint, LoopPhase, Sequence, AutoClickerState,
+    block_type, drop_position,
+)
 from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
 from ..utils import compact_json, sanitize_filename, err, info, warn, hint, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict
@@ -58,6 +61,26 @@ def active_sequence_dir(state: AutoClickerState) -> Path:
 def active_templates_dir(state: AutoClickerState) -> Path:
     """Template-Ordner der aktiven Sequenz."""
     return active_sequence_dir(state) / "templates"
+
+
+def free_template_file(folder: Path, name: str) -> str:
+    """Ein Vorlagen-Dateiname aus `name`, der im Ordner noch NICHT existiert.
+
+    **Ein freier Item-Name heisst noch keine freie Datei.** Beim Umbenennen
+    behält ein Item seine Vorlage (`auto_slot_19_2.png` gehört danach
+    „Überlegener Edelstein"), der Name „Auto Slot 19 2" ist damit wieder frei
+    — und das nächste Auto-Lernen in Slot 19 schrieb seine Vorlage genau
+    dorthin: gemessen an einem echten Lauf stand danach eine Truhe als Vorlage
+    eines Edelsteins da, der eingeschaltet war. Deshalb entscheidet die Platte,
+    nicht die Namensliste: `_2`, `_3`, … bis die Datei frei ist.
+    """
+    base = sanitize_filename(name)
+    file_name = f"{base}.png"
+    number = 2
+    while (Path(folder) / file_name).exists():
+        file_name = f"{base}_{number}.png"
+        number += 1
+    return file_name
 
 
 # =============================================================================
@@ -121,10 +144,13 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             seq_points,
         )
 
+        points = {p.id: p for p in seq.points}
+        for m in drop_position_leftovers(points, seq):
+            print(info(f"'{filepath.stem}': {m}"))
         # Arbeitswerte fuellen. `quiet=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in resolve({p.id: p for p in seq.points}, seq, quiet=True):
+        for m in resolve(points, seq, quiet=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
@@ -460,6 +486,38 @@ def _phases(sequence):
         out.append((lp.name, lp.steps))
     out.append(("END", sequence.end_steps))
     return out
+
+
+def drop_position_leftovers(points: dict, sequence) -> list[str]:
+    """Nimmt Blöcken ohne eigene Stelle ihren Rest-Punkt ab — und sagt es.
+
+    Ein Scan, eine Taste oder ein Screenshot mit `point_id` entstand aus einem
+    Typwechsel, der den Punkt stehen liess (`set_block_type`, inzwischen
+    behoben). **Das ist die eine Ausnahme von „nie beim Laden“** (s. `resolve`),
+    und sie ist es, weil der Rest keine Einstellung ist, sondern wirkte: der
+    Punkt galt als verwendet, die Karte zeigte sein Farbfeld vor dem Scan-Namen,
+    die Live-Ansicht vor dem Scan sein Pixel, und fehlte er, übersprang der Lauf
+    den ganzen Scan. Ein wirkungsloses ELSE schadet niemandem und bleibt deshalb
+    stehen; dieser Rest schon.
+
+    Nicht still: jede Stelle wird gemeldet. Der Name des Punkts wird der des
+    Blocks — er stand bisher nur über den Punkt an der Karte. Der Punkt selbst
+    bleibt in der Liste; benutzt ihn sonst niemand, ist er danach ungenutzt.
+    """
+    messages = []
+    for phase_name, steps in _phases(sequence):
+        for i, step in enumerate(steps, 1):
+            if step.point_id is None or block_type(step) not in POSITIONLESS_BLOCKS:
+                continue
+            point = points.get(step.point_id)
+            if point is not None and not step.name:
+                step.name = point.name or ""
+            messages.append(
+                f"{phase_name}[{i}] braucht als Block ohne eigene Stelle keinen Punkt "
+                f"— Verweis auf #{step.point_id} entfernt (steht beim nächsten "
+                "Speichern nicht mehr in der Datei)")
+            drop_position(step)
+    return messages
 
 
 def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
