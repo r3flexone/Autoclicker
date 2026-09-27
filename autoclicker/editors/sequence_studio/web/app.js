@@ -501,7 +501,13 @@ function rememberFocus() {
   // zu retten waere nicht nur ueberfluessig, sondern falsch: bei einem
   // abgelehnten Namen (schon vergeben) stuende danach der abgelehnte Text im
   // Feld, waehrend die Daten den alten tragen.
-  return {id: next, old: boxEl.id, i: i, start: start, end: end};
+  // Ein Zahlenfeld verraet seine Markierung nicht (`selectionStart` wirft).
+  // Ist es noch unberuehrt, stand es nach TAB ganz markiert — genau so soll es
+  // nach dem Neuaufbau wieder stehen, sonst haengt die naechste Ziffer an die
+  // alte Prioritaet an statt sie zu ersetzen.
+  const untouchedNumber = a.type === "number" && a.value === a.defaultValue;
+  return {id: next, old: boxEl.id, i: i, start: start, end: end,
+          selectAll: untouchedNumber};
 }
 
 /** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
@@ -518,7 +524,9 @@ function restoreFocus(memo) {
   const target = [...boxEl.querySelectorAll("input, select, textarea")][memo.i];
   if (!target) return;
   target.focus();
-  if (memo.start !== null) {
+  if (memo.selectAll && target.type === "number") {
+    target.select();
+  } else if (memo.start !== null) {
     try { target.setSelectionRange(memo.start, memo.end); } catch (e) { /* egal */ }
   }
 }
@@ -2904,9 +2912,59 @@ function scanScheduleAutosave(cause) {
     const answer = await ask("scan_save");
     if (!answer) return;
     SC = answer;
+    // Speichern aendert nichts, was dasteht — nur den Knopf und die Kopfzeile.
+    if (scanEditing()) {
+      scanRefreshSaveState();
+      setStatus(SC.status);
+      scanRenderOwed = true;
+      return;
+    }
     await renderScans();
   }, 900);
 }
+
+/* **Kein Neuaufbau unter dem Cursor, wenn ihn niemand bestellt hat.**
+ *
+ * Gemeldet als „ich markiere den Namen bzw. die Priorität, und es wird immer
+ * wieder zurückgesetzt". Zwei Anlässe bauten die rechte Spalte neu, ohne dass
+ * sich für den Nutzer etwas geändert hätte: das Auto-Speichern (900 ms nach
+ * jeder Änderung, also genau dann, wenn man im nächsten Feld steht) und das
+ * Nachladen der Vorschaubilder. Das ersetzte Feld verlor seine Markierung — bei
+ * Zahlenfeldern lässt sie sich gar nicht wiederherstellen —, und ein Feld, in
+ * dem gerade getippt wurde, meldete beim Entfernen sein `change`: ein halber
+ * Name wurde übernommen und umbenannt.
+ *
+ * Beide Anlässe warten deshalb, solange ein Feld der Spalte den Fokus hat, und
+ * holen den Neuaufbau beim Verlassen nach. Der Neuaufbau nach dem EIGENEN
+ * Feldwechsel bleibt — er zeigt das Ergebnis dessen, was man gerade getippt
+ * hat, und `restoreFocus()` bringt den Cursor hinüber. */
+let scanRenderOwed = false;
+
+function scanEditing() {
+  const a = document.activeElement;
+  return !!(a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)
+            && a.closest("#scan-insp"));
+}
+
+/** Nur Knopf und Kopfzeile nachziehen — die Felder bleiben unberührt. */
+function scanRefreshSaveState() {
+  const old = $("scan-save");
+  if (old) old.replaceWith(scanSaveButton());
+  const title = $("scan-column-title");
+  if (title) title.textContent = SC.dirty ? "NICHT GESPEICHERT" : scanColumnTitle();
+  const dot = $("scan-dirty-dot");
+  if (dot) dot.hidden = !SC.dirty;
+}
+
+document.addEventListener("focusout", () => {
+  // Erst nach dem Fokuswechsel nachsehen: springt der Fokus nur ins naechste
+  // Feld derselben Spalte, wartet der Neuaufbau weiter.
+  setTimeout(() => {
+    if (!scanRenderOwed || scanEditing() || view !== "scans") return;
+    scanRenderOwed = false;
+    renderScans();
+  }, 0);
+});
 
 function scanCanvasTools() {
   const ready = scanConfigOpen();
@@ -3887,7 +3945,11 @@ async function scanFetchPreviews(names) {
   for (const [name, url] of Object.entries(answer)) {
     if (url) { scanPreviews.set(name, url); next = true; }
   }
-  if (next && view === "scans") scanInspector();
+  if (!next || view !== "scans") return;
+  // Ein Vorschaubild ist kein Grund, das Feld unter dem Cursor zu ersetzen
+  // (s. `scanEditing`) — es kommt beim Verlassen des Felds.
+  if (scanEditing()) { scanRenderOwed = true; return; }
+  scanInspector();
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -4112,9 +4174,9 @@ function scanBuildInspector() {
   if (SC.review) return scanReview(target);
   const head = el("div", {class: "section scan-header"},
     el("div", {class: "row"},
-      el("span", {class: "heading grow"},
+      el("span", {class: "heading grow", id: "scan-column-title"},
          SC.dirty ? "NICHT GESPEICHERT" : scanColumnTitle()),
-      SC.dirty ? el("span", {class: "dirty-dot"}) : null),
+      el("span", {class: "dirty-dot", id: "scan-dirty-dot", hidden: !SC.dirty})),
     // **Der Hauptprozess schreibt dieselben Dateien.** Ein Lauf mit
     // Auto-Lernen legt Items an und speichert sie; ohne diesen Hinweis sucht
     // man sie hier vergeblich und haelt es fuer einen Fehler beim Lernen.

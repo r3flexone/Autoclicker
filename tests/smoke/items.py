@@ -380,14 +380,13 @@ def run():
         f.page.evaluate("callScan('scan_mode_set', {mode:'choice', kind:'item'})")
         f.settle()
 
-        # **Was getippt und noch nicht gemeldet ist, ueberlebt das
-        # Auto-Speichern.** Es ist der einzige Neuaufbau, der an der Uhr haengt
-        # statt am Nutzer (900 ms nach der letzten Aenderung) — er trifft also
-        # als einziger ein Feld, in dem gerade getippt wird. Dass nichts
-        # verlorengeht, liegt am Browser: ein fokussiertes, geaendertes `input`
-        # feuert sein `change`, bevor es aus dem Dokument fliegt. Das steht hier
-        # als Zusicherung, nicht als Beiwerk — faellt es weg, verschluckt das
-        # Fenster Tastendruecke, und man sucht den Fehler in der Bruecke.
+        # **Das Auto-Speichern ersetzt kein Feld, in dem man steht.** Gemeldet
+        # als „ich markiere den Namen bzw. die Prioritaet, und es wird immer
+        # wieder zurueckgesetzt": 900 ms nach jeder Aenderung speichert der
+        # Reiter von selbst, und die Antwort baute die ganze rechte Spalte neu —
+        # genau dann, wenn man schon im naechsten Feld steht. Die Markierung war
+        # weg, und ein Feld mitten im Tippen meldete beim Entfernen sein
+        # `change`: ein halber Name wurde uebernommen.
         f.click_text("#scan-insp .tabs .tab", "Items")
         f.settle()
         # Das Namensfeld traegt kein `type` (s. `cardName`) — ein Selektor auf
@@ -397,34 +396,60 @@ def run():
         if names.count() >= 2:
             names.nth(0).fill("Zuerst")
             names.nth(0).press("Tab")          # meldet und plant das Speichern
-            f.page.wait_for_timeout(120)
-            f.page.locator(fields).nth(1).click()
-            f.page.locator(fields).nth(1).type("Getippt", delay=20)
-            typed = f.page.locator(fields).nth(1).input_value()
-            # **Gewartet wird auf den Zustand, nicht auf die Uhr.** Hier stand
-            # eine feste Wartezeit von 1800 ms mit dem Kommentar „laenger als
-            # die 900 ms" — nur liegen hier ZWEI Runden hintereinander: das
-            # Auto-Speichern ist entprellt (`clearTimeout` in
-            # `scanScheduleAutosave`), sein Neuaufbau stoesst das
-            # fokussierte Feld an, und dessen `change` plant die naechsten
-            # 900 ms. Die Rechnung ging also auf ~300 ms Luft aus, und die
-            # frisst ein ausgelasteter CI-Laeufer zwischen Bruecke und
-            # Neuzeichnen auf: gruen auf dem Entwicklungsrechner, rot in CI.
-            #
-            # Gefragt wird deshalb nach beiden Tatsachen zugleich (der Name ist
-            # in den Daten UND nichts ist mehr offen) — kommt einer nicht,
-            # sagen die Zusicherungen darunter weiterhin, welcher.
+            f.settle()
+            second = f.page.locator(fields).nth(1)
+            second.click()
+            f.page.keyboard.press("Control+a")
+            f.page.evaluate("window.__field = document.activeElement")
+            # Gewartet wird auf den Zustand, nicht auf die Uhr: das
+            # Auto-Speichern ist durch, sobald nichts mehr offen ist.
             try:
-                f.page.wait_for_function(
-                    "n => (SC.items || []).some(i => i.name === n) && !SC.dirty",
-                    arg=typed, timeout=15000)
+                f.page.wait_for_function("() => !SC.dirty", timeout=15000)
             except Exception:
                 pass                            # die Zusicherung meldet es genauer
-            expect(typed in (f.page.evaluate("SC.items.map(i => i.name)") or []),
-                   f"das Getippte ({typed!r}) kam nicht in den Daten an: "
-                   f"{f.page.evaluate('SC.items.map(i => i.name)')}")
             expect(not f.page.evaluate("SC.dirty"),
                    "der Entwurf wurde nicht von selbst gespeichert")
+            kept = f.page.evaluate("""() => {
+              const a = document.activeElement;
+              return {same: a === window.__field,
+                      all: a.selectionStart === 0 && a.selectionEnd === a.value.length
+                           && a.value.length > 0};
+            }""")
+            expect(kept["same"], "das Auto-Speichern hat das Feld unter dem Cursor ersetzt")
+            expect(kept["all"], "die Markierung im Namensfeld ist nach dem Speichern weg")
+            # Weitertippen ersetzt die Markierung, und erst das Verlassen meldet
+            # den Namen — kein halber Zwischenstand landet in den Daten.
+            second.type("Getippt", delay=20)
+            before_tab = f.page.evaluate("SC.items.map(i => i.name)") or []
+            expect(not any(n.startswith("G") and n != "Getippt" for n in before_tab),
+                   f"ein halber Name wurde uebernommen: {before_tab}")
+            second.press("Tab")
+            try:
+                f.page.wait_for_function(
+                    "() => SC.items.some(i => i.name === 'Getippt') && !SC.dirty",
+                    timeout=15000)
+            except Exception:
+                pass
+            expect("Getippt" in (f.page.evaluate("SC.items.map(i => i.name)") or []),
+                   f"das Getippte kam nicht in den Daten an: "
+                   f"{f.page.evaluate('SC.items.map(i => i.name)')}")
+
+            # **Die Prioritaet ist ein Zahlenfeld, und das verraet seine
+            # Markierung nicht** — `restoreFocus` konnte sie nach einem
+            # Neuaufbau nicht zurueckgeben, und die naechste Ziffer hing an
+            # die alte Zahl an. Ein unberuehrtes Zahlenfeld steht danach wieder
+            # ganz markiert, so wie TAB es hinterlassen hatte.
+            prio = "#scan-insp .scan-card input[type='number']"
+            f.page.locator(prio).nth(1).click()
+            f.page.keyboard.press("Control+a")
+            f.page.evaluate("renderScans()")
+            f.settle()
+            expect(f.page.evaluate("document.activeElement.type") == "number",
+                   "nach dem Neuaufbau steht der Fokus nicht im Prioritaetsfeld")
+            f.page.keyboard.type("7")
+            value = f.page.locator(prio).nth(1).input_value()
+            expect(value == "7",
+                   f"die Ziffer hing an die alte Prioritaet an statt sie zu ersetzen: {value!r}")
         else:
             error.append("keine zwei Item-Namensfelder fuer die Tipp-Probe")
 
