@@ -1,0 +1,11 @@
+# Zeilenenden: im Repo und im Arbeitsverzeichnis überall LF.
+#
+# **Warum es diese Datei gibt.** Ohne sie entschied `core.autocrlf` des
+# jeweiligen Rechners: Git legte CRLF ins Arbeitsverzeichnis, Editoren und
+# Werkzeuge schrieben LF dazwischen — am Ende standen 143 Dateien auf CRLF,
+# 47 auf LF und 4 gemischt, und jedes `git add` warnte „LF will be replaced by
+# CRLF". Im Repo selbst lag immer LF; das hier macht nur das Arbeitsverzeichnis
+# gleich, auf Windows wie auf Linux.
+#
+# `text=auto` lässt Git Binärdateien selbst erkennen (PNG, ICO, ZIP).
+* text=auto eol=lf
