@@ -6622,6 +6622,7 @@ import tests.contract.live_last_scan       # noqa: F401,E402
 import tests.contract.next_sequence        # noqa: F401,E402
 import tests.contract.studio_guidance      # noqa: F401,E402
 import tests.contract.loop_phase_editor    # noqa: F401,E402
+import tests.contract.detection_editors    # noqa: F401,E402
 
 
 import shutil as _shD

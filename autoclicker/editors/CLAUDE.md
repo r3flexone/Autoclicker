@@ -16,10 +16,22 @@ Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
 am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
 
 Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
-`item_editor/` (Lernen, Autoscan, Befehle), `boss_scan_editor.py`,
-`icon_scan_editor.py`. Der Weg dorthin ist immer derselbe — erst in Stufen
-zerlegen, dann mit einer Tastenfolge füttern; die Zerlegung ist der eigentliche
-Gewinn, die Tests fallen danach fast von selbst an.
+`item_editor/` (Lernen, Autoscan, Befehle), `slot_editor.py`,
+`import_export_editor.py`, `sequence_editor/steps.py`. Der Weg dorthin ist immer
+derselbe — erst in Stufen zerlegen, dann mit einer Tastenfolge füttern; die
+Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an.
+
+**Erledigt: Boss- und Icon-Editor** (`tests/contract/detection_editors.py`, 81
+Prüfungen, vorher geschrieben). Die beiden trugen dieselbe Aktionswahl, denselben
+Klickpunkt, dieselbe Verzögerung, dieselbe Wahl der Erkennung und dieselbe
+Konfidenz-/Toleranz-Abfrage als Kopie; das steht jetzt in `_detection_capture.py`
+(`choose_detection`, `select_action`, `ask_action_details`, `ask_min_confidence`,
+`ask_tolerance`, `store_template`). Beide Assistenten tragen ihren Stand in einem
+Entwurf (`_IconDraft`, `_BossDraft`) von Stufe zu Stufe, die Boss-Liste ist eine
+Befehlsschleife wie bei den Loop-Phasen. **Die Stellvertreter im Test setzen
+jeden Namen in allen drei Modulen** — so durfte der Umbau Code zwischen ihnen
+verschieben, ohne dass die Tests es merkten; gemessen wird das Verhalten, nicht
+wo es wohnt.
 
 **Erledigt: `sequence_editor/loops.py`** — und zwar in umgekehrter
 Reihenfolge, die sich bewährt hat: **erst die Tastenfolgen, dann der Umbau.**

@@ -3,10 +3,17 @@ Boss-Scan-Editor für den Autoclicker.
 Ermöglicht das Erstellen und Bearbeiten von Boss-Scan-Konfigurationen.
 Ein Boss-Scan erkennt welcher Boss in einer Region ist und führt
 je nach Boss eine andere Aktion aus (Item-Scan, Klick, Taste, etc.).
+
+Der Assistent läuft in Stufen (Region → Bosse → Default-Aktion → Toleranz →
+LLM → OCR → speichern); jede, die abbrechen kann, gibt False zurück. Die
+Boss-Liste ist eine Befehlsschleife wie der Loop-Phasen-Editor: ein Befehl,
+eine Funktion. Was der Editor mit dem Icon-Editor teilt (Erkennung, Aktion,
+Klickpunkt, Konfidenz, Toleranz), steht in `_detection_capture.py`.
 """
 
 import time
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from ..models import (
     BossProfile, BossScanConfig, AutoClickerState,
@@ -16,21 +23,56 @@ from ..models import (
 )
 from ..config import save_config
 from ..utils import (
-    safe_input, sanitize_filename, is_cancel, confirm, interactive_select,
-    col, ok, err, info, header, breadcrumb, suggest_command,
-    parse_non_negative_float, warn, hint,
+    safe_input, is_cancel, confirm, interactive_select,
+    col, ok, err, info, header, breadcrumb, suggest_command, warn, hint,
 )
 from ..winapi import get_cursor_pos
-from ..imaging import (
-    PILLOW_AVAILABLE, OPENCV_AVAILABLE, take_screenshot,
-)
+from ..imaging import PILLOW_AVAILABLE, take_screenshot
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, point_for_position, active_templates_dir,
-    save_global_bosses,
+    list_available_item_scans, save_global_bosses,
 )
-from ._detection_capture import capture_markers, select_scan_region, prompt_key
+from ._detection_capture import (
+    DETECT_MARKERS, DETECT_TEMPLATE, ask_action_details, ask_min_confidence,
+    ask_tolerance, capture_markers, choose_detection, select_action,
+    select_scan_region, store_template,
+)
 from ..persistence.boss_scans import boss_scan_name_allowed
+
+_BOSS_ACTIONS = [
+    ("Item-Scan ausführen", BOSS_ACTION_SCAN),
+    ("Punkt klicken", BOSS_ACTION_CLICK),
+    ("Taste drücken", BOSS_ACTION_KEY),
+    ("Schritt überspringen", BOSS_ACTION_SKIP),
+    ("Zyklus überspringen", BOSS_ACTION_SKIP_CYCLE),
+    ("Sequenz neustarten", BOSS_ACTION_RESTART),
+]
+# Ohne erkannten Boss gibt es weder Punkt noch Taste (VALID_BOSS_DEFAULT_ACTIONS).
+_DEFAULT_ACTIONS = [
+    ("Schritt überspringen (skip)", BOSS_ACTION_SKIP),
+    ("Zyklus überspringen (skip_cycle)", BOSS_ACTION_SKIP_CYCLE),
+    ("Sequenz neustarten (restart)", BOSS_ACTION_RESTART),
+    ("Default Item-Scan ausführen", BOSS_ACTION_SCAN),
+]
+_SCAN_MODES = [
+    ("Bestes pro Kategorie (all)", "all"),
+    ("Nur 1 bestes Item (best)", "best"),
+    ("Alle Treffer (every)", "every"),
+]
+_LLM_OPTIONS = [
+    "Kein LLM verwenden",
+    "LLM als Fallback (wenn Template/Marker nichts finden)",
+    "LLM als primäre Erkennung (immer zuerst LLM fragen)",
+    "LLM-Verbindung testen",
+]
+_OCR_OPTIONS = [
+    "Kein OCR verwenden",
+    "OCR als Fallback (wenn Template/Marker nichts finden)",
+    "OCR als primäre Erkennung (immer zuerst OCR)",
+]
+_BOSS_HELP = ("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', "
+              "'show / s', 'help / ?', 'done / d', 'cancel'")
+_BOSS_KNOWN = ["add", "edit", "del", "done", "cancel", "show", "help"]
 
 
 def run_boss_scan_editor(state: AutoClickerState) -> None:
@@ -75,17 +117,26 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         elif choice == 1:
             edit_global_bosses(state)
         elif choice == 2:
-            state.config.boss_learn_global = not state.config.boss_learn_global
-            saved = save_config(state.config)
-            if state.config.boss_learn_global:
-                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
-            else:
-                print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
-            if not saved:
-                print(warn("Nicht in config.json geschrieben — gilt nur bis zum Neustart."))
+            _toggle_learn_target(state)
         elif num_fixed <= choice < len(menu_options):
             edit_boss_scan(state, loaded_scans[choice - num_fixed])
 
+
+def _toggle_learn_target(state: AutoClickerState) -> None:
+    """Wohin neu entdeckte Bosse (LLM/OCR) gelernt werden: Bibliothek oder Scan."""
+    state.config.boss_learn_global = not state.config.boss_learn_global
+    saved = save_config(state.config)
+    if state.config.boss_learn_global:
+        print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
+    else:
+        print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
+    if not saved:
+        print(warn("Nicht in config.json geschrieben — gilt nur bis zum Neustart."))
+
+
+# =============================================================================
+# EIN BOSS
+# =============================================================================
 
 def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossProfile] = None) -> Optional[dict]:
     """Fragt den Benutzer nach der Aktion für einen Boss.
@@ -93,33 +144,10 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
     Returns:
         Dict mit action-Feldern oder None bei Abbruch.
     """
-    action_options = [
-        "Item-Scan ausführen",
-        "Punkt klicken",
-        "Taste drücken",
-        "Schritt überspringen",
-        "Zyklus überspringen",
-        "Sequenz neustarten",
-    ]
-    action_map = [
-        BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
-        BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
-    ]
-
-    # Default-Auswahl basierend auf existierendem Boss
-    default_idx = 0
-    if existing_boss:
-        try:
-            default_idx = action_map.index(existing_boss.action)
-        except ValueError:
-            pass
-
-    choice = interactive_select(action_options, title="\nAktion wenn dieser Boss erkannt wird:",
-                                default=default_idx)
-    if choice == -1:
+    action = select_action(_BOSS_ACTIONS, "\nAktion wenn dieser Boss erkannt wird:",
+                           existing_boss.action if existing_boss else None)
+    if action is None:
         return None
-
-    action = action_map[choice]
     result = {
         "action": action,
         "action_scan": None,
@@ -128,66 +156,33 @@ def _select_boss_action(state: AutoClickerState, existing_boss: Optional[BossPro
         "action_key": None,
         "action_delay": 0,
     }
-
-    if action == BOSS_ACTION_SCAN:
-        # Item-Scan auswählen
-        owner = state.active_sequence.name if state.active_sequence else ""
-        available = list_available_item_scans(owner)
-        if not available:
-            print(f"\n{err('Keine Item-Scans vorhanden!')}")
-            print("         Erstelle zuerst einen Item-Scan.")
-            return None
-
-        scan_options = [f"{name}" for name, _ in available]
-        scan_choice = interactive_select(scan_options, title="\nWelchen Item-Scan ausführen?")
-        if scan_choice == -1:
-            return None
-
-        result["action_scan"] = available[scan_choice][0]
-
-        # Scan-Modus
-        mode_options = ["Bestes pro Kategorie (all)", "Nur 1 bestes Item (best)", "Alle Treffer (every)"]
-        mode_map = ["all", "best", "every"]
-        mode_choice = interactive_select(mode_options, title="Scan-Modus:")
-        if mode_choice >= 0:
-            result["action_scan_mode"] = mode_map[mode_choice]
-
-    elif action == BOSS_ACTION_CLICK:
-        print("\n  Bewege die Maus zum Klick-Punkt und drücke Enter...")
-        try:
-            safe_input()
-            x, y = get_cursor_pos()
-            # Die Stelle wird ein Punkt, gespeichert wird nur seine ID. Sonst haette
-            # dieser Klick eine Koordinate, die weder eine Reparatur im Punkte-Menue
-            # noch eine Kalibrierung ueber die Punkte je erreicht.
-            with state.lock:
-                pid = point_for_position(state, x, y, None, "Boss-Klick",
-                                        source="Boss-Scan-Editor")
-            result["action_point_id"] = pid
-            print(f"  → Klick-Position: ({x}, {y})  [Punkt #{pid}]")
-        except (KeyboardInterrupt, EOFError):
-            return None
-
-    elif action == BOSS_ACTION_KEY:
-        key = prompt_key()
-        if key is None:
-            return None
-        result["action_key"] = key
-
-    # Delay vor Aktion
-    if action in (BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY):
-        try:
-            delay_input = safe_input("  Verzögerung vor Aktion in Sekunden (Enter=0): ").strip()
-            if delay_input:
-                val, delay_err = parse_non_negative_float(delay_input, "Verzögerung")
-                if delay_err:
-                    print(f"  → {delay_err}, verwende 0s")
-                else:
-                    result["action_delay"] = val
-        except (KeyboardInterrupt, EOFError):
-            pass
-
+    if action == BOSS_ACTION_SCAN and not _ask_action_scan(state, result):
+        return None
+    if not ask_action_details(
+            state, action, result, "Boss-Klick", "Boss-Scan-Editor",
+            with_delay=action in (BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY)):
+        return None
     return result
+
+
+def _ask_action_scan(state: AutoClickerState, result: dict) -> bool:
+    """Welcher Item-Scan in welchem Modus läuft, wenn der Boss erkannt wird."""
+    owner = state.active_sequence.name if state.active_sequence else ""
+    available = list_available_item_scans(owner)
+    if not available:
+        print(f"\n{err('Keine Item-Scans vorhanden!')}")
+        print("         Erstelle zuerst einen Item-Scan.")
+        return False
+    scan_choice = interactive_select([name for name, _ in available],
+                                     title="\nWelchen Item-Scan ausführen?")
+    if scan_choice == -1:
+        return False
+    result["action_scan"] = available[scan_choice][0]
+    mode_choice = interactive_select([label for label, _mode in _SCAN_MODES],
+                                     title="Scan-Modus:")
+    if mode_choice >= 0:
+        result["action_scan_mode"] = _SCAN_MODES[mode_choice][1]
+    return True
 
 
 def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] = None) -> Optional[BossProfile]:
@@ -196,92 +191,33 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
     Returns:
         BossProfile oder None bei Abbruch.
     """
-    # Name
-    if existing:
-        print(f"\n--- Boss bearbeiten: {existing.name} ---")
-        name = safe_input(f"  Name (Enter={existing.name}): ").strip()
-        if not name:
-            name = existing.name
-    else:
-        print("\n--- Neuen Boss hinzufügen ---")
-        name = safe_input("  Boss-Name: ").strip()
-        if not name:
-            print("  → Kein Name angegeben!")
-            return None
-
-    # Erkennungsmethode
-    detect_options = []
-    if OPENCV_AVAILABLE:
-        detect_options.append("Template-Bild aufnehmen")
-    detect_options.append("Farb-Marker setzen")
-    if existing and (existing.template or existing.marker_colors):
-        detect_options.append("Bestehende Erkennung beibehalten")
-
-    has_keep = "Bestehende Erkennung beibehalten" in detect_options
-    detect_choice = interactive_select(detect_options, title="\nWie soll der Boss erkannt werden?",
-                                       default=len(detect_options) - 1 if has_keep else 0)
-    if detect_choice == -1:
+    name = _ask_boss_name(existing)
+    if name is None:
+        return None
+    detection = choose_detection(
+        "\nWie soll der Boss erkannt werden?",
+        bool(existing and (existing.template or existing.marker_colors)))
+    if detection is None:
         return None
 
     template = existing.template if existing else None
     min_confidence = (existing.min_confidence if existing
                       else state.config.scan_min_confidence)
     marker_colors = list(existing.marker_colors) if existing else []
-
-    chosen_label = detect_options[detect_choice]
-
-    if chosen_label == "Template-Bild aufnehmen":
-        print("\n  Bewege die Maus zur OBEREN LINKEN Ecke des Boss-Bereichs")
-        print("  und drücke Enter...")
-        try:
-            safe_input()
-            x1, y1 = get_cursor_pos()
-            print(f"  → Obere linke Ecke: ({x1}, {y1})")
-
-            print("  Bewege die Maus zur UNTEREN RECHTEN Ecke und drücke Enter...")
-            safe_input()
-            x2, y2 = get_cursor_pos()
-            print(f"  → Untere rechte Ecke: ({x2}, {y2})")
-
-            if x2 <= x1 or y2 <= y1:
-                print(f"  {err('Ungültiger Bereich!')}")
-                return None
-
-            img = take_screenshot((x1, y1, x2, y2))
-            if not img:
-                print(f"  {err('Screenshot fehlgeschlagen!')}")
-                return None
-
-            safe_name = sanitize_filename(f"boss_{name}")
-            template_file = f"{safe_name}.png"
-            template_path = active_templates_dir(state) / template_file
-            template_path.parent.mkdir(parents=True, exist_ok=True)
-            img.save(template_path)
-            template = template_file
-            print(f"  → Template gespeichert: {template_file}")
-
-            # Konfidenz
-            try:
-                conf_input = safe_input(f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
-                if conf_input:
-                    min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
-            except ValueError:
-                pass
-
-        except (KeyboardInterrupt, EOFError):
+    if detection == DETECT_TEMPLATE:
+        captured = _capture_boss_template(state, name, min_confidence)
+        if captured is None:
             return None
-
-    elif chosen_label == "Farb-Marker setzen":
+        template, min_confidence = captured
+    elif detection == DETECT_MARKERS:
         captured = capture_markers()
         if captured is None:
             return None
         marker_colors = captured
 
-    # Aktion auswählen
     action_result = _select_boss_action(state, existing)
     if action_result is None:
         return None
-
     return BossProfile(
         name=name,
         marker_colors=marker_colors,
@@ -290,6 +226,51 @@ def _add_or_edit_boss(state: AutoClickerState, existing: Optional[BossProfile] =
         **action_result,
     )
 
+
+def _ask_boss_name(existing: Optional[BossProfile]) -> Optional[str]:
+    """Beim Bearbeiten behält Enter den Namen; beim Anlegen ist ohne Namen Schluss."""
+    if existing:
+        print(f"\n--- Boss bearbeiten: {existing.name} ---")
+        return safe_input(f"  Name (Enter={existing.name}): ").strip() or existing.name
+    print("\n--- Neuen Boss hinzufügen ---")
+    name = safe_input("  Boss-Name: ").strip()
+    if not name:
+        print("  → Kein Name angegeben!")
+        return None
+    return name
+
+
+def _capture_boss_template(state: AutoClickerState, name: str,
+                           min_confidence: float) -> Optional[tuple[str, float]]:
+    """Zwei Ecken, Screenshot, Template ablegen, Konfidenz — oder None."""
+    print("\n  Bewege die Maus zur OBEREN LINKEN Ecke des Boss-Bereichs")
+    print("  und drücke Enter...")
+    try:
+        safe_input()
+        x1, y1 = get_cursor_pos()
+        print(f"  → Obere linke Ecke: ({x1}, {y1})")
+
+        print("  Bewege die Maus zur UNTEREN RECHTEN Ecke und drücke Enter...")
+        safe_input()
+        x2, y2 = get_cursor_pos()
+        print(f"  → Untere rechte Ecke: ({x2}, {y2})")
+
+        if x2 <= x1 or y2 <= y1:
+            print(f"  {err('Ungültiger Bereich!')}")
+            return None
+        img = take_screenshot((x1, y1, x2, y2))
+        if not img:
+            print(f"  {err('Screenshot fehlgeschlagen!')}")
+            return None
+        template = store_template(state, img, f"boss_{name}")
+        return template, ask_min_confidence(min_confidence)
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+
+# =============================================================================
+# DIE BOSS-LISTE (Befehlsschleife)
+# =============================================================================
 
 def _edit_boss_list(state: AutoClickerState, bosses: list, allow_empty: bool) -> bool:
     """Interaktiver add/edit/del-Loop für eine BossProfile-Liste (mutiert in-place).
@@ -302,69 +283,107 @@ def _edit_boss_list(state: AutoClickerState, bosses: list, allow_empty: bool) ->
     """
     if bosses:
         print("\nAktuelle Bosse:")
-        for i, boss in enumerate(bosses):
-            print(f"  [{i+1}] {boss}")
-
-    boss_help = ("\nBefehle: 'add' (Boss hinzufügen), 'edit <Nr>', 'del <Nr>', "
-                 "'show / s', 'help / ?', 'done / d', 'cancel'")
-    print(boss_help)
+        _print_bosses(bosses)
+    print(_BOSS_HELP)
 
     while True:
         try:
-            inp = safe_input("[Bosse] > ").strip().lower()
-
-            if inp in ("done", "d"):
-                if not bosses and not allow_empty:
-                    print("  " + err("Mindestens 1 Boss erforderlich!") + " "
-                          + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
-                    continue
-                return True
-            elif is_cancel(inp):
-                return False
-            elif inp in ("help", "?"):
-                print(boss_help)
-            elif inp == "add":
-                boss = _add_or_edit_boss(state)
-                if boss:
-                    bosses.append(boss)
-                    print(f"  + Boss '{boss.name}' hinzugefügt")
-                    print(f"    {boss}")
-            elif inp.startswith("edit "):
-                try:
-                    num = int(inp[5:])
-                    if 1 <= num <= len(bosses):
-                        boss = _add_or_edit_boss(state, bosses[num - 1])
-                        if boss:
-                            bosses[num - 1] = boss
-                            print(f"  ~ Boss '{boss.name}' aktualisiert")
-                    else:
-                        print(f"  → Ungültig! 1-{len(bosses)}")
-                except ValueError:
-                    print("  → Format: edit <Nr>")
-            elif inp.startswith("del "):
-                try:
-                    num = int(inp[4:])
-                    if 1 <= num <= len(bosses):
-                        removed = bosses.pop(num - 1)
-                        print(f"  - Boss '{removed.name}' entfernt")
-                    else:
-                        print(f"  → Ungültig! 1-{len(bosses)}")
-                except ValueError:
-                    print("  → Format: del <Nr>")
-            elif inp in ("show", "s"):
-                if bosses:
-                    print(f"\nBosse ({len(bosses)}):")
-                    for i, boss in enumerate(bosses):
-                        print(f"  [{i+1}] {boss}")
-                else:
-                    print("  (Keine Bosse definiert)")
-            else:
-                _known = ["add", "edit", "del", "done", "cancel", "show", "help"]
-                suggestion = suggest_command(inp, _known)
-                print(f"  → Unbekannter Befehl.{suggestion}")
-
+            finished = _boss_list_step(state, bosses, allow_empty)
         except (KeyboardInterrupt, EOFError):
             return False
+        if finished is not None:
+            return finished
+
+
+def _boss_list_step(state: AutoClickerState, bosses: list, allow_empty: bool) -> Optional[bool]:
+    """Eine Eingabe der Boss-Liste: True = fertig, False = abgebrochen, None = weiter."""
+    inp = safe_input("[Bosse] > ").strip().lower()
+    if inp in ("done", "d"):
+        if bosses or allow_empty:
+            return True
+        print("  " + err("Mindestens 1 Boss erforderlich!") + " "
+              + hint("('add' = Boss hinzufügen, 'cancel' = Editor verlassen)"))
+        return None
+    if is_cancel(inp):
+        return False
+    found = _boss_command(inp)
+    if found is None:
+        print(f"  → Unbekannter Befehl.{suggest_command(inp, _BOSS_KNOWN)}")
+        return None
+    handler, argument = found
+    handler(state, bosses, argument)
+    return None
+
+
+def _boss_command(inp: str) -> Optional[tuple[Callable, str]]:
+    """Wer für eine Eingabe zuständig ist, samt dem Rest der Eingabe — oder None."""
+    if inp in ("help", "?"):
+        return _boss_help, ""
+    if inp == "add":
+        return _boss_add, ""
+    if inp.startswith("edit "):
+        return _boss_edit, inp[5:]
+    if inp.startswith("del "):
+        return _boss_delete, inp[4:]
+    if inp in ("show", "s"):
+        return _boss_show, ""
+    return None
+
+
+def _print_bosses(bosses: list) -> None:
+    for i, boss in enumerate(bosses):
+        print(f"  [{i+1}] {boss}")
+
+
+def _boss_index(argument: str, bosses: list, usage: str) -> Optional[int]:
+    """Die Nummer als Listenindex — oder None, und gesagt wird, warum."""
+    try:
+        number = int(argument)
+    except ValueError:
+        print(f"  → Format: {usage}")
+        return None
+    if not 1 <= number <= len(bosses):
+        print(f"  → Ungültig! 1-{len(bosses)}")
+        return None
+    return number - 1
+
+
+def _boss_help(state, bosses, argument) -> None:
+    print(_BOSS_HELP)
+
+
+def _boss_add(state, bosses, argument) -> None:
+    boss = _add_or_edit_boss(state)
+    if boss:
+        bosses.append(boss)
+        print(f"  + Boss '{boss.name}' hinzugefügt")
+        print(f"    {boss}")
+
+
+def _boss_edit(state, bosses, argument) -> None:
+    index = _boss_index(argument, bosses, "edit <Nr>")
+    if index is None:
+        return
+    boss = _add_or_edit_boss(state, bosses[index])
+    if boss:
+        bosses[index] = boss
+        print(f"  ~ Boss '{boss.name}' aktualisiert")
+
+
+def _boss_delete(state, bosses, argument) -> None:
+    index = _boss_index(argument, bosses, "del <Nr>")
+    if index is None:
+        return
+    removed = bosses.pop(index)
+    print(f"  - Boss '{removed.name}' entfernt")
+
+
+def _boss_show(state, bosses, argument) -> None:
+    if not bosses:
+        print("  (Keine Bosse definiert)")
+        return
+    print(f"\nBosse ({len(bosses)}):")
+    _print_bosses(bosses)
 
 
 def edit_global_bosses(state: AutoClickerState) -> None:
@@ -384,210 +403,207 @@ def edit_global_bosses(state: AutoClickerState) -> None:
         print(f"  {col('[ABBRUCH]', 'yellow')} Änderungen verworfen.")
 
 
+# =============================================================================
+# DER BOSS-SCAN (Assistent in Stufen)
+# =============================================================================
+
+@dataclass
+class _BossDraft:
+    """Was der Assistent bis zum Speichern zusammenträgt."""
+    name: str
+    region: tuple = (0, 0, 100, 100)
+    bosses: list = field(default_factory=list)
+    tolerance: int = BossScanConfig.color_tolerance
+    default_action: str = BOSS_ACTION_SKIP
+    default_scan: Optional[str] = None
+    use_llm: bool = False
+    llm_fallback: bool = True
+    use_ocr: bool = False
+    ocr_fallback: bool = True
+
+
 def edit_boss_scan(state: AutoClickerState, existing: Optional[BossScanConfig]) -> None:
     """Erstellt oder bearbeitet eine Boss-Scan Konfiguration."""
+    draft = _boss_draft(existing)
+    if draft is None or not _boss_step_region(draft, existing):
+        return
+    if not _boss_step_bosses(state, draft):
+        return
+    _boss_step_default(state, draft)
+    _boss_step_tolerance(draft)
+    _boss_step_llm(state, draft)
+    _boss_step_ocr(draft)
+    _save_boss_config(state, draft)
 
+
+def _boss_draft(existing: Optional[BossScanConfig]) -> Optional[_BossDraft]:
+    """Der Ausgangsstand: der bestehende Scan (mit KOPIE der Boss-Liste) oder ein neuer."""
     if existing:
         print(f"\n--- Bearbeite Boss-Scan: {existing.name} ---")
-        scan_name = existing.name
-        scan_region = existing.scan_region
-        bosses = list(existing.bosses)
-        tolerance = existing.color_tolerance
-        default_action = existing.default_action
-        default_scan = existing.default_scan
-    else:
-        print("\n--- Neuen Boss-Scan erstellen ---")
-        while True:
-            scan_name = safe_input("Name des Boss-Scans: ").strip()
-            if is_cancel(scan_name):
-                print(warn("[ABBRUCH] Boss-Scan nicht angelegt."))
-                return
-            if boss_scan_name_allowed(scan_name):
-                break
-            print(err("'bibliothek' ist reserviert. Bitte einen anderen Namen wählen."))
-        if not scan_name:
-            scan_name = f"BossScan_{int(time.time())}"
-        scan_region = (0, 0, 100, 100)
-        bosses = []
-        tolerance = BossScanConfig.color_tolerance
-        default_action = BOSS_ACTION_SKIP
-        default_scan = None
+        return _BossDraft(existing.name, existing.scan_region, list(existing.bosses),
+                          existing.color_tolerance, existing.default_action,
+                          existing.default_scan, existing.use_llm, existing.llm_fallback,
+                          existing.use_ocr, existing.ocr_fallback)
+    print("\n--- Neuen Boss-Scan erstellen ---")
+    while True:
+        name = safe_input("Name des Boss-Scans: ").strip()
+        if is_cancel(name):
+            print(warn("[ABBRUCH] Boss-Scan nicht angelegt."))
+            return None
+        if boss_scan_name_allowed(name):
+            return _BossDraft(name or f"BossScan_{int(time.time())}")
+        print(err("'bibliothek' ist reserviert. Bitte einen anderen Namen wählen."))
 
-    # === SCHRITT 1: Scan-Region ===
+
+def _boss_step_region(draft: _BossDraft, existing: Optional[BossScanConfig]) -> bool:
+    """SCHRITT 1. Ohne neue Region bleibt beim Bearbeiten die alte; beim Anlegen = Abbruch."""
     print(header("SCHRITT 1: SCAN-REGION (wo erscheint der Boss?)"))
     if existing:
-        r = scan_region
+        r = draft.region
         print(f"  Aktuelle Region: ({r[0]},{r[1]}) → ({r[2]},{r[3]})")
+    new_region = select_scan_region(draft.region if existing else None)
+    if new_region is not None:
+        draft.region = new_region
+        return True
+    if existing is None:
+        print(f"  {col('[ABBRUCH]', 'yellow')} Boss-Scan nicht gespeichert.")
+        return False
+    return True
 
-    new_region = select_scan_region(scan_region if existing else None)
-    if new_region is None:
-        if not existing:
-            print(f"  {col('[ABBRUCH]', 'yellow')} Boss-Scan nicht gespeichert.")
-            return  # Neu-Erstellung abgebrochen
-        # Beim Bearbeiten: alte Region behalten
-    else:
-        scan_region = new_region
 
-    # === SCHRITT 2: Bosse definieren ===
+def _boss_step_bosses(state: AutoClickerState, draft: _BossDraft) -> bool:
+    """SCHRITT 2: die Boss-Liste. Leer erlaubt, wenn die Bibliothek Bosse hat."""
     print(header("SCHRITT 2: BOSSE DEFINIEREN"))
     with state.lock:
         num_global = len(state.global_bosses)
     if num_global:
         print(f"\n  {info(f'{num_global} globale(r) Boss(e) aus der Bibliothek gelten zusätzlich.')}")
-
-    if not _edit_boss_list(state, bosses, allow_empty=num_global > 0):
-        return
-    if not bosses and num_global:
+    if not _edit_boss_list(state, draft.bosses, allow_empty=num_global > 0):
+        return False
+    if not draft.bosses and num_global:
         print(f"  {info(f'Keine lokalen Bosse — der Scan nutzt die {num_global} globalen.')}")
+    return True
 
-    # === SCHRITT 3: Default-Aktion ===
+
+def _boss_step_default(state: AutoClickerState, draft: _BossDraft) -> None:
+    """SCHRITT 3: was passiert, wenn kein Boss erkannt wird. Ohne Auswahl bleibt es."""
     print(header("SCHRITT 3: DEFAULT-AKTION (wenn kein Boss erkannt)"))
-    default_options = [
-        "Schritt überspringen (skip)",
-        "Zyklus überspringen (skip_cycle)",
-        "Sequenz neustarten (restart)",
-        "Default Item-Scan ausführen",
-    ]
-    default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, BOSS_ACTION_SCAN]
+    actions = [action for _label, action in _DEFAULT_ACTIONS]
+    preselect = actions.index(draft.default_action) if draft.default_action in actions else 0
+    choice = interactive_select([label for label, _action in _DEFAULT_ACTIONS],
+                                default=preselect)
+    if choice < 0:
+        return
+    draft.default_action = actions[choice]
+    if draft.default_action != BOSS_ACTION_SCAN:
+        return
+    owner = state.active_sequence.name if state.active_sequence else ""
+    available = list_available_item_scans(owner)
+    if not available:
+        print(f"  {info('Keine Item-Scans vorhanden.')}")
+        draft.default_action = BOSS_ACTION_SKIP
+        return
+    scan_choice = interactive_select([name for name, _ in available],
+                                     title="Welchen Default-Scan?")
+    if scan_choice >= 0:
+        draft.default_scan = available[scan_choice][0]
 
-    try:
-        preselect = default_map.index(default_action)
-    except ValueError:
-        preselect = 0
-    default_choice = interactive_select(default_options, default=preselect)
-    if default_choice >= 0:
-        default_action = default_map[default_choice]
 
-        if default_action == BOSS_ACTION_SCAN:
-            owner = state.active_sequence.name if state.active_sequence else ""
-            available = list_available_item_scans(owner)
-            if available:
-                scan_options = [name for name, _ in available]
-                scan_choice = interactive_select(scan_options, title="Welchen Default-Scan?")
-                if scan_choice >= 0:
-                    default_scan = available[scan_choice][0]
-            else:
-                print(f"  {info('Keine Item-Scans vorhanden.')}")
-                default_action = BOSS_ACTION_SKIP
-
-    # === SCHRITT 4: Farbtoleranz ===
+def _boss_step_tolerance(draft: _BossDraft) -> None:
+    """SCHRITT 4: Farbtoleranz; leer, unlesbar oder abgebrochen = unverändert."""
     print(header("SCHRITT 4: FARBTOLERANZ"))
-    print(f"\nAktuelle Toleranz: {tolerance}")
+    print(f"\nAktuelle Toleranz: {draft.tolerance}")
     try:
-        tol_input = safe_input(f"Neue Toleranz (Enter={tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except (ValueError, KeyboardInterrupt, EOFError):
+        draft.tolerance = ask_tolerance(f"Neue Toleranz (Enter={draft.tolerance}): ",
+                                        draft.tolerance)
+    except (KeyboardInterrupt, EOFError):
         pass
 
-    # === SCHRITT 5: LLM Vision ===
-    use_llm = existing.use_llm if existing else False
-    llm_fallback = existing.llm_fallback if existing else True
 
+def _boss_step_llm(state: AutoClickerState, draft: _BossDraft) -> None:
+    """SCHRITT 5: LLM aus, als Fallback oder primär — oder erst die Verbindung testen."""
     print(header("SCHRITT 5: LLM VISION (optional)"))
     print("\n  LLM-basierte Boss-Erkennung nutzt ein lokales KI-Modell (Ollama/LM Studio)")
     print("  um Bosse per Bilderkennung zu identifizieren.")
 
-    llm_options = [
-        "Kein LLM verwenden",
-        "LLM als Fallback (wenn Template/Marker nichts finden)",
-        "LLM als primäre Erkennung (immer zuerst LLM fragen)",
-        "LLM-Verbindung testen",
-    ]
-
-    llm_preselect = 0 if not use_llm else (1 if llm_fallback else 2)
-    llm_choice = interactive_select(llm_options, title="\nLLM-Erkennung:", default=llm_preselect)
-    if llm_choice == 0:
-        use_llm = False
-    elif llm_choice == 1:
-        use_llm = True
-        llm_fallback = True
+    preselect = 0 if not draft.use_llm else (1 if draft.llm_fallback else 2)
+    choice = interactive_select(_LLM_OPTIONS, title="\nLLM-Erkennung:", default=preselect)
+    if choice == 0:
+        draft.use_llm = False
+    elif choice == 1:
+        draft.use_llm, draft.llm_fallback = True, True
         print(f"  {ok('LLM als Fallback aktiviert')}")
         print("       Stelle sicher, dass in config.json 'llm_enabled: true' gesetzt ist")
         print("       und Ollama/LM Studio läuft (Einstellungen in config.json)")
-    elif llm_choice == 2:
-        use_llm = True
-        llm_fallback = False
+    elif choice == 2:
+        draft.use_llm, draft.llm_fallback = True, False
         print(f"  {ok('LLM als primäre Erkennung aktiviert')}")
-    elif llm_choice == 3:
+    elif choice == 3:
         _test_llm_connection(state)
-        # Nochmal fragen
+        # Nach dem Test nochmal fragen
         if confirm("  LLM aktivieren?"):
-            use_llm = True
-            llm_fallback = confirm("  Als Fallback? (Nein = primär)")
+            draft.use_llm = True
+            draft.llm_fallback = confirm("  Als Fallback? (Nein = primär)")
         else:
-            use_llm = False
+            draft.use_llm = False
 
-    # === SCHRITT 6: OCR Texterkennung ===
-    use_ocr = existing.use_ocr if existing else False
-    ocr_fallback = existing.ocr_fallback if existing else True
 
+def _boss_step_ocr(draft: _BossDraft) -> None:
+    """SCHRITT 6: OCR aus, als Fallback oder primär — gefragt nur, wenn es OCR gibt."""
     print(header("SCHRITT 6: OCR TEXTERKENNUNG (optional)"))
     print("\n  OCR liest den Boss-Namen direkt als Text vom Screenshot.")
     print("  Schneller als LLM, braucht aber sichtbaren Text im Bild.")
 
-    ocr_available = False
     try:
         from autoclicker.ocr import is_available, get_status
-        ocr_available = is_available()
-        if not ocr_available:
-            print(f"\n  {warn(get_status())}")
     except ImportError:
         print(f"\n  {warn('OCR-Modul nicht verfügbar')}")
+        return
+    if not is_available():
+        print(f"\n  {warn(get_status())}")
+        return
 
-    if ocr_available:
-        ocr_options = [
-            "Kein OCR verwenden",
-            "OCR als Fallback (wenn Template/Marker nichts finden)",
-            "OCR als primäre Erkennung (immer zuerst OCR)",
-        ]
+    preselect = 0 if not draft.use_ocr else (1 if draft.ocr_fallback else 2)
+    choice = interactive_select(_OCR_OPTIONS, title="\nOCR-Erkennung:", default=preselect)
+    if choice == 0:
+        draft.use_ocr = False
+    elif choice == 1:
+        draft.use_ocr, draft.ocr_fallback = True, True
+        print(f"  {ok('OCR als Fallback aktiviert')}")
+        print("       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
+    elif choice == 2:
+        draft.use_ocr, draft.ocr_fallback = True, False
+        print(f"  {ok('OCR als primäre Erkennung aktiviert')}")
 
-        ocr_preselect = 0 if not use_ocr else (1 if ocr_fallback else 2)
-        ocr_choice = interactive_select(ocr_options, title="\nOCR-Erkennung:", default=ocr_preselect)
-        if ocr_choice == 0:
-            use_ocr = False
-        elif ocr_choice == 1:
-            use_ocr = True
-            ocr_fallback = True
-            print(f"  {ok('OCR als Fallback aktiviert')}")
-            print("       Stelle sicher, dass in config.json 'ocr_enabled: true' gesetzt ist")
-        elif ocr_choice == 2:
-            use_ocr = True
-            ocr_fallback = False
-            print(f"  {ok('OCR als primäre Erkennung aktiviert')}")
 
-    # === Speichern ===
+def _save_boss_config(state: AutoClickerState, draft: _BossDraft) -> None:
     config = BossScanConfig(
-        name=scan_name,
-        scan_region=scan_region,
-        bosses=bosses,
-        color_tolerance=tolerance,
-        default_action=default_action,
-        default_scan=default_scan,
-        use_llm=use_llm,
-        llm_fallback=llm_fallback,
-        use_ocr=use_ocr,
-        ocr_fallback=ocr_fallback,
+        name=draft.name,
+        scan_region=draft.region,
+        bosses=draft.bosses,
+        color_tolerance=draft.tolerance,
+        default_action=draft.default_action,
+        default_scan=draft.default_scan,
+        use_llm=draft.use_llm,
+        llm_fallback=draft.llm_fallback,
+        use_ocr=draft.use_ocr,
+        ocr_fallback=draft.ocr_fallback,
         owner_sequence=state.active_sequence.name if state.active_sequence else "",
     )
-
     with state.lock:
-        state.boss_scans[scan_name] = config
+        state.boss_scans[draft.name] = config
 
     if not save_boss_scan(config):
         print(err("Boss-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
         return
 
-    save_msg = ok(f"Boss-Scan '{scan_name}' gespeichert!")
+    save_msg = ok(f"Boss-Scan '{draft.name}' gespeichert!")
     print(f"\n{save_msg}")
-    tags = []
-    if use_llm:
-        tags.append("LLM")
-    if use_ocr:
-        tags.append("OCR")
+    tags = [tag for tag, used in (("LLM", draft.use_llm), ("OCR", draft.use_ocr)) if used]
     tag_str = f" [{'+'.join(tags)}]" if tags else ""
-    print(f"         {len(bosses)} Boss(e), Region ({scan_region[0]},{scan_region[1]})-({scan_region[2]},{scan_region[3]}){tag_str}")
-    print(f"         Nutze im Sequenz-Editor: 'boss {scan_name}'")
+    r = draft.region
+    print(f"         {len(draft.bosses)} Boss(e), Region ({r[0]},{r[1]})-({r[2]},{r[3]}){tag_str}")
+    print(f"         Nutze im Sequenz-Editor: 'boss {draft.name}'")
 
 
 def _test_llm_connection(state: AutoClickerState) -> None:
