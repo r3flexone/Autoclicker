@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass
 
 logger = logging.getLogger("autoclicker")
 
@@ -221,94 +222,28 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
     report:         Sammelt für den Live-Run (`_ScanReport` in steps.py): `seen`
                     bekommt je gescanntem Slot `(Slot, Item oder None, Ausschnitt)`
                     — auch was der Modus danach wegfiltert —, `frame` einmal je
-                    Block den Bereich um alle Slots als Bild."""
-    # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
-    # während wir iterieren (RuntimeError bei dict/list changed during iteration).
-    with state.lock:
-        config = runnable_scan_config(state, scan_name)
-        if config is None:
-            return []
-        slots_snapshot = [slot for slot in config.slots if slot.enabled]
-        items_snapshot = [item for item in config.items if item.enabled]
-        color_tolerance = config.color_tolerance
-        learn_unknown = config.learn_unknown
-        # Im selben Lock-Snapshot wie die übrigen Flags: wer die Richtung
-        # zweimal frisch liest, kann einen Editor dazwischen umschalten sehen.
-        backwards = config.reverse
-        window_title = config.capture_window_title
-        window_index = config.capture_window_index
-        window_reference = (tuple(config.capture_window_rect)
-                            if config.capture_window_rect else None)
+                    Block den Bereich um alle Slots als Bild.
 
-    found_items = []
-
-    if slots_override is not None:
-        slots_to_scan = [slot for slot in slots_override if slot.enabled]
-    else:
-        slots_to_scan = slots_snapshot
-        if backwards:
-            slots_to_scan = list(reversed(slots_to_scan))
-
-    scan_delay = state.config.scan_slot_delay
+    Die Stufen: Config einfrieren (`_plan_scan`), Reihenfolge (`_slot_order`),
+    Maus parken, Bildquelle (`_window_source` → `_slots_in_window`), dann je
+    Slot Bild (`_slot_image`) und Treffer (`_best_item`), zuletzt der Filter
+    nach Modus. Jede Stufe, die scheitern kann, meldet selbst und gibt None
+    zurück — hier steht nur noch die Reihenfolge."""
+    plan = _plan_scan(state, scan_name)
+    if plan is None:
+        return []
+    slots_to_scan = _slot_order(plan, slots_override)
     debug = is_log_debug(state)
+    _park_once(state, session)
 
-    if session is None or not session.parked:
-        _park_mouse_for_scan(state.config.scan_park_mouse)
-        if session is not None:
-            session.parked = True
-
-    # Ein Fenster-Scan arbeitet auf EINEM eingefrorenen Bild — genau wie der
-    # Editor. Damit können sich Items nicht mitten im Durchgang verschieben, und
-    # beide Wege sehen wirklich dieselben Pixel aus derselben Aufnahmemethode.
-    window_image = None
-    window_rect = None
-    if window_title and session is not None and session.window is not None:
-        # Immediate-Modus, seit der letzten Aufnahme kein Klick: dieselben Pixel.
-        window_image, window_rect = session.window
-    elif window_title:
-        window = resolve_window(window_title, window_index, window_reference)
-        if window is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' nicht "
-                      "gefunden. Spiel öffnen oder die Aufnahmequelle im Studio "
-                      "neu wählen."))
-            return []
-        if debug:
-            screenshot_start = time.time()
-        capture = take_consistent_window_screenshot(window[2])
-        if capture is None:
-            print(err(f"Item-Scan '{scan_name}': Fenster '{window_title}' konnte "
-                      "nicht aufgenommen werden."))
-            return []
-        window_image, window_rect, hint = capture
-        if hint:
-            key_name = (scan_name, hint)
-            if key_name not in _window_capture_warnings:
-                _window_capture_warnings.add(key_name)
-                print(warn(f"Item-Scan '{scan_name}':{hint}"))
-        if debug:
-            screenshot_ms = (time.time() - screenshot_start) * 1000
-            print(dbg(f"Fenster '{window_title}' einmal aufgenommen: "
-                      f"{window_image.size[0]}x{window_image.size[1]}px "
-                      f"in {screenshot_ms:.0f}ms"))
-        if session is not None:
-            session.window = (window_image, window_rect)
-
+    source = _window_source(state, scan_name, plan, session, debug)
+    if source is None:
+        return []
+    window_image, window_rect = source
     if window_image is not None:
-        reference = window_reference or window_rect
-        try:
-            slots_to_scan = [ItemSlot(
-                name=slot.name,
-                scan_region=map_region_between_rects(
-                    slot.scan_region, reference, window_rect),
-                click_pos=map_point_between_rects(
-                    slot.click_pos, reference, window_rect),
-                slot_color=slot.slot_color,
-                enabled=slot.enabled,
-                id=slot.id,
-            ) for slot in slots_to_scan]
-        except (TypeError, ValueError):
-            print(err(f"Item-Scan '{scan_name}': gespeicherte Fenstergeometrie ist "
-                      "ungültig. Aufnahmequelle im Studio neu wählen."))
+        slots_to_scan = _slots_in_window(
+            scan_name, slots_to_scan, plan.window_reference or window_rect, window_rect)
+        if slots_to_scan is None:
             return []
 
     if report is not None and report.frame is None:
@@ -316,74 +251,212 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         # Block diese Funktion je Slot, und nach dem ersten Klick sähe das Bild
         # anders aus als das, was gescannt wurde. Die Maus ist schon geparkt.
         report.frame = _scan_frame(_frame_regions(
-            slots_snapshot, window_reference, window_rect), window_image, window_rect)
+            plan.slots, plan.window_reference, window_rect), window_image, window_rect)
 
-    for idx, slot in enumerate(slots_to_scan):
-        if state.stop_event.is_set():
-            break
-        if state.skip_event.is_set():
-            # Skip konsumieren — sonst überspringt ein Skip zwei Dinge
-            # (diesen Scan und den nächsten skip-fähigen Schritt).
-            state.skip_event.clear()
-            break
-        if state.skip_step_event.is_set():
-            # NICHT verbrauchen: der Block-Skip gehoert dem Dispatcher. Hier
-            # geleert, klickte der normale Modus die bis dahin gefundenen Items
-            # trotzdem, und im Immediate-Modus (ein Aufruf je Slot) fiel nur
-            # EIN Slot weg — der Rest des Blocks lief weiter.
-            break
+    found_items = _scan_slots(state, scan_name, plan, slots_to_scan, source, report, debug)
+    if not found_items:
+        return []
+    return _filter_scan_results(state, found_items, mode, debug)
 
-        if not wait_while_paused(state, f"Scan '{scan_name}' pausiert..."):
-            break
 
+def _scan_slots(state: AutoClickerState, scan_name: str, plan: '_ScanPlan',
+                slots: list, source: tuple, report, debug: bool) -> list:
+    """Der Durchgang über die Slots: je Slot `(Slot, Item, Priorität)` für jeden Treffer.
+
+    Zwischen zwei Desktop-Aufnahmen liegt `scan_slot_delay`; ein Fensterbild
+    ist schon aufgenommen und braucht keine Pause.
+    """
+    window_image, window_rect = source
+    found_items = []
+    scan_delay = state.config.scan_slot_delay
+    for idx, slot in enumerate(slots):
+        if _scan_interrupted(state, scan_name):
+            break
         if window_image is None and scan_delay > 0 and idx > 0:
             if state.stop_event.wait(scan_delay):
                 break
 
-        if debug:
-            screenshot_start = time.time()
-        if window_image is not None:
-            img = crop_screen_region(
-                window_image, slot.scan_region,
-                (window_rect[0], window_rect[1]))
-        else:
-            img = take_screenshot(slot.scan_region)
-
+        img = _slot_image(slot, window_image, window_rect, debug)
         if img is None:
             continue
-
-        if debug:
-            screenshot_ms = (time.time() - screenshot_start) * 1000
-            size_info = f"{img.size[0]}x{img.size[1]}"
-            print(dbg(f"Scanne {slot.name}... (Screenshot: {screenshot_ms:.0f}ms, {size_info}px)"))
-
-        candidates = []
-        for order, item in enumerate(items_snapshot):
-            fits, quality = _check_profile_match(
-                item, img, color_tolerance, state, debug, "gefunden!",
-                return_score=True,
-            )
-            if fits:
-                candidates.append((quality, -order, item))
-
-        matched = bool(candidates)
-        if matched:
-            quality, _neg_order, item = max(
-                candidates, key=lambda candidate: (candidate[0], candidate[1]))
+        item = _best_item(state, plan.items, img, plan.color_tolerance, debug)
+        if item is not None:
             found_items.append((slot, item, item.priority))
         if report is not None:
-            report.seen.append((slot, item if matched else None, img))
-            if debug and len(candidates) > 1:
-                print(dbg(f"  → {item.name}: bester von {len(candidates)} Treffern "
-                          f"({quality:.1%})"))
+            report.seen.append((slot, item, img))
+        if item is None and plan.learn_unknown:
+            _learn_unknown_slot_item(state, slot, img, debug, plan.config)
+    return found_items
 
-        if not matched and learn_unknown:
-            _learn_unknown_slot_item(state, slot, img, debug, config)
 
-    if not found_items:
-        return []
+@dataclass
+class _ScanPlan:
+    """Was ein Durchgang aus der Config braucht — unter EINEM Lock eingefroren.
 
-    return _filter_scan_results(state, found_items, mode, debug)
+    Snapshot statt Live-Zugriff: ein Editor kann die Listen während des
+    Durchgangs ändern (RuntimeError bei „list changed during iteration"), und
+    wer ein Flag zweimal frisch liest, kann ihn dazwischen umschalten sehen.
+    """
+    config: object                   # die Config selbst — Auto-Lernen schreibt hinein
+    slots: list                      # eingeschaltete Slots, gespeicherte Reihenfolge
+    items: list                      # eingeschaltete Items
+    color_tolerance: int
+    learn_unknown: bool
+    backwards: bool
+    window_title: str | None
+    window_index: int
+    window_reference: tuple | None   # Fensterlage, in der die Slots vermessen wurden
+
+
+def _plan_scan(state: AutoClickerState, scan_name: str) -> _ScanPlan | None:
+    """Der eingefrorene Stand des Scans, oder None (gemeldet), wenn er nicht laufen kann."""
+    with state.lock:
+        config = runnable_scan_config(state, scan_name)
+        if config is None:
+            return None
+        return _ScanPlan(
+            config=config,
+            slots=[slot for slot in config.slots if slot.enabled],
+            items=[item for item in config.items if item.enabled],
+            color_tolerance=config.color_tolerance,
+            learn_unknown=config.learn_unknown,
+            backwards=config.reverse,
+            window_title=config.capture_window_title,
+            window_index=config.capture_window_index,
+            window_reference=(tuple(config.capture_window_rect)
+                              if config.capture_window_rect else None),
+        )
+
+
+def _slot_order(plan: _ScanPlan, slots_override: list | None) -> list:
+    """Welche Slots in welcher Reihenfolge — ein Override gilt wie übergeben."""
+    if slots_override is not None:
+        return [slot for slot in slots_override if slot.enabled]
+    return list(reversed(plan.slots)) if plan.backwards else plan.slots
+
+
+def _park_once(state: AutoClickerState, session: ScanSession | None) -> None:
+    """Maus parken — im Immediate-Modus nur bis zum nächsten Klick einmal."""
+    if session is None or not session.parked:
+        _park_mouse_for_scan(state.config.scan_park_mouse)
+        if session is not None:
+            session.parked = True
+
+
+def _window_source(state: AutoClickerState, scan_name: str, plan: _ScanPlan,
+                   session: ScanSession | None, debug: bool):
+    """Woher die Pixel kommen: `(Bild, Client-Rechteck)` des Fensters.
+
+    `(None, None)` heisst Desktop (kein Fenster gewählt), None heisst Fehler —
+    schon gemeldet, der Scan endet. Ein Fenster-Scan arbeitet auf EINEM
+    eingefrorenen Bild, genau wie der Editor: Items können sich nicht mitten im
+    Durchgang verschieben, und beide Wege sehen dieselben Pixel aus derselben
+    Aufnahmemethode.
+    """
+    title = plan.window_title
+    if not title:
+        return None, None
+    if session is not None and session.window is not None:
+        # Immediate-Modus, seit der letzten Aufnahme kein Klick: dieselben Pixel.
+        return session.window
+    window = resolve_window(title, plan.window_index, plan.window_reference)
+    if window is None:
+        print(err(f"Item-Scan '{scan_name}': Fenster '{title}' nicht "
+                  "gefunden. Spiel öffnen oder die Aufnahmequelle im Studio "
+                  "neu wählen."))
+        return None
+    started = time.time()
+    capture = take_consistent_window_screenshot(window[2])
+    if capture is None:
+        print(err(f"Item-Scan '{scan_name}': Fenster '{title}' konnte "
+                  "nicht aufgenommen werden."))
+        return None
+    image, rect, hint = capture
+    if hint and (scan_name, hint) not in _window_capture_warnings:
+        _window_capture_warnings.add((scan_name, hint))
+        print(warn(f"Item-Scan '{scan_name}':{hint}"))
+    if debug:
+        print(dbg(f"Fenster '{title}' einmal aufgenommen: "
+                  f"{image.size[0]}x{image.size[1]}px "
+                  f"in {(time.time() - started) * 1000:.0f}ms"))
+    if session is not None:
+        session.window = (image, rect)
+    return image, rect
+
+
+def _slots_in_window(scan_name: str, slots: list, reference, window_rect) -> list | None:
+    """Die Slots auf die heutige Fensterlage umgerechnet — Klickpunkt inklusive.
+
+    None (gemeldet), wenn die gespeicherte Geometrie keine Fläche hat.
+    """
+    try:
+        return [ItemSlot(
+            name=slot.name,
+            scan_region=map_region_between_rects(slot.scan_region, reference, window_rect),
+            click_pos=map_point_between_rects(slot.click_pos, reference, window_rect),
+            slot_color=slot.slot_color,
+            enabled=slot.enabled,
+            id=slot.id,
+        ) for slot in slots]
+    except (TypeError, ValueError):
+        print(err(f"Item-Scan '{scan_name}': gespeicherte Fenstergeometrie ist "
+                  "ungültig. Aufnahmequelle im Studio neu wählen."))
+        return None
+
+
+def _scan_interrupted(state: AutoClickerState, scan_name: str) -> bool:
+    """True, wenn der Durchgang vor dem nächsten Slot enden muss."""
+    if state.stop_event.is_set():
+        return True
+    if state.skip_event.is_set():
+        # Skip konsumieren — sonst überspringt ein Skip zwei Dinge
+        # (diesen Scan und den nächsten skip-fähigen Schritt).
+        state.skip_event.clear()
+        return True
+    if state.skip_step_event.is_set():
+        # NICHT verbrauchen: der Block-Skip gehoert dem Dispatcher. Hier
+        # geleert, klickte der normale Modus die bis dahin gefundenen Items
+        # trotzdem, und im Immediate-Modus (ein Aufruf je Slot) fiel nur
+        # EIN Slot weg — der Rest des Blocks lief weiter.
+        return True
+    return not wait_while_paused(state, f"Scan '{scan_name}' pausiert...")
+
+
+def _slot_image(slot, window_image, window_rect, debug: bool):
+    """Der Ausschnitt eines Slots: aus dem Fensterbild oder als eigene Aufnahme."""
+    started = time.time()
+    if window_image is not None:
+        img = crop_screen_region(window_image, slot.scan_region,
+                                 (window_rect[0], window_rect[1]))
+    else:
+        img = take_screenshot(slot.scan_region)
+    if img is not None and debug:
+        print(dbg(f"Scanne {slot.name}... (Screenshot: "
+                  f"{(time.time() - started) * 1000:.0f}ms, "
+                  f"{img.size[0]}x{img.size[1]}px)"))
+    return img
+
+
+def _best_item(state: AutoClickerState, items: list, img, color_tolerance: int,
+               debug: bool):
+    """Das Item, das am besten passt, oder None.
+
+    Gewertet wird die Trefferqualität aus `_check_profile_match`; bei gleicher
+    Qualität gewinnt das Item, das in der Liste weiter vorn steht.
+    """
+    candidates = []
+    for order, item in enumerate(items):
+        fits, quality = _check_profile_match(
+            item, img, color_tolerance, state, debug, "gefunden!", return_score=True)
+        if fits:
+            candidates.append((quality, -order, item))
+    if not candidates:
+        return None
+    quality, _neg_order, best = max(candidates, key=lambda c: (c[0], c[1]))
+    if debug and len(candidates) > 1:
+        print(dbg(f"  → {best.name}: bester von {len(candidates)} Treffern "
+                  f"({quality:.1%})"))
+    return best
 
 
 # Rand um die Slots im Bild des letzten Scans: ohne ihn stösst der äusserste

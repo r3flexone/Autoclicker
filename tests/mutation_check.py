@@ -67,9 +67,9 @@ CASES = {
         "if renamed and old.exists() and new_folder.exists():",
         STUDIO + "test_neue_sequenz_ueberschreibt_keine_vorhandene"),
     "scan-block-skip": (
-        "autoclicker.runtime.item_scan", "execute_item_scan",
-        "Rest des Blocks lief weiter.\n            break",
-        "Rest des Blocks lief weiter.\n            state.skip_step_event.clear()\n            break",
+        "autoclicker.runtime.item_scan", "_scan_interrupted",
+        "Rest des Blocks lief weiter.\n        return True",
+        "Rest des Blocks lief weiter.\n        state.skip_step_event.clear()\n        return True",
         RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_unknown_slot_item",
