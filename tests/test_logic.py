@@ -3822,7 +3822,7 @@ for _path11, _function11 in (
         ("autoclicker/handlers.py", "command_start"),
         ("autoclicker/handlers.py", "handle_switch"),
         ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
-    _tree11 = _ast11.parse(Path(_path11).read_text(encoding="utf-8"))
+    _tree11 = _ast11.parse((_H.REPO / _path11).read_text(encoding="utf-8"))
     for _k11 in _ast11.walk(_tree11):
         if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _function11:
             _names11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
@@ -3951,7 +3951,7 @@ check("und None erst recht", _img12.is_blank(None) is True)
 # Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
 # spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
 # Fassungen desselben Spiels ist er dreimal derselbe.
-_source_wf12 = Path("autoclicker/platforms/windows.py").read_text(encoding="utf-8")
+_source_wf12 = (_H.REPO / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_source_wf12))
              if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "list_windows")
 _attachments12 = [_n12 for _n12 in _ast11.walk(_lf12)
@@ -3967,8 +3967,8 @@ check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
 # _without_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
-_source_br12 = Path(
-    "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
+_source_br12 = (
+    _H.REPO / "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
     encoding="utf-8")
 _tree_br12 = _ast11.parse(_source_br12)
 _lader12 = [_k12.lineno for _k12 in _ast11.walk(_tree_br12)
@@ -4054,7 +4054,7 @@ check("Transparenz liegt auch mitten im Motiv, nicht nur an den Aussenecken",
 # eine Kopie, die niemand mitzieht.
 import importlib.util as _ilu12
 _spec12 = _ilu12.spec_from_file_location(
-    "_werkzeug_symbol", Path("tools/symbol.py"))
+    "_werkzeug_symbol", _H.REPO / "tools/symbol.py")
 _werk12 = _ilu12.module_from_spec(_spec12)
 _spec12.loader.exec_module(_werk12)
 
@@ -4098,7 +4098,7 @@ else:
 
 # Die eigentliche Regel ist die Reihenfolge: nach dem ersten Fenster hat Windows
 # die Zuordnung schon getroffen, ein spaeterer Aufruf aendert nichts mehr.
-_source12 = Path("autoclicker/sequence_studio.py").read_text(encoding="utf-8")
+_source12 = (_H.REPO / "autoclicker/sequence_studio.py").read_text(encoding="utf-8")
 _main12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_source12))
                if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "main")
 _row_id12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
@@ -6655,6 +6655,20 @@ if PILLOW_AVAILABLE and OPENCV_AVAILABLE:
     _shD.rmtree(_sandboxD, ignore_errors=True)
 else:
     print("  ÜBERSPRUNGEN: Vorlagengrössen brauchen Pillow und OpenCV")
+
+
+# ---------------------------------------------------------------------------
+section("Die Suite hinterlässt im Repo nichts")
+
+# Bis hierher schrieb jeder Lauf `.run.json`, `.recording.json` und
+# `.reclick.json` in den Ordner, aus dem man die Suite startet — also in die
+# echten Daten —, und frueher ganze Sequenzordner („Studio", „Fokus" …).
+# Ursache und Abhilfe stehen in `_harness.py` beim Arbeitsordner.
+check("die Suite arbeitet in ihrem eigenen Ordner, nicht im Repo",
+      Path.cwd().resolve() != _H.REPO.resolve())
+_new_entries = sorted(_H.repo_entries() - _H.REPO_ENTRIES)
+check(f"und hat im Repo nichts angelegt {_new_entries or ''}".rstrip(),
+      _new_entries == [])
 
 
 PASS, FAIL = _H.PASS, _H.FAIL

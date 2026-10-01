@@ -1,8 +1,11 @@
 """Unittest-Discovery ohne doppelten Vertragslauf im gemeinsamen Runner."""
 
 import argparse
+import os
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 
 # Die Wurzelmodule liegen in `tests/root/`, importieren aber `autoclicker`,
@@ -29,12 +32,25 @@ def collect(root_layer: Path, without_contract: bool = False) -> unittest.TestSu
     return suite
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--without-contract", action="store_true")
-    args = parser.parse_args()
-    suite = collect(MODULE, args.without_contract)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    args = parser.parse_args(argv)
+    # **Gelaufen wird in einem eigenen Ordner, nie im Repo** — dieselbe Regel
+    # und derselbe Grund wie beim Arbeitsordner der Vertragssuite
+    # (`tests/contract/_harness.py`): die Pfade der App sind CWD-relativ, und
+    # jeder Test ohne eigene Sandbox schrieb in die echten Daten (zuletzt
+    # `.run.json` aus einem Item-Scan-Test). Hier statt in jedem Testfall: ein
+    # Schutz, an den jeder Testfall denken muss, ist einer, den einer vergisst.
+    previous = os.getcwd()
+    sandbox = tempfile.mkdtemp(prefix="wurzelmodule_")
+    os.chdir(sandbox)
+    try:
+        suite = collect(MODULE, args.without_contract)
+        result = unittest.TextTestRunner(verbosity=2).run(suite)
+    finally:
+        os.chdir(previous)
+        shutil.rmtree(sandbox, ignore_errors=True)
     return 0 if result.wasSuccessful() else 1
 
 

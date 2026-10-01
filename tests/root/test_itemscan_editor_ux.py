@@ -10,6 +10,10 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
+# Die Seite wird aus dem Repo gelesen, nicht aus dem Arbeitsverzeichnis: der
+# Runner startet die Wurzelmodule in einem eigenen Ordner (`root_tests.main`).
+REPO = Path(__file__).resolve().parents[2]
+
 # Pillow ist optional (s. test_scan_services.py): der Import stand hier oben und
 # ohne Pillow starb das Modul beim LADEN.
 try:
@@ -162,7 +166,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("nichts gelernt", state["status"]["text"])
 
     def test_review_offers_an_explicit_override_for_a_wrong_match(self):
-        js = (Path(self.old_cwd) /
+        js = (REPO /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         self.assertIn("Als anderes Item lernen", js)
@@ -275,7 +279,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         steht, gibt es diese Funktion nicht mehr, und der Test fiel um, obwohl
         die Eigenschaft unverändert galt.
         """
-        js = (Path(self.old_cwd) /
+        js = (REPO /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         # EIN Bedienelement für beide Stellen, an denen eine Kategorie entsteht:
@@ -434,7 +438,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertEqual(loaded.template_names(), ["robe.png", "robe_50x50.png"])
 
     def test_priority_is_visible_with_category_context(self):
-        js = (Path(self.old_cwd) /
+        js = (REPO /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         self.assertIn("function priorityOverview", js)
@@ -460,7 +464,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn("Gelernte Slot-Größen", js)
 
     def test_guided_mode_keeps_screenshot_source_controls_visible(self):
-        html = (Path(self.old_cwd) /
+        html = (REPO /
                 "autoclicker/editors/sequence_studio/web/index.html").read_text(
                     encoding="utf-8")
         self.assertNotIn(".scans.guided.has-image #ab-bild{display:none}", html)
@@ -468,7 +472,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # Die Erklaerung dazu steht weiterhin da, aber im ⓘ statt als Absatz:
         # sie gilt immer und aendert sich nie, also stand sie bei jedem Blick
         # auf den Schritt im Weg. Was im HTML bleibt, ist der STAND.
-        js = (Path(self.old_cwd) /
+        js = (REPO /
               "autoclicker/editors/sequence_studio/web/app.js").read_text(
                   encoding="utf-8")
         self.assertIn("derselben Aufnahmemethode neu aufgenommen", js)
