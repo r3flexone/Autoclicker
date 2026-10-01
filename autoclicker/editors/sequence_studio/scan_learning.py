@@ -679,7 +679,10 @@ class ScanLearningMixin:
             return self._scan_report(
                 f"Keine Items in '{old or 'ohne Kategorie'}'.", "warn")
 
-        self._remember(f"Kategorie '{old or 'without'}' → '{new or 'without'}'")
+        # Das ist der Tooltip von „↶ Zurück", also Sprache, kein Schlüssel:
+        # hier stand 'without' — ein Rest des Englisch-Umbaus.
+        self._remember(f"Kategorie '{old or 'ohne Kategorie'}' → "
+                       f"'{new or 'ohne Kategorie'}'")
         for item in affected:
             item.category = new
         # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in

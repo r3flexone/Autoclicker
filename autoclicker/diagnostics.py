@@ -277,6 +277,13 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
             report.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
                           f"{entry} existiert nicht", target=target)
 
+        # Die Folgesequenz steht per Namen da — umbenannt oder gelöscht, fällt
+        # sie erst am Ende eines langen Laufs auf, und dann schläft man.
+        if seq.next_sequence and seq.next_sequence not in {n for n, _ in files}:
+            report.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
+                               f"Folgesequenz '{seq.next_sequence}' existiert nicht",
+                               "im Studio unter SEQUENZ → Danach starten neu wählen",
+                               {"view": "editor", "sequence": seq.name, "field": "seq-next"})
         if seq.total_steps() == 0:
             report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'", "hat keine Schritte")
         for lane, lp in enumerate(seq.loop_phases, 1):

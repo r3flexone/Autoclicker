@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Sequenz-Studio</title>
-<link rel="icon" type="image/svg+xml" href="sequenz-studio-logo.svg">
+<link rel="icon" type="image/svg+xml" href="sequenz-studio-logo-small.svg">
 <!--
   Oberfläche des Sequenz-Studios.
 
@@ -116,6 +116,17 @@
             <output class="mono" id="seq-blocks">0</output>
           </div>
         </div>
+        <!-- Folgesequenz: nach einem regulaeren Ende (alle Zyklen oder
+             CTRL+ALT+F) startet der Hauptprozess die gewaehlte Sequenz nach
+             der Pause, wie ein Druck auf CTRL+ALT+S. Nach einem Stopp nicht. -->
+        <div class="grid2">
+          <label class="field">Danach starten
+            <select id="seq-next"></select>
+          </label>
+          <label class="field">Pause davor (s)
+            <input id="seq-next-delay" type="number" min="0" step="1">
+          </label>
+        </div>
         <label class="field">Notiz
           <textarea id="seq-info"></textarea>
         </label>
@@ -139,8 +150,32 @@
       </div>
     </aside>
 
-    <main class="board" id="board">
-      <div class="phases" id="phases"></div>
+    <!-- **Welche Phasen es gibt, steht über dem Board — auch die, die gerade
+         nicht hineinpassen.** Bei 1500 px Fensterbreite waren drei von fünf
+         Phasen zu sehen, bei 1100 px anderthalb; der Rest lag rechts ausser
+         Sicht, ohne Bildlaufleiste, die man bemerkt, und ohne Hinweis, dass da
+         noch etwas kommt. Die Leiste nennt jede Phase mit ihrer Blockzahl,
+         blasst aus, was ausserhalb liegt, und ein Klick scrollt hin. Die
+         Kanten links und rechts werden dunkel, solange dort noch Phasen
+         liegen. Ganz links schaltet sie die Seitenleiste weg, wenn das Board
+         mehr Platz braucht. -->
+    <main class="board-wrap">
+      <nav class="phase-nav" id="phase-nav" aria-label="Phasen"></nav>
+      <div class="board-frame">
+        <div class="board" id="board">
+          <div class="phases" id="phases"></div>
+        </div>
+        <!-- Die dunkle Kante nimmt keine Klicks an (sie liegt ueber den
+             Karten), der runde Knopf darin schon. -->
+        <div class="board-edge left" id="board-edge-left" hidden>
+          <button class="board-step" id="board-step-left"
+                  title="Zur vorigen Phase" aria-label="Zur vorigen Phase"></button>
+        </div>
+        <div class="board-edge right" id="board-edge-right" hidden>
+          <button class="board-step" id="board-step-right"
+                  title="Zur nächsten Phase" aria-label="Zur nächsten Phase"></button>
+        </div>
+      </div>
     </main>
 
     <aside class="page right">

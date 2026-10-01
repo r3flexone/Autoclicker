@@ -210,13 +210,18 @@ class ScanSession:
 
 
 def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_MODE_ALL,
-                      slots_override: list = None, session: ScanSession = None) -> list:
+                      slots_override: list = None, session: ScanSession = None,
+                      report=None) -> list:
     """Führt einen Item-Scan aus und gibt Liste von (position, item, priority) zurück.
 
     slots_override: Nur diese Slots scannen, Reverse-Reihenfolge ignorieren.
                     Wird vom Immediate-Modus genutzt (ein Slot pro Aufruf).
     session:        Parkstand und Fensteraufnahme über mehrere Aufrufe hinweg
-                    (Immediate-Modus); ohne Session gilt jeder Aufruf für sich."""
+                    (Immediate-Modus); ohne Session gilt jeder Aufruf für sich.
+    report:         Sammelt für den Live-Run (`_ScanReport` in steps.py): `seen`
+                    bekommt je gescanntem Slot `(Slot, Item oder None, Ausschnitt)`
+                    — auch was der Modus danach wegfiltert —, `frame` einmal je
+                    Block den Bereich um alle Slots als Bild."""
     # Snapshot der Config und ihrer Listen unter Lock — verhindert Mutation durch Editoren
     # während wir iterieren (RuntimeError bei dict/list changed during iteration).
     with state.lock:
@@ -306,6 +311,13 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
                       "ungültig. Aufnahmequelle im Studio neu wählen."))
             return []
 
+    if report is not None and report.frame is None:
+        # EINMAL je Block und VOR dem ersten Slot: im Immediate-Modus ruft der
+        # Block diese Funktion je Slot, und nach dem ersten Klick sähe das Bild
+        # anders aus als das, was gescannt wurde. Die Maus ist schon geparkt.
+        report.frame = _scan_frame(_frame_regions(
+            slots_snapshot, window_reference, window_rect), window_image, window_rect)
+
     for idx, slot in enumerate(slots_to_scan):
         if state.stop_event.is_set():
             break
@@ -359,6 +371,8 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
             quality, _neg_order, item = max(
                 candidates, key=lambda candidate: (candidate[0], candidate[1]))
             found_items.append((slot, item, item.priority))
+        if report is not None:
+            report.seen.append((slot, item if matched else None, img))
             if debug and len(candidates) > 1:
                 print(dbg(f"  → {item.name}: bester von {len(candidates)} Treffern "
                           f"({quality:.1%})"))
@@ -370,6 +384,52 @@ def execute_item_scan(state: AutoClickerState, scan_name: str, mode: str = SCAN_
         return []
 
     return _filter_scan_results(state, found_items, mode, debug)
+
+
+# Rand um die Slots im Bild des letzten Scans: ohne ihn stösst der äusserste
+# Rahmen an die Bildkante, und man sieht nicht, wo das Inventar aufhört.
+FRAME_MARGIN = 12
+
+
+def _frame_regions(slots: list, reference, window_rect) -> list:
+    """Die Regionen aller Slots in Bildschirm-Koordinaten — im Fenster-Modus
+    auf die heutige Fensterlage umgerechnet, wie beim Scannen selbst."""
+    if window_rect is None:
+        return [slot.scan_region for slot in slots]
+    reference = reference or window_rect
+    try:
+        return [map_region_between_rects(slot.scan_region, reference, window_rect)
+                for slot in slots]
+    except (TypeError, ValueError):
+        return []
+
+
+def _scan_frame(regions: list, window_image, window_rect):
+    """Der Bereich um alle Slots als ein Bild — `(Bild, (l, o, r, u))` oder None.
+
+    Kein Beiwerk zum Scan, sondern das, was der Nutzer beim Hinsehen erwartet:
+    ein echter Screenshot der Stelle. Im Fenster-Modus aus der Fensteraufnahme
+    (die gibt es ohnehin), sonst eine Aufnahme mehr — ein kleiner Ausschnitt,
+    wenige Millisekunden. Schlägt sie fehl, setzt `_scan_picture` die
+    Slot-Ausschnitte zusammen.
+    """
+    if not regions:
+        return None
+    left = min(r[0] for r in regions) - FRAME_MARGIN
+    top = min(r[1] for r in regions) - FRAME_MARGIN
+    right = max(r[2] for r in regions) + FRAME_MARGIN
+    bottom = max(r[3] for r in regions) + FRAME_MARGIN
+    if window_image is not None and window_rect is not None:
+        wl, wt = int(window_rect[0]), int(window_rect[1])
+        left, top = max(left, wl), max(top, wt)
+        right = min(right, wl + window_image.size[0])
+        bottom = min(bottom, wt + window_image.size[1])
+        if right <= left or bottom <= top:
+            return None
+        return (window_image.crop((left - wl, top - wt, right - wl, bottom - wt)),
+                (left, top, right, bottom))
+    image = take_screenshot((left, top, right, bottom))
+    return None if image is None else (image, (left, top, right, bottom))
 
 
 def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
@@ -422,7 +482,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
     if is_blank:
         if debug:
-            print(dbg(f"  → {slot.name}: leer (nur Hintergrund) — kein Auto-Lernen"))
+            print(dbg(f"  → {slot.name}: leer (nur Hintergrund bzw. kein Slot zu sehen) — kein Auto-Lernen"))
         return
 
     # Dedup: schon in DIESEM Scan bekannt (z.B. in früherem Zyklus gelernt)?

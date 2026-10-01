@@ -3,6 +3,7 @@ Bildverarbeitung und Farberkennung für den Autoclicker.
 Screenshots, Farbanalyse, Template-Matching.
 """
 
+import io
 import logging
 import os
 from pathlib import Path
@@ -585,6 +586,54 @@ def get_color_name(rgb: tuple) -> str:
         return "Cyan"
     else:
         return "Gemischt"
+
+
+def compose_regions(pieces: list, max_side: int = 900) -> Optional[tuple]:
+    """Setzt Bildausschnitte an ihre Bildschirmstelle — `(PNG, links, oben, Massstab, B, H)`.
+
+    `pieces` ist eine Liste `(Region (x1, y1, x2, y2), Bild)`. Dazwischen bleibt
+    der Grund dunkel: gezeigt wird genau das, was ausgewertet wurde, nicht der
+    Bildschirm drumherum. Verkleinert wird auf `max_side` Pixel an der längeren
+    Kante — das Bild geht fünfmal pro Sekunde durch die Studio-Brücke.
+    Ohne Pillow, ohne Ausschnitte oder bei einem Bild, das keines ist: `None`.
+    """
+    if not PILLOW_AVAILABLE or not pieces:
+        return None
+    try:
+        left = min(int(r[0]) for r, _ in pieces)
+        top = min(int(r[1]) for r, _ in pieces)
+        right = max(int(r[2]) for r, _ in pieces)
+        bottom = max(int(r[3]) for r, _ in pieces)
+        width, height = right - left, bottom - top
+        if width <= 0 or height <= 0:
+            return None
+        canvas = Image.new("RGB", (width, height), (12, 15, 20))
+        for region, image in pieces:
+            canvas.paste(image.convert("RGB"), (int(region[0]) - left, int(region[1]) - top))
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
+    encoded = encode_picture(canvas, max_side)
+    return None if encoded is None else (encoded[0], left, top) + encoded[1:]
+
+
+def encode_picture(image, max_side: int = 900) -> Optional[tuple]:
+    """Ein Bild als PNG, verkleinert auf `max_side` — `(PNG, Massstab, B, H)` oder None."""
+    if not PILLOW_AVAILABLE or image is None:
+        return None
+    try:
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return None
+        image = image.convert("RGB")
+        scale = min(1.0, max_side / max(width, height))
+        if scale < 1.0:
+            image = image.resize((max(1, round(width * scale)), max(1, round(height * scale))),
+                                 Image.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue(), scale, image.size[0], image.size[1]
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
 
 
 def take_screenshot(region: tuple = None) -> Optional['Image.Image']:

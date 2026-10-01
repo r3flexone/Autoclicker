@@ -404,12 +404,13 @@ _inspector_ui = _app[_app.index("function renderInspector"):
 # ein ELSE, das wegen einer fehlenden Bedingung nicht greifen kann — und ein
 # Punkt, den andere Blöcke mitbenutzen (wer, nicht warum; das steht im ⓘ).
 check("alle Block-Typen haben nur noch sechs begründete offene Zustandsmeldungen",
-      _inspector_ui.count('target.appendChild(el("p", {class: "hint') == 6)
+      len(__import__("re").findall(
+          r'target\.appendChild\(el\("(?:p|div)", \{class: "hint', _inspector_ui)) == 6)
 check("die offenen Meldungen betreffen ausschließlich fehlende Daten oder Messwerte",
       all(text in _inspector_ui for text in (
           "Keine Punkte vorhanden", "Keine Konfiguration vorhanden", "Grösse: ",
           "Ohne Punkt gibt es nichts zu prüfen", "Dieser Block hat keine Bedingung",
-          "wird auch benutzt von")))
+          "benutzen auch")))
 check("die Erklärung der ELSE-Wirkung steckt im i statt unter den Kacheln",
       "const effect = b.else_action" in _inspector_ui
       and 'Nochmal auf die markierte Kachel klicken = kein ELSE.' not in _inspector_ui)

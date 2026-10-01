@@ -453,6 +453,38 @@ def run():
         else:
             error.append("keine zwei Item-Namensfelder fuer die Tipp-Probe")
 
+        # **„Doppelt" gibt es nur unter eingeschalteten Items.** Ein
+        # ausgeschaltetes nimmt am Scan nicht teil und konkurriert mit
+        # niemandem — vorher stand an jedem geparkten Auto-Item „P99 doppelt".
+        # Gerechnet wird mit den echten Funktionen der Seite auf einer
+        # gestellten Liste; danach steht die echte wieder da.
+        dup = f.page.evaluate("""() => {
+          const keep = SC.items;
+          SC.items = [
+            {name: 'A', category: 'Auto', priority: 99, active: false},
+            {name: 'B', category: 'Auto', priority: 99, active: false},
+            {name: 'C', category: 'Helme', priority: 1, active: true},
+            {name: 'D', category: 'Helme', priority: 1, active: true},
+            {name: 'E', category: 'Helme', priority: 1, active: false},
+          ];
+          try {
+            return {parked: priorityDuplicate(SC.items[0]),
+                    active: priorityDuplicate(SC.items[2]),
+                    parkedNextToActive: priorityDuplicate(SC.items[4]),
+                    chipsAuto: priorityAllocation('Auto').filter((r) => r.duplicate).length,
+                    chipsHelme: priorityAllocation('Helme').filter((r) => r.duplicate).length};
+          } finally { SC.items = keep; }
+        }""")
+        expect(dup["parked"] == [],
+               f"ein ausgeschaltetes Item meldet sich als doppelt: {dup['parked']}")
+        expect(dup["active"] == ["D"],
+               f"zwei eingeschaltete auf P1 werden nicht (nur) untereinander gemeldet: "
+               f"{dup['active']}")
+        expect(dup["parkedNextToActive"] == [],
+               "ein ausgeschaltetes neben eingeschalteten meldet sich als doppelt")
+        expect(dup["chipsAuto"] == 0 and dup["chipsHelme"] == 1,
+               f"die Rangübersicht markiert anders als die Maske: {dup}")
+
         error.extend(f.error)
     return error
 

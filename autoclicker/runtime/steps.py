@@ -12,7 +12,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from ..imaging import PILLOW_AVAILABLE, take_screenshot, color_distance, get_color_name
+from ..imaging import (
+    PILLOW_AVAILABLE, color_distance, compose_regions, encode_picture, get_color_name,
+    take_screenshot,
+)
 from ..models import (
     AutoClickerState, SequenceStep,
     ACTION_TEXT, SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY, TIMEOUT_TEXT, block_type,
@@ -21,16 +24,17 @@ from ..models import (
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     VALID_BOSS_DEFAULT_ACTIONS,
 )
-from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR
+from ..persistence import SEQUENCE_SCREENSHOTS_DIR as SCREENSHOTS_DIR, active_templates_dir
 from ..session_log import log_event
 from ..utils import (
-    clear_line, status_line, col, err, hint, info, dbg, warn,
+    atomic_write, clear_line, status_line, col, err, hint, info, dbg, warn,
 )
-from ..winapi import check_failsafe
+from ..config import LAST_SCAN_IMAGE_FILE, SCAN_MOUSE_PARK
+from ..winapi import PlatformError, check_failsafe, get_cursor_pos, set_cursor_pos
 from .actions import (
     safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
     wait_with_pause_skip, wait_while_paused, execute_else_action, input_refused,
-    pixel_crop, _LIVE_INTERVAL,
+    pixel_crop, _LIVE_INTERVAL, net_seconds, paused_total,
 )
 from . import status
 from .debug import (
@@ -52,9 +56,111 @@ from .item_scan import (
 # ITEM-SCAN STEP
 # =============================================================================
 
+class _ScanReport:
+    """Was ein Item-Scan-Block gesehen und geklickt hat — für den Live-Run."""
+
+    def __init__(self) -> None:
+        self.seen: list = []        # (Slot, Item oder None, Bild) je gescanntem Slot
+        self.clicked: list = []     # (Item-Name, Klickstelle), in Klick-Reihenfolge
+        self.frame = None           # (Bild, Region) um alle Slots, einmal je Block
+
+
+def _report_last_scan(state: AutoClickerState, scan_name: str, report: _ScanReport) -> None:
+    """Schreibt `last_scan` in den Laufstatus — der nächste Scan überschreibt ihn.
+
+    Je Item EIN Eintrag, nicht je Slot: zwanzig Slots Erz sind eine Zeile
+    „20×", keine zwanzig Kacheln. Mitgezählt wird auch, was der Modus danach
+    wegfiltert (zweites Item derselben Kategorie) — gesehen hat der Scan es,
+    und genau diese Frage stellt man beim Hinsehen: „erkennt er das?". Ob
+    geklickt wurde, steht getrennt daneben.
+
+    Die Vorlage steht als Dateiname mit Ordner drin; das Bild holt die Brücke.
+    Ein Bild im Laufstatus wären Kilobytes in einer Datei, die sonst 400 Byte
+    hat und fünfmal pro Sekunde geschrieben wird.
+    """
+    if not report.seen:
+        return
+    try:
+        templates = str(active_templates_dir(state).resolve())
+    except ValueError:
+        templates = ""
+    entries: dict = {}
+    for slot, item, _image in report.seen:
+        if item is None:
+            continue
+        names = item.template_names()
+        entry = entries.setdefault(item.name, {
+            "item": item.name, "category": item.category or "",
+            "priority": item.priority, "template": names[0] if names else "",
+            "slots": [], "clicked": 0})
+        entry["slots"].append(slot.name)
+    for name, _pos in report.clicked:
+        if name in entries:
+            entries[name]["clicked"] += 1
+    items = sorted(entries.values(),
+                   key=lambda e: (-bool(e["clicked"]), e["priority"], e["item"].casefold()))
+    status.write_status(state, {"last_scan": {
+        "name": scan_name, "at": time.time(), "templates": templates,
+        "slots": len(report.seen),
+        "recognized": sum(1 for _, item, _ in report.seen if item is not None),
+        "clicked": len(report.clicked), "items": items,
+        "picture": _scan_picture(report),
+    }}, immediately=True)
+
+
+def _scan_picture(report: _ScanReport):
+    """Der gescannte Bereich als Bild, dazu je Slot sein Rahmen und Ergebnis.
+
+    Das Bild ist ein echter Screenshot der Stelle (`report.frame`, aufgenommen
+    vor dem ersten Slot und damit vor jedem Klick). Fehlt er, werden die
+    Slot-Ausschnitte an ihre Stelle gesetzt — das zeigt dasselbe, nur ohne das
+    Drumherum. Die Rahmen stehen in Bildpixeln; die Seite rechnet sie in
+    Prozent um und legt sie darüber.
+    """
+    composed = None
+    if report.frame is not None:
+        image, (left, top, _right, _bottom) = report.frame
+        encoded = encode_picture(image)
+        if encoded is not None:
+            composed = (encoded[0], left, top) + encoded[1:]
+    if composed is None:
+        composed = compose_regions([(slot.scan_region, image)
+                                    for slot, _item, image in report.seen if image is not None])
+    if composed is None:
+        return None
+    data, left, top, scale, width, height = composed
+    try:
+        atomic_write(Path(LAST_SCAN_IMAGE_FILE), data)
+    except OSError:
+        return None
+    clicked = {tuple(pos) for _name, pos in report.clicked}
+    boxes = []
+    for slot, item, _image in report.seen:
+        x1, y1, x2, y2 = slot.scan_region
+        boxes.append({
+            "x": round((x1 - left) * scale, 1), "y": round((y1 - top) * scale, 1),
+            "w": round((x2 - x1) * scale, 1), "h": round((y2 - y1) * scale, 1),
+            "slot": slot.name, "item": item.name if item else "",
+            "clicked": tuple(slot.click_pos) in clicked and item is not None,
+        })
+    # Kein Pfad im Status: die Brücke liest `LAST_SCAN_IMAGE_FILE` selbst —
+    # beide Prozesse laufen im selben Ordner, wie bei `.run.json`.
+    return {"stamp": time.time(), "width": width, "height": height, "boxes": boxes}
+
+
 def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
-    """Führt einen Item-Scan Schritt aus."""
+    """Führt einen Item-Scan Schritt aus — und meldet danach, was er sah."""
+    report = _ScanReport()
+    try:
+        return _item_scan_step(state, step, step_num, total_steps, phase, report)
+    finally:
+        _report_last_scan(state, step.item_scan, report)
+
+
+def _item_scan_step(state: AutoClickerState, step: SequenceStep, step_num: int,
+                    total_steps: int, phase: str, report: _ScanReport) -> bool:
+    """Der Rumpf von `_execute_item_scan_step` — ausgelagert nur wegen des `finally`."""
     debug = is_verbose_debug(state)
     mode = step.item_scan_mode
     # Drei Modi, drei Woerter — hier stand "alle"/"bestes", und `every` hiess
@@ -69,9 +175,10 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
                  f"Starte Scan '{step.item_scan}' ({mode_str}{im_str})...")
 
     if immediate:
-        return _execute_item_scan_immediate(state, step, step_num, total_steps, phase, mode, debug)
+        return _execute_item_scan_immediate(state, step, step_num, total_steps, phase, mode,
+                                            debug, report)
 
-    scan_results = execute_item_scan(state, step.item_scan, mode)
+    scan_results = execute_item_scan(state, step.item_scan, mode, report=report)
     if state.skip_step_event.is_set():
         # Block-Skip waehrend des Scans: weder die gefundenen Items noch die
         # ELSE-Aktion — `execute_step` verbraucht das Signal und macht weiter.
@@ -83,6 +190,7 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
                 return False
             if not _click_scan_result(state, pos, item, priority, debug):
                 return False
+            report.clicked.append((item.name, tuple(pos)))
         _step_status(debug, phase, step_num, total_steps,
                      f"{len(scan_results)} Item(s)!", f"Scan fertig: {len(scan_results)} Item(s) geklickt")
     else:
@@ -96,7 +204,7 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
 
 def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
                                   step_num: int, total_steps: int, phase: str,
-                                  mode: str, debug: bool) -> bool:
+                                  mode: str, debug: bool, report: _ScanReport) -> bool:
     """Immediate-Modus: Scan→Klick pro Slot statt alle scannen, dann alle klicken."""
     # Dieselbe Prüfung wie im normalen Pfad — inklusive Meldung. Hier stand vorher
     # eine eigene, stumme Abbruchbedingung: sie verlangte Items (ein reiner Lern-Scan
@@ -130,12 +238,13 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
             return False
 
         results = execute_item_scan(state, step.item_scan, mode, slots_override=[slot],
-                                    session=session)
+                                    session=session, report=report)
         for pos, item, priority in results:
             if state.stop_event.is_set():
                 return False
             if not _click_scan_result(state, pos, item, priority, debug):
                 return False
+            report.clicked.append((item.name, tuple(pos)))
             total_clicked += 1
             session.invalidate()
     if state.skip_step_event.is_set():
@@ -418,7 +527,8 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
         if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                    "Vor Farbprüfung", point=(wc.pixel[0], wc.pixel[1], wc.color)):
+                                    "Vor Farbprüfung", point=(wc.pixel[0], wc.pixel[1], wc.color),
+                                    label=step.name):
             # Hier stand `return False` — der Aufrufer vergleicht mit den drei
             # Gates, und `False != GATE_RUN` lief zufaellig als Stopp durch.
             return GATE_STOP
@@ -449,13 +559,28 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     # Verb je nach Trigger-Richtung: bis Farbe DA (auf) vs. bis Farbe WEG (bis ... weg ist)
     wait_verb = "bis weg:" if wc.until_gone else "auf"
 
+    paused_before = paused_total(state)
+    gate = GATE_STOP
     try:
-        return _color_loop(state, step, wc, step_num, total_steps, phase,
-                              debug, timeout, start_time, expected_name, wait_verb)
+        gate = _color_loop(state, step, wc, step_num, total_steps, phase,
+                           debug, timeout, start_time, expected_name, wait_verb)
+        return gate
     finally:
         # Fertig gewartet — egal auf welchem Weg. Ohne das Abmelden stünde in der
         # Live-Ansicht noch „wartet auf Farbe", während der Klick längst raus ist.
         status.waiting_for(state, None)
+        # Wie lange das SPIEL auf sich warten liess — im Bericht getrennt von
+        # der geplanten Wartezeit. Ein Timeout zaehlt mit (dort wurde am
+        # laengsten gewartet), das Ergebnis steht dabei.
+        if gate == GATE_RUN:
+            result = "ok"
+        elif timeout > 0 and time.time() - start_time >= timeout:
+            result = "timeout"
+        else:
+            result = "abort"
+        log_event(state, "color_wait", detail=step.name or f"{phase}[{step_num}]",
+                  x=wc.pixel[0], y=wc.pixel[1],
+                  extra=f"s={net_seconds(state, start_time, paused_before):.2f},result={result}")
 
 
 def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
@@ -796,6 +921,68 @@ def _scan_without_name(step: SequenceStep) -> "str | None":
     return None
 
 
+def _scan_handler(step: SequenceStep):
+    """Der Handler eines Scan-Blocks, oder None fuer alle anderen Typen."""
+    if step.boss_watcher:
+        return _execute_boss_watcher_step
+    if step.boss_scan:
+        return _execute_boss_scan_step
+    if step.icon_scan:
+        return _execute_icon_scan_step
+    if step.item_scan:
+        return _execute_item_scan_step
+    return None
+
+
+def _with_mouse_return(state: AutoClickerState, handler, step: SequenceStep,
+                       step_num: int, total_steps: int, phase: str) -> bool:
+    """Fuehrt einen Scan-Block aus und setzt die Maus danach ab (`scan_mouse_after`).
+
+    Ein Scan klickt, was er findet — der Zeiger bleibt dann auf dem letzten
+    Treffer stehen, und das Spiel zeigt dort dessen Infotext. Der liegt
+    womoeglich genau ueber dem Ziel des naechsten Blocks, und dessen
+    Farb-Trigger sieht dann den Infotext statt der erwarteten Farbe.
+
+    Die Stelle wird VOR dem Block gemerkt, also vor dessen Wartezeit: dort
+    steht der Zeiger nach dem vorigen Klick, und das ist die Stelle, an der
+    er vor dem Scan niemanden gestoert hat.
+    """
+    # OB schaltet der Block (`mouse_return`), WOHIN die Einstellung.
+    if not step.mouse_return:
+        return handler(state, step, step_num, total_steps, phase)
+    mode = state.config.scan_mouse_after
+    try:
+        before = get_cursor_pos()
+    except PlatformError:
+        before = None
+    try:
+        return handler(state, step, step_num, total_steps, phase)
+    finally:
+        _mouse_after_scan(state, mode, before)
+
+
+def _mouse_after_scan(state: AutoClickerState, mode: str, before) -> None:
+    """Setzt den Zeiger nach einem Scan ab — aber nie gegen den Nutzer.
+
+    Nach einem Stopp oder in der Pause hat womoeglich schon die Hand die Maus;
+    sie dann wegzuziehen waere genau der Griff, den man vom Autoclicker nicht
+    erwartet. Und die Maus wird nur BEWEGT, nie geklickt — Fokus-Pruefung und
+    Humanize, die `safe_click` buendelt, gelten einem Klick.
+    """
+    if state.stop_event.is_set() or state.pause_event.is_set():
+        return
+    target = None
+    if mode == SCAN_MOUSE_PARK:
+        park = state.config.scan_park_mouse
+        if isinstance(park, (list, tuple)) and len(park) == 2:
+            target = (int(park[0]), int(park[1]))
+    if target is None:
+        target = before
+    if target is None:
+        return
+    set_cursor_pos(target[0], target[1])
+
+
 def _block_skip(state: AutoClickerState, phase: str, step_num: int,
                 total_steps: int) -> bool:
     """Konsumiert den echten Block-Skip und meldet ihn eindeutig."""
@@ -885,17 +1072,9 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                    "auswählen (angelegt mit CTRL+ALT+N)."))
         return True
 
-    if step.boss_watcher:
-        return _execute_boss_watcher_step(state, step, step_num, total_steps, phase)
-
-    if step.boss_scan:
-        return _execute_boss_scan_step(state, step, step_num, total_steps, phase)
-
-    if step.icon_scan:
-        return _execute_icon_scan_step(state, step, step_num, total_steps, phase)
-
-    if step.item_scan:
-        return _execute_item_scan_step(state, step, step_num, total_steps, phase)
+    scan = _scan_handler(step)
+    if scan is not None:
+        return _with_mouse_return(state, scan, step, step_num, total_steps, phase)
 
     # Ab hier die Aktions-Schritte: Klick, Taste, reines Warten. Sie
     # unterscheiden sich NUR in der Aktion am Ende — gewartet wird davor für alle
@@ -913,7 +1092,8 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         actual_delay = step.get_actual_delay()
         if actual_delay > 0:
             if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                        _wait_text(step), point=_live_target(step)):
+                                        _wait_text(step), point=_live_target(step),
+                                        label=step.name):
                 return False
 
     if state.stop_event.is_set():

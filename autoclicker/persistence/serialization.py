@@ -442,6 +442,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "breakpoint": bool(s.breakpoint),
+            "mouse_return": bool(s.mouse_return),
             "recorded_color": None if click_at_point or not s.recorded_color
                               else list(s.recorded_color)}
     return _without_defaults(full_value, _STEP_DEFAULTS)
@@ -484,6 +485,7 @@ _STEP_DEFAULTS = {
     "screenshot_only": False,
     "screenshot_region": None,
     "breakpoint": False,
+    "mouse_return": True,
     "recorded_color": None,
 }
 
@@ -497,6 +499,9 @@ def _sequence_to_dict(seq: Sequence) -> dict:
         "name": seq.name,
         **({"total_cycles": seq.total_cycles} if seq.total_cycles != 1 else {}),
         **({"description": seq.description} if seq.description else {}),
+        **({"next_sequence": seq.next_sequence} if seq.next_sequence else {}),
+        **({"next_delay": seq.next_delay}
+           if seq.next_sequence and seq.next_delay != 30.0 else {}),
         "points": [_point_to_dict(p) for p in seq.points],
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
@@ -621,6 +626,7 @@ def _parse_steps(steps_data: list) -> list[SequenceStep]:
             screenshot_only=s.get("screenshot_only", False),
             screenshot_region=screenshot_region,
             breakpoint=bool(s.get("breakpoint", False)),
+            mouse_return=bool(s.get("mouse_return", True)),
             recorded_color=recorded_color,
         )
         steps.append(step)

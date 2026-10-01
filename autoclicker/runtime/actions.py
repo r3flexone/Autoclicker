@@ -70,7 +70,23 @@ def wait_while_paused(state: AutoClickerState, message: str) -> bool:
         # Sofort, nicht gedrosselt: die Pause hat eben erst geschrieben, und
         # ein gedrosselter Aufruf liesse sie in der Datei stehen.
         status.waiting_for(state, underneath, immediately=True)
+        paused_for = time.time() - began
+        with state.lock:
+            state.paused_seconds += paused_for
+        log_event(state, "pause", extra=f"s={paused_for:.2f}")
     return not state.stop_event.is_set()
+
+
+def paused_total(state: AutoClickerState) -> float:
+    """Bisherige Pausenzeit des Laufs — Differenzen davon sind die Pause in
+    einem Zeitraum (`net_seconds`)."""
+    with state.lock:
+        return state.paused_seconds
+
+
+def net_seconds(state: AutoClickerState, began: float, paused_before: float) -> float:
+    """Wanduhr seit `began` ohne die Pause, die dazwischen lag."""
+    return max(0.0, time.time() - began - (paused_total(state) - paused_before))
 
 
 # =============================================================================
@@ -350,7 +366,7 @@ def _live_point(state: AutoClickerState, point) -> dict:
 
 
 def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, step_num: int,
-                         total_steps: int, message: str, point=None) -> bool:
+                         total_steps: int, message: str, point=None, label: str = "") -> bool:
     """Wartet die angegebene Zeit, respektiert Pause und Skip. Gibt False zurück wenn gestoppt.
 
     `point` = `(x, y, Farbe)` der Stelle, die nach dem Warten dran ist. Dann
@@ -361,6 +377,7 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     remaining = seconds
     debug_active = is_verbose_debug(state)
     last_remaining = -1
+    began, paused_before = time.time(), paused_total(state)
     try:
         return _wait_loop(state, seconds, remaining, debug_active, last_remaining,
                                phase, step_num, total_steps, message, point)
@@ -368,6 +385,12 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
         # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
         # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
         status.waiting_for(state, None)
+        # Die GEPLANTE Wartezeit, im Bericht getrennt vom Warten auf eine Farbe:
+        # das eine hat man eingestellt, das andere hat das Spiel entschieden.
+        # Gezaehlt wird, was wirklich gewartet wurde (ein SKIP kuerzt es), ohne
+        # die Pause, die hineinfiel.
+        log_event(state, "wait", detail=label or f"{phase}[{step_num}]",
+                  extra=f"s={net_seconds(state, began, paused_before):.2f}")
 
 
 def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
@@ -457,7 +480,8 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
             return True
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        "ELSE: klicke in", point=(ec.x, ec.y, None)):
+                                        "ELSE: klicke in", point=(ec.x, ec.y, None),
+                                        label=step.name):
                 return False
 
         if state.stop_event.is_set():
@@ -476,7 +500,7 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
     elif ec.action == ELSE_KEY:
         if ec.delay > 0:
             if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        "ELSE: Taste in"):
+                                        "ELSE: Taste in", label=step.name):
                 return False
 
         if state.stop_event.is_set():

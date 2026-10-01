@@ -150,6 +150,8 @@ class SequenceBoard:
     total_cycles: int = 1
     description: str = ""
     lanes: list[Lane] = field(default_factory=list)
+    next_sequence: str = ""
+    next_delay: float = 30.0
 
     # --- Mutationen (von der Ansicht aufgerufen) ---------------------------------
 
@@ -295,6 +297,8 @@ def sequence_to_board(seq: Sequence) -> SequenceBoard:
         total_cycles=seq.total_cycles,
         description=seq.description,
         lanes=lanes,
+        next_sequence=seq.next_sequence,
+        next_delay=seq.next_delay,
     )
 
 
@@ -322,6 +326,8 @@ def board_to_sequence(graph: SequenceBoard) -> Sequence:
         end_steps=end_steps,
         total_cycles=graph.total_cycles,
         description=graph.description,
+        next_sequence=graph.next_sequence,
+        next_delay=graph.next_delay,
     )
 
 
@@ -385,6 +391,11 @@ def load_palette_points(sequence_file) -> list[PalettePoint]:
         except (TypeError, ValueError, AttributeError, KeyError):
             continue
     return points
+
+
+# Die Block-Typen, nach denen `scan_mouse_after` greift (`_scan_handler` in
+# runtime/steps.py) — nur dort steht die Einstellung am Block.
+SCAN_BLOCKS = (BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_BOSS_SCAN, BLOCK_BOSS_WATCHER)
 
 
 def set_block_type(step: SequenceStep, new_type: str) -> None:
@@ -459,6 +470,10 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
 
     if new_type in POSITIONLESS_BLOCKS:
         drop_position(step)
+    # „Maus danach absetzen" wertet nur ein Scan aus. Bei einem anderen Typ
+    # bliebe ein Aus unsichtbar in der Datei stehen — der Schalter faellt ja weg.
+    if new_type not in SCAN_BLOCKS:
+        step.mouse_return = True
 
 
 def ensure_else(step: SequenceStep, action: str) -> ElseConfig:

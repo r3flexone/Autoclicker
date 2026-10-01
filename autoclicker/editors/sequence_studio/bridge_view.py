@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Optional
 
+from ...config import CONFIG
+from ...config_meta import META
 from ...models import (
     BLOCK_BOSS_SCAN,
     BLOCK_BOSS_WATCHER,
@@ -54,6 +56,16 @@ from .model import (
 )
 
 
+def _mouse_return_target() -> str:
+    """Wohin die Maus nach einem Scan geht, in den Worten der Einstellungen.
+
+    Aus `scan_mouse_after` dieses Prozesses (`config_write()` zieht es nach)
+    und der Beschriftung in `config_meta` — die Ansicht erfindet keine Namen.
+    """
+    value = getattr(CONFIG, "scan_mouse_after", "back")
+    return dict(META["scan_mouse_after"].options).get(value, value)
+
+
 class BridgeViewMixin:
     """Erzeugt den vollständigen, JSON-fähigen Zustand für die Weboberfläche."""
 
@@ -78,13 +90,15 @@ class BridgeViewMixin:
             "name": self.board.name,
             "description": self.board.description,
             "cycles": self.board.total_cycles,
+            "next_sequence": self.board.next_sequence,
+            "next_delay": self.board.next_delay,
             "dirty": self._dirty,
             "undo": self._edit_json(),
             # Die Seite zeigt waehrend eines Maus-Griffs einen Countdown.
             # Die Zahl kommt von hier, damit er nicht neben dem echten
             # Zeitablauf der Bruecke laeuft.
             "wait_timeout": WAIT_TIMEOUT,
-            "status": {"text": text, "kind": kind},
+            "status": {"text": text, "kind": kind, "id": self._status_id},
             "question": ask,
             "phase_focus": focus,
             "sequences": sorted(name for name, _ in list_available_sequences()),
@@ -336,14 +350,23 @@ class BridgeViewMixin:
         return lines
 
     def _trigger_text(self, wc: WaitCondition) -> str:
+        """Die FARBE-Zeile der Karte — umbrechen darf sie nur am „·".
+
+        Die Spalte ist schmal, und mit gewöhnlichen Leerzeichen brach der
+        Browser an der letzten Lücke um: das „s" von „max 600 s" stand allein
+        in der nächsten Zeile, ein RGB-Wert riss zwischen zwei Zahlen. Innerhalb
+        eines Teils stehen deshalb geschützte Leerzeichen.
+        """
         what = "prüft" if wc.check_only else "wartet bis"
         where_to = "weg" if wc.until_gone else "da"
-        text = f"{what} RGB{tuple(wc.color)} {where_to}"
+        rgb = "RGB(" + ", ".join(str(c) for c in wc.color) + ")"
+        parts = [f"{what} {rgb} {where_to}"]
         # Eine EIGENE Zeitgrenze steht auf der Karte — sie ist die Ausnahme, und
         # beim Überfliegen soll man sehen, welcher Block länger warten darf.
         if wc.timeout is not None and not wc.check_only:
-            text += " · ohne Timeout" if wc.timeout == 0 else f" · max {wc.timeout:g} s"
-        return text
+            parts.append("ohne Timeout" if wc.timeout == 0
+                         else f"max {wc.timeout:g} s")
+        return " · ".join(parts)
 
     def _else_text(self, step: SequenceStep) -> str:
         ec = step.else_config
@@ -393,8 +416,8 @@ class BridgeViewMixin:
             # andere Stelle gab, verstellte Loop 4 mit und suchte den Fehler
             # in der Aufnahme („der Punkt war im Loop 4 an einer völlig
             # falschen Stelle"). Die Liste ist Zustand, also Text — nicht ⓘ.
-            "point_others": (self._point_usages(step.point_id, except_step=step)
-                             if step.point_id is not None else []),
+            "point_others": (self._point_usage_groups(step.point_id, except_step=step)
+                             if step.point_id is not None else {"count": 0, "lines": []}),
             "x": step.x,
             "y": step.y,
             "captured_color": _hex(step.recorded_color),
@@ -408,6 +431,10 @@ class BridgeViewMixin:
             "boss_watcher": step.boss_watcher or "",
             "wait_only": step.wait_only,
             "breakpoint": bool(step.breakpoint),
+            # Der Schalter sagt OB, die Einstellung WOHIN — die Beschriftung
+            # nennt das Wohin, damit man nicht nachsehen muss.
+            "mouse_return": bool(step.mouse_return),
+            "mouse_return_target": _mouse_return_target(),
             "screenshot_region": list(step.screenshot_region) if step.screenshot_region else None,
             "trigger": trigger_name(wc),
             "trigger_point": wc.point_id if wc else None,
@@ -427,6 +454,7 @@ class BridgeViewMixin:
 
     def _report(self, text: str, kind: str = "ok", *, offer: bool = False) -> dict:
         self._status = (text, kind)
+        self._status_id += 1
         self._edit_offer = offer
         return self.snapshot()
 

@@ -1032,11 +1032,11 @@ class BridgeEditingMixin:
 
         Leer, wenn keine — dann ist die Meldung so kurz wie vorher.
         """
-        other = self._point_usages(point_id, except_step=except_step)
-        if not other:
+        groups = self._point_usage_groups(point_id, except_step=except_step)
+        if not groups["count"]:
             return ""
-        return (f" — zieht {len(other)} weitere Verwendung(en) mit: "
-                + ", ".join(other))
+        return (f" — zieht {groups['count']} weitere mit: "
+                + self._usage_text(groups))
 
     def point_detach(self, data: Optional[dict] = None) -> dict:
         """Gibt dem gewählten Block einen eigenen Punkt — die anderen behalten den alten.

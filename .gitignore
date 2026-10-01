@@ -47,6 +47,8 @@ config.json
 .recording.json
 .studio-sequence.json
 .reclick.json
+# Was der letzte Item-Scan gesehen hat (Live-Run), vom naechsten ueberschrieben.
+.last-scan.png
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (mailbox.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben

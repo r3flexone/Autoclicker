@@ -44,7 +44,8 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_sequence_studio, handle_scan_studio, COMMANDS
+    handle_sequence_studio, handle_scan_studio, reload_if_pending,
+    start_next_if_pending, COMMANDS
 )
 from autoclicker.mailbox import fetch_command, discard_command
 
@@ -187,6 +188,11 @@ def _check_commands(state) -> None:
     if now - _command_last < _COMMAND_INTERVAL:
         return
     _command_last = now
+
+    # Ein Speichern aus dem Studio während des Laufs wurde nur vorgemerkt.
+    run_safely("Nachladen nach dem Lauf", reload_if_pending, state)
+    # Eine Sequenz ist regulär fertig und nennt eine Folgesequenz.
+    run_safely("Folgesequenz", start_next_if_pending, state)
 
     command = fetch_command()
     if command is None:

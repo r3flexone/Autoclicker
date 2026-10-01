@@ -1901,7 +1901,7 @@ _RS.PILLOW_AVAILABLE = True
 # Alles schlaegt fehl -> falls else ausgewertet wird, muss es feuern
 _RS.execute_boss_scan = lambda st, n: (False, None)
 _RS.execute_icon_scan = lambda st, n: False
-_RS.execute_item_scan = lambda st, n, m=None, slots_override=None: []
+_RS.execute_item_scan = lambda st, n, m=None, slots_override=None, **kw: []
 _RS.take_screenshot = lambda region=None: _Pix2((200, 200, 200))
 
 def _else_fires(**kw):
@@ -3980,40 +3980,55 @@ if _lader12:
 check("sie liest die Datei stattdessen selbst",
       "_config_file" in _source_br12)
 
-# --- EINE SVG-Datei, alle Verwendungen ---
-# Der Kopf und das Favicon laden die Datei direkt; symbol.py rastert genau diese
-# Datei fuer Windows und tools/symbol.py. Damit ist das neue Logo nicht nur im
-# grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+# --- EIN Motiv je Groesse, alle Verwendungen ---
+# Der Kopf und das Favicon laden die Dateien direkt; symbol.py rastert genau
+# diese Dateien fuer Windows und tools/symbol.py. Damit ist das Logo nicht nur
+# im grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+#
+# **Zwei Dateien, weil es zwei Groessen sind.** Das grosse Motiv ist bei 16 px
+# graues Rauschen (Linien unter einem Pixel); das kleine springt genau dort ein
+# und sonst nirgends — ab 32 px ist das grosse das Logo.
 _head12 = _H.studio_web_source()
-_logo12 = _sym12.LOGO_PATH.read_text(encoding="utf-8")
-check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
-      _sym12.LOGO_PATH.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PATH.exists())
-check("Kopf und Favicon benutzen beide diese Datei",
-      _head12.count('sequenz-studio-logo.svg') == 2)
-# **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Hier stand einmal
-# 'rotate(180 128 128)' — ein Detail genau dieses Motivs, das beim naechsten
-# neu gezeichneten Logo umfaellt, ohne dass etwas kaputt waere. Tragend sind
-# zwei Dinge: die Maske (sonst gibt es keine echte Transparenz) und die
-# Befehlsmenge, die `_path_polygons` ueberhaupt lesen kann — ein 'A' aus einem
-# CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
-check("das Logo traegt eine Maske statt einer Ersatzfarbe",
-      'mask="url(#cutout)"' in _logo12)
-# **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py nimmt
-# `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein `url(#gold)`
-# faellt mit ValueError um. Genau darauf beruht die Plakette: Verlauf, Rand und
-# Innenschatten liegen DARUEBER und werden beim Rastern nicht gesehen, das
-# 16-px-Symbol bleibt eine lesbare flache Flaeche.
+_logos12 = {"gross": _sym12.LOGO_PATH, "klein": _sym12.LOGO_SMALL_PATH}
+check("beide Logo-Dateien liegen direkt bei der Weboberflaeche",
+      _sym12.LOGO_PATH.name == "sequenz-studio-logo.svg"
+      and _sym12.LOGO_SMALL_PATH.name == "sequenz-studio-logo-small.svg"
+      and all(_p12.exists() for _p12 in _logos12.values()))
+check("16 px nimmt das kleine Motiv, 32 px schon das grosse",
+      _sym12.logo_path(16) == _sym12.LOGO_SMALL_PATH
+      and _sym12.logo_path(32) == _sym12.LOGO_PATH)
+# Das Favicon steht im Tab bei 16 px, der Kopf bei 30 CSS-Pixeln — also mit
+# Bildschirm-Skalierung eher 40 bis 60: dort ist das grosse lesbar.
+check("das Favicon ist das kleine, der Kopf das grosse Motiv",
+      'rel="icon" type="image/svg+xml" href="sequenz-studio-logo-small.svg"' in _head12
+      and '<img src="sequenz-studio-logo.svg"' in _head12)
 import re as _re12c
-_rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
-check("der Rasterer findet zuerst eine flache Hex-Farbe",
-      bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
-import re as _re12b
-_commands12 = set(_re12b.findall(r'[A-Za-z]', " ".join(
-    _re12b.findall(r'\sd="([^"]+)"', _logo12))))
-check("und benutzt nur die SVG-Befehle, die symbol.py lesen kann",
-      _commands12 <= {"M", "L", "C", "Z"})
-if not _commands12 <= {"M", "L", "C", "Z"}:
-    print("        unlesbar: " + ", ".join(sorted(_commands12 - {"M", "L", "C", "Z"})))
+for _which12, _path12 in _logos12.items():
+    _logo12 = _path12.read_text(encoding="utf-8")
+    # **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Tragend sind die
+    # Maske (sonst gibt es keine echte Transparenz) und die Befehlsmenge, die
+    # `_path_polygons` ueberhaupt lesen kann — ein 'A' aus einem CAD-Export
+    # wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
+    check(f"{_which12}: das Logo traegt eine Maske statt einer Ersatzfarbe",
+          'mask="url(#cutout)"' in _logo12)
+    # **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py
+    # nimmt `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein
+    # `url(#gold)` faellt mit ValueError um. Der Verlauf liegt DARUEBER und wird
+    # beim Rastern nicht gesehen, das Windows-Symbol bleibt eine flache Flaeche.
+    _rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
+    check(f"{_which12}: der Rasterer findet zuerst eine flache Hex-Farbe",
+          bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
+    _commands12 = set(_re12c.findall(r'[A-Za-z]', " ".join(
+        _re12c.findall(r'\sd="([^"]+)"', _logo12))))
+    check(f"{_which12}: nur SVG-Befehle, die symbol.py lesen kann",
+          _commands12 <= {"M", "L", "C", "Z"})
+    if not _commands12 <= {"M", "L", "C", "Z"}:
+        print("        unlesbar: " + ", ".join(sorted(_commands12 - {"M", "L", "C", "Z"})))
+# Beide Motive sind dieselbe Plakette: eine Farbe, sonst liefen Taskleiste
+# (32) und Tab (16) farblich auseinander.
+check("beide Motive tragen dieselbe Farbe",
+      _sym12._logo_geometry(_sym12.LOGO_PATH)[0]
+      == _sym12._logo_geometry(_sym12.LOGO_SMALL_PATH)[0])
 check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _head12)
 
 # Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
@@ -6244,7 +6259,7 @@ _groups17 = _abs17()
 check("die Abschnitte decken jedes Feld ab",
       sorted(k for _, keys in _groups17 for k in keys) == sorted(_names17))
 check("kein Feld faellt in den Nachzuegler-Abschnitt",
-      "SONSTIGE" not in [t for t, _ in _groups17])
+      "Sonstige" not in [t for t, _ in _groups17])
 check("und keines steht doppelt",
       len([k for _, keys in _groups17 for k in keys]) == len(_names17))
 
@@ -6583,6 +6598,13 @@ import tests.contract.python_floor          # noqa: F401,E402
 import tests.contract.positionless_blocks   # noqa: F401,E402
 import tests.contract.phase_convert        # noqa: F401,E402
 import tests.contract.block_timeout        # noqa: F401,E402
+import tests.contract.slot_visible         # noqa: F401,E402
+import tests.contract.data_reload          # noqa: F401,E402
+import tests.contract.report_waits         # noqa: F401,E402
+import tests.contract.scan_mouse_after     # noqa: F401,E402
+import tests.contract.live_last_scan       # noqa: F401,E402
+import tests.contract.next_sequence        # noqa: F401,E402
+import tests.contract.studio_guidance      # noqa: F401,E402
 
 
 import shutil as _shD

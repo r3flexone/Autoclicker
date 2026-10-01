@@ -36,6 +36,10 @@ RECORD_STATUS_FILE: str = ".recording.json"
 # bedient wird sie aber oft aus dem Studio — ohne diese Datei stuende dort nur
 # "laeuft", waehrend die Konsole jeden Schritt einzeln meldet.
 RECLICK_STATUS_FILE: str = ".reclick.json"
+# Was der letzte Item-Scan gesehen hat, als Bild — für den Live-Run. Neben
+# `.run.json` und nicht darin: ein Bild wären Kilobytes in einer Datei, die
+# fünfmal pro Sekunde geschrieben wird. Überschrieben vom nächsten Scan.
+LAST_SCAN_IMAGE_FILE: str = ".last-scan.png"
 # Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
 STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
@@ -44,6 +48,15 @@ STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
 # sondern ein Briefkasten, der beim Lesen geleert wird.
 COMMAND_FILE: str = ".command.json"
+
+# Wohin die Maus nach einem Scan-Block geht (`scan_mouse_after`). Ein Scan
+# klickt, was er findet, und der Zeiger bleibt auf dem letzten Treffer stehen —
+# dort zeigt das Spiel dessen Infotext, und der liegt womöglich über dem Ziel
+# des naechsten Blocks. OB sie geht, entscheidet der Block
+# (`SequenceStep.mouse_return`); hier steht nur WOHIN.
+SCAN_MOUSE_BACK = "back"       # an die Stelle von vor dem Scan
+SCAN_MOUSE_PARK = "park"       # auf die Parkposition (`scan_park_mouse`)
+SCAN_MOUSE_AFTER = (SCAN_MOUSE_BACK, SCAN_MOUSE_PARK)
 
 
 @dataclass
@@ -90,6 +103,7 @@ class AppConfig:
     # === SCAN-EINSTELLUNGEN ===
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
+    scan_mouse_after: str = "back"                  # nach dem Scan: "back" oder "park"
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
     scan_item_click_delay: float = 1.0              # Pause nach Item-Klick in Sekunden
     scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
@@ -250,6 +264,9 @@ class AppConfig:
         if self.ocr_retry_count < 0:
             warnings.append(f"ocr_retry_count={self.ocr_retry_count} → 0")
             self.ocr_retry_count = 0
+        if self.scan_mouse_after not in SCAN_MOUSE_AFTER:
+            warnings.append(f"scan_mouse_after='{self.scan_mouse_after}' → 'back'")
+            self.scan_mouse_after = "back"
         # Window-Fokus-Check
         if self.window_focus_action not in ("pause", "stop"):
             warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
@@ -355,37 +372,42 @@ def load_config() -> AppConfig:
     return AppConfig()
 
 
+# Die Titel sind Anzeige (Einstellungen-Reiter), keine Schluessel — in der
+# Datei steht zwischen den Gruppen nur eine Leerzeile. Deshalb gilt fuer sie
+# die Regel fuer alles Gelesene: deutsch, ein Stil. Hier standen einmal
+# GROSSBUCHSTABEN mit „ue" statt „ü" (NACHPRUEFUNG) neben englischen
+# (HUMANIZATION, TIMING, DEBUG) und gemischten („LLM VISION (Boss-Erkennung)").
 _CONFIG_SECTIONS = [
-    ("PROGRAMMSTART", [
+    ("Programmstart", [
         "studio_open_on_start",
     ]),
-    ("KLICK-EINSTELLUNGEN", [
+    ("Klicks", [
         "click_per_point", "click_max_total",
         "click_move_delay", "click_post_delay",
     ]),
-    ("SICHERHEIT", [
+    ("Sicherheit", [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
         "session_max_hours",
     ]),
-    ("PIXEL-ERKENNUNG", [
+    ("Pixel-Erkennung", [
         "punkt_radius", "punkt_farbtoleranz",
         "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
         "pixel_show_delay",
     ]),
-    ("NACHPRUEFUNG", [
+    ("Nachprüfung", [
         "verify_timeout", "verify_retries", "verify_interval",
     ]),
-    ("SCAN-EINSTELLUNGEN", [
-        "scan_click_immediate", "scan_park_mouse",
+    ("Scans", [
+        "scan_click_immediate", "scan_park_mouse", "scan_mouse_after",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
         "scan_marker_min_pixels", "scan_market_value_file", "scan_catalog_file",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),
-    ("LLM VISION (Boss-Erkennung)", [
+    ("LLM (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
         "llm_timeout", "llm_retry_count", "llm_async", "llm_reasoning", "llm_max_tokens", "llm_boss_prompt",
         "llm_debug",
@@ -395,25 +417,25 @@ _CONFIG_SECTIONS = [
     ("OCR (Texterkennung)", [
         "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence", "ocr_retry_count",
     ]),
-    ("WINDOW-FOKUS-CHECK", [
+    ("Fensterfokus", [
         "window_focus_check", "window_focus_title", "window_focus_action",
     ]),
-    ("HUMANIZATION", [
+    ("Menschliches Verhalten", [
         "humanize_enabled", "humanize_click_jitter",
         "humanize_micro_delay_min", "humanize_micro_delay_max",
         "humanize_break_interval_min",
         "humanize_break_duration_min", "humanize_break_duration_max",
     ]),
-    ("SESSION-LOG", [
+    ("Session-Log", [
         "session_log_enabled", "session_log_dir",
     ]),
-    ("TIMING", [
+    ("Pause", [
         "timing_pause_interval",
     ]),
-    ("DATEIEN", [
+    ("Dateien", [
         "migrate_on_start",
     ]),
-    ("DEBUG", [
+    ("Fehlersuche", [
         "debug_log", "debug_detail",
         "debug_show_pixel_position", "debug_save_templates",
     ]),
@@ -435,7 +457,7 @@ def config_sections() -> list:
                   for title, keys in _CONFIG_SECTIONS]
     remainder = [k for k in all_of if k not in assigned]
     if remainder:
-        sections.append(("SONSTIGE", remainder))
+        sections.append(("Sonstige", remainder))
     return sections
 
 

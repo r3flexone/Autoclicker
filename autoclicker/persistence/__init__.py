@@ -55,7 +55,7 @@ from .presets import (
     list_item_presets, save_item_preset, load_item_preset, delete_item_preset,
 )
 from .sequences import (
-    ensure_sequences_dir, save_sequence_file, load_sequence_file, locate_step,
+    ensure_sequences_dir, save_sequence_file, load_sequence_file, locate_step, find_sequence_path,
     free_sequence_name, confirm_new_sequence_name,
     list_available_sequences, activate_sequence,
     load_points, save_points, get_next_point_id, get_point_by_id, print_points,
@@ -85,7 +85,7 @@ __all__ = [
     '_point_to_dict', '_item_scan_from_dict', '_item_scan_to_dict',
     '_boss_scan_to_dict', '_icon_scan_to_dict',
     # sequences
-    'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file', 'locate_step',
+    'ensure_sequences_dir', 'save_sequence_file', 'load_sequence_file', 'locate_step', 'find_sequence_path',
     'free_sequence_name', 'confirm_new_sequence_name',
     'list_available_sequences', 'activate_sequence',
     'load_points', 'save_points', 'get_next_point_id', 'get_point_by_id', 'print_points',

@@ -1319,7 +1319,14 @@ es die Marker-Farben.
   nicht nur, *was geklickt* wurde, sondern auch, *was gesehen* wurde: `timeout` (welcher
   Schritt hängt — das diagnostisch wertvollste Ereignis), `item_found`, `detected`,
   `verify_ok`/`verify_miss`. Ohne diese Ereignisse konnte der Bericht die eine Frage
-  nicht beantworten, für die man ihn aufmacht. Wer eine neue Ereignisart einführt,
+  nicht beantworten, für die man ihn aufmacht. Dazu die Wartezeiten, **getrennt
+  nach dem, der sie bestimmt**: `wait` (am Block eingestellt, aus
+  `wait_with_pause_skip`), `color_wait` (bis der Farb-Trigger aufging, mit
+  `result=ok|timeout|abort`) und `pause` (CTRL+ALT+H) — Sekunden jeweils als
+  `s=` in `extra`, und die Pause ist aus den beiden anderen herausgerechnet
+  (`net_seconds`), sonst stünde eine halbe Stunde Pause als „auf Farbe" da. Ein
+  Log ohne diese Zeilen zählt im Bericht nicht mit, statt seine ganze Laufzeit
+  als „Rest" auszuweisen. Wer eine neue Ereignisart einführt,
   trägt sie in `log_report.py` ein — der Bericht meldet sonst „nicht ausgewertete
   Ereignisarten" und weist selbst darauf hin.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
@@ -1973,6 +1980,16 @@ Sechs Regeln, an denen der Reiter hängt:
   verhindern, dass die Zahlen dahinter („Slots 72/85") die Aufteilung bei jedem
   Filterwechsel verschieben.
 
+  **Weil er klebt, muss er kurz sein.** Gemessen waren es sieben Zeilen
+  Bedienung (Speichern allein, „Items erkennen | Zurück", Katalog, „Alle mit LLM
+  benennen", Reiter, „N Items löschen", „Sortieren", „Alle aus") — rund 330 von
+  830 px, bevor die erste Maske kam, und genau so viel fehlte der Liste bei
+  jedem Scrollen. Heute: `Speichern | Zurück`, `Items erkennen | Alle
+  benennen` (Katalog in derselben Zeile, sonst in einer eigenen), Reiter,
+  `Sortieren | Alle aus`. „Alle benennen" ist kurz beschriftet, damit es in die
+  halbe Zeile passt; ob der Name aus dem Katalog oder frei vom Modell kommt,
+  sagt der Tooltip.
+
   **Der Kopf ist eine Spalte, kein Fliesstext.** Jedes Bedienelement nimmt die
   volle Breite (`.scan-filter` als einspaltiges Raster); nur der Schalter dehnt
   sich nicht, denn er ist Text mit Kästchen davor. Vorher stand „alle dazu" als
@@ -2372,11 +2389,20 @@ des Slots setzt, braucht keinen Scan als Bezug und ist deshalb immer da.
 **„Alle raus" ist nicht „alle löschen".** Der eine nimmt aus der Mitgliedschaft
 — Slot bzw. Item bleibt im Bestand —, der andere (`scan_delete_all()`)
 nimmt ihn wirklich weg. Fünfzig Slots einzeln durchzuklicken war der Grund,
-warum man diesen Knopf sucht; er steht als `.btn.danger` direkt neben „alle
-raus", mit derselben Bezugsregel wie überall (`_scan_slots()`/`_candidates()`:
-der offene Scan, sonst der Bestand) — ein Slot eines *anderen* Scans bleibt
-unangetastet. Kein Bestätigungsdialog: STRG+Z holt den ganzen Abzug zurück,
-genau wie beim einzelnen Löschen.
+warum man diesen Knopf sucht; mit derselben Bezugsregel wie überall
+(`_scan_slots()`/`_candidates()`: der offene Scan, sonst der Bestand) — ein
+Slot eines *anderen* Scans bleibt unangetastet. Kein Bestätigungsdialog:
+STRG+Z holt den ganzen Abzug zurück, genau wie beim einzelnen Löschen.
+
+**Er steht am Ende der Liste, nicht im Kopf** (`scanDeleteAll()`). Im Kopf
+stand er zwischen den Reitern und „Sortieren" und sah aus wie Sortieren —
+`.btn.danger` wurde erst beim Zeigen rot. Der gefährlichste Knopf der Spalte
+lag damit dort, wo man am häufigsten klickt, und sah aus wie der harmloseste.
+Man braucht ihn selten, und wer ihn braucht, hat die Liste davor gesehen.
+Dazu gilt seither überall: **ein gefährlicher Knopf ist auch in Ruhe getönt**
+(`.btn.danger,.btn.quiet.danger`), nicht erst beim Zeigen. Die Ausnahme bleibt
+das × an der Punktzeile — in einer Liste mit vierzig Zeilen wäre es lauter als
+alles, woran man arbeitet.
 
 **Der geöffnete Scan IST der vollständige Bestand** — und damit stellt sich die
 Frage „gehört das hierher" gar nicht mehr. `scanVisible()` filtert nur noch nach
@@ -2951,8 +2977,27 @@ Regeln für die Ansicht:
   `null`, wo die Dataclass das erlaubt (`optional_fields()`), sonst 0.
 - **Enums als Kacheln, alles Wachsende als Liste** — dieselbe Regel wie beim
   Block-Typ. Die Auswahl ist im Code festgelegt und kurz.
-- **Die Suche zeigt alle Abschnitte mit Treffern**, nicht nur den gewählten: wer
-  sucht, weiss ja gerade nicht, wo der Wert steht.
+- **Alle Abschnitte stehen auf EINER Seite, die Liste links springt nur**
+  (`cfgScrollTo()`, und beim Scrollen zeigt sie mit, wo man steht:
+  `cfgSpy()`). Vorher zeigte die Mitte genau einen Abschnitt — bei
+  „Programmstart" ein einziges Feld über einer leeren Fläche —, und wer einen
+  Wert suchte, klickte sich durch vierzehn Seiten. Die Suche lässt nur die
+  Abschnitte mit Treffern stehen. Ein Neuaufbau nach einer Änderung behält die
+  Scrollposition; gelesen wird sie **vor** `replaceChildren()`, danach ist die
+  Mitte kurz leer und `scrollTop` steht auf 0.
+- **Die Abschnittstitel sind Anzeige, keine Schlüssel** — deutsch, ein Stil
+  (`_CONFIG_SECTIONS` in `config.py`). Dort standen GROSSBUCHSTABEN mit „ue"
+  (NACHPRUEFUNG) neben englischen (HUMANIZATION, TIMING, DEBUG). In der Datei
+  steht zwischen den Gruppen nur eine Leerzeile, der Titel kommt dort nicht vor.
+- **Eine Einstellung ist ein Sprungziel** (`goTo({view: "settings", key})`):
+  scrollt hin, lässt die Zeile aufleuchten, setzt den Fokus ins Feld. Leere
+  Zustände anderer Reiter nennen deshalb keinen Config-Schlüssel mehr, sondern
+  bieten den Sprung an („Marktwert-Datei eintragen" im Bericht). Die
+  Änderungskarten rechts springen ebenso zu ihrem Feld.
+- **Ein abhängiges Feld heisst `.faded`** — `cfgRow()` setzte `blass`, das CSS
+  kannte nur `.cfg-row.faded`, und abhängige Felder waren seit dem
+  Englisch-Umbau nie blass. Wer eine Zustandsklasse umbenennt, sucht sie auch in
+  den Strings, die sie zusammensetzen (`" faded"`).
 - **Eine Stelle fährt man an** (`scan_park_mouse`): Maus hin, ENTER — derselbe Weg
   wie beim Klick-Block, nur ohne Punkt anzulegen. Eine Parkposition gehört nicht
   zu den Punkten der Sequenz.
@@ -3007,6 +3052,41 @@ räumt den Einstieg weg** (sonst spränge der nächste Hotkey-Druck mitten in di
 Sequenz), **der Laufstatus sagt, wo eingestiegen wurde** (`started_from`, im
 Kopf des Live-Runs), und ein Einstieg in END lässt INIT und alle Zyklen aus —
 `_run_main_loop` gibt dann 0 Zyklen zurück.
+
+**Eine Folgesequenz ist ein verzögerter Start, keine Verkettung im Worker**
+(`Sequence.next_sequence` + `next_delay`, im Studio „Danach starten“ /
+„Pause davor“ unter SEQUENZ). Der Worker führt weiterhin genau EINE Sequenz
+aus; er legt beim Aufräumen nur `state.next_start = (Name, Pause, vorige)`
+ab — im selben Lock wie `is_running = False`, sonst gäbe es einen Moment mit
+freiem Hauptprozess ohne die schon feststehende Folge. Abgeholt wird im
+Main-Thread (`start_next_if_pending()` aus `_check_commands`, neben
+`reload_if_pending`): Datei laden, `activate_sequence`, `_start_countdown` —
+also derselbe Countdown wie beim Zeitplan und am Ende derselbe
+`handle_toggle()` wie CTRL+ALT+S. Deshalb bleiben beide Sequenzen
+eigenständig: eigener Laufstatus, eigenes Session-Log, eigene Zusammenfassung.
+Die Alternative (ein Block „Sequenz X ausführen“) steht weiter in `IDEAS.md`
+und ist etwas anderes.
+
+Vier Regeln:
+
+- **Nur nach einem regulären Ende** (`_ended_regularly()` in `worker.py`, dieselbe
+  Reihenfolge wie `_end_reason()`): alle Zyklen durch und CTRL+ALT+F ja — bei
+  endlosen Zyklen ist F der einzige Weg zum Ende. Stopp, Notbremse, Fehler,
+  Programmende nein, und das **Zeitlimit** auch nicht: `session_max_hours` ist
+  eine Obergrenze der Sitzung, eine Folgesequenz danach hebelte sie aus. Entfällt
+  sie, sagt die Konsole es.
+- **Was dazwischenkommt, gewinnt.** Läuft beim Abholen schon etwas oder steht ein
+  Countdown, fällt die Folge weg; in der Pause bricht CTRL+ALT+S ab wie jeden
+  Countdown.
+- **Referenz per Namen, gesucht wie beim Laden** (`find_sequence_path()`, der
+  Ordner heißt nicht wie die Sequenz). Ein toter Name wird am Laufende gemeldet,
+  von der Diagnose vorher (mit Sprungmarke `field: "seq-next"`), und in der
+  Studio-Auswahl bleibt er als „(fehlt)“ stehen statt still auf „keine“ zu
+  springen. Nur „danach diese nochmal“ zieht beim Umbenennen mit.
+- **`_start_countdown()` leert `stop_event`.** Der Worker hinterlässt es gesetzt;
+  ungeleert brach jeder Countdown nach einem Lauf sofort mit „Zeitplan
+  abgebrochen“ ab. Das war schon vorher ein Fehler des Zeitplans, er fiel nur
+  nicht auf, solange man ihn vor dem ersten Lauf stellte.
 
 **„Ab hier aufnehmen" ist eine Aufnahme mit Ziel, kein zweiter Recorder**
 (`block_record_start` → Briefkasten `record_from` → `command_record_from`).
@@ -3097,6 +3177,33 @@ Drei Eigenschaften, an denen das hängt:
   (`livePixelBox`) — ein Test hält die Namen gegeneinander. Eine Taste und ein
   Punkt ins Leere bringen keine Stelle mit, also kein Bild statt eines von (0, 0).
 
+**Unter dem Block steht, was der letzte Item-Scan gesehen hat** (`last_scan`,
+geschrieben von `_report_last_scan()` in `runtime/steps.py`, überschrieben vom
+nächsten Scan, stehen gelassen in der Zusammenfassung). Je Item EINE Kachel mit
+Anzahl, Klicks, Kategorie und Priorität — gezählt wird auch, was der Modus
+danach wegfiltert, denn „erkennt er das?" ist die Frage beim Hinsehen; geklickt
+ist grün umrandet. `execute_item_scan(report=…)` liefert dafür je Slot
+`(Slot, Item oder None, Ausschnitt)`. **Das Bild steht nicht im Laufstatus**, nur Ordner und
+Dateiname: die Datei wird fünfmal pro Sekunde geschrieben. Die Brücke hängt es
+an (`_last_scan_images`, gemerkt am mtime) und nimmt vom Dateinamen nur den
+Namen — er kommt aus einer Datei.
+
+Daneben steht **ein Screenshot der gescannten Stelle**: der Bereich um alle
+Slots plus `FRAME_MARGIN`, aufgenommen **einmal je Block und vor dem ersten
+Slot** (`report.frame`, `_scan_frame()` in `runtime/item_scan.py`) — im
+Immediate-Modus also vor dem ersten Klick, danach sähe das Inventar anders aus
+als das, was gescannt wurde. Im Fenster-Modus kommt er aus der
+Fensteraufnahme, die der Scan ohnehin macht, sonst ist es eine kleine
+Aufnahme mehr. Hier stand zuerst ein Bild aus den zusammengesetzten
+Slot-Ausschnitten auf dunklem Grund (`imaging.compose_regions`) — genau das,
+was ausgewertet wurde, aber es las sich nicht als Screenshot, und „den
+Screenshot sehe ich nicht" war die Rückmeldung. Es bleibt der Rückfall, wenn
+die Aufnahme scheitert. Das Bild liegt als `.last-scan.png` neben `.run.json`
+(längere Kante höchstens 900 px); die Seite legt je Slot einen Rahmen in
+Prozent darüber — in den Farben des Scans-Reiters (`--slot-ok`/`--slot-empty`,
+dieselbe Frage auf demselben Spielbild), geklickt gefüllt. „Geklickt" gilt dem
+**Slot**, nicht dem Item: gemerkt wird die Klickstelle.
+
 **Am Ende bleibt die Zusammenfassung stehen.** Hier wurde die Statusdatei
 früher gelöscht, und damit war die Live-Ansicht genau in dem Moment leer, in dem
 man sie ansieht: direkt nachdem etwas fertig geworden ist. `finish_run()` schreibt
@@ -3155,34 +3262,48 @@ dafür gibt es `set_app_id()`, und die muss **vor dem ersten Fenster** laufen.
 Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
 Ergebnis an genau einer der beiden Stellen.
 
-Gezeichnet wird das Symbol **aus der SVG-Datei der Oberfläche, nicht aus
-einem getippten Raster** und nicht aus einer Binärdatei im Repo:
-`web/sequenz-studio-logo.svg` ist die **einzige** Quelle des Motivs. Der Browser
-lädt sie direkt (Kopf und Favicon), `autoclicker/symbol.py` liest sie mit der
-Standardbibliothek — nur gefüllte Pfade aus `M`/`L`/`C`/`Z` plus eine Rotation,
-mehr braucht das Logo nicht — und rastert sie zeilenweise mit Kantenglättung
-(`SAMPLES`² Abtastungen je Pixel); die Aussparungen bleiben echte Transparenz
-statt einer dunklen Ersatzfarbe. Hier stand einmal eine Liste von Formen in
-Python, die das SVG von Hand nachzog, und davor ein 16×16-Raster aus Nullen und
-Einsen — beides Kopien des Motivs, die beim nächsten Entwurf veralten.
+Gezeichnet wird das Symbol **aus den SVG-Dateien der Oberfläche, nicht aus
+einem getippten Raster** und nicht aus einer Binärdatei im Repo. Der Browser
+lädt sie direkt, `autoclicker/symbol.py` liest sie mit der Standardbibliothek —
+nur gefüllte Pfade aus `M`/`L`/`C`/`Z` plus eine optionale Rotation — und
+rastert sie zeilenweise mit Kantenglättung (`SAMPLES`² Abtastungen je Pixel);
+die Aussparungen bleiben echte Transparenz statt einer dunklen Ersatzfarbe.
+Hier stand einmal eine Liste von Formen in Python, die das SVG von Hand
+nachzog, und davor ein 16×16-Raster aus Nullen und Einsen — beides Kopien des
+Motivs, die beim nächsten Entwurf veralten.
 
-**Eine Datei, drei Verwendungen** — und der Rasterer liegt deshalb nicht in
+**Zwei Dateien, weil es zwei Grössen sind — nicht zwei Motive.**
+`web/sequenz-studio-logo.svg` ist das Logo; bei 16 px aber war es graues
+Rauschen (seine Linien sind dort schmaler als ein Pixel), und das genau dort,
+wo man das Symbol am häufigsten sieht: Browser-Tab und kleines Fenstersymbol.
+`web/sequenz-studio-logo-small.svg` ist dieselbe Kette mit vier statt neun
+Knoten, jede Kante auf dem 16er-Raster. `symbol.logo_path(kante)` wählt: bis
+`SMALL_UP_TO` (24) das kleine, darüber das grosse. Ab 32 px ist das grosse
+lesbar genug, und der Nutzer will dort das Original sehen — das kleine springt
+nur ein, wo vom grossen nichts übrig bleibt, nicht darüber hinaus.
+
+Zwei Einzelheiten des kleinen, die man leicht wieder verliert: **das Dreieck
+endet stumpf**, genau so hoch wie die Linie, die dort anschliesst (mit Spitze
+stach die dickere Linie seitlich aus ihr heraus), und es ist **höher als die
+übrigen Knoten** — sonst bleibt bei 16 px von der Keilform nur ein Stummel.
+
+**Zwei Dateien, drei Verwendungen** — und der Rasterer liegt deshalb nicht in
 `winapi.py`, sondern in einem Modul, das weder Windows noch Pillow kennt:
 
 | wer | wozu |
 |---|---|
-| `winapi._icon_bits()` | ICO-Bits für `WM_SETICON` (16 und 32) |
+| `winapi._icon_bits()` | ICO-Bits für `WM_SETICON` (16 klein, 32 gross) |
 | `tools/symbol.py` | PNG-Dateien und eine `.ico` für Verknüpfungen |
-| `web/index.html` | Kopf und Favicon der Oberfläche |
+| `web/index.html` | Favicon (klein) und Kopf (gross, 30 CSS-Pixel) |
 
-Alle drei gehen über `symbol.points(kante)` bzw. die Datei selbst; ein Test hält
-fest, dass Kopf und Favicon dieselbe Datei nennen, dass die alte doppelte
-Inline-Zeichnung weg ist, und dass das SVG nur die Befehle benutzt, die
-`_path_polygons()` lesen kann — ein `A` aus einem CAD-Export fiele sonst erst
-beim Rastern mit `ValueError` um. Geprüft wird dabei die **Eigenschaft**
-(Maske vorhanden, erste Farbfläche ist eine flache Hex-Farbe, Befehlsmenge),
-nicht die Zeichnung: ein `rotate(180 128 128)` ist ein Detail genau dieses
-Motivs und fällt beim nächsten Entwurf um, ohne dass etwas kaputt wäre.
+Alle gehen über `symbol.pixel_rows(kante)` bzw. die Datei selbst; Tests halten
+fest, welche Grösse welche Datei nimmt, dass Favicon und Kopf die richtige
+nennen, dass beide dieselbe Farbe tragen, und dass jedes SVG nur die Befehle
+benutzt, die `_path_polygons()` lesen kann — ein `A` aus einem CAD-Export fiele
+sonst erst beim Rastern mit `ValueError` um. Geprüft wird dabei die
+**Eigenschaft** (Maske vorhanden, erste Farbfläche ist eine flache Hex-Farbe,
+Befehlsmenge), nicht die Zeichnung: ein Detail eines Motivs fällt beim nächsten
+Entwurf um, ohne dass etwas kaputt wäre.
 
 **Die flache Farbfläche muss die ERSTE im Dokument bleiben.** `symbol.py`
 nimmt das erste `rect` mit Maske und will dort sechs Hex-Ziffern; Verlauf,
@@ -3282,7 +3403,13 @@ Regeln beim Erweitern:
 
   - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`point_others`,
     `_point_usages(…, ausser=step)`) — als offener `hint`, denn das ist
-    Zustand; das Warum bleibt im ⓘ.
+    Zustand; das Warum bleibt im ⓘ. **Gebündelt, nicht aufgezählt**
+    (`_point_usage_groups()`): eine Zeile je Phase, jeder Block einmal,
+    Folgen ab drei als Bereich („Blöcke 1–5, 7–24"), und eine Rolle nur, wenn
+    sie etwas sagt (Nachprüfung, ELSE) — Stelle und Prüf-Pixel sind bei
+    FARBE+KLICK derselbe Punkt. Als Fliesstext standen neun Blöcke als
+    achtzehn Einträge da, die Phase bei jedem wiederholt. Gezählt wird für
+    Löschschutz und Punkte-Liste weiter über `_point_usages()` (jede Rolle).
   - Das Verschieben **sagt, wer mitzieht** („zieht 1 weitere Verwendung mit:
     Loop 4 · Block 2 · Stelle", `_moved_along()`), und zwar ohne den Block, an dem
     man gerade sitzt: der zählt nicht als „weiterer".
@@ -3442,11 +3569,16 @@ Regeln beim Erweitern:
   Zuerst stand der Name des Item-Scans im Inspektor ganz rechts, während man den
   Scan oben links wählte — man suchte ihn in der einen Spalte und benannte ihn
   drei Spalten weiter. Er wanderte deshalb unter die Klappliste. Seit der Scan
-  eine **Maske** hat, ist das die zweite Wahrheit: der Name steht in der Maske,
-  wie bei Slot und Item auch, und das Feld links ist ersatzlos weg. Die
-  Klappliste bleibt — sie **wählt** nur, sie benennt nicht. Aus demselben Grund
-  nennt die Überschrift im Detailteil den Scan nicht noch einmal: sein Name steht
-  in derselben Maske eine Zeile darüber. Ein Test misst beide Hälften.
+  eine **Maske** hat, steht der Name dort, wie bei Slot und Item auch.
+
+  **Das Feld links (`#scan-name`) ist trotzdem wieder da**, und zwar mit
+  Absicht: im geführten Arbeitsweg steht rechts die Item-Liste, die Scan-Maske
+  ist also nicht zu sehen — ohne das Feld liess sich der offene Scan dort gar
+  nicht umbenennen. Hier stand „das Feld links ist ersatzlos weg", während
+  `index.html` es enthielt und `tests/smoke/items.py` es verlangte; eine der
+  beiden Fassungen war also falsch, und es war diese. Die Klappliste darüber
+  **wählt**, das Feld darunter **benennt** — zwei Aufgaben, zwei Bedienelemente.
+  Die Überschrift im Detailteil der Maske nennt den Scan nicht noch einmal.
 - **Erklärungen stehen im ⓘ, Zustand und nächster Schritt im Text.** Ein
   `hint`-Absatz sagt, was JETZT gilt („62×60 px", „Zeigt ins Leere: …") oder
   was als Nächstes zu tun ist („Noch keine Slots. …"). Alles, was erklärt, WARUM
@@ -3648,6 +3780,66 @@ Regeln beim Erweitern:
   Meldung, die man lesen MUSS, ist die lange. `#status` bleibt reiner Text,
   damit `f.status()` in den Rauchtests weiter nur die Meldung liest. Dass er dorthin gehört, merkt man an der Gegenprobe: eine
   lange Meldung im Kopf war immer abgeschnitten.
+- **Eine Meldung gehört dem Reiter, in dem sie entstand.** Die Leiste liegt
+  unter allen Reitern, und dort blieb stehen, was zuletzt irgendwo gemeldet
+  wurde: „15 von 15 Slot(s) erkannt" stand unter Live-Run, Bericht und
+  Werkzeuge und las sich wie eine Aussage über DIESEN Reiter. Zwei Regeln:
+  - **Reine Navigation räumt auf** (`setView(…, navigated)`: ein Reiter, „Zum
+    Live-Run", ein Werkzeug öffnen, eine Sprungmarke). Ein Wechsel als FOLGE
+    einer Aktion (Starten springt in den Live-Run, „Öffnen" in der Übersicht
+    lädt und springt in den Editor, eine fertige Aufnahme ebenso) nimmt die
+    Meldung mit — sie ist das Ergebnis genau dieses Wechsels. Wer einen neuen
+    `setView()`-Aufruf schreibt, entscheidet, welcher der beiden Fälle es ist.
+    Ein erster Anlauf entschied nach der Uhr („jünger als 1,5 s
+    geht mit"), und wer schnell durch die Reiter klickte, nahm die Meldung
+    trotzdem mit. Scans und Teilen zeichnen ihre eigene beim Öffnen neu, der
+    Editor bekommt seine in `setView()` zurück.
+  - **Die Seite zeichnet nur NEUE Editor-Meldungen** (`S.status.id`, gezählt in
+    `_report()`). Die Momentaufnahme trägt die letzte Meldung bei jedem Befehl
+    wieder mit; sie jedes Mal zu zeichnen hiess, dass ein Klick auf eine Karte
+    die weggeräumte Meldung zurückholt. Der Rückgängig-Knopf an der Meldung
+    steht nur neben einer Editor-Meldung im Editor (`statusFromEditor`).
+- **Über dem Board steht die Phasenleiste** (`renderPhaseNav()`): jede
+  sichtbare Phase mit Blockzahl, ein Klick scrollt hin (`scrollToPhase()`),
+  und was außer Sicht liegt, ist gestrichelt (`.off`, gerechnet in
+  `updateBoardEdges()` bei Scrollen und Fenstergröße). Bei 1500 px Fensterbreite
+  waren drei von fünf Phasen zu sehen, bei 1100 px anderthalb — der Rest lag
+  rechts, ohne Bildlaufleiste, die man bemerkt. Dazu dunkle Kanten, solange
+  links bzw. rechts noch Phasen liegen, mit einem runden Knopf darin; die Kante
+  selbst nimmt **keine** Klicks an, sie liegt über den Karten. Ganz links in
+  der Leiste klappt die Seitenleiste weg (`.left-closed`, gemerkt in
+  `localStorage` — mit `try`, ohne Speicher bleibt sie einfach offen).
+- **Ohne gewählten Block zeigt der Inspektor einen Überblick**
+  (`renderOverview()`): die Blocktypen der Sequenz mit Anzahl (zugleich die
+  Legende), was Aufmerksamkeit braucht (Block mit Warnung, ELSE das nie greift,
+  ungenutzte Punkte — jeder Eintrag springt hin) und die vier Gesten. Vorher
+  stand dort ein Satz über 700 px leerer Fläche, daneben zwei gesperrte
+  Knöpfe; die sind im Überblick jetzt ausgeblendet.
+- **Live-Run im Leerlauf: ein Start-Knopf, ein Satz, eine Vorschau**
+  (`runPreview()`). Starten trug dort Amber, oben im Kopf Grün — zwei Gestalten
+  für einen Befehl; es ist jetzt überall `launch`. Neben dem Knopf stand fast
+  derselbe Satz ein zweites Mal. Und wo im Lauf die Phasenleiste steht, stehen
+  im Leerlauf dieselben Kacheln als Vorschau der offenen Sequenz.
+- **Ein Leerzustand bietet den Handgriff an, nicht den Config-Schlüssel**
+  (`emptyState()`). „session_log_enabled ist aus" ist richtig und ein Satz, mit
+  dem man suchen geht; der Bericht hat dafür „Session-Log einschalten". Teilen
+  sagte „erst speichern" in einem Reiter ohne Speichern-Knopf — die Warnung
+  trägt ihn jetzt selbst (`saveEverythingForShare()`).
+- **Ein Werkzeug hat einen Namen, und er kommt aus `WZ_TOOLS`** (`wzHeader(key,
+  text)`). Links stand „Bestand prüfen", im Kopf „Setup prüfen", und
+  „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Der Konsolenbefehl
+  steht im Tooltip und nur, wo es ihn gibt (check, fix, reclick) — als Marke
+  drückte er jeden Titel auf zwei Zeilen, und „rec", „points", „color" kannte
+  die Konsole gar nicht.
+- **Eine gerechnete Zahl sieht nicht aus wie ein Eingabefeld.** „Blöcke" hatte
+  dieselbe durchgezogene Kachel wie „Zyklen" daneben, und ein Klick darauf tat
+  nichts. Gleiche Höhe bleibt, aber gestrichelt und ohne Feldgrund —
+  gestrichelt heisst im Studio „steht da, ist aber nicht anzufassen".
+- **Im Scan-Bild steht ein Name je Slot, und zwar IN seinem Rechteck.**
+  Slot-Name darüber und Item darunter ergab in einem Raster „Item 1" (unter
+  Reihe 1) direkt auf „Slot 6" (über Reihe 2). Das erkannte Item steht unten
+  im Slot, gekürzt auf dessen Breite; der Slot-Name nur beim gewählten und beim
+  Slot unter dem Zeiger (`scanHover`, neu gezeichnet nur beim Wechsel).
 - **Zustandsklassen bekommen ein Präfix** (`kind-ok`, `kind-warn`, `kind-info`).
   Ohne das hiess die Statusklasse für „Hinweis" schlicht `info` — und `.info` ist
   der runde ⓘ-Knopf. Der Status erbte dessen Gestalt: ein leerer 13-px-Kreis

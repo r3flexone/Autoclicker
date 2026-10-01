@@ -32,7 +32,7 @@ _FRAME = {"session_start", "session_end"}
 # ausgewertet", statt sie stillschweigend zu verschlucken.
 EVALUATED = {
     "click", "key", "timeout", "item_found", "detected",
-    "verify_ok", "verify_miss",
+    "verify_ok", "verify_miss", "wait", "color_wait", "pause",
 }
 
 
@@ -66,9 +66,51 @@ def _fmt_duration(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+def _extra(line: dict) -> dict:
+    """Die Spalte `extra` als Schluessel/Wert: `s=1.50,result=ok`."""
+    out = {}
+    for part in (line.get("extra") or "").split(","):
+        key, _, value = part.partition("=")
+        if key.strip():
+            out[key.strip()] = value.strip()
+    return out
+
+
+def _seconds(line: dict) -> float:
+    try:
+        return max(0.0, float(_extra(line).get("s", 0) or 0))
+    except ValueError:
+        return 0.0
+
+
+def _rank_waits(table: dict) -> list[list]:
+    """`{Name: [Sekunden, Anzahl, laengste, Timeouts]}` absteigend nach Sekunden."""
+    rows = [[name, round(v[0], 2), v[1], round(v[2], 2), v[3]]
+            for name, v in table.items()]
+    rows.sort(key=lambda r: r[1], reverse=True)
+    return rows
+
+
 def _rank(counters: Counter) -> list[list]:
     """Counter als absteigend sortierte Paarliste — JSON-tauglich und stabil."""
     return [[name, n] for name, n in counters.most_common()]
+
+
+def _sequence_name(path: Path, lines: list[dict]) -> str:
+    """Welche Sequenz lief — der Name, wie ihn der Nutzer vergeben hat.
+
+    `session_start` traegt ihn im Detail (`worker.py`). Der Dateiname kennt nur
+    die bereinigte Form (`all_dayli` statt `All Dayli`) und ist deshalb erst der
+    Rueckfall — fuer Logs ohne Startzeile, etwa von Hand gekuerzte.
+    """
+    for z in lines:
+        if z.get("event") == "session_start":
+            name = (z.get("detail") or "").strip()
+            if name:
+                return name
+            break
+    parts = path.stem.split("_", 2)
+    return parts[2] if len(parts) == 3 else path.stem
 
 
 def evaluate(paths: list[Path]) -> dict:
@@ -93,6 +135,14 @@ def evaluate(paths: list[Path]) -> dict:
     sessions = []
     unreadable = []
     total_duration = 0.0
+    # Wartezeiten, getrennt nach dem, der sie bestimmt: `wait` ist eingestellt
+    # (Wartezeit am Block), `color_wait` hat das Spiel entschieden (Farb-
+    # Trigger), `pause` der Nutzer. Je Block: [Sekunden, Anzahl, laengste,
+    # davon Timeouts].
+    planned_per_step: dict = {}
+    color_per_step: dict = {}
+    waits = {"planned": 0.0, "color": 0.0, "pause": 0.0,
+             "measured_duration": 0.0, "measured_sessions": 0}
 
     for path in paths:
         lines, error = _read(path)
@@ -104,6 +154,7 @@ def evaluate(paths: list[Path]) -> dict:
         duration = _duration(lines)
         total_duration += duration
         own = Counter()
+        own_waits = {"planned": 0.0, "color": 0.0, "pause": 0.0}
         for z in lines:
             ev = z.get("event", "")
             total_events[ev] += 1
@@ -119,15 +170,39 @@ def evaluate(paths: list[Path]) -> dict:
                 verify_miss[detail or "(ohne Namen)"] += 1
             elif ev == "verify_ok":
                 verify_ok[detail or "(ohne Namen)"] += 1
+            elif ev in ("wait", "color_wait"):
+                sec = _seconds(z)
+                own_waits["planned" if ev == "wait" else "color"] += sec
+                table = planned_per_step if ev == "wait" else color_per_step
+                row = table.setdefault(detail or "(ohne Namen)", [0.0, 0, 0.0, 0])
+                row[0] += sec
+                row[1] += 1
+                row[2] = max(row[2], sec)
+                if _extra(z).get("result") == "timeout":
+                    row[3] += 1
+            elif ev == "pause":
+                own_waits["pause"] += _seconds(z)
         sessions.append({
             "file": path.name,
+            "sequence": _sequence_name(path, lines),
             "begin": (lines[0].get("timestamp") or "").strip(),
             "duration": duration,
             "clicks": own.get("click", 0),
             "timeouts": own.get("timeout", 0),
             "items": own.get("item_found", 0),
             "verify_miss": own.get("verify_miss", 0),
+            # Ein Log von vor der Wartezeit-Erfassung hat keine dieser Zeilen.
+            # Es zaehlt dann nicht mit, statt seine ganze Laufzeit als „Rest"
+            # auszuweisen.
+            "waits_measured": bool(own.get("wait") or own.get("color_wait")),
+            "planned": round(own_waits["planned"], 2),
+            "color": round(own_waits["color"], 2),
         })
+        if sessions[-1]["waits_measured"]:
+            for k in ("planned", "color", "pause"):
+                waits[k] += own_waits[k]
+            waits["measured_duration"] += duration
+            waits["measured_sessions"] += 1
 
     disturbances = {k: v for k, v in total_events.items()
                   if k.startswith(("focus_", "humanize_"))}
@@ -144,6 +219,10 @@ def evaluate(paths: list[Path]) -> dict:
         "verify_ok": dict(verify_ok),
         "disturbances": sorted([k, v] for k, v in disturbances.items()),
         "unknown": sorted(unknown),
+        "waits": {k: (round(v, 2) if isinstance(v, float) else v)
+                  for k, v in waits.items()},
+        "planned_waits": _rank_waits(planned_per_step),
+        "color_waits": _rank_waits(color_per_step),
     }
 
 
@@ -194,6 +273,23 @@ def report(paths: list[Path]) -> None:
         if verify_miss:
             print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
                   "Spiel\n       braucht laenger als verify_timeout.")
+
+    waits = data["waits"]
+    if waits["measured_sessions"]:
+        span = waits["measured_duration"]
+        rest = max(0.0, span - waits["planned"] - waits["color"] - waits["pause"])
+        print(f"\n{'-' * 66}\nWARTEZEITEN ({waits['measured_sessions']} "
+              f"Session(s) mit Messung, {_fmt_duration(span)}):")
+        for label, sec in (("geplant", waits["planned"]),
+                           ("auf Farbe", waits["color"]),
+                           ("Pause", waits["pause"]),
+                           ("Rest (Aktionen, Scans)", rest)):
+            share = f"{sec / span * 100:5.1f} %" if span else "    -"
+            print(f"  {_fmt_duration(sec):>9}  {share}  {label}")
+        for name, sec, n, longest, timeouts in data["color_waits"][:10]:
+            suffix = f", {timeouts}x Timeout" if timeouts else ""
+            print(f"  {_fmt_duration(sec):>9}  auf Farbe  {name}  "
+                  f"({n}x, laengste {longest:.0f}s{suffix})")
 
     if data["items"]:
         print(f"\n{'-' * 66}\nGEFUNDENE ITEMS "

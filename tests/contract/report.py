@@ -84,6 +84,22 @@ check("jede Sitzung kennt ihren Dateinamen",
 check("und den Beginn aus der ersten Zeile",
       _d["sessions"][0]["begin"] == "2026-01-01 00:00:00")
 
+# Die Liste im Reiter braucht den Namen der Sequenz — ein Datum allein sagt
+# nicht, welcher Lauf es war. Gelesen wird er aus `session_start`, denn der
+# Dateiname kennt nur die bereinigte Form.
+_spaced = _log(_sandbox / "logs4" / "2026-01-04_000000_all_dayli.csv", [
+    ("2026-01-04 00:00:00", 0, "session_start", "All Dayli", "", "", ""),
+    ("2026-01-04 00:00:01", 1, "click", "Bank", 10, 20, ""),
+])
+_headless = _log(_sandbox / "logs5" / "2026-01-05_000000_mein_lauf.csv", [
+    ("2026-01-05 00:00:01", 1, "click", "Bank", 10, 20, ""),
+])
+check("jede Sitzung nennt ihre Sequenz", _d["sessions"][0]["sequence"] == "Farm")
+check("und zwar den Namen aus der Startzeile, nicht den Dateinamen",
+      _auswerten([_spaced])["sessions"][0]["sequence"] == "All Dayli")
+check("ohne Startzeile faellt er auf den Dateinamen zurueck",
+      _auswerten([_headless])["sessions"][0]["sequence"] == "mein_lauf")
+
 # DIE Frage, fuer die es den Reiter gibt: der oberste Timeout ist der Schritt,
 # den es zu reparieren lohnt — also muss die Liste absteigend sortiert sein.
 check("die Timeouts stehen absteigend", _d["timeouts"] == [["Bank oeffnen", 2],

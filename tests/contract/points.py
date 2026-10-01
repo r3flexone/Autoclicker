@@ -414,18 +414,19 @@ _br_gp._points_apply()
 _br_gp.select({"phase": 1, "row": 0})
 _insp = _br_gp.snapshot()["block"]
 check("der Inspektor nennt die anderen Verwendungen des Punkts",
-      _insp["point_others"] == ["Loop 4 · Block 2 · Stelle"])
+      _insp["point_others"] == {"count": 1,
+                                "lines": [{"where": "Loop 4", "what": "Block 2"}]})
 check("den eigenen Pruef-Pixel zaehlt er dabei nicht mit",
-      all("Loop · Block 1" not in v for v in _insp["point_others"]))
+      all(g["where"] != "Loop" for g in _insp["point_others"]["lines"]))
 _br_gp.select({"phase": 2, "row": 0})
 check("ein Block mit eigenem Punkt hat keine",
-      _br_gp.snapshot()["block"]["point_others"] == [])
+      _br_gp.snapshot()["block"]["point_others"]["count"] == 0)
 
 _br_gp.select({"phase": 1, "row": 0})
 _z_gp = _br_gp.point_set({"point": 1, "field": "x", "value": 20})
 check("das Verschieben sagt, wer mitzieht",
       "zieht 1 weitere" in _z_gp["status"]["text"]
-      and "Loop 4 · Block 2" in _z_gp["status"]["text"])
+      and "Loop 4: Block 2" in _z_gp["status"]["text"])
 check("und Loop 4 ist wirklich mitgezogen - das ist die Regel, nicht der Fehler",
       _br_gp.board.lanes[2].steps[1].x == 20)
 _br_gp.select({"phase": 2, "row": 0})
@@ -452,6 +453,36 @@ check("danach verschiebt sich nur noch dieser Block",
 check("ein zweites Abtrennen tut nichts und sagt es",
       "nichts abzutrennen" in _br_gp.point_detach()["status"]["text"]
       and _br_gp.board.lanes[1].steps[0].point_id == _s1.point_id)
+# Gebuendelt, nicht aufgezaehlt: an einer echten Aufnahme standen neun
+# FARBE+KLICK-Bloecke als achtzehn Eintraege da („Block 12 · Stelle, Block 12 ·
+# Pruef-Pixel, …“), die Phase bei jedem wiederholt. Eine Zeile je Phase, jeder
+# Block einmal; eine Rolle nur, wenn sie etwas sagt.
+_seq_bd = _SEQ(name="Buendel", loop_phases=[
+    _PHASE(name="Sammeln", steps=[
+        _STEP(x=5, y=5, delay_before=0, point_id=1),
+        _STEP(x=5, y=5, delay_before=0, point_id=1, wait_condition=_WAIT(point_id=1)),
+        _STEP(x=5, y=5, delay_before=0, point_id=1, wait_condition=_WAIT(point_id=1)),
+    ]),
+    _PHASE(name="Herstellen", steps=[
+        _STEP(x=7, y=7, delay_before=0, point_id=2, verify_condition=_WAIT(point_id=1)),
+    ]),
+], points=[_CP(5, 5, "knopf", 1), _CP(7, 7, "anderer", 2)])
+_br_bd = _SB(_seq_bd, Path("sequences/buendel.json"), "sequences")
+_br_bd._points_apply()
+_br_bd.select({"phase": 1, "row": 0})
+_others_bd = _br_bd.snapshot()["block"]["point_others"]
+check("jeder Block steht einmal, auch mit Stelle UND Pruef-Pixel",
+      _others_bd["lines"][0] == {"where": "Sammeln", "what": "Blöcke 2, 3"})
+check("eine Rolle, die etwas sagt, bleibt dabei",
+      _others_bd["lines"][1] == {"where": "Herstellen", "what": "Block 1 (Nachprüfung)"})
+check("gezaehlt werden Bloecke, nicht Rollen", _others_bd["count"] == 3)
+check("lueckenlose Folgen ab drei stehen als Bereich, eine Rolle unterbricht ihn",
+      _br_bd._block_ranges([(1, ""), (2, ""), (3, ""), (5, ""), (6, ""),
+                            (7, " (ELSE)"), (8, ""), (9, ""), (10, "")])
+      == "1–3, 5, 6, 7 (ELSE), 8–10")
+check("die Punkte-Liste zaehlt weiter jede Verwendung (Loeschschutz)",
+      len(_br_bd._point_usages(1)) == 6)
+
 _web_gp = _web_src()
 check("die Ansicht zeigt die Verwendungen und den Abtrennen-Knopf",
       "b.point_others" in _web_gp and 'call("point_detach")' in _web_gp)

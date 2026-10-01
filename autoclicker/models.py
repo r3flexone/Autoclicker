@@ -255,6 +255,10 @@ class SequenceStep:
     # wird er im Studio und ausgefuehrt im Hauptprozess, und der liest die Datei.
     # Ein Haltepunkt in einer Loop-Phase haelt in jedem Zyklus — das ist gewollt.
     breakpoint: bool = False
+    # Nur bei Scan-Bloecken: die Maus danach absetzen — wohin, sagt
+    # `scan_mouse_after` in den Einstellungen. Aus = sie bleibt auf dem letzten
+    # Treffer stehen.
+    mouse_return: bool = True
     # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
     # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
     # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
@@ -476,6 +480,12 @@ class Sequence:
     # Eigener Punkt-Pool dieser Sequenz. Scans, die aus der Sequenz laufen,
     # loesen ihre Punkt-IDs ebenfalls gegen genau diesen Pool auf.
     points: list[ClickPoint] = field(default_factory=list)
+    # Folgesequenz: wird diese Sequenz regulaer fertig (alle Zyklen durch oder
+    # CTRL+ALT+F), laedt der Hauptprozess die hier genannte und startet sie
+    # nach `next_delay` Sekunden — derselbe Start wie CTRL+ALT+S. Ein Name,
+    # keine Kopie: beide bleiben eigenstaendige Sequenzen. Leer = keine.
+    next_sequence: str = ""
+    next_delay: float = 30.0
 
     def __str__(self) -> str:
         init_count = len(self.init_steps)
@@ -858,6 +868,10 @@ class AutoClickerState:
     # uebersprungen, ab dort laeuft die Sequenz normal (auch der zweite Zyklus
     # von vorn). Ein Neustart (`restart_event`) faengt wieder bei INIT an.
     start_from: Optional[tuple] = None
+    # Folgesequenz nach einem regulaeren Ende: `(Name, Pause in s, vorige
+    # Sequenz)`. Der Worker legt es beim Aufraeumen ab, der Main-Thread holt es
+    # in seinem Leerlauf ab (`start_next_if_pending`) und stellt den Countdown.
+    next_start: Optional[tuple] = None
 
     # Hier stand `sequences: dict[str, Sequence]` — ein Cache, den nur ein Teil
     # der Ladewege pflegte (Konsolen-Editor, Aufnahme, Import), und den
@@ -891,6 +905,9 @@ class AutoClickerState:
     # Laufzeit-Status
     is_running: bool = False
     total_clicks: int = 0
+    # Das Studio hat während eines Laufs gespeichert; nachgeladen wird, sobald
+    # der Lauf steht (`reload_if_pending` in handlers.py).
+    data_reload_pending: bool = False
 
     # Statistiken
     items_found: int = 0
@@ -900,6 +917,10 @@ class AutoClickerState:
     timeouts: int = 0
     consecutive_timeouts: int = 0
     start_time: Optional[float] = None
+    # Wie lange der Lauf bisher pausiert war (CTRL+ALT+H), nur steigend. Die
+    # Wartezeiten im Session-Log ziehen die Pause ab, die in sie fiel — sonst
+    # stuende eine halbe Stunde Pause als „auf Farbe gewartet" im Bericht.
+    paused_seconds: float = 0.0
 
     # Bereits geklickte Kategorien im aktuellen Zyklus mit bester Priorität
     # Dict: {kategorie: beste_priorität} - verhindert schlechtere Items derselben Kategorie

@@ -142,6 +142,8 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             data.get("total_cycles", 1),
             data.get("description", ""),
             seq_points,
+            str(data.get("next_sequence") or "").strip(),
+            next_delay_value(data.get("next_delay", 30.0)),
         )
 
         points = {p.id: p for p in seq.points}
@@ -157,6 +159,34 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
+
+
+def next_delay_value(value) -> float:
+    """Pause vor der Folgesequenz in Sekunden — unlesbar oder negativ wird 30.
+
+    Eine kaputte Zahl in der Datei darf den Loader nicht werfen; sie bekommt
+    den Standardwert, wie jedes andere Feld auch.
+    """
+    try:
+        delay = float(value)
+    except (TypeError, ValueError):
+        return 30.0
+    return delay if delay >= 0 else 30.0
+
+
+def find_sequence_path(name: str) -> Optional[Path]:
+    """Datei einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
+
+    Der Ordner heisst nicht wie die Sequenz (`sanitize_filename`), der Name
+    steht IN der Datei. Gesucht wird deshalb wie beim Laden.
+    """
+    wanted = str(name or "").strip()
+    if not wanted:
+        return None
+    for entry, path in list_available_sequences():
+        if entry == wanted:
+            return Path(path)
+    return None
 
 
 def locate_step(arguments: dict) -> tuple:

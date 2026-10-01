@@ -1,9 +1,16 @@
 """Rastert das Sequenz-Studio-Logo für Windows und Verknüpfungen.
 
-Die SVG-Datei neben der Weboberfläche ist die einzige Quelle für das Motiv. Der
-Browser lädt sie direkt; `winapi.set_window_icon` und `tools/symbol.py`
+Die SVG-Dateien neben der Weboberfläche sind die einzige Quelle für das Motiv.
+Der Browser lädt sie direkt; `winapi.set_window_icon` und `tools/symbol.py`
 holen über :func:`pixel_rows` dieselben Formen als RGBA-Pixel. Damit bleiben
 Kopfzeile, Titelleiste, Taskleiste und exportierte Symbole identisch.
+
+**Zwei Dateien, weil es zwei Grössen sind, nicht zwei Motive.** Das grosse
+Motiv hat neun Knoten und 10er-Linien — bei 16 px sind das Linien unter einem
+Pixel, und heraus kam graues Rauschen genau dort, wo man das Symbol am
+häufigsten sieht (Titelleiste, Browser-Tab). Das kleine ist dieselbe Kette mit
+vier Knoten, jede Kante auf dem 16er-Raster. Bis `SMALL_UP_TO` Pixel gilt das
+kleine, darüber das grosse — es ist das eigentliche Logo.
 
 Absichtlich gibt es keine SVG- oder Pillow-Laufzeitabhängigkeit. Das neue Logo
 braucht aus SVG nur gefüllte Pfade mit M/L/C/Z sowie eine Rotation. Diese kleine
@@ -19,8 +26,13 @@ import re
 from xml.etree import ElementTree
 
 
-LOGO_PATH = (Path(__file__).parent / "editors" / "sequence_studio" / "web"
-             / "sequenz-studio-logo.svg")
+_WEB = Path(__file__).parent / "editors" / "sequence_studio" / "web"
+LOGO_PATH = _WEB / "sequenz-studio-logo.svg"
+LOGO_SMALL_PATH = _WEB / "sequenz-studio-logo-small.svg"
+# Bis zu dieser Kantenlänge das kleine Motiv. Nur 16 px: ab 32 ist das grosse
+# lesbar genug, und es ist das eigentliche Logo — das kleine springt nur dort
+# ein, wo vom grossen nichts übrig bleibt.
+SMALL_UP_TO = 24
 SAMPLES = 4
 CURVE_STEPS = 12
 
@@ -117,10 +129,15 @@ def _tag(element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
-@lru_cache(maxsize=1)
-def _logo_geometry():
+def logo_path(edge: int) -> Path:
+    """Welche Datei für diese Kantenlänge gilt."""
+    return LOGO_SMALL_PATH if edge <= SMALL_UP_TO else LOGO_PATH
+
+
+@lru_cache(maxsize=2)
+def _logo_geometry(path: Path = LOGO_PATH):
     """Liest Farbe, ViewBox, sichtbaren Grund und Aussparungen aus dem SVG."""
-    root_layer = ElementTree.parse(LOGO_PATH).getroot()
+    root_layer = ElementTree.parse(path).getroot()
     viewbox = tuple(float(w) for w in root_layer.attrib["viewBox"].split())
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
@@ -194,7 +211,7 @@ def pixel_rows(edge: int, samples: int = SAMPLES):
     elif edge >= 128:
         samples = min(samples, 2)
 
-    color, (left, top, width, height), reason, cutouts = _logo_geometry()
+    color, (left, top, width, height), reason, cutouts = _logo_geometry(logo_path(edge))
     sub_width = edge * samples
     x_step = width / sub_width
     y_step = height / (edge * samples)

@@ -19,7 +19,8 @@ from .utils import safe_input, format_duration, parse_time_input, is_cancel, can
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences, sequence_file,
-    load_sequence_file, locate_step, get_next_point_id, get_point_by_id, print_points,
+    load_sequence_file, locate_step, find_sequence_path,
+    get_next_point_id, get_point_by_id, print_points,
     activate_sequence,
     ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
@@ -584,6 +585,10 @@ def handle_toggle(state: AutoClickerState, from_studio: bool | None = False) -> 
                 print(f"\n{col('[TOGGLE]', 'yellow')} Stoppe Sequenz...")
                 return
 
+        # Was das Studio während des letzten Laufs gespeichert hat, muss vor
+        # diesem Start im Speicher stehen.
+        reload_if_pending(state)
+
         # Keine Sequenz geladen → automatisch Lade-Menü öffnen
         with state.lock:
             has_sequence = state.active_sequence is not None
@@ -784,15 +789,29 @@ def _start_schedule(state: AutoClickerState, time_text: str) -> bool:
         return True
 
     target_time = target_stamp if target_stamp is not None else time.time() + seconds
+    return _start_countdown(state, target_time, description)
+
+
+def _start_countdown(state: AutoClickerState, target_time: float, description: str,
+                     after: str = "") -> bool:
+    """Der Countdown selbst — für Zeitplan und Folgesequenz derselbe.
+
+    `after` nennt die Sequenz, nach der dieser Start kommt; die Live-Ansicht
+    sagt es dazu, sonst stünde dort ein Countdown, den niemand gestellt hat.
+    """
     with state.lock:
         if state.countdown_active or state.is_running:
             print(f"\n{info('Es läuft bereits eine Sequenz oder ein Countdown.')}")
             return False
         state.countdown_active = True
+        # Ein beendeter Lauf lässt `stop_event` gesetzt (der Worker setzt es in
+        # seinem `finally`). Ungeleert brach der Countdown sofort mit
+        # „Zeitplan abgebrochen" ab — jeder Zeitplan nach einem Lauf.
+        state.stop_event.clear()
         name = state.active_sequence.name if state.active_sequence else "?"
 
     from .runtime import status as run_status
-    run_status.schedule_run(name, target_time)
+    run_status.schedule_run(name, target_time, after=after)
 
     def countdown_worker():
         start_now = False
@@ -819,6 +838,42 @@ def _start_schedule(state: AutoClickerState, time_text: str) -> bool:
     threading.Thread(target=countdown_worker, daemon=True).start()
     print(f"\n{col('[COUNTDOWN]', 'cyan')} '{name}' startet {description}.")
     return True
+
+
+def start_next_if_pending(state: AutoClickerState) -> None:
+    """Lädt die Folgesequenz und stellt ihren Countdown — im Main-Thread.
+
+    Gerufen aus dem Leerlauf der Hauptschleife, wie ein Befehl aus dem
+    Briefkasten: der Start ist damit derselbe wie ein Druck auf CTRL+ALT+S,
+    nur um `next_delay` verzögert. Während der Pause bricht CTRL+ALT+S (bzw.
+    „Zeitplan abbrechen" im Studio) ab, wie bei jedem Countdown.
+    """
+    with state.lock:
+        pending = state.next_start
+        if pending is None:
+            return
+        state.next_start = None
+        # Hat inzwischen jemand anders gestartet oder einen Zeitplan gestellt,
+        # gilt dessen Entscheidung — die Folgesequenz fällt weg.
+        if state.is_running or state.countdown_active:
+            return
+    name, delay, previous = pending
+    if state.quit_event.is_set():
+        return
+    path = find_sequence_path(name)
+    seq = load_sequence_file(path) if path is not None else None
+    if seq is None:
+        print(f"\n{err(f'Folgesequenz {name!r} nicht gefunden')} "
+              f"{hint(f'(eingetragen in {previous!r} — umbenannt oder gelöscht?)')}")
+        return
+    activate_sequence(state, seq)
+    print(f"\n{col('[DANACH]', 'cyan')} '{previous}' ist fertig — "
+          f"'{seq.name}' startet in {delay:g} s "
+          f"{hint('(CTRL+ALT+S bricht ab)')}")
+    if delay < 1:
+        handle_toggle(state, from_studio=None)
+        return
+    _start_countdown(state, time.time() + delay, f"in {delay:g} s", after=previous)
 
 
 def command_schedule(state: AutoClickerState, arguments: dict) -> None:
@@ -903,10 +958,14 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
     """Laedt Slots, Items und Scan-Konfigurationen neu — das Studio hat gespeichert.
 
     Der Gegenpart zu `command_config` fuer die Scan-Daten. Waehrend eines Laufs
-    passiert nichts: der Worker iteriert ueber genau diese Dicts.
+    wird nur vorgemerkt: der Worker iteriert ueber genau diese Dicts. Die
+    Meldung dazu versprach einmal „nach dem Stopp geladen", ohne dass irgendwer
+    es tat — ein Hotkey-Start danach lief still mit den alten Scans.
+    `reload_if_pending()` löst das Versprechen ein.
     """
     with state.lock:
         running = state.is_running
+        state.data_reload_pending = running
     if running:
         print(f"\n{info('Die Sequenz laeuft — Scan-Daten werden nach dem Stopp geladen.')}")
         return
@@ -937,6 +996,19 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
     print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
           f"{count[0]} Slot(s), {count[1]} Item(s), {count[2]} Item-Scan(s), "
           f"{count[3]} Punkt(e).")
+
+
+def reload_if_pending(state: AutoClickerState) -> None:
+    """Holt ein während des Laufs vorgemerktes `data_reload` nach.
+
+    Gerufen aus dem Leerlauf der Hauptschleife und vor jedem Start — das
+    zweite, weil zwischen Laufende und nächstem Blick in den Briefkasten bis zu
+    250 ms liegen, und ein CTRL+ALT+S genau dort mit dem alten Stand liefe.
+    """
+    with state.lock:
+        if not state.data_reload_pending or state.is_running:
+            return
+    command_data(state, {})
 
 
 def command_reclick(state: AutoClickerState, arguments: dict) -> None:

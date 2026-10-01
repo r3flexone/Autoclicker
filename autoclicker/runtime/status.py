@@ -138,11 +138,12 @@ def start_heartbeat(state, interval: float = HEARTBEAT_INTERVAL):
     return stop
 
 
-def schedule_run(sequence: str, target_time: float) -> None:
+def schedule_run(sequence: str, target_time: float, after: str = "") -> None:
     """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
 
     Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
     deshalb in derselben Momentaufnahme mit `aktiv: False` und eigenem Feld.
+    `after` nennt bei einer Folgesequenz die Sequenz davor.
     Vorheriger Laufzustand wird geleert: die nächste Worker-Meldung baut ihn
     ohnehin vollständig neu auf.
     """
@@ -156,6 +157,7 @@ def schedule_run(sequence: str, target_time: float) -> None:
                 "countdown": True,
                 "sequence": sequence,
                 "target_time": float(target_time),
+                **({"after": after} if after else {}),
                 "stamp": time.time(),
             }))
         except (OSError, TypeError, ValueError):

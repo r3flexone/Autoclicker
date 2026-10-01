@@ -56,7 +56,8 @@ for _stream in (sys.stdout, sys.stderr):
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
 SMOKE_TESTS = ("items", "detection", "sequences", "share", "tools",
-              "report", "sequence_delete", "catalog")
+              "report", "sequence_delete", "catalog", "live_run", "next_sequence",
+              "guidance")
 
 LAYERS = ("contract", "root", "smoke")
 

@@ -2030,6 +2030,11 @@ try:
     _bk3.scan_category_rename({"old": "Bow", "new": ""})
     check("ein leerer Zielname nimmt die Kategorie weg",
           _bk3.items["Bogen A"].category is None)
+    # Die Beschriftung ist der Tooltip von „↶ Zurück" — Sprache, kein
+    # Schluessel. Dort stand 'without', ein Rest des Englisch-Umbaus.
+    _label_k3 = _bk3._undo[-1][0] if _bk3._undo else ""
+    check("der Rueckgaengig-Tooltip sagt 'ohne Kategorie', nicht 'without'",
+          "ohne Kategorie" in _label_k3 and "without" not in _label_k3)
     _bk4 = _build_cat()
     _bk4.scan_category_rename({"old": "", "new": "Sonstiges"})
     check("und ein leerer Quellname meint 'ohne Kategorie'",

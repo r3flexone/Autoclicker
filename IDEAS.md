@@ -15,7 +15,9 @@ Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
 über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
 `scan_market_value_file`), *Session-Zeitlimit* (`session_max_hours`, sanftes
 Ende am Zyklus-Rand über `finish_event`), *Live-Ausgabe der Einfüge-Aufnahme*
-(im Block-Inspektor, dieselbe Zeichenfunktion wie im Werkzeuge-Reiter).
+(im Block-Inspektor, dieselbe Zeichenfunktion wie im Werkzeuge-Reiter),
+*Warteschlange mehrerer Sequenzen* (als Folgesequenz: „Danach starten“ an der
+Sequenz, eine Ebene über dem Worker im Main-Thread — `start_next_if_pending`).
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
 Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
@@ -170,9 +172,6 @@ Bei niedrigem HP automatisch Food klicken (Pixel-Farbtest auf HP-Bar).
 - **Klick-Runde auch für Scan-Regionen**: heute setzt sie nur Punkte, Slots bleiben `repair`
   vorbehalten. Eine Runde, die auch eine Region neu aufziehen lässt, spart den Wechsel
   zwischen zwei Werkzeugen — misst aber schlechter, als `repair` es kann.
-- **Warteschlange mehrerer Sequenzen**: nachts A, morgens B. Der Worker führt genau eine
-  Sequenz aus (`state.active_sequence`), das gehört also eine Ebene darüber und nicht in ihn
-  hinein.
 - **Overlay während des Laufs**: ein durchklickbares Fenster, das die nächste Klickstelle
   markiert. Beim Suchen eines hängenden Schritts unschlagbar, kostet aber ein zweites
   GUI-Fenster samt plattformspezifischer Klick-Durchlässigkeit.

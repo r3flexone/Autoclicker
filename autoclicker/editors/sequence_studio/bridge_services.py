@@ -6,6 +6,7 @@ from typing import Optional
 
 from ...models import GATE_COMMANDS, LoopPhase, Sequence
 from ...persistence import (
+    find_sequence_path,
     free_sequence_name,
     list_available_sequences,
     load_sequence_file,
@@ -326,6 +327,7 @@ class BridgeServicesMixin:
             return {"active": False}
         if not isinstance(state_value, dict):
             return {"active": False}
+        self._last_scan_images(state_value.get("last_scan"))
         # Ein abgeschlossener Lauf (`end`) darf beliebig alt sein — er IST
         # Vergangenheit. Die Altersregel gilt nur für einen, der sich noch für
         # laufend hält.
@@ -347,6 +349,53 @@ class BridgeServicesMixin:
             state_value["block_ink"] = ink_color(BLOCK_COLORS[type_value])
             state_value["block_badge"] = BLOCK_LABELS[type_value]
         return state_value
+
+    # Vorlagenbilder des letzten Scans: Pfad → (mtime, data:-URL). Der Laufstatus
+    # wird zweimal pro Sekunde gelesen; ohne das hiesse jede Abfrage, alle
+    # Vorlagen neu von Platte zu holen und zu kodieren.
+    _last_scan_cache: dict = {}
+
+    def _last_scan_images(self, last_scan) -> None:
+        """Hängt an jedes Item des letzten Scans sein Vorlagenbild (`image`).
+
+        Der Laufstatus trägt nur Ordner und Dateinamen — ein Bild dort wären
+        Kilobytes in einer Datei, die fünfmal pro Sekunde geschrieben wird.
+        Vom Dateinamen zählt nur der Name selbst: er kommt aus einer Datei,
+        und ein `..` darin soll nirgendwohin führen.
+        """
+        if not isinstance(last_scan, dict):
+            return
+        picture = last_scan.get("picture")
+        if isinstance(picture, dict):
+            from ...config import LAST_SCAN_IMAGE_FILE
+            url = self._cached_png(Path(LAST_SCAN_IMAGE_FILE))
+            if url:
+                picture["image"] = url
+        folder = Path(str(last_scan.get("templates") or ""))
+        for entry in last_scan.get("items") or []:
+            if not isinstance(entry, dict) or not entry.get("template") \
+                    or not str(last_scan.get("templates") or ""):
+                continue
+            url = self._cached_png(folder / Path(str(entry["template"])).name)
+            if url:
+                entry["image"] = url
+
+    def _cached_png(self, path: Path) -> str:
+        """Eine PNG-Datei als data:-URL, gemerkt am mtime — oder ""."""
+        import base64
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            return ""
+        cached = self._last_scan_cache.get(str(path))
+        if not cached or cached[0] != stamp:
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                return ""
+            cached = (stamp, "data:image/png;base64," + base64.b64encode(raw).decode("ascii"))
+            self._last_scan_cache[str(path)] = cached
+        return cached[1]
 
     # Was das Studio dem Hauptprozess sagen darf. Die Gegenstelle ist `COMMANDS`
     # in handlers.py — ein Test hält beide Listen gegeneinander, denn laufen sie
@@ -890,14 +939,31 @@ class BridgeServicesMixin:
         return self._report("Neue Sequenz — noch nicht gespeichert.", "warn")
 
     def sequence_set(self, data: dict) -> dict:
-        """Name, Zyklen oder Beschreibung der Sequenz ändern."""
+        """Name, Zyklen, Beschreibung oder Folgesequenz der Sequenz ändern."""
         field, value = (data or {}).get("field"), (data or {}).get("value")
         if field == "name":
+            # „Danach diese nochmal" zeigt per Namen auf sich selbst — ohne das
+            # Nachziehen zeigte es nach dem Umbenennen ins Leere.
+            if self.board.next_sequence and self.board.next_sequence == self.board.name:
+                self.board.next_sequence = str(value or "")
             self.board.name = str(value or "")
         elif field == "cycles":
             self.board.total_cycles = max(0, int(value or 0))
         elif field == "description":
             self.board.description = str(value or "")
+        elif field == "next_sequence":
+            name = str(value or "").strip()
+            # Die eigene Sequenz ist erlaubt: sie laeuft dann nach jeder
+            # Pause von vorn, als haette man sie selbst neu gestartet.
+            if name and find_sequence_path(name) is None and name != self.board.name:
+                return self._report(f"Sequenz '{name}' gibt es nicht.", "err")
+            self.board.next_sequence = name
+        elif field == "next_delay":
+            try:
+                delay = float(value)
+            except (TypeError, ValueError):
+                return self._report("Pause: eine Zahl in Sekunden.", "err")
+            self.board.next_delay = max(0.0, delay)
         else:
             return self._report(f"Unbekanntes Feld '{field}'.", "err")
         return self._changed()

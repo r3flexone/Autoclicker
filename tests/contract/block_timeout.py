@@ -100,12 +100,20 @@ try:
     _step = _b.board.lanes[1].steps[0]
     check("600 gesetzt — am Block und im Inspektor",
           _step.wait_condition.timeout == 600 and _snap["block"]["trigger_timeout"] == 600)
+    _text = _snap["phases"][1]["blocks"][0]["color_text"]
     check("die Karte sagt es beim Überfliegen",
-          "max 600 s" in _snap["phases"][1]["blocks"][0]["color_text"])
+          "max 600 s" in _text)
+    # Die Kartenspalte ist schmal: mit gewöhnlichen Leerzeichen stand das „s"
+    # allein in der nächsten Zeile. Werte und Einheiten reissen nicht.
+    _value = _text.split("RGB(", 1)[-1]
+    check("die FARBE-Zeile reisst weder im RGB-Wert noch zwischen Zahl und Einheit",
+          _text.startswith("wartet bis RGB(")
+          and all(" " not in part for part in _value.split(" · "))
+          and _text.count(" · ") == 1)
     _snap = _b.block_trigger({"choice": "present", "timeout": "0"})
     check("0 heisst ohne Timeout — und so steht es auch auf der Karte",
           _step.wait_condition.timeout == 0
-          and "ohne Timeout" in _snap["phases"][1]["blocks"][0]["color_text"])
+          and "ohne Timeout" in _snap["phases"][1]["blocks"][0]["color_text"])
     _snap = _b.block_trigger({"choice": "present", "timeout": ""})
     check("leer: zurück auf die Einstellung, und die Karte schweigt",
           _step.wait_condition.timeout is None

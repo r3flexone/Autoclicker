@@ -163,6 +163,7 @@ def sequence_worker(state: AutoClickerState) -> None:
         # Grund vor dem internen Stop festhalten: ein reguläres Ende bleibt ein
         # reguläres Ende. Auch ein noch wartender Async-Scan darf danach nicht klicken.
         reason = error or _end_reason(state)
+        follow_up = _follow_up(state, sequence) if not error else None
         schedule_shutdown.set()
         state.stop_event.set()
         try:
@@ -191,6 +192,10 @@ def sequence_worker(state: AutoClickerState) -> None:
             finally:
                 with state.lock:
                     state.session_log = None
+                    # Im selben Lock wie `is_running = False`: der Main-Thread
+                    # sieht beides zugleich — nie einen freien Hauptprozess
+                    # ohne die Folgesequenz, die schon feststeht.
+                    state.next_start = follow_up
                     state.is_running = False
                 set_console_title("Autoclicker - bereit")
 
@@ -220,6 +225,36 @@ def _end_reason(state: AutoClickerState) -> str:
     if state.stop_event.is_set():
         return "von Hand gestoppt"
     return "alle Zyklen durchgelaufen"
+
+
+def _ended_regularly(state: AutoClickerState) -> bool:
+    """Ist der Lauf so zu Ende gegangen, dass eine Folgesequenz dran ist?
+
+    Ja nach allen Zyklen und nach CTRL+ALT+F (das ist bei endlosen Zyklen der
+    einzige regulaere Weg zum Ende). Nein nach allem, was „aufhoeren" heisst:
+    Stopp von Hand, Notbremse, Zeitlimit, Programmende. Das Zeitlimit ist eine
+    Obergrenze fuer die ganze Sitzung — eine Folgesequenz danach hebelte sie aus.
+    Dieselbe Reihenfolge wie `_end_reason()`.
+    """
+    limit = state.config.pixel_max_consecutive_timeouts
+    if limit > 0 and state.consecutive_timeouts >= limit:
+        return False
+    if state.quit_event.is_set() or state.session_limit_hit:
+        return False
+    if state.finish_event.is_set():
+        return True
+    return not state.stop_event.is_set()
+
+
+def _follow_up(state: AutoClickerState, sequence) -> Optional[tuple]:
+    """`(Folgesequenz, Pause, diese Sequenz)` — oder None, wenn keine dran ist."""
+    if sequence is None or not getattr(sequence, "next_sequence", ""):
+        return None
+    if not _ended_regularly(state):
+        print(hint(f"Folgesequenz '{sequence.next_sequence}' entfällt — "
+                   f"der Lauf wurde abgebrochen, nicht beendet."))
+        return None
+    return (sequence.next_sequence, float(sequence.next_delay), sequence.name)
 
 
 def _ascii_title(text: str) -> str:

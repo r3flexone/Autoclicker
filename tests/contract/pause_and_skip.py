@@ -191,6 +191,12 @@ try:
         _shots.append(region)
         return _Shot()
 
+    def _slot_shots():
+        """Nur die Aufnahmen EINZELNER Slots (8 px breit). Daneben nimmt jeder
+        Item-Scan-Block einmal vor dem ersten Slot den Bereich um alle auf —
+        für das Bild im Live-Run; um den geht es hier nicht."""
+        return [r for r in _shots if r and r[2] - r[0] == 8]
+
     def _matches(hit):
         return lambda profile, img, *a, **k: (hit, 1.0 if hit else 0.0) \
             if k.get("return_score") else hit
@@ -212,7 +218,7 @@ try:
 
     def _skip_at_second_slot(st):
         def shot(region=None):
-            if len(_shots) == 1:
+            if len(_slot_shots()) == 1:
                 st.skip_step_event.set()           # CTRL+ALT+SHIFT+K beim zweiten Slot
             return _screenshot(region)
         return shot
@@ -252,7 +258,7 @@ try:
         check("immediate: nach dem Skip wird kein weiterer Slot geklickt",
               _r1 is True and _clicks == [(100, 0)])
         check("immediate: und keiner mehr angefasst — kein Parken, keine Aufnahme",
-              len(_parks) == 1 and len(_shots) == 1)
+              len(_parks) == 1 and len(_slot_shots()) == 1)
         check("immediate: das Signal ist verbraucht", not _st.skip_step_event.is_set())
 
         # Skip WAEHREND des Scans eines Slots (beim Parken davor): dann faengt
