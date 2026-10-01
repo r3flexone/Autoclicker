@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..models import AutoClickerState
 from ..utils import safe_input, is_cancel, confirm, interactive_select, col, ok, err, info, warn, header, breadcrumb
-from ..winapi import get_cursor_pos
+from ..winapi import get_cursor_pos, get_virtual_desktop
 
 
 def run_import_export_editor(state: AutoClickerState) -> None:
@@ -690,9 +690,14 @@ def _calibration_reference(state: AutoClickerState, points: list, title: str,
 
 
 def _outside_all_monitors(targets: list[tuple[int, int]]) -> int:
-    """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen."""
-    from ..diagnostics import _virtueller_desktop
-    rect = _virtueller_desktop()
+    """Wie viele Ziele nach der Umrechnung auf keinem Bildschirm mehr lägen.
+
+    Hier stand `from ..diagnostics import _virtueller_desktop` — eine Funktion,
+    die es seit dem Eingrenzen der Windows-Abhängigkeiten nicht mehr gibt
+    (Bildschirm-Geometrie kommt aus `winapi`). Der Import stand im Rumpf, also
+    fiel er erst beim Aufruf um: Kalibrierung und `repair` warfen ImportError.
+    """
+    rect = get_virtual_desktop()
     if rect is None:
         return 0
     left, top, right, bottom = rect
