@@ -33,35 +33,9 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
         print("  -> Fehler beim Screenshot!")
         return []
 
-    # Farben zählen (mit Rundung für Gruppierung)
-    color_counts = {}
-    pixels = img.load()
-    width, height = img.size
-
-    for x in range(width):
-        for y in range(height):
-            pixel = pixels[x, y][:3]
-            # Runde auf 5er-Schritte für Gruppierung ähnlicher Farben
-            rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
-            color_counts[rounded] = color_counts.get(rounded, 0) + 1
-
-    # Slot-Hintergrundfarbe ausschliessen (falls vorhanden)
+    color_counts = rounded_color_counts(img)
     if exclude_color:
-        exclude_rounded = (exclude_color[0] // 5 * 5, exclude_color[1] // 5 * 5, exclude_color[2] // 5 * 5)
-
-        slot_color_dist = CONFIG.scan_slot_color_distance
-        colors_to_remove = []
-        for color in color_counts.keys():
-            if color_distance(color, exclude_rounded) <= slot_color_dist:
-                colors_to_remove.append(color)
-
-        total_excluded = 0
-        for color in colors_to_remove:
-            total_excluded += color_counts.pop(color)
-
-        if total_excluded > 0:
-            color_name = get_color_name(exclude_color)
-            print(f"  -> Slot-Hintergrund ~RGB{exclude_color} ({color_name}) ausgeschlossen ({total_excluded} Pixel, {len(colors_to_remove)} Farbtöne)")
+        _drop_background(color_counts, exclude_color)
 
     # Top N häufigste Farben (aus Config)
     marker_count = CONFIG.scan_marker_count
@@ -74,6 +48,40 @@ def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> 
         print(f"    {i+1}. RGB{color} - {color_name} ({count} Pixel)")
 
     return colors
+
+
+def _rounded(color) -> tuple:
+    """Auf 5er-Stufen gerundet — so fallen ähnliche Farben zusammen."""
+    return (color[0] // 5 * 5, color[1] // 5 * 5, color[2] // 5 * 5)
+
+
+def rounded_color_counts(img) -> dict:
+    """Wie oft jede (gerundete) Farbe im Bild vorkommt.
+
+    Geteilt mit dem Slot-Editor, der beim Anlegen die häufigsten Farben zeigt —
+    dieselbe Zählung stand dort ein zweites Mal.
+    """
+    color_counts = {}
+    pixels = img.load()
+    width, height = img.size
+    for x in range(width):
+        for y in range(height):
+            rounded = _rounded(pixels[x, y][:3])
+            color_counts[rounded] = color_counts.get(rounded, 0) + 1
+    return color_counts
+
+
+def _drop_background(color_counts: dict, exclude_color: tuple) -> None:
+    """Nimmt alle Farbtöne nahe der Slot-Hintergrundfarbe heraus und sagt, wie viele."""
+    exclude_rounded = _rounded(exclude_color)
+    slot_color_dist = CONFIG.scan_slot_color_distance
+    colors_to_remove = [color for color in color_counts
+                        if color_distance(color, exclude_rounded) <= slot_color_dist]
+    total_excluded = sum(color_counts.pop(color) for color in colors_to_remove)
+    if total_excluded > 0:
+        color_name = get_color_name(exclude_color)
+        print(f"  -> Slot-Hintergrund ~RGB{exclude_color} ({color_name}) ausgeschlossen "
+              f"({total_excluded} Pixel, {len(colors_to_remove)} Farbtöne)")
 
 
 def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> list[tuple]:

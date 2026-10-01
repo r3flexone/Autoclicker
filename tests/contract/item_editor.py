@@ -7,8 +7,8 @@ wurden (`_learn_single` 26, `_dispatch_command` 23, `edit_item` 21,
 
 Die Stellvertreter setzt `_stubs()` in JEDEM Modul des Pakets, das den Namen
 kennt — dazu `_item_fields` (die echten `ask_priority`/`ask_confirm_click`
-laufen mit und lesen dieselbe Tastenfolge) und `utils` (`edit_item` holt
-`interactive_select` beim Aufruf). So darf der Umbau Code verschieben, ohne
+laufen mit und lesen dieselbe Tastenfolge), `_detection_capture` (die
+Konfidenz-Abfrage teilt der Item-Editor mit Boss- und Icon-Editor) und `utils`. So darf der Umbau Code verschieben, ohne
 dass die Tests es merken.
 """
 import contextlib as _cl
@@ -19,6 +19,7 @@ from ._harness import check, section
 
 section("Item-Editor: Hauptschleife, Anlegen, Bearbeiten, Lernen, Autoscan, Vorlagen")
 
+import autoclicker.editors._detection_capture as _DC
 import autoclicker.editors._item_fields as _IF
 import autoclicker.editors.item_editor.autoscan as _AU
 import autoclicker.editors.item_editor.commands as _CO
@@ -34,7 +35,7 @@ from autoclicker.models import (
     ItemSlot as _SLOT, Sequence as _SEQ,
 )
 
-_MODULES = (_ED, _IT, _LE, _AU, _CO, _MK, _IF, _UT, _IMG, _LLM)
+_MODULES = (_ED, _IT, _LE, _AU, _CO, _MK, _IF, _DC, _UT, _IMG, _LLM)
 _RUNS = [0]
 
 

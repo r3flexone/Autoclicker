@@ -362,14 +362,8 @@ def _ask_new_slot_name(state: AutoClickerState) -> Optional[str]:
 
 def _print_top_colors(img, slot_name: str) -> None:
     """Die häufigsten Farben der Region, auf 5er-Stufen gerundet."""
-    color_counts = {}
-    pixels = img.load()
-    width, height = img.size
-    for x in range(width):
-        for y in range(height):
-            pixel = pixels[x, y][:3]
-            rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
-            color_counts[rounded] = color_counts.get(rounded, 0) + 1
+    from .item_editor.markers import rounded_color_counts
+    color_counts = rounded_color_counts(img)
     marker_count = CONFIG.scan_marker_count
     sorted_colors = sorted(color_counts.items(), key=lambda c: c[1], reverse=True)[:marker_count]
     print(f"  Top {marker_count} Farben in {slot_name}:")

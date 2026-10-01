@@ -10,7 +10,7 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
 from ...persistence import save_global_items, active_templates_dir, free_template_file
-from ...utils import (confirm, is_cancel, safe_input, sanitize_filename,
+from ...utils import (confirm, is_cancel, safe_input, sanitize_filename, unique_name,
                       clean_item_name, ok, err, info, hint)
 
 
@@ -133,20 +133,9 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
 
     renamed = 0
     for old_name, template in targets:
-        tpl_path = active_templates_dir(state) / template
-        if not tpl_path.exists():
-            print(f"    {old_name}: Template fehlt — übersprungen.")
+        img = _open_template_copy(state, old_name, template, Image)
+        if img is None:
             continue
-        # Als Kopie lesen und die Datei sofort schliessen: `Image.open()` liest
-        # träge und hält die Datei offen — unter Windows scheiterte das
-        # Umbenennen ein paar Zeilen weiter dann mit WinError 32.
-        try:
-            with Image.open(tpl_path) as opened:
-                img = opened.copy()
-        except (OSError, ValueError):
-            print(f"    {old_name}: Template nicht lesbar — übersprungen.")
-            continue
-
         suggestion = suggest_item_name(
             img,
             provider=state.config.llm_provider,
@@ -160,20 +149,32 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
         if not base:
             print(f"    {old_name}: kein Name vom LLM — bleibt.")
             continue
-
-        # Eindeutigen Namen sicherstellen
+        # Eindeutig — wobei der eigene, alte Name nicht als belegt zählt.
         with state.lock:
-            new_name = base
-            counter = 1
-            while new_name in state.global_items and new_name != old_name:
-                counter += 1
-                new_name = f"{base} {counter}"
-        if new_name == old_name:
-            continue
-        if _apply_item_rename(state, old_name, new_name):
+            new_name = unique_name(base, set(state.global_items) - {old_name})
+        if new_name != old_name and _apply_item_rename(state, old_name, new_name):
             print(f"    + '{old_name}' → '{new_name}'")
             renamed += 1
     return renamed
+
+
+def _open_template_copy(state: AutoClickerState, item_name: str, template: str, image_module):
+    """Die Vorlage als Kopie im Speicher — oder None (fehlt/unlesbar, gesagt).
+
+    Als Kopie gelesen und die Datei sofort geschlossen: `Image.open()` liest
+    träge und hält die Datei offen — unter Windows scheiterte das Umbenennen
+    danach mit WinError 32.
+    """
+    tpl_path = active_templates_dir(state) / template
+    if not tpl_path.exists():
+        print(f"    {item_name}: Template fehlt — übersprungen.")
+        return None
+    try:
+        with image_module.open(tpl_path) as opened:
+            return opened.copy()
+    except (OSError, ValueError):
+        print(f"    {item_name}: Template nicht lesbar — übersprungen.")
+        return None
 
 
 def handle_autoname_command(state: AutoClickerState) -> None:
@@ -283,52 +284,15 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
 
 def _capture_template_for_item(state: AutoClickerState, item) -> None:
     """Capture-Variante: Screenshot von Slot oder freier Region als Template speichern."""
-    with state.lock:
-        slot_list = list(state.global_slots.values())
-
-    region = None
-    if slot_list:
-        print("\n  Screenshot von:")
-        print("    0. Freie Region wählen")
-        for i, slot in enumerate(slot_list):
-            print(f"    {i+1}. {slot.name}")
-        try:
-            slot_choice = safe_input("  Auswahl: ").strip()
-            if slot_choice == "0":
-                region = select_region()
-            else:
-                slot_idx = int(slot_choice) - 1
-                if 0 <= slot_idx < len(slot_list):
-                    region = slot_list[slot_idx].scan_region
-                else:
-                    print("  -> Ungültiger Slot!")
-                    return
-        except ValueError:
-            region = select_region()
-    else:
-        region = select_region()
-
+    region = _ask_capture_region(state)
     if not region:
         return
-
     img = take_screenshot(region)
     if img is None:
         print("  -> Screenshot fehlgeschlagen!")
         return
 
-    from ...imaging import template_size
-    matching = [name for name in item.template_names()
-                if template_size(name, active_templates_dir(state)) == tuple(img.size)]
-    if matching:
-        # Dieselbe Slot-Groesse wird bewusst aktualisiert — die Datei gehoert
-        # diesem Item.
-        template_file = matching[0]
-    elif item.template_names():
-        width, height = img.size
-        template_file = free_template_file(active_templates_dir(state),
-                                           f"{item.name}_{width}x{height}")
-    else:
-        template_file = free_template_file(active_templates_dir(state), item.name)
+    template_file = _template_file_for(state, item, img.size)
     template_path = active_templates_dir(state) / template_file
     template_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(template_path)
@@ -337,15 +301,66 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
     elif template_file != item.template and template_file not in item.template_variants:
         item.template_variants.append(template_file)
 
-    conf_input = safe_input(f"  Min. Konfidenz (Enter={item.min_confidence:.0%}): ").strip()
-    if conf_input:
-        try:
-            conf = float(conf_input.replace("%", "")) / 100
-            item.min_confidence = max(0.1, min(1.0, conf))
-        except ValueError:
-            pass
-
+    _ask_confidence_percent(item, f"  Min. Konfidenz (Enter={item.min_confidence:.0%}): ")
     print(f"  + Vorlage für {img.size[0]}x{img.size[1]} gespeichert: {template_file}")
+
+
+def _ask_capture_region(state: AutoClickerState):
+    """Woher das Bild kommt: ein Slot oder eine freie Region. None = nichts (ggf. gesagt).
+
+    Ohne Slots und bei einer Eingabe, die keine Zahl ist, wird direkt eine
+    Region gewählt; eine Slot-Nummer ausserhalb wird gesagt.
+    """
+    with state.lock:
+        slot_list = list(state.global_slots.values())
+    if not slot_list:
+        return select_region()
+
+    print("\n  Screenshot von:")
+    print("    0. Freie Region wählen")
+    for i, slot in enumerate(slot_list):
+        print(f"    {i+1}. {slot.name}")
+    slot_choice = safe_input("  Auswahl: ").strip()
+    if slot_choice == "0":
+        return select_region()
+    try:
+        slot_idx = int(slot_choice) - 1
+    except ValueError:
+        return select_region()
+    if 0 <= slot_idx < len(slot_list):
+        return slot_list[slot_idx].scan_region
+    print("  -> Ungültiger Slot!")
+    return None
+
+
+def _template_file_for(state: AutoClickerState, item, size: tuple) -> str:
+    """Welche Datei das neue Bild wird.
+
+    Dieselbe Slot-Groesse wird bewusst aktualisiert — die Datei gehoert diesem
+    Item. Eine andere Groesse wird eine Variante `<Name>_<B>x<H>`, das erste Bild
+    heisst wie das Item.
+    """
+    from ...imaging import template_size
+    folder = active_templates_dir(state)
+    matching = [name for name in item.template_names()
+                if template_size(name, folder) == tuple(size)]
+    if matching:
+        return matching[0]
+    if item.template_names():
+        return free_template_file(folder, f"{item.name}_{size[0]}x{size[1]}")
+    return free_template_file(folder, item.name)
+
+
+def _ask_confidence_percent(item, prompt: str) -> None:
+    """Konfidenz in Prozent (ein '%' darf dabei sein); leer oder unlesbar = bleibt."""
+    conf_input = safe_input(prompt).strip()
+    if not conf_input:
+        return
+    try:
+        conf = float(conf_input.replace("%", "")) / 100
+    except ValueError:
+        return
+    item.min_confidence = max(0.1, min(1.0, conf))
 
 
 def _assign_template_to_item(item, template_input: str, templates: list) -> None:
@@ -362,12 +377,6 @@ def _assign_template_to_item(item, template_input: str, templates: list) -> None
             template_input += ".png"
         item.template = template_input
 
-    conf_input = safe_input(f"  Min. Konfidenz (aktuell {item.min_confidence:.0%}, Enter=behalten): ").strip()
-    if conf_input:
-        try:
-            conf = float(conf_input.replace("%", "")) / 100
-            item.min_confidence = max(0.1, min(1.0, conf))
-        except ValueError:
-            pass
-
+    _ask_confidence_percent(
+        item, f"  Min. Konfidenz (aktuell {item.min_confidence:.0%}, Enter=behalten): ")
     print(f"  + Template gesetzt: {item.template} (>={item.min_confidence:.0%})")
