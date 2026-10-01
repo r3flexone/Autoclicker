@@ -16,8 +16,17 @@ Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
 am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
 
 Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
-`item_editor/` (Lernen, Autoscan, Befehle), `slot_editor.py`,
-`import_export_editor.py`, `sequence_editor/steps.py`. Der Weg dorthin ist immer
+`item_editor/` (Lernen, Autoscan, Befehle), in `slot_editor.py` die
+Unter-Editoren (`create_slot`, `edit_slot`, `slot_auto_detect`, `slot_repair`),
+`import_export_editor.py`, `sequence_editor/steps.py`.
+
+**Erledigt: die Befehlsschleife des Slot-Editors** (`run_global_slot_editor`,
+Komplexität 44, `tests/contract/slot_editor.py` mit 26 Prüfungen vorher). Der
+Snapshot für `cancel` lebt in `_SlotSession` — der Teil, der beim Zerlegen am
+leichtesten verloren geht: `repair` schreibt sofort und zieht den Snapshot
+nach (`refresh`), damit `cancel` keine halbe Reparatur zurückdreht. Die
+Zuordnung Eingabe → Befehl ist eine Tabelle (`_SLOT_EXACT`, `_SLOT_PREFIXED`),
+ganze Befehle zuerst. Der Weg dorthin ist immer
 derselbe — erst in Stufen zerlegen, dann mit einer Tastenfolge füttern; die
 Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an.
 

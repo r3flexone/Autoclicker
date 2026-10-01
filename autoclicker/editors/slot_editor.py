@@ -23,8 +23,18 @@ from .scan_services import detect_slots_in_image
 
 
 
+_SLOT_KNOWN = ["auto", "add", "edit", "del", "show", "save", "load", "preset",
+               "help", "done", "cancel"]
+
+
 def run_global_slot_editor(state: AutoClickerState) -> None:
-    """Interaktiver Editor für die Slots des gewählten Item-Scans."""
+    """Interaktiver Editor für die Slots des gewählten Item-Scans.
+
+    Eine Befehlsschleife wie der Loop-Phasen-Editor: `_slot_editor_step()` liest
+    eine Eingabe, `_slot_command()` sagt, wer zuständig ist, jeder Befehl ist
+    eine `_slot_*`-Funktion. Was über die Befehle hinweg gilt — der Snapshot
+    für `cancel` —, trägt `_SlotSession`.
+    """
     print(header("SLOT-EDITOR (gewählter Item-Scan)"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Slots')}")
 
@@ -33,199 +43,255 @@ def run_global_slot_editor(state: AutoClickerState) -> None:
         print("         Installieren mit: pip install pillow")
         return
 
-    # Transaktional wie der Item-Editor: Snapshot am Start, Änderungen passieren
-    # in-memory, gespeichert wird erst bei 'done' — 'cancel' stellt den
-    # Originalzustand wieder her (inkl. zwischenzeitlichem Preset-Laden).
-    with state.lock:
-        slots_backup = copy.deepcopy(state.global_slots)
-
-    # Aktuelle Slots anzeigen
-    with state.lock:
-        current_slots = list(state.global_slots.items())
-
-    if current_slots:
-        print(f"\nAktuelle Slots ({len(current_slots)}):")
-        for i, (name, slot) in enumerate(current_slots):
-            print(f"  {i+1}. {slot}")
-    else:
-        print("\n  (Keine Slots vorhanden)")
-
-    # Presets anzeigen
-    presets = list_slot_presets()
-    if presets:
-        print(f"\nVerfügbare Presets ({len(presets)}):")
-        for name, path, count in presets:
-            print(f"  - {name} ({count} Slots)")
-
-    def _print_slot_help():
-        print("\n" + "-" * 60)
-        print("Befehle:")
-        print("  auto           - AUTOMATISCHE Slot-Erkennung (fragt: Items gleich mitlernen?)")
-        print("  repair         - Slots NEU VERMESSEN (Namen bleiben, nur Koordinaten neu)")
-        print("  add            - Neuen Slot hinzufügen")
-        print("  edit <Nr>      - Slot bearbeiten")
-        print("  del <Nr>       - Slot löschen")
-        print("  del all        - ALLE Slots löschen")
-        print("  show / s       - Alle Slots anzeigen")
-        print("  save <Name>    - Als Preset speichern")
-        print("  load <Name>    - Preset laden")
-        print("  preset del <N> - Preset löschen")
-        print(f"  help / ? | done / d | cancel / {cancel_hint()}")
-        print("-" * 60)
-
+    session = _SlotSession(state)
+    _print_slot_overview(state)
     _print_slot_help()
 
     while True:
         try:
-            with state.lock:
-                slot_count = len(state.global_slots)
-            prompt = f"[SLOTS: {slot_count}]"
-            user_input = safe_input(f"{prompt} > ").strip()
-            cmd = user_input.lower()
-
-            if cmd in ("done", "d"):
-                if not save_global_slots(state):
-                    print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
-                    continue
-                print(ok("Slot-Editor beendet."))
+            if _slot_editor_step(state, session):
                 return
-            elif is_cancel(cmd):
-                with state.lock:
-                    state.global_slots = slots_backup
-                save_global_slots(state)
-                print(col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
-                return
-            elif cmd == "":
-                continue
-            elif cmd in ("help", "?"):
-                _print_slot_help()
-                continue
-            elif cmd in ("show", "s"):
-                with state.lock:
-                    if state.global_slots:
-                        print(f"\nSlots ({len(state.global_slots)}):")
-                        for i, (name, slot) in enumerate(state.global_slots.items()):
-                            print(f"  {i+1}. {slot}")
-                    else:
-                        print("  (Keine Slots)")
-                continue
-
-            elif cmd == "auto":
-                slot_auto_detect(state)  # gespeichert wird bei 'done'
-                continue
-
-            elif cmd in ("repair", "reparieren", "fix"):
-                # Anders als 'auto' schreibt die Reparatur sofort — und sie fasst
-                # optional Punkte und Sequenzdateien mit an, die 'cancel' gar nicht
-                # zuruecknehmen koennte. Damit 'cancel' nicht die halbe Aenderung
-                # rueckgaengig macht, wird der Snapshot nachgezogen.
-                if slot_repair(state):
-                    with state.lock:
-                        slots_backup = copy.deepcopy(state.global_slots)
-                    print(f"  {hint('Bereits gespeichert — cancel nimmt das nicht zurueck.')}")
-                continue
-
-            elif cmd == "add":
-                slot = create_slot(state)
-                if slot:
-                    with state.lock:
-                        state.global_slots[slot.name] = slot
-                    print(f"  + Slot '{slot.name}' hinzugefügt")
-                continue
-
-            elif cmd.startswith("edit "):
-                try:
-                    edit_num = int(cmd[5:])
-                except ValueError:
-                    print("  -> Format: edit <Nr>")
-                    continue
-                # Unter Lock nur Slot/Namen auflösen — edit_slot blockiert auf
-                # Input und läuft daher AUSSERHALB des Locks.
-                with state.lock:
-                    slot_list = list(state.global_slots.items())
-                    valid = 1 <= edit_num <= len(slot_list)
-                    if valid:
-                        name, slot = slot_list[edit_num - 1]
-                if not valid:
-                    print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
-                    continue
-                new_slot = edit_slot(state, slot)
-                if new_slot:
-                    with state.lock:
-                        # Falls Name geändert wurde
-                        if new_slot.name != name:
-                            del state.global_slots[name]
-                        state.global_slots[new_slot.name] = new_slot
-                    print(f"  + Slot '{new_slot.name}' aktualisiert")
-                continue
-
-            elif cmd == "del all":
-                with state.lock:
-                    if not state.global_slots:
-                        print("  -> Keine Slots vorhanden!")
-                        continue
-                    count = len(state.global_slots)
-                if confirm(f"  {count} Slot(s) wirklich löschen?"):
-                    with state.lock:
-                        state.global_slots.clear()
-                    print(f"  + {count} Slot(s) gelöscht!")
-                else:
-                    print("  -> Abgebrochen")
-                continue
-
-            elif cmd.startswith("del "):
-                try:
-                    del_num = int(cmd[4:])
-                except ValueError:
-                    print("  -> Format: del <Nr>")
-                    continue
-                with state.lock:
-                    slot_list = list(state.global_slots.keys())
-                    valid = 1 <= del_num <= len(slot_list)
-                    if valid:
-                        name = slot_list[del_num - 1]
-                        del state.global_slots[name]
-                if not valid:
-                    print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
-                    continue
-                print(f"  + Slot '{name}' gelöscht")
-                continue
-
-            elif cmd.startswith("save "):
-                preset_name = user_input[5:].strip()
-                if preset_name:
-                    save_slot_preset(state, preset_name)
-                else:
-                    print("  -> Format: save <Name>")
-                continue
-
-            elif cmd.startswith("load "):
-                preset_name = user_input[5:].strip()
-                if preset_name:
-                    load_slot_preset(state, preset_name)
-                else:
-                    print("  -> Format: load <Name>")
-                continue
-
-            elif cmd.startswith("preset del "):
-                preset_name = user_input[11:].strip()
-                if preset_name:
-                    delete_slot_preset(preset_name)
-                else:
-                    print("  -> Format: preset del <Name>")
-                continue
-
-            else:
-                _known = ["auto", "add", "edit", "del", "show", "save", "load", "preset", "help", "done", "cancel"]
-                suggestion = suggest_command(cmd, _known)
-                print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
-
         except (KeyboardInterrupt, EOFError):
-            with state.lock:
-                state.global_slots = slots_backup
-            save_global_slots(state)
-            print("\n" + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
+            session.discard(state, "\n")
             return
+
+
+class _SlotSession:
+    """Der Stand, den `cancel` wiederherstellt.
+
+    Transaktional wie der Item-Editor: Snapshot am Start, Änderungen passieren
+    in-memory, gespeichert wird erst bei 'done' — 'cancel' stellt den
+    Originalzustand wieder her (inkl. zwischenzeitlichem Preset-Laden).
+    """
+
+    def __init__(self, state: AutoClickerState) -> None:
+        self.backup = None
+        self.refresh(state)
+
+    def refresh(self, state: AutoClickerState) -> None:
+        with state.lock:
+            self.backup = copy.deepcopy(state.global_slots)
+
+    def discard(self, state: AutoClickerState, prefix: str = "") -> None:
+        with state.lock:
+            state.global_slots = self.backup
+        save_global_slots(state)
+        print(prefix + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
+
+
+def _slot_editor_step(state: AutoClickerState, session: _SlotSession) -> bool:
+    """Eine Eingabe des Slot-Editors. True = der Editor ist beendet."""
+    with state.lock:
+        slot_count = len(state.global_slots)
+    user_input = safe_input(f"[SLOTS: {slot_count}] > ").strip()
+    cmd = user_input.lower()
+
+    if cmd in ("done", "d"):
+        if not save_global_slots(state):
+            print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
+            return False
+        print(ok("Slot-Editor beendet."))
+        return True
+    if is_cancel(cmd):
+        session.discard(state)
+        return True
+    if not cmd:
+        return False
+    found = _slot_command(cmd, user_input)
+    if found is None:
+        suggestion = suggest_command(cmd, _SLOT_KNOWN)
+        print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
+        return False
+    handler, argument = found
+    handler(state, session, argument)
+    return False
+
+
+def _slot_command(cmd: str, user_input: str):
+    """Wer für eine Eingabe zuständig ist, samt Argument — oder None.
+
+    Ganze Befehle zuerst (`del all` gewinnt so vor `del <Nr>`), dann die mit
+    Argument. Befehle werden klein verglichen; Preset-Namen behalten die
+    getippte Schreibweise.
+    """
+    handler = _SLOT_EXACT.get(cmd)
+    if handler is not None:
+        return handler, ""
+    for prefix, handler, keeps_case in _SLOT_PREFIXED:
+        if cmd.startswith(prefix):
+            if keeps_case:
+                return handler, user_input[len(prefix):].strip()
+            return handler, cmd[len(prefix):]
+    return None
+
+
+def _print_slot_overview(state: AutoClickerState) -> None:
+    with state.lock:
+        current_slots = list(state.global_slots.values())
+    if current_slots:
+        print(f"\nAktuelle Slots ({len(current_slots)}):")
+        for i, slot in enumerate(current_slots):
+            print(f"  {i+1}. {slot}")
+    else:
+        print("\n  (Keine Slots vorhanden)")
+
+    presets = list_slot_presets()
+    if presets:
+        print(f"\nVerfügbare Presets ({len(presets)}):")
+        for name, _path, count in presets:
+            print(f"  - {name} ({count} Slots)")
+
+
+def _print_slot_help() -> None:
+    print("\n" + "-" * 60)
+    print("Befehle:")
+    print("  auto           - AUTOMATISCHE Slot-Erkennung (fragt: Items gleich mitlernen?)")
+    print("  repair         - Slots NEU VERMESSEN (Namen bleiben, nur Koordinaten neu)")
+    print("  add            - Neuen Slot hinzufügen")
+    print("  edit <Nr>      - Slot bearbeiten")
+    print("  del <Nr>       - Slot löschen")
+    print("  del all        - ALLE Slots löschen")
+    print("  show / s       - Alle Slots anzeigen")
+    print("  save <Name>    - Als Preset speichern")
+    print("  load <Name>    - Preset laden")
+    print("  preset del <N> - Preset löschen")
+    print(f"  help / ? | done / d | cancel / {cancel_hint()}")
+    print("-" * 60)
+
+
+def _slot_number(argument: str, usage: str):
+    """Die getippte Nummer — oder None, und das Format wird gesagt."""
+    try:
+        return int(argument)
+    except ValueError:
+        print(f"  -> Format: {usage}")
+        return None
+
+
+def _slot_help(state, session, argument) -> None:
+    _print_slot_help()
+
+
+def _slot_show(state, session, argument) -> None:
+    with state.lock:
+        if not state.global_slots:
+            print("  (Keine Slots)")
+            return
+        print(f"\nSlots ({len(state.global_slots)}):")
+        for i, slot in enumerate(state.global_slots.values()):
+            print(f"  {i+1}. {slot}")
+
+
+def _slot_auto(state, session, argument) -> None:
+    slot_auto_detect(state)  # gespeichert wird bei 'done'
+
+
+def _slot_repair_command(state, session, argument) -> None:
+    # Anders als 'auto' schreibt die Reparatur sofort — und sie fasst optional
+    # Punkte und Sequenzdateien mit an, die 'cancel' gar nicht zuruecknehmen
+    # koennte. Damit 'cancel' nicht die halbe Aenderung rueckgaengig macht, wird
+    # der Snapshot nachgezogen.
+    if slot_repair(state):
+        session.refresh(state)
+        print(f"  {hint('Bereits gespeichert — cancel nimmt das nicht zurueck.')}")
+
+
+def _slot_add(state, session, argument) -> None:
+    slot = create_slot(state)
+    if slot:
+        with state.lock:
+            state.global_slots[slot.name] = slot
+        print(f"  + Slot '{slot.name}' hinzugefügt")
+
+
+def _slot_edit(state, session, argument) -> None:
+    number = _slot_number(argument, "edit <Nr>")
+    if number is None:
+        return
+    # Unter Lock nur Slot/Namen auflösen — edit_slot blockiert auf Input und
+    # läuft daher AUSSERHALB des Locks.
+    with state.lock:
+        slot_list = list(state.global_slots.items())
+    if not 1 <= number <= len(slot_list):
+        print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
+        return
+    name, slot = slot_list[number - 1]
+    new_slot = edit_slot(state, slot)
+    if new_slot:
+        with state.lock:
+            if new_slot.name != name:      # umbenannt: alter Schlüssel weg
+                del state.global_slots[name]
+            state.global_slots[new_slot.name] = new_slot
+        print(f"  + Slot '{new_slot.name}' aktualisiert")
+
+
+def _slot_delete_all(state, session, argument) -> None:
+    with state.lock:
+        count = len(state.global_slots)
+    if not count:
+        print("  -> Keine Slots vorhanden!")
+        return
+    if confirm(f"  {count} Slot(s) wirklich löschen?"):
+        with state.lock:
+            state.global_slots.clear()
+        print(f"  + {count} Slot(s) gelöscht!")
+    else:
+        print("  -> Abgebrochen")
+
+
+def _slot_delete_one(state, session, argument) -> None:
+    number = _slot_number(argument, "del <Nr>")
+    if number is None:
+        return
+    with state.lock:
+        slot_names = list(state.global_slots.keys())
+        name = (slot_names[number - 1] if 1 <= number <= len(slot_names) else None)
+        if name is not None:
+            del state.global_slots[name]
+    if name is None:
+        print(f"  -> Ungültig! Verfügbar: 1-{len(slot_names)}")
+        return
+    print(f"  + Slot '{name}' gelöscht")
+
+
+def _slot_preset_save(state, session, preset_name) -> None:
+    if preset_name:
+        save_slot_preset(state, preset_name)
+    else:
+        print("  -> Format: save <Name>")
+
+
+def _slot_preset_load(state, session, preset_name) -> None:
+    if preset_name:
+        load_slot_preset(state, preset_name)
+    else:
+        print("  -> Format: load <Name>")
+
+
+def _slot_preset_delete(state, session, preset_name) -> None:
+    if preset_name:
+        delete_slot_preset(preset_name)
+    else:
+        print("  -> Format: preset del <Name>")
+
+
+_SLOT_EXACT = {
+    "help": _slot_help, "?": _slot_help,
+    "show": _slot_show, "s": _slot_show,
+    "auto": _slot_auto,
+    "repair": _slot_repair_command, "reparieren": _slot_repair_command,
+    "fix": _slot_repair_command,
+    "add": _slot_add,
+    "del all": _slot_delete_all,
+}
+# (Präfix, Befehl, Argument in getippter Schreibweise?)
+_SLOT_PREFIXED = [
+    ("edit ", _slot_edit, False),
+    ("del ", _slot_delete_one, False),
+    ("save ", _slot_preset_save, True),
+    ("load ", _slot_preset_load, True),
+    ("preset del ", _slot_preset_delete, True),
+]
 
 
 def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
