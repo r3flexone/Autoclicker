@@ -196,16 +196,17 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
             skipped_count += 1
             continue
 
-        # Gegen bestehende Item-Templates vergleichen (Duplikat-Prüfung)
-        matched_item = _find_matching_existing_item(template_img, existing_templates, min_confidence)
+        # Gegen bestehende Item-Templates vergleichen (Duplikat-Prüfung).
+        # Der Vorlagenordner MUSS mitgegeben werden — in BEIDE Prüfungen: ohne
+        # ihn faellt `_template_path()` auf den globalen `items/templates/`
+        # zurueck, den es seit dem Umzug auf Besitzeinheiten nicht mehr gibt.
+        # Hier fehlte er bei der Suche selbst: sie fand nie ein Duplikat, und
+        # ein zweiter `autoscan` legte jedes Item ein zweites Mal an.
+        matched_item = _find_matching_existing_item(template_img, existing_templates,
+                                                    min_confidence, active_templates_dir(state))
         if matched_item:
             with state.lock:
                 item = state.global_items.get(matched_item)
-            # Der Vorlagenordner MUSS mitgegeben werden: ohne ihn faellt
-            # `_template_path()` auf den globalen `items/templates/` zurueck, den
-            # es seit dem Umzug auf Besitzeinheiten nicht mehr gibt. Die Pruefung
-            # fand dann nie eine passende Vorlage und legte bei jedem Lauf eine
-            # weitere Variante an - fuer ein Item, das laengst eine hatte.
             if item is not None and not _item_has_compatible_template(
                     item, template_img, active_templates_dir(state)):
                 width, height = template_img.size

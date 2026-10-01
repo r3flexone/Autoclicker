@@ -137,8 +137,12 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
         if not tpl_path.exists():
             print(f"    {old_name}: Template fehlt — übersprungen.")
             continue
+        # Als Kopie lesen und die Datei sofort schliessen: `Image.open()` liest
+        # träge und hält die Datei offen — unter Windows scheiterte das
+        # Umbenennen ein paar Zeilen weiter dann mit WinError 32.
         try:
-            img = Image.open(tpl_path)
+            with Image.open(tpl_path) as opened:
+                img = opened.copy()
         except (OSError, ValueError):
             print(f"    {old_name}: Template nicht lesbar — übersprungen.")
             continue

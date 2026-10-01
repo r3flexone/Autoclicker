@@ -6625,6 +6625,7 @@ import tests.contract.loop_phase_editor    # noqa: F401,E402
 import tests.contract.detection_editors    # noqa: F401,E402
 import tests.contract.slot_editor          # noqa: F401,E402
 import tests.contract.slot_sub_editors     # noqa: F401,E402
+import tests.contract.item_editor          # noqa: F401,E402
 
 
 import shutil as _shD
