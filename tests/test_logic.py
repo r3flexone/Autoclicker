@@ -6452,16 +6452,32 @@ if _undok15:
 
 
 # --------------------------- Die Doku nennt nur Dateien, die es gibt
-section("CLAUDE.md zeigt auf Dateien, die es wirklich gibt")
+section("Die CLAUDE.md-Dateien zeigen auf Dateien, die es wirklich gibt")
 
 # **Eine Doku, die in die Irre fuehrt, ist schlimmer als keine** — und genau das
 # ist passiert: `tools/llm_bench.py` suchte das gemerkte Bild zuerst unter
 # `item_scans/bilder/`, weil CLAUDE.md es an zwei Stellen so schrieb. Der Code
 # legt es daneben ab (`sequences/<name>/bilder/`). Pfade mit Platzhaltern kann
 # kein Test pruefen, Dateinamen sehr wohl.
-_claude16 = (_root15 / "CLAUDE.md").read_text(encoding="utf-8")
+#
+# Gelesen werden ALLE CLAUDE.md-Dateien: die Wurzel ist nur noch der Kern, die
+# Begruendungen stehen in den Dateien der Unterordner.
+_claude_files16 = sorted(p for p in _root15.rglob("CLAUDE.md")
+                         if not {".git", ".venv", "node_modules"} & set(p.parts))
+_claude16 = "\n".join(p.read_text(encoding="utf-8") for p in _claude_files16)
 _named16 = sorted(set(_re15.findall(r"`([\w/\.]+\.py)`", _claude16)))
 check("der Test findet ueberhaupt Dateinamen", len(_named16) > 50)
+
+# Die Wurzel nennt in einer Tabelle, wo die Details stehen. Gegen die Dateien
+# gehalten, in beide Richtungen: eine Zeile ohne Datei schickt den Leser ins
+# Leere, eine Datei ohne Zeile findet niemand, der nicht zufaellig dort liest.
+_root_text16 = (_root15 / "CLAUDE.md").read_text(encoding="utf-8")
+_listed16 = set(_re15.findall(r"^\| `([\w/]+/CLAUDE\.md)` \|", _root_text16, _re15.M))
+_present16 = {p.relative_to(_root15).as_posix() for p in _claude_files16} - {"CLAUDE.md"}
+check("die Wurzel-CLAUDE.md nennt jede Unterdatei", _present16 - _listed16 == set())
+check("und jede genannte Unterdatei gibt es", _listed16 - _present16 == set())
+if _listed16 ^ _present16:
+    print("        Abweichung: " + ", ".join(sorted(_listed16 ^ _present16)))
 
 # Drei Dateien werden mit Absicht genannt, obwohl es sie nicht mehr gibt: die
 # Begruendung, WARUM etwas nicht mehr so gebaut ist, ist laut CLAUDE.md selbst
