@@ -17,9 +17,18 @@ am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
 
 Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
 `item_editor/` (Lernen, Autoscan, Befehle), `boss_scan_editor.py`,
-`icon_scan_editor.py`, `sequence_editor/loops.py`. Der Weg dorthin ist immer
-derselbe — erst in Stufen zerlegen, dann mit einer Tastenfolge füttern; die
-Zerlegung ist der eigentliche Gewinn, die Tests fallen danach fast von selbst an.
+`icon_scan_editor.py`. Der Weg dorthin ist immer derselbe — erst in Stufen
+zerlegen, dann mit einer Tastenfolge füttern; die Zerlegung ist der eigentliche
+Gewinn, die Tests fallen danach fast von selbst an.
+
+**Erledigt: `sequence_editor/loops.py`** — und zwar in umgekehrter
+Reihenfolge, die sich bewährt hat: **erst die Tastenfolgen, dann der Umbau.**
+`tests/contract/loop_phase_editor.py` hielt das Verhalten fest (41 Prüfungen,
+auf dem alten Code grün), danach wurde `edit_loop_phases()` zerlegt (Komplexität
+52 → unter 11): die Schleife liest nur noch und fragt `_command()`, wer
+zuständig ist; jeder Befehl ist eine eigene `_cmd_*`-Funktion. Ein Befehl, der
+dazukommt, ist eine Funktion und eine Zeile in `_command()` — nicht ein weiterer
+Zweig in einer Schleife, die schon 200 Zeilen hat.
 
 ## Editor-Konventionen (einheitliche Substanz)
 Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
