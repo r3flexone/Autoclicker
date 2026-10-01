@@ -294,112 +294,146 @@ _SLOT_PREFIXED = [
 ]
 
 
+_CREATE_CANCELLED = "  -> Slot-Erstellung abgebrochen"
+
+
 def create_slot(state: AutoClickerState) -> Optional[ItemSlot]:
-    """Erstellt einen neuen Slot interaktiv."""
-    # `len(...) + 1` stand hier und schlug nach dem ersten Loeschen einen Namen vor,
-    # den es schon gibt - dann fragte der Editor nach dem Ueberschreiben, obwohl man
-    # nur "der naechste, bitte" gemeint hat. `next_free_name()` fuellt Luecken
-    # und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect` weiter unten).
-    with state.lock:
-        proposal = next_free_name("Slot", state.global_slots)
+    """Erstellt einen neuen Slot interaktiv.
 
-    slot_name = safe_input(f"  Slot-Name (Enter = '{proposal}', 'cancel'): ").strip()
-    if is_cancel(slot_name):
-        print("  -> Slot-Erstellung abgebrochen")
+    Stufen: Name (`_ask_new_slot_name`) → Region → Farben zeigen → Hintergrund
+    (`_ask_slot_background`) → Klickstelle (`_ask_click_position`) → Screenshot
+    ablegen. Ein Abbruch in einer Stufe sagt es und gibt None zurück.
+    """
+    slot_name = _ask_new_slot_name(state)
+    if slot_name is None:
         return None
-    if not slot_name:
-        slot_name = proposal
 
-    # Duplikat-Check (Slots sind per Name indexiert — sonst still überschrieben)
-    with state.lock:
-        name_exists = slot_name in state.global_slots
-    if name_exists:
-        if not confirm(f"  '{slot_name}' existiert bereits. Überschreiben?"):
-            print("  -> Slot-Erstellung abgebrochen")
-            return None
-
-    # Scan-Region auswählen
     print("\n  Scan-Region definieren (Bereich wo das Item angezeigt wird):")
     print("  ('cancel' in Konsole = abbrechen)")
     region = select_region()
     if not region:
-        print("  -> Slot-Erstellung abgebrochen")
+        print(_CREATE_CANCELLED)
         return None
 
-    # Sofort Farben in dieser Region anzeigen
     print("\n  Analysiere Farben in diesem Bereich...")
     img = take_screenshot(region)
     if img:
-        color_counts = {}
-        pixels = img.load()
-        width, height = img.size
-        for x in range(width):
-            for y in range(height):
-                pixel = pixels[x, y][:3]
-                rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
-                color_counts[rounded] = color_counts.get(rounded, 0) + 1
-        marker_count = CONFIG.scan_marker_count
-        sorted_colors = sorted(color_counts.items(), key=lambda c: c[1], reverse=True)[:marker_count]
-        print(f"  Top {marker_count} Farben in {slot_name}:")
-        for i, (color, count) in enumerate(sorted_colors):
-            color_name = get_color_name(color)
-            print(f"    {i+1}. RGB{color} - {color_name} ({count} Pixel)")
+        _print_top_colors(img, slot_name)
 
-    # Slot-Hintergrundfarbe (wird bei Items ausgeschlossen)
-    slot_color = None
+    background = _ask_slot_background()
+    if background is _CANCELLED:
+        print(_CREATE_CANCELLED)
+        return None
+    click_pos = _ask_click_position(region)
+    if img:
+        _save_slot_screenshot(state, img, slot_name)
+    return ItemSlot(name=slot_name, scan_region=region, click_pos=click_pos,
+                    slot_color=background)
+
+
+# Abbruch ist hier nicht None: „keine Hintergrundfarbe" ist ein gültiges Ergebnis.
+_CANCELLED = object()
+
+
+def _ask_new_slot_name(state: AutoClickerState) -> Optional[str]:
+    """Der Name des neuen Slots — oder None (abgebrochen, gesagt).
+
+    `len(...) + 1` stand hier und schlug nach dem ersten Loeschen einen Namen
+    vor, den es schon gibt - dann fragte der Editor nach dem Ueberschreiben,
+    obwohl man nur "der naechste, bitte" gemeint hat. `next_free_name()` fuellt
+    Luecken und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect`).
+    """
+    with state.lock:
+        proposal = next_free_name("Slot", state.global_slots)
+    slot_name = safe_input(f"  Slot-Name (Enter = '{proposal}', 'cancel'): ").strip()
+    if is_cancel(slot_name):
+        print(_CREATE_CANCELLED)
+        return None
+    slot_name = slot_name or proposal
+
+    # Slots sind per Name indexiert — ein doppelter Name überschriebe still.
+    with state.lock:
+        name_exists = slot_name in state.global_slots
+    if name_exists and not confirm(f"  '{slot_name}' existiert bereits. Überschreiben?"):
+        print(_CREATE_CANCELLED)
+        return None
+    return slot_name
+
+
+def _print_top_colors(img, slot_name: str) -> None:
+    """Die häufigsten Farben der Region, auf 5er-Stufen gerundet."""
+    color_counts = {}
+    pixels = img.load()
+    width, height = img.size
+    for x in range(width):
+        for y in range(height):
+            pixel = pixels[x, y][:3]
+            rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
+            color_counts[rounded] = color_counts.get(rounded, 0) + 1
+    marker_count = CONFIG.scan_marker_count
+    sorted_colors = sorted(color_counts.items(), key=lambda c: c[1], reverse=True)[:marker_count]
+    print(f"  Top {marker_count} Farben in {slot_name}:")
+    for i, (color, count) in enumerate(sorted_colors):
+        print(f"    {i+1}. RGB{color} - {get_color_name(color)} ({count} Pixel)")
+
+
+def _ask_slot_background():
+    """Hintergrundfarbe des leeren Slots (wird bei Items ausgeschlossen).
+
+    Gibt die Farbe zurück, None (übersprungen bzw. unlesbar) oder `_CANCELLED`.
+    """
     print("\n  Hintergrundfarbe des leeren Slots markieren:")
     print("  (Diese Farbe wird bei Item-Erkennung ignoriert)")
     print("  Bewege Maus auf den Slot-Hintergrund, Enter (oder 'skip')...")
     bg_input = safe_input().strip().lower()
     if is_cancel(bg_input):
-        print("  -> Slot-Erstellung abgebrochen")
+        return _CANCELLED
+    if bg_input == "skip":
         return None
-    elif bg_input != "skip":
-        x, y = get_cursor_pos()
-        slot_color = get_pixel_color(x, y)
-        if slot_color:
-            color_name = get_color_name(slot_color)
-            print(f"  -> Hintergrundfarbe: RGB{slot_color} ({color_name})")
-        else:
-            print("  -> Farbe konnte nicht gelesen werden, überspringe...")
+    x, y = get_cursor_pos()
+    slot_color = get_pixel_color(x, y)
+    if slot_color:
+        print(f"  -> Hintergrundfarbe: RGB{slot_color} ({get_color_name(slot_color)})")
+    else:
+        print("  -> Farbe konnte nicht gelesen werden, überspringe...")
+    return slot_color
 
-    # Klickposition
+
+def _ask_click_position(region) -> tuple[int, int]:
+    """Wo geklickt wird: die Maus, oder mit 'center' die Mitte der Region."""
     print("\n  Klickposition definieren (wo geklickt wird wenn Item gefunden):")
     print("  Bewege Maus zur Klickposition, Enter (oder 'center' für Mitte)...")
-    click_input = safe_input().strip().lower()
-
-    if click_input == "center":
-        # Mitte der Region berechnen
+    if safe_input().strip().lower() == "center":
         x1, y1, x2, y2 = region
-        click_x = (x1 + x2) // 2
-        click_y = (y1 + y2) // 2
+        click_x, click_y = (x1 + x2) // 2, (y1 + y2) // 2
     else:
         click_x, click_y = get_cursor_pos()
-
     print(f"  -> Klickposition: {coord_context(click_x, click_y)}")
+    return click_x, click_y
 
-    # Optional: Screenshot speichern
-    if img:
-        try:
-            screenshots_dir = active_sequence_dir(state) / "bilder"
-            screenshots_dir.mkdir(parents=True, exist_ok=True)
-            safe_name = sanitize_filename(slot_name)
-            screenshot_path = screenshots_dir / f"{safe_name}.png"
-            img.save(screenshot_path)
-            print(f"  -> Screenshot gespeichert: {screenshot_path}")
-        except Exception as e:
-            print(f"  -> Screenshot speichern fehlgeschlagen: {e}")
 
-    return ItemSlot(
-        name=slot_name,
-        scan_region=region,
-        click_pos=(click_x, click_y),
-        slot_color=slot_color
-    )
+def _save_slot_screenshot(state: AutoClickerState, img, slot_name: str) -> None:
+    try:
+        screenshots_dir = active_sequence_dir(state) / "bilder"
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = screenshots_dir / f"{sanitize_filename(slot_name)}.png"
+        img.save(screenshot_path)
+        print(f"  -> Screenshot gespeichert: {screenshot_path}")
+    except Exception as e:
+        print(f"  -> Screenshot speichern fehlgeschlagen: {e}")
+
+
+_SLOT_EDIT_OPTIONS = ["Name", "Scan-Region", "Klickposition", "Hintergrundfarbe",
+                      "Ein-/ausschalten", "Fertig"]
+_SLOT_EDIT_DONE = 5
 
 
 def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
-    """Bearbeitet einen bestehenden Slot."""
+    """Bearbeitet einen bestehenden Slot — Feld für Feld, bis 'Fertig'.
+
+    Gearbeitet wird auf einer Kopie (`draft`); der übergebene Slot bleibt
+    unangetastet, bis der Aufrufer das Ergebnis übernimmt.
+    """
     print(f"\n  Bearbeite Slot: {slot.name}")
     print(f"    Region: {slot.scan_region}")
     print(f"    Klickpos: {slot.click_pos}")
@@ -407,126 +441,158 @@ def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
     if slot.slot_color:
         print(f"    Hintergrund: RGB{slot.slot_color}")
 
-    new_name = slot.name
-    new_region = slot.scan_region
-    new_click = slot.click_pos
-    new_color = slot.slot_color
-    new_enabled = slot.enabled
-
+    draft = ItemSlot(name=slot.name, scan_region=slot.scan_region, click_pos=slot.click_pos,
+                     slot_color=slot.slot_color, enabled=slot.enabled, id=slot.id)
     while True:
-        edit_options = ["Name", "Scan-Region", "Klickposition", "Hintergrundfarbe",
-                        "Ein-/ausschalten", "Fertig"]
-        choice = interactive_select(edit_options, title="\n  Was ändern?", allow_cancel=False)
+        choice = interactive_select(_SLOT_EDIT_OPTIONS, title="\n  Was ändern?",
+                                    allow_cancel=False)
+        if choice == _SLOT_EDIT_DONE:
+            return draft
+        handler = _SLOT_EDIT_FIELDS.get(choice)
+        if handler is not None:
+            handler(draft)
 
-        if choice == 5:  # Fertig
-            break
-        elif choice == 0:  # Name
-            name_input = safe_input(f"  Neuer Name (Enter = '{new_name}'): ").strip()
-            if name_input:
-                new_name = name_input
-                print(f"  -> Name geändert zu '{new_name}'")
-        elif choice == 1:  # Scan-Region
-            print("\n  Neue Scan-Region definieren...")
-            region = select_region()
-            if region:
-                new_region = region
-                print(f"  -> Region geändert zu {new_region}")
-        elif choice == 2:  # Klickposition
-            print("  Bewege Maus zur neuen Klickposition, Enter...")
-            safe_input()
-            new_click = get_cursor_pos()
-            print(f"  -> Klickposition geändert zu {new_click}")
-        elif choice == 3:  # Hintergrundfarbe
-            print("  Bewege Maus zum Slot-Hintergrund, Enter...")
-            safe_input()
-            x, y = get_cursor_pos()
-            color = get_pixel_color(x, y)
-            if color:
-                new_color = color
-                print(f"  -> Hintergrundfarbe geändert zu RGB{new_color}")
-        elif choice == 4:  # Ein-/ausschalten
-            new_enabled = not new_enabled
-            print(f"  -> Slot {'eingeschaltet' if new_enabled else 'ausgeschaltet'}")
 
-    return ItemSlot(
-        name=new_name,
-        scan_region=new_region,
-        click_pos=new_click,
-        slot_color=new_color,
-        enabled=new_enabled,
-        id=slot.id,
-    )
+def _edit_slot_name(draft: ItemSlot) -> None:
+    name_input = safe_input(f"  Neuer Name (Enter = '{draft.name}'): ").strip()
+    if name_input:
+        draft.name = name_input
+        print(f"  -> Name geändert zu '{draft.name}'")
+
+
+def _edit_slot_region(draft: ItemSlot) -> None:
+    print("\n  Neue Scan-Region definieren...")
+    region = select_region()
+    if region:
+        draft.scan_region = region
+        print(f"  -> Region geändert zu {draft.scan_region}")
+
+
+def _edit_slot_click(draft: ItemSlot) -> None:
+    print("  Bewege Maus zur neuen Klickposition, Enter...")
+    safe_input()
+    draft.click_pos = get_cursor_pos()
+    print(f"  -> Klickposition geändert zu {draft.click_pos}")
+
+
+def _edit_slot_color(draft: ItemSlot) -> None:
+    print("  Bewege Maus zum Slot-Hintergrund, Enter...")
+    safe_input()
+    x, y = get_cursor_pos()
+    color = get_pixel_color(x, y)
+    if color:
+        draft.slot_color = color
+        print(f"  -> Hintergrundfarbe geändert zu RGB{draft.slot_color}")
+
+
+def _edit_slot_toggle(draft: ItemSlot) -> None:
+    draft.enabled = not draft.enabled
+    print(f"  -> Slot {'eingeschaltet' if draft.enabled else 'ausgeschaltet'}")
+
+
+_SLOT_EDIT_FIELDS = {
+    0: _edit_slot_name,
+    1: _edit_slot_region,
+    2: _edit_slot_click,
+    3: _edit_slot_color,
+    4: _edit_slot_toggle,
+}
 
 
 def slot_auto_detect(state: AutoClickerState) -> bool:
-    """Automatische Slot-Erkennung mit OpenCV. Gibt True zurück wenn erfolgreich."""
+    """Automatische Slot-Erkennung mit OpenCV. Gibt True zurück wenn erfolgreich.
+
+    Stufen: Region → Screenshot → Slot-Farbe picken → erkennen
+    (`detect_slots_in_image`) → Slots anlegen (`_add_detected_slots`) →
+    optional Items aus demselben Bild lernen → Screenshot und Vorschau ablegen.
+    """
+    if not _image_packages_available():
+        return False
+
+    print(header("AUTOMATISCHE SLOT-ERKENNUNG", width=50))
+    print("\nMarkiere den Bereich mit den Slots:")
+    print("  1. Maus auf OBEN-LINKS, ENTER")
+    print("  2. Maus auf UNTEN-RECHTS, ENTER")
+    region = select_region()
+    if not region:
+        print("  -> Keine Region ausgewählt")
+        return False
+    print(f"\n  Region: {region}")
+    img = _delayed_screenshot(region)
+    if img is None:
+        return False
+    print(f"  Screenshot: {img.size[0]}x{img.size[1]}")
+
+    slot_color = _pick_slot_color()
+    if slot_color is None:
+        return False
+    print(f"  Farbe: RGB({slot_color[0]}, {slot_color[1]}, {slot_color[2]})")
+
+    detected_slots, img_bgr = detect_slots_in_image(
+        img, slot_color, state.config.scan_slot_hsv_tolerance, verbose=True)
+    if not detected_slots:
+        print(f"\n  {err('Keine Slots erkannt!')}")
+        print("  Versuche es mit einer anderen Farbe.")
+        return False
+    print(f"\n  {len(detected_slots)} Slots erkannt!")
+
+    offset = (region[0], region[1])
+    created_slots = _add_detected_slots(state, detected_slots, offset, tuple(slot_color))
+    print(f"\n  {ok(f'{len(created_slots)} Slots hinzugefügt!')}")
+
+    # Optional: Items direkt aus DEMSELBEN Screenshot lernen (Templates werden
+    # aus img geschnitten, kein zweiter Screenshot nötig → garantiert konsistent).
+    if created_slots and OPENCV_AVAILABLE:
+        if confirm("\n  Items gleich aus diesem Screenshot mitlernen?"):
+            from .item_editor.autoscan import item_autoscan_from_image
+            item_autoscan_from_image(state, created_slots, img, offset)
+
+    _save_detection_images(state, img, img_bgr, detected_slots, created_slots)
+    return True
+
+
+def _image_packages_available() -> bool:
+    """OpenCV und NumPy da? Sonst sagen, was fehlt."""
     if not OPENCV_AVAILABLE:
         print(f"  {err('OpenCV nicht installiert!')} pip install opencv-python")
         return False
     if not NUMPY_AVAILABLE:
         print(f"  {err('NumPy nicht installiert!')} pip install numpy")
         return False
+    return True
 
-    import cv2   # nur noch fuer die Vorschau-Grafik am Ende
 
-    print(header("AUTOMATISCHE SLOT-ERKENNUNG", width=50))
-    print("\nMarkiere den Bereich mit den Slots:")
-    print("  1. Maus auf OBEN-LINKS, ENTER")
-    print("  2. Maus auf UNTEN-RECHTS, ENTER")
-
-    region = select_region()
-    if not region:
-        print("  -> Keine Region ausgewählt")
-        return False
-
-    offset_x, offset_y = region[0], region[1]
-    print(f"\n  Region: {region}")
+def _delayed_screenshot(region):
+    """Zwei Sekunden Vorlauf (Maus aus dem Bild), dann die Region — oder None, gesagt."""
     print("  Mache Screenshot in 2 Sekunden...")
     time.sleep(2)
-
     img = take_screenshot(region)
     if img is None:
         print(f"  {err('Screenshot fehlgeschlagen!')}")
-        return False
+    return img
 
-    print(f"  Screenshot: {img.size[0]}x{img.size[1]}")
 
-    # Farbe für Slot-Erkennung scannen
+def _pick_slot_color():
+    """Farbe des Slot-Hintergrunds unter der Maus — oder None, gesagt."""
     print("\n  Bewege Maus auf den SLOT-HINTERGRUND...")
     safe_input("  ENTER wenn bereit...")
     mx, my = get_cursor_pos()
-
-    slot_color_rgb = get_pixel_color(mx, my)
-    if not slot_color_rgb:
+    color = get_pixel_color(mx, my)
+    if not color:
         print(f"  {err('Konnte Farbe nicht lesen!')}")
-        return False
+    return color
 
-    r, g, b = slot_color_rgb
-    print(f"  Farbe: RGB({r}, {g}, {b})")
 
-    detected_slots, img_bgr = detect_slots_in_image(
-        img, slot_color_rgb, state.config.scan_slot_hsv_tolerance, verbose=True)
-
-    if not detected_slots:
-        print(f"\n  {err('Keine Slots erkannt!')}")
-        print("  Versuche es mit einer anderen Farbe.")
-        return False
-
-    print(f"\n  {len(detected_slots)} Slots erkannt!")
-
-    slot_color = (r, g, b)
-
-    # Slots hinzufügen
+def _add_detected_slots(state: AutoClickerState, detected: list, offset: tuple[int, int],
+                        slot_color: tuple) -> list:
+    """Legt je erkanntem Rechteck einen Slot an — um den Einzug verkleinert."""
     inset = state.config.scan_slot_inset
-    added = 0
-    created_slots = []
-
-    for i, (x, y, w, h_box) in enumerate(detected_slots):
-        abs_x = x + offset_x + inset
-        abs_y = y + offset_y + inset
+    created = []
+    for x, y, w, h in detected:
+        abs_x = x + offset[0] + inset
+        abs_y = y + offset[1] + inset
         abs_w = w - (2 * inset)
-        abs_h = h_box - (2 * inset)
-
+        abs_h = h - (2 * inset)
         scan_region = (abs_x, abs_y, abs_x + abs_w, abs_y + abs_h)
         click_pos = (abs_x + abs_w // 2, abs_y + abs_h // 2)
 
@@ -536,27 +602,19 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         # Item-Lernpfad sichern das längst ab — hier fehlte es.
         with state.lock:
             slot_name = next_free_name("Slot", state.global_slots)
-            new_slot = ItemSlot(
-                name=slot_name,
-                scan_region=scan_region,
-                click_pos=click_pos,
-                slot_color=slot_color
-            )
+            new_slot = ItemSlot(name=slot_name, scan_region=scan_region,
+                                click_pos=click_pos, slot_color=slot_color)
             state.global_slots[slot_name] = new_slot
-        added += 1
-        created_slots.append(new_slot)
+        created.append(new_slot)
         print(f"    + {slot_name}: {scan_region}")
+    return created
 
-    print(f"\n  {ok(f'{added} Slots hinzugefügt!')}")
 
-    # Optional: Items direkt aus DEMSELBEN Screenshot lernen (Templates werden
-    # aus img geschnitten, kein zweiter Screenshot nötig → garantiert konsistent).
-    if created_slots and OPENCV_AVAILABLE:
-        if confirm("\n  Items gleich aus diesem Screenshot mitlernen?"):
-            from .item_editor.autoscan import item_autoscan_from_image
-            item_autoscan_from_image(state, created_slots, img, (offset_x, offset_y))
-
-    # Screenshots speichern
+def _save_detection_images(state: AutoClickerState, img, img_bgr, detected: list,
+                           created: list) -> None:
+    """Screenshot und Vorschau mit Rahmen, Einzug, Klickkreuz und Namen ablegen."""
+    import cv2   # nur fuer die Vorschau-Grafik
+    inset = state.config.scan_slot_inset
     try:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         screenshots_dir = active_sequence_dir(state) / "bilder"
@@ -566,38 +624,36 @@ def slot_auto_detect(state: AutoClickerState) -> bool:
         img.save(str(screenshot_path))
         print(f"  Screenshot: {screenshot_path}")
 
-        # Vorschau mit Markierungen
         preview_path = screenshots_dir / f"preview_{timestamp}.png"
         preview = img_bgr.copy()
-        for i, (dx, dy, dw, dh) in enumerate(detected_slots):
-            cv2.rectangle(preview, (dx, dy), (dx + dw, dy + dh), (0, 255, 0), 2)
-            cv2.rectangle(preview, (dx + inset, dy + inset),
-                          (dx + dw - inset, dy + dh - inset), (0, 255, 255), 1)
-
-            click_x = dx + dw // 2
-            click_y = dy + dh // 2
-            cross_size = 8
-            cv2.line(preview, (click_x - cross_size, click_y), (click_x + cross_size, click_y), (0, 0, 255), 2)
-            cv2.line(preview, (click_x, click_y - cross_size), (click_x, click_y + cross_size), (0, 0, 255), 2)
-
+        for i, rect in enumerate(detected):
             # Der tatsächlich vergebene Name, nicht die laufende Nummer: die beiden
             # gehen auseinander, sobald ein Name schon belegt war.
-            slot_num_text = created_slots[i].name if i < len(created_slots) else str(i + 1)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.6
-            thickness = 2
-            text_x = dx + 5
-            text_y = dy + 20
-            (text_w, text_h), _ = cv2.getTextSize(slot_num_text, font, font_scale, thickness)
-            cv2.rectangle(preview, (text_x - 2, text_y - text_h - 2),
-                          (text_x + text_w + 2, text_y + 2), (0, 0, 0), -1)
-            cv2.putText(preview, slot_num_text, (text_x, text_y), font, font_scale, (255, 255, 255), thickness)
+            label = created[i].name if i < len(created) else str(i + 1)
+            _draw_detected_slot(cv2, preview, rect, inset, label)
         cv2.imwrite(str(preview_path), preview)
         print(f"  Vorschau: {preview_path}")
     except (OSError, IOError, ValueError) as e:
         print(f"  {warn(f'Screenshots speichern: {e}')}")
 
-    return True
+
+def _draw_detected_slot(cv2, preview, rect, inset: int, label: str) -> None:
+    dx, dy, dw, dh = rect
+    cv2.rectangle(preview, (dx, dy), (dx + dw, dy + dh), (0, 255, 0), 2)
+    cv2.rectangle(preview, (dx + inset, dy + inset),
+                  (dx + dw - inset, dy + dh - inset), (0, 255, 255), 1)
+
+    click_x, click_y = dx + dw // 2, dy + dh // 2
+    cross = 8
+    cv2.line(preview, (click_x - cross, click_y), (click_x + cross, click_y), (0, 0, 255), 2)
+    cv2.line(preview, (click_x, click_y - cross), (click_x, click_y + cross), (0, 0, 255), 2)
+
+    font, font_scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+    text_x, text_y = dx + 5, dy + 20
+    (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, thickness)
+    cv2.rectangle(preview, (text_x - 2, text_y - text_h - 2),
+                  (text_x + text_w + 2, text_y + 2), (0, 0, 0), -1)
+    cv2.putText(preview, label, (text_x, text_y), font, font_scale, (255, 255, 255), thickness)
 
 
 # =============================================================================
@@ -678,7 +734,6 @@ def slot_repair(state: AutoClickerState) -> bool:
     if not OPENCV_AVAILABLE or not NUMPY_AVAILABLE:
         print(f"  {err('OpenCV/NumPy nicht installiert!')} pip install opencv-python numpy")
         return False
-
     with state.lock:
         old_slots = list(state.global_slots.values())
     if not old_slots:
@@ -691,52 +746,70 @@ def slot_repair(state: AutoClickerState) -> bool:
     print("\nMarkiere den Bereich mit den Slots (grosszuegig ist ok):")
     print("  1. Maus auf OBEN-LINKS, ENTER")
     print("  2. Maus auf UNTEN-RECHTS, ENTER")
-
     region = select_region()
     if not region:
         print(f"  {info('[ABBRUCH] Keine Region ausgewaehlt.')}")
         return False
 
-    # Die gespeicherte Slot-Farbe wiederverwenden — die haengt nicht am Bildschirm-
-    # Layout, und nochmal picken zu lassen waere eine Fehlerquelle ohne Gewinn.
-    colors = [s.slot_color for s in old_slots if s.slot_color]
-    if colors:
-        slot_color = max(set(colors), key=colors.count)
-        print(f"\n  Slot-Farbe aus dem Bestand: RGB{slot_color}")
-    else:
-        print("\n  Keine Farbe gespeichert — bitte einmalig picken.")
-        print("  Bewege Maus auf den SLOT-HINTERGRUND...")
-        safe_input("  ENTER wenn bereit...")
-        mx, my = get_cursor_pos()
-        slot_color = get_pixel_color(mx, my)
-        if not slot_color:
-            print(f"  {err('Konnte Farbe nicht lesen!')}")
-            return False
-
-    print("  Mache Screenshot in 2 Sekunden...")
-    time.sleep(2)
-    img = take_screenshot(region)
-    if img is None:
-        print(f"  {err('Screenshot fehlgeschlagen!')}")
+    slot_color = _repair_slot_color(old_slots)
+    if not slot_color:
         return False
-
+    img = _delayed_screenshot(region)
+    if img is None:
+        return False
     new_rects, _ = detect_slots_in_image(img, slot_color,
                                           state.config.scan_slot_hsv_tolerance)
     print(f"  {len(new_rects)} Slot(s) erkannt.")
 
-    inset = state.config.scan_slot_inset
     pairs, offset, messages = _check_assignment(
-        old_slots, new_rects, inset, (region[0], region[1]))
-
+        old_slots, new_rects, state.config.scan_slot_inset, (region[0], region[1]))
     if not pairs:
-        print()
-        for m in messages:
-            print(f"  {err(m)}")
-        print(f"  {info('Nichts geaendert.')}")
-        print(f"  {hint('Tipp: Bereich enger markieren, oder die Slots muessen alle')}")
-        print(f"  {hint('sichtbar und unverdeckt sein (kein Tooltip daruber).')}")
+        _print_repair_refused(messages)
+        return False
+    _print_repair_preview(pairs, offset)
+    if offset == (0, 0):
+        print(f"  {info('Die Slots sitzen schon richtig — nichts zu tun.')}")
+        return False
+    if not confirm("\n  Neue Koordinaten uebernehmen?", default=False):
+        print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
         return False
 
+    _apply_repair(state, pairs, slot_color)
+    _offer_offset_for_rest(state, offset)
+    return True
+
+
+def _repair_slot_color(old_slots: list):
+    """Die gespeicherte Slot-Farbe — oder einmal gepickt, None wenn unlesbar.
+
+    Wiederverwendet, weil sie nicht am Bildschirm-Layout haengt; nochmal picken
+    zu lassen waere eine Fehlerquelle ohne Gewinn.
+    """
+    colors = [s.slot_color for s in old_slots if s.slot_color]
+    if colors:
+        slot_color = max(set(colors), key=colors.count)
+        print(f"\n  Slot-Farbe aus dem Bestand: RGB{slot_color}")
+        return slot_color
+    print("\n  Keine Farbe gespeichert — bitte einmalig picken.")
+    print("  Bewege Maus auf den SLOT-HINTERGRUND...")
+    safe_input("  ENTER wenn bereit...")
+    mx, my = get_cursor_pos()
+    slot_color = get_pixel_color(mx, my)
+    if not slot_color:
+        print(f"  {err('Konnte Farbe nicht lesen!')}")
+    return slot_color
+
+
+def _print_repair_refused(messages: list) -> None:
+    print()
+    for m in messages:
+        print(f"  {err(m)}")
+    print(f"  {info('Nichts geaendert.')}")
+    print(f"  {hint('Tipp: Bereich enger markieren, oder die Slots muessen alle')}")
+    print(f"  {hint('sichtbar und unverdeckt sein (kein Tooltip daruber).')}")
+
+
+def _print_repair_preview(pairs: list, offset: tuple[int, int]) -> None:
     print()
     print(col("  VORSCHAU:", 'bold'))
     for slot, new in pairs[:12]:
@@ -746,14 +819,9 @@ def slot_repair(state: AutoClickerState) -> bool:
     print()
     print(f"  Versatz durchgaengig: {col(f'{offset[0]:+} X, {offset[1]:+} Y', 'yellow')}")
 
-    if offset == (0, 0):
-        print(f"  {info('Die Slots sitzen schon richtig — nichts zu tun.')}")
-        return False
 
-    if not confirm("\n  Neue Koordinaten uebernehmen?", default=False):
-        print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
-        return False
-
+def _apply_repair(state: AutoClickerState, pairs: list, slot_color) -> None:
+    """Sichern, die neuen Regionen übernehmen, speichern — und Scheitern sagen."""
     from ..import_export import backup_before_calibration
     backup = backup_before_calibration(state)
     if backup:
@@ -775,42 +843,44 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {err(f'{len(pairs)} Slot(s) neu vermessen, aber NICHT gespeichert')} "
               f"{hint('(done im Slot-Editor versucht es erneut)')}")
 
-    # Der hier gemessene Versatz ist pixelgenau — deutlich besser als eine
-    # Maus-Position. Deshalb anbieten, ihn gleich auf den Rest anzuwenden.
+
+def _offer_offset_for_rest(state: AutoClickerState, offset: tuple[int, int]) -> None:
+    """Den gemessenen Versatz auf Punkte, Scans und Sequenzen anbieten.
+
+    Er ist pixelgenau — deutlich besser als eine Maus-Position. Vorschau und
+    Warnung sind dieselben wie im Punkte-Menue: der Versatz stammt von EINEM
+    Bildschirm, und liegen Punkte auf einem anderen, stimmt er fuer die nicht.
+    """
     print()
     print(f"  {info('Dieser Versatz wurde gemessen, nicht mit der Maus gesetzt —')}")
     print(f"  {info('er ist genauer als eine Kalibrierung von Hand.')}")
-    if confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
-        from ..import_export import (transform_from_offset, calibrate_inventory,
-                                     calibration_preview)
-        from .import_export_editor import _outside_all_monitors
-        t = transform_from_offset((0, 0), offset)
+    if not confirm("  Denselben Versatz auf Punkte/Scans/Sequenzen anwenden?", default=False):
+        return
+    from ..import_export import (transform_from_offset, calibrate_inventory,
+                                 calibration_preview)
+    from .import_export_editor import _outside_all_monitors
+    t = transform_from_offset((0, 0), offset)
 
-        # Dieselbe Vorschau + Warnung wie im Punkte-Menue. Der Versatz ist zwar
-        # genauer gemessen, aber er stammt von EINEM Bildschirm: liegen Punkte auf
-        # einem anderen, stimmt er fuer die nicht. Gleiche Schreiboperation,
-        # gleiche Absicherung.
-        preview = calibration_preview(state, t)
-        print()
-        print(col("  VORSCHAU (Auszug):", 'bold'))
-        for label, old, new in preview[:8]:
-            print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
-        if len(preview) > 8:
-            print(f"    {info(f'... und {len(preview) - 8} weitere')}")
-        outside = _outside_all_monitors([n for _, _, n in preview])
-        if outside:
-            print(f"  {warn(f'{outside} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
-            print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")
-        if not confirm("  Wirklich uebernehmen?", default=False):
-            print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")
-            return True
+    preview = calibration_preview(state, t)
+    print()
+    print(col("  VORSCHAU (Auszug):", 'bold'))
+    for label, old, new in preview[:8]:
+        print(f"    {label:<32} ({old[0]:>5}, {old[1]:>5})  ->  ({new[0]:>5}, {new[1]:>5})")
+    if len(preview) > 8:
+        print(f"    {info(f'... und {len(preview) - 8} weitere')}")
+    outside = _outside_all_monitors([n for _, _, n in preview])
+    if outside:
+        print(f"  {warn(f'{outside} Ziel(e) laegen danach ausserhalb aller Monitore —')}")
+        print(f"  {info('die liegen vermutlich auf einem anderen Bildschirm als die Slots.')}")
+    if not confirm("  Wirklich uebernehmen?", default=False):
+        print(f"  {info('[ABBRUCH] Nur die Slots wurden geaendert.')}")
+        return
 
-        # with_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
-        # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
-        # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
-        number = calibrate_inventory(state, t, with_scans=True, with_sequences=True,
-                                  with_slots=False)
-        print(f"  {ok('Uebernommen:')} "
-              + ", ".join(f"{v} {k}" for k, v in number.items() if v))
-        print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")
-    return True
+    # with_slots=False: die Slots sind gerade exakt vermessen worden und duerfen
+    # kein zweites Mal wandern. Boss-/Icon-Scan-Regionen und die
+    # Item-Bestaetigungsklicks brauchen den Versatz dagegen sehr wohl.
+    number = calibrate_inventory(state, t, with_scans=True, with_sequences=True,
+                                 with_slots=False)
+    print(f"  {ok('Uebernommen:')} "
+          + ", ".join(f"{v} {k}" for k, v in number.items() if v))
+    print(f"  {info('Sequenzdateien geaendert — mit CTRL+ALT+L neu laden.')}")
