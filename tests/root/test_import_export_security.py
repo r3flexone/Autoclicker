@@ -63,12 +63,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         Path("secret.png").write_bytes(b"private")
         state = AutoClickerState()
 
-        ok, _ = export_bundle(
-            state, "bundle.zip", (0, 0), (10, 10),
-            include_points=False, include_sequences=False, include_slots=False,
-            include_item_scans=False, include_boss_scans=False,
-            include_icon_scans=False, include_config=False,
-        )
+        ok, _ = export_bundle(state, "bundle.zip", (0, 0), (10, 10), include_config=False)
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:
@@ -78,11 +73,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         _write_sequence("Alpha")
         _write_sequence("Beta")
         state = AutoClickerState()
-        ok, _ = export_bundle(
-            state, "bundle.zip", (0, 0), (10, 10), include_points=False,
-            include_slots=False, include_items=False, include_item_scans=False,
-            include_boss_scans=False, include_icon_scans=False, include_config=False,
-        )
+        ok, _ = export_bundle(state, "bundle.zip", (0, 0), (10, 10), include_config=False)
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:
@@ -105,12 +96,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         }), encoding="utf-8")
         state = AutoClickerState()
 
-        ok, _ = export_bundle(
-            state, "bundle.zip", (0, 0), (10, 10),
-            include_points=False, include_sequences=False, include_slots=False,
-            include_item_scans=False, include_boss_scans=False,
-            include_icon_scans=False, include_config=False,
-        )
+        ok, _ = export_bundle(state, "bundle.zip", (0, 0), (10, 10), include_config=False)
 
         self.assertTrue(ok)
         with zipfile.ZipFile("bundle.zip") as zf:

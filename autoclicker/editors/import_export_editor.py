@@ -199,13 +199,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     from ..import_export import export_bundle
     success, result = export_bundle(
         state, str(filepath), ref1, ref2,
-        include_points=include["sequences"],
         include_sequences=include["sequences"],
-        include_slots=include["sequences"],
-        include_items=include["sequences"],
-        include_item_scans=include["sequences"],
-        include_boss_scans=include["sequences"],
-        include_icon_scans=include["sequences"],
         include_config=include["config"],
         source_window=source_window,
     )

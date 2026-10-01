@@ -153,11 +153,7 @@ class BridgeShareMixin:
         from ...import_export import export_bundle
         success, result = export_bundle(
             self._inventory(), str(path), ref1, ref2,
-            include_points=parts["sequences"], include_sequences=parts["sequences"],
-            include_slots=parts["sequences"], include_items=parts["sequences"],
-            include_item_scans=parts["sequences"],
-            include_boss_scans=parts["sequences"],
-            include_icon_scans=parts["sequences"],
+            include_sequences=parts["sequences"],
             include_config=parts["config"], source_window=window)
         if not success:
             return self._share_report(f"Export fehlgeschlagen: {result}", "err")

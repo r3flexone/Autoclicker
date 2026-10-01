@@ -410,13 +410,17 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
 
 def export_bundle(state: 'AutoClickerState', filepath: str,
                   ref_point1: tuple[int, int], ref_point2: tuple[int, int],
-                  include_points: bool = True, include_sequences: bool = True,
-                  include_slots: bool = True, include_items: bool = True,
-                  include_item_scans: bool = True, include_boss_scans: bool = True,
-                  include_icon_scans: bool = True,
-                  include_config: bool = True,
+                  include_sequences: bool = True, include_config: bool = True,
                   source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
     """Exportiert Setup als ZIP-Archiv.
+
+    include_sequences: die Sequenzordner. Eine Sequenz ist samt Punkten, Scans,
+    Slots/Items, Vorlagen und Bildern eine Besitzeinheit — getrennt wird nicht.
+    Hier standen sieben Schalter (Punkte, Sequenzen, Slots, Items, drei
+    Scan-Arten) aus der Zeit der getrennten Bestände; die Funktion fasste sie
+    längst zu einem ODER zusammen, und weil jeder auf True stand, schaltete ein
+    vergessener den Export wieder ein. Drei Tests taten genau das, ohne es zu
+    sagen.
 
     source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
     Manifest abgelegt, damit der Import die Skalierung automatisch aus der
@@ -425,12 +429,8 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
     Returns:
         (success, message)
     """
-    # Daten werden nicht mehr nach Typ auseinandergerissen. Eine Sequenz ist
-    # samt Punkten, Scans, Slots/Items, Vorlagen und Bildern eine Besitzeinheit.
-    include_data = any((include_points, include_sequences, include_slots, include_items,
-                        include_item_scans, include_boss_scans, include_icon_scans))
     return _export_sequence_bundle(state, filepath, ref_point1, ref_point2,
-                                   include_data, include_config, source_window)
+                                   include_sequences, include_config, source_window)
 
 # Maschinen-/sicherheitsspezifische Config-Felder, die NIE zwischen Setups
 # wandern sollen (Failsafe-Position, Log-Pfad). Werden weder exportiert noch
