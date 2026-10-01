@@ -4,7 +4,7 @@ from contextlib import redirect_stdout
 import io
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from tests import all_tests, root_tests
 
@@ -103,6 +103,26 @@ class TestRunnerTest(unittest.TestCase):
         self.assertNotEqual(seen[0], root_tests.ROOT.resolve())
         self.assertFalse(seen[0].exists(), "der Arbeitsordner wird danach geräumt")
         self.assertEqual(Path.cwd().resolve(), before)
+
+    def test_gegenproben_laufen_nicht_im_repo(self):
+        # Sie laden ihre Testfaelle beim Namen, also ohne den Arbeitsordner
+        # von `root_tests.main()` — und schrieben dabei `.run.json` ins Repo.
+        from tests import mutation_check
+        seen = []
+
+        def run(command, cwd=None, **kwargs):
+            seen.append(Path(cwd).resolve())
+            return Mock(returncode=0, stdout="", stderr="")
+
+        with patch.object(mutation_check.subprocess, "run", side_effect=run), \
+                patch.object(mutation_check.sys, "argv",
+                             ["mutation_check", "--case", "scan-block-skip"]), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(mutation_check.main(), 0)
+        self.assertEqual(len(seen), 2, "Basis und Mutant")
+        for workdir in seen:
+            self.assertNotEqual(workdir, mutation_check.ROOT.resolve())
+            self.assertFalse(workdir.exists(), "der Ordner wird danach geräumt")
 
     def test_rauchtests_starten_nicht_im_repo(self):
         # Sie importieren `autoclicker` vor ihrer eigenen Sandbox und lasen

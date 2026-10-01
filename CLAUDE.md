@@ -82,9 +82,11 @@ python tools/symbol.py          # Schreibt das Programm-Symbol als PNG + ICO
 
 Was man beim Schreiben von Tests wissen muss (Begründungen in `tests/CLAUDE.md`):
 
-- **Alle drei Schichten laufen in einem eigenen Ordner, nie im Repo** — die
-  Pfade der App sind CWD-relativ. Repo-Dateien liest ein Test über `REPO` bzw.
-  `ROOT`, nie über einen relativen Pfad.
+- **Alle Schichten laufen in einem eigenen Ordner, nie im Repo** (auch die
+  Gegenproben) — die Pfade der App sind CWD-relativ. Repo-Dateien liest ein
+  Test über `REPO` bzw. `ROOT`, nie über einen relativen Pfad, und ein
+  Wurzelmodul startet man über `python -m tests.root_tests`, nicht mit einem
+  nackten `unittest discover` aus dem Repo.
 - **Was fehlt, wird übersprungen und gesagt**, nicht als Fehler gemeldet
   (OpenCV, Pillow, Browser) — ausser mit `--smoke-required`.
 - **Ein grüner Exitcode ist kein grüner Lauf**: die Vertragssuite muss mit

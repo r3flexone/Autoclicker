@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import textwrap
 import unittest
 
@@ -130,12 +131,23 @@ def main() -> int:
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.case or CASES:
         for mode in ("basis", "mutiert"):
-            try:
-                run = subprocess.run(
-                    [sys.executable, str(Path(__file__).resolve()), "--case", name, "--kind", mode],
-                    cwd=ROOT, env=environment, capture_output=True, text=True,
-                    encoding="utf-8", errors="replace", timeout=60)
-            except subprocess.TimeoutExpired:
+            # Jeder Lauf in einem eigenen, leeren Ordner — nie im Repo. Die
+            # Pfade der App sind CWD-relativ, und die Testfaelle hier werden
+            # beim Namen geladen, also ohne den Arbeitsordner von
+            # `root_tests.main()`: ein Item-Scan-Fall schrieb so bei jeder
+            # Gegenprobe `.run.json` in die echten Daten. `run_check` legt das
+            # Repo selbst in `sys.path`.
+            with tempfile.TemporaryDirectory(prefix="gegenprobe_",
+                                             ignore_cleanup_errors=True) as workdir:
+                try:
+                    run = subprocess.run(
+                        [sys.executable, str(Path(__file__).resolve()),
+                         "--case", name, "--kind", mode],
+                        cwd=workdir, env=environment, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=60)
+                except subprocess.TimeoutExpired:
+                    run = None
+            if run is None:
                 print(f"FEHLER {name}: Zeitlimit ({mode})", flush=True)
                 error += 1
                 break

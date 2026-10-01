@@ -47,17 +47,19 @@ schon beim LADEN, womit `unittest` gar nicht erst sammelte. Beide überspringen
 jetzt sauber (`@needs_pillow`), und damit läuft ein Aufruf überall — 106 Tests
 mit Pillow, dieselben 106 mit 23 übersprungenen ohne.
 
-**Alle drei Schichten laufen in einem eigenen Ordner, nie im Repo.** Die
-Pfade der App sind CWD-relativ, und jeder Test ohne eigene Sandbox schrieb in
-die echten Daten: bei jedem Lauf `.run.json`, `.recording.json` und
-`.reclick.json` (ein offenes Studio zeigte danach eine Klick-Runde „Grund",
-die es nie gab), früher ganze Sequenzordner („Studio", „Fokus", „Ruhig" …).
-Gelesen wurde dabei die echte `config.json`, lokal galten also andere Werte
-als in der CI. Gesetzt wird der Ordner an genau drei Stellen —
-`tests/contract/_harness.py` (vor dem ersten `autoclicker`-Import),
-`root_tests.main()` und `smoke()` in `all_tests.py` —, nicht in jedem
-Testfall: ein Schutz, an den jeder Testfall denken muss, ist einer, den einer
-vergisst. Wer Repo-Dateien liest, nimmt deshalb `REPO`/`ROOT`, nie einen
+**Alle Schichten laufen in einem eigenen Ordner, nie im Repo — die Gegenproben
+eingeschlossen.** Die Pfade der App sind CWD-relativ, und jeder Test ohne
+eigene Sandbox schrieb in die echten Daten: bei jedem Lauf `.run.json`,
+`.recording.json` und `.reclick.json` (ein offenes Studio zeigte danach eine
+Klick-Runde „Grund", die es nie gab), früher ganze Sequenzordner („Studio",
+„Fokus", „Ruhig" …). Gelesen wurde dabei die echte `config.json`, lokal galten
+also andere Werte als in der CI. Gesetzt wird der Ordner an genau vier Stellen
+— `tests/contract/_harness.py` (vor dem ersten `autoclicker`-Import),
+`root_tests.main()`, `smoke()` in `all_tests.py` und je Lauf in
+`mutation_check.py` —, nicht in jedem Testfall: ein Schutz, an den jeder
+Testfall denken muss, ist einer, den einer vergisst. Daraus folgt auch: **ein
+Wurzelmodul startet man über `python -m tests.root_tests`, nicht mit einem
+nackten `unittest discover` aus dem Repo** — der umgeht den Ordner. Wer Repo-Dateien liest, nimmt deshalb `REPO`/`ROOT`, nie einen
 relativen Pfad. Die Vertragssuite prüft am Ende, dass sie im Repo nichts
 angelegt hat.
 
