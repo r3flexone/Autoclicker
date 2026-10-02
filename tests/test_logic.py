@@ -6623,6 +6623,7 @@ import tests.contract.points_menu          # noqa: F401,E402
 import tests.contract.recording_build      # noqa: F401,E402
 import tests.contract.sequence_editor_flow # noqa: F401,E402
 import tests.contract.item_scan_wizard     # noqa: F401,E402
+import tests.contract.boss_detection_flow  # noqa: F401,E402
 
 
 import shutil as _shD
