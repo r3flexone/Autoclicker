@@ -370,15 +370,48 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
     überschriebenen `sequence.json`. Vorher schrieb jeder Ausgang, auch das
     Beenden des Programms: in einer echten Runde landeten so drei Klicks auf
     Fensterdekoration dauerhaft in den Punkten.
+
+    Stufen: Abschluss einsammeln → Runde abnehmen und anwenden
+    (`_take_round`) → speichern (`_save_round`) → Stand fürs Studio und
+    Meldung.
     """
     # **Der Abschluss wird eingesammelt, bevor die Listen geleert werden.**
     # Danach ist der Verlauf weg, und das Fenster zeigte eine leere Runde —
     # ausgerechnet in dem Moment, in dem man nachsieht, was sie ergeben hat.
     # Dieselbe Regel wie `status.finish_run()`: die Zusammenfassung bleibt stehen.
     summary = _status_data(state) if reclick_running(state) else None
+    taken = _take_round(state, apply_result)
+    if taken is None:
+        return
+    placed, remaining, target_sequence = taken
+    remove_mouse_hook()
+    _reported_windows.clear()
+    saved = _save_round(state, target_sequence) if placed and apply_result else False
+
+    # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
+    # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
+    # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
+    if summary is not None:
+        summary.update({"active": False, "paused": False, "point": {},
+                          "reason": reason,
+                          "applied": bool(apply_result and (saved or not placed)),
+                          "stamp": time.time()})
+        try:
+            atomic_write(_STATUS_PATH, compact_json(summary))
+        except (OSError, TypeError, ValueError):
+            pass
+    _print_round_result(reason, placed, remaining, apply_result, saved)
+
+
+def _take_round(state: AutoClickerState, apply_result: bool):
+    """Die Runde beenden, ihre Listen leeren und — bei `apply_result` — die
+    neuen Stellen in die Punkte schreiben (nur im Speicher).
+
+    Gibt `(gesetzt, ausstehend, Zielsequenz)` zurück, None wenn keine Runde lief.
+    """
     with state.lock:
         if not state.reclick_active:
-            return
+            return None
         state.reclick_active = False
         state.reclick_paused = False
         placed = list(state.reclick_set)
@@ -405,54 +438,52 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
         state.reclick_target = ""
         state.reclick_name = ""
         state.reclick_sequence = None
-    remove_mouse_hook()
-    _reported_windows.clear()
-    # Der abgeschlossene Stand bleibt stehen, statt geloescht zu werden —
-    # dieselbe Regel wie bei `status.finish_run()`: sonst ist das Fenster genau
-    # in dem Moment leer, in dem man nachsieht, was die Runde ergeben hat.
-    # **Geschrieben wird hier, nicht im Hook.** Ein Low-Level-Maus-Hook muss
-    # schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
-    # Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
-    # aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
-    #
-    # **Ob es geklappt hat, steht in der Meldung UND im Stand fuer das Studio.**
-    # `save_sequence_file` meldet seinen Fehler selbst — aber darunter stand
-    # trotzdem „gespeichert", und `.reclick.json` sagte `applied: True` ueber
-    # einer Datei, die nicht geschrieben wurde. Im Speicher sind die Punkte
-    # dann gesetzt, auf der Platte nicht; der naechste Start klickt daneben.
-    saved = False
-    if placed and apply_result:
-        from ..persistence import activate_sequence, save_sequence_file, sequence_file
-        if target_sequence is not None:
-            saved = save_sequence_file(target_sequence, sequence_file(target_sequence.name))
-        # **Eine Runde aus dem Studio arbeitet auf einer eigenen Kopie von der
-        # Platte.** Ist dieselbe Sequenz hier geladen, hielt der Speicher danach
-        # die ALTEN Stellen: ein Start per Hotkey klickte daneben, und das naechste
-        # `save_points()` (CTRL+ALT+A, CTRL+ALT+U, Editor `done`) schrieb sie
-        # zurueck — die Runde war verloren, ohne dass es jemand gesagt haette.
-        with state.lock:
-            active = state.active_sequence
-        if (saved and active is not None and active is not target_sequence
-                and active.name == target_sequence.name):
-            activate_sequence(state, target_sequence)
+    return placed, remaining, target_sequence
 
-    if summary is not None:
-        summary.update({"active": False, "paused": False, "point": {},
-                          "reason": reason,
-                          "applied": bool(apply_result and (saved or not placed)),
-                          "stamp": time.time()})
-        try:
-            atomic_write(_STATUS_PATH, compact_json(summary))
-        except (OSError, TypeError, ValueError):
-            pass
 
+def _save_round(state: AutoClickerState, target_sequence) -> bool:
+    """Die Zielsequenz schreiben und eine geladene Fassung derselben nachziehen.
+
+    **Geschrieben wird hier, nicht im Hook.** Ein Low-Level-Maus-Hook muss
+    schnell zurückkommen — Windows hängt ihn sonst aus, und dann fehlen
+    Klicks mitten in der Runde. Eine Datei zu schreiben ist meistens schnell,
+    aber „meistens" ist für den Pfad, an dem die ganze Eingabe hängt, zu wenig.
+
+    **Ob es geklappt hat, steht in der Meldung UND im Stand fuer das Studio.**
+    `save_sequence_file` meldet seinen Fehler selbst — aber darunter stand
+    trotzdem „gespeichert", und `.reclick.json` sagte `applied: True` ueber
+    einer Datei, die nicht geschrieben wurde. Im Speicher sind die Punkte
+    dann gesetzt, auf der Platte nicht; der naechste Start klickt daneben.
+    """
+    if target_sequence is None:
+        return False
+    from ..persistence import activate_sequence, save_sequence_file, sequence_file
+    saved = save_sequence_file(target_sequence, sequence_file(target_sequence.name))
+    # **Eine Runde aus dem Studio arbeitet auf einer eigenen Kopie von der
+    # Platte.** Ist dieselbe Sequenz hier geladen, hielt der Speicher danach
+    # die ALTEN Stellen: ein Start per Hotkey klickte daneben, und das naechste
+    # `save_points()` (CTRL+ALT+A, CTRL+ALT+U, Editor `done`) schrieb sie
+    # zurueck — die Runde war verloren, ohne dass es jemand gesagt haette.
+    with state.lock:
+        active = state.active_sequence
+    if (saved and active is not None and active is not target_sequence
+            and active.name == target_sequence.name):
+        activate_sequence(state, target_sequence)
+    return saved
+
+
+def _print_round_result(reason: str, placed: list, remaining: int,
+                        apply_result: bool, saved: bool) -> None:
     print(f"\n{col('[NACHKLICK]', 'cyan')} {reason}.")
     if not placed:
         print("  Nichts geändert.")
-    elif apply_result and not saved:
+    elif not apply_result:
+        print(f"  {warn(f'{len(placed)} gesetzte Stelle(n) verworfen')} "
+              f"{hint('— sequence.json ist unverändert.')}")
+    elif not saved:
         print(f"  {err(f'{len(placed)} Punkt(e) neu gesetzt, aber NICHT gespeichert')} "
               f"{hint('— im Speicher gesetzt; CTRL+ALT+E → done schreibt die Sequenz erneut.')}")
-    elif apply_result:
+    else:
         print(f"  {ok(f'{len(placed)} Punkt(e) neu gesetzt und gespeichert.')}")
         for point_id, old_pos, new, _f in placed[:12]:
             print(hint(f"     #{point_id}  ({old_pos[0]}, {old_pos[1]}) → "
@@ -461,9 +492,6 @@ def stop_reclick(state: AutoClickerState, reason: str = "beendet",
             print(hint(f"     … und {len(placed) - 12} weitere"))
         print(hint("  Jeder Schritt, der sie benutzt, zieht beim nächsten Lauf mit —"))
         print(hint("  Wartezeiten und Bedingungen sind unverändert."))
-    else:
-        print(f"  {warn(f'{len(placed)} gesetzte Stelle(n) verworfen')} "
-              f"{hint('— sequence.json ist unverändert.')}")
     if remaining > 0 and apply_result:
         print(hint(f"  {remaining} Punkt(e) standen noch aus — sie blieben, wo sie waren."))
 
@@ -545,23 +573,10 @@ def _on_click_factory(state: AutoClickerState):
 
 def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
     """Ein Klick im Spiel: die neue Stelle des aktuellen Punktes."""
-    with state.lock:
-        if not state.reclick_active or state.reclick_paused:
-            return
-        # **Nur echte Klicks zählen.** Läuft der Worker, sind seine eigenen
-        # Klicks für den Hook nicht von einem Handgriff zu unterscheiden — die
-        # Runde raste dann von selbst durch die Punkte und schriebe überall die
-        # Stellen hin, die der Lauf gerade anfährt. `handle_toggle()` lässt es
-        # gar nicht erst so weit kommen; das hier ist die zweite Tür.
-        if state.is_running:
-            return
-        if state.reclick_index >= len(state.reclick_points):
-            return
-        target = state.reclick_target
-        point_id = state.reclick_points[state.reclick_index]
-        seq = state.reclick_sequence
-        pool = seq.points if seq is not None else state.points
-        point = next((p for p in pool if p.id == point_id), None)
+    current = _current_click_target(state)
+    if current is None:
+        return
+    target, point_id, point = current
 
     # **Ein Klick ausserhalb des Spiels ist kein Punkt.** Ausserhalb des Locks,
     # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
@@ -576,18 +591,53 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
                        "noch derselbe."))
         return
 
+    recorded = _record_click(state, point_id, point, x, y, color)
+    if recorded is None:
+        return
+    old, same, done = recorded
+    if point is not None:
+        _print_click(point, old, same, x, y, color)
+    if done:
+        stop_reclick(state, "alle Punkte durch")
+    else:
+        _show_current(state, delayed=True)
+
+
+def _current_click_target(state: AutoClickerState):
+    """`(Zielfenster, Punkt-ID, Punkt)` des Punktes, der gerade dran ist — None,
+    wenn ein Klick jetzt nichts setzen darf."""
+    with state.lock:
+        if not state.reclick_active or state.reclick_paused:
+            return None
+        # **Nur echte Klicks zählen.** Läuft der Worker, sind seine eigenen
+        # Klicks für den Hook nicht von einem Handgriff zu unterscheiden — die
+        # Runde raste dann von selbst durch die Punkte und schriebe überall die
+        # Stellen hin, die der Lauf gerade anfährt. `handle_toggle()` lässt es
+        # gar nicht erst so weit kommen; das hier ist die zweite Tür.
+        if state.is_running:
+            return None
+        if state.reclick_index >= len(state.reclick_points):
+            return None
+        point_id = state.reclick_points[state.reclick_index]
+        seq = state.reclick_sequence
+        pool = seq.points if seq is not None else state.points
+        point = next((p for p in pool if p.id == point_id), None)
+        return state.reclick_target, point_id, point
+
+
+def _record_click(state: AutoClickerState, point_id: int, point, x: int, y: int, color):
+    """Die neue Stelle vormerken und weiterrücken: `(alt, passt, fertig)` — None,
+    wenn die Runde inzwischen weiter ist."""
     with state.lock:
         # Zwischen den beiden Locks kann die Runde beendet oder weitergerückt
         # sein (CTRL+ALT+K, CTRL+ALT+J) — dann gilt dieser Klick nicht mehr.
         if (not state.reclick_active
                 or state.reclick_index >= len(state.reclick_points)
                 or state.reclick_points[state.reclick_index] != point_id):
-            return
+            return None
+        old, same = None, False
         if point is None:
             state.reclick_history.append((point_id, "missing"))
-            state.reclick_index += 1
-            done = state.reclick_index >= len(state.reclick_points)
-            name, old, same = "", None, False
         else:
             # **Der Punkt wird NICHT angefasst.** Die neue Stelle kommt auf die
             # Liste; geschrieben wird sie erst beim Übernehmen. Damit ist ein
@@ -596,31 +646,28 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
             # Ein Pixel Abweichung ist keine Korrektur — siehe MATCH_TOLERANCE.
             same = (abs(old[0] - x) <= MATCH_TOLERANCE
                       and abs(old[1] - y) <= MATCH_TOLERANCE)
-            name = point.name or f"Punkt {point.id}"
             if not same:
                 state.reclick_set = [
                     e for e in state.reclick_set if e[0] != point_id]
                 state.reclick_set.append((point_id, old, (x, y), color))
             state.reclick_history.append(
                 (point_id, "fits" if same else "placed"))
-            state.reclick_index += 1
-            done = state.reclick_index >= len(state.reclick_points)
+        state.reclick_index += 1
+        return old, same, state.reclick_index >= len(state.reclick_points)
 
-    if point is not None:
-        color_text = f"  {describe_color(color)}" if point.color and color else ""
-        if same:
-            # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
-            # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
-            # als „nichts passiert".
-            print(f"  {col('[PASST]', 'green')} #{point_id} {name} — "
-                  f"bestätigt, bleibt wo er ist.{color_text}")
-        else:
-            print(f"  {col('[GESETZT]', 'green')} #{point_id} {name}  "
-                  f"({old[0]}, {old[1]}) → ({x}, {y}){color_text}")
-    if done:
-        stop_reclick(state, "alle Punkte durch")
+
+def _print_click(point, old, same: bool, x: int, y: int, color) -> None:
+    name = point.name or f"Punkt {point.id}"
+    color_text = f"  {describe_color(color)}" if point.color and color else ""
+    if same:
+        # Der Normalfall, seit der Zeiger vorher dort steht: hinsehen,
+        # klicken, weiter. Deshalb liest es sich als Bestätigung und nicht
+        # als „nichts passiert".
+        print(f"  {col('[PASST]', 'green')} #{point.id} {name} — "
+              f"bestätigt, bleibt wo er ist.{color_text}")
     else:
-        _show_current(state, delayed=True)
+        print(f"  {col('[GESETZT]', 'green')} #{point.id} {name}  "
+              f"({old[0]}, {old[1]}) → ({x}, {y}){color_text}")
 
 
 def _jump(x: int, y: int, delayed: bool = False) -> None:

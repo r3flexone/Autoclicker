@@ -472,6 +472,21 @@ try:
           (_s9.points[0].x, _s9.points[0].y) == (640, 480))
     check("und JETZT steht sie auf Platte",
           Path("sequences/weg/sequence.json").exists())
+    check("hatte der Punkt eine Farbe, zieht die gemessene mit",
+          _s9.points[0].color == (99, 99, 99))
+
+    # Ein Punkt OHNE Farbe bekommt beim Übernehmen keine: sonst schliche sich
+    # ein Farb-Trigger ein, den niemand gesetzt hat (dieselbe Regel wie walk).
+    # Aufgefallen beim Zerlegen von stop_reclick — die Regel stand im Code und
+    # in editors/CLAUDE.md, aber keine Prüfung wurde rot, wenn man sie entfernte.
+    _s9b = _ST()
+    _active(_s9b, _SEQ(name="Ohne", loop_phases=[_PHASE(name="A", steps=[
+        _STEP(point_id=1)])]), [_point(1, 100, 100)])
+    _ruesten(_s9b)
+    _click(_s9b, 300, 300, (99, 99, 99))
+    _stop(_s9b, "übernommen")
+    check("ein Punkt ohne Farbe bekommt keine",
+          (_s9b.points[0].x, _s9b.points[0].y) == (300, 300) and _s9b.points[0].color is None)
 finally:
     _os.chdir(_cwd)
 
