@@ -6630,6 +6630,7 @@ import tests.contract.function_imports     # noqa: F401,E402
 import tests.contract.import_export_editor # noqa: F401,E402
 import tests.contract.phase_editor         # noqa: F401,E402
 import tests.contract.points_menu          # noqa: F401,E402
+import tests.contract.recording_build      # noqa: F401,E402
 
 
 import shutil as _shD
