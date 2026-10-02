@@ -348,11 +348,34 @@ def handle_show(state: AutoClickerState) -> None:
         return
     if _block_if_running(state):
         return
+    if not _choose_points_sequence(state):
+        return
+    print_points(state)
+    with state.lock:
+        if not state.points:
+            return
+    _print_points_menu_help()
 
+    while True:
+        user_input = safe_input("> ").strip()
+        cmd = user_input.lower()
+        if not user_input or cmd in ("done", "d") or is_cancel(user_input):
+            print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
+            return
+        handler = _POINTS_EXACT.get(cmd)
+        if handler is None:
+            handler = next((h for prefix, h in _POINTS_PREFIXED if cmd.startswith(prefix)),
+                           _points_test_or_rename)
+        if handler(state, user_input):
+            return
+
+
+def _choose_points_sequence(state: AutoClickerState) -> bool:
+    """Sequenz wählen und aktivieren — False, wenn es keine gibt oder abgebrochen wurde."""
     sequences = list_available_sequences()
     if not sequences:
         print(f"\n{info('Keine Sequenzen vorhanden.')} Erstelle zuerst eine Sequenz.")
-        return
+        return False
     with state.lock:
         active = state.active_sequence.name if state.active_sequence else None
     preselection = next((i for i, (name, _path) in enumerate(sequences)
@@ -361,21 +384,19 @@ def handle_show(state: AutoClickerState) -> None:
         [name + (" *AKTIV*" if name == active else "") for name, _ in sequences],
         title="\nPUNKTE: Sequenz wählen", default=preselection)
     if selection < 0 or selection >= len(sequences):
-        return
+        return False
     _name, path = sequences[selection]
     seq = load_sequence_file(path)
     if seq is None:
         print(err("Sequenz konnte nicht geladen werden."))
-        return
+        return False
     # Mit Scans — hier stand nur die Punkte-Zuweisung, und ein Start danach
     # lief mit den Schritten dieser Sequenz gegen die Scans der vorigen.
     activate_sequence(state, seq)
-    print_points(state)
+    return True
 
-    with state.lock:
-        if not state.points:
-            return
 
+def _print_points_menu_help() -> None:
     print(col("-" * 50, 'gray'))
     print(col("Optionen:", 'bold'))
     print(f"  {col('<Nr>', 'yellow')}        - Punkt testen (Maus hinbewegen, dann Umbenennen-Abfrage)")
@@ -386,7 +407,7 @@ def handle_show(state: AutoClickerState) -> None:
           f"Mausposition neu setzen {hint('(repariert Sequenzen ohne sie anzufassen)')}")
     print(f"  {col('reclick / k', 'yellow')}   - Sequenz einmal von Hand NACHKLICKEN; jeder Klick "
           f"setzt den nächsten Punkt {hint('(nur die Stellen, nicht die Zeiten)')}")
-    print(f"  {col('manuell / m', 'yellow')} - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
+    print(f"  {col('manual / m', 'yellow')}  - manuellen Sequenz-Modus an/aus (Schritt für Schritt bestätigen)")
     print(f"  {col('log', 'yellow')}         - Ausgabe-Stufe 1 an/aus (alles ausgeben, nichts überschreiben)")
     print(f"  {col('detail', 'yellow')}      - Ausgabe-Stufe 2 an/aus (Zeiger hin + ausschreiben was kommt)")
     print(f"  {col('check', 'yellow')}       - Setup prüfen (fehlende Templates, tote Verweise, leere Scans)")
@@ -396,131 +417,142 @@ def handle_show(state: AutoClickerState) -> None:
     print(f"  {col('done / d', 'yellow')}    - Zurück {hint(f'(auch {cancel_hint()} oder Enter)')}")
     print(col("-" * 50, 'gray'))
 
-    while True:
-        try:
-            user_input = safe_input("> ").strip()
-            if not user_input or user_input.lower() in ("done", "d") or is_cancel(user_input):
-                print(f"{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
-                return
 
-            if user_input.lower() in ("walk", "w"):
-                from .runtime.debug import walk_points
-                walk_points(state)
-                continue
+# Jeder Befehl des Punkte-Menüs gibt zurück, ob das Menü danach zugeht.
+def _points_walk(state: AutoClickerState, user_input: str) -> bool:
+    from .runtime.debug import walk_points
+    walk_points(state)
+    return False
 
-            if user_input.lower() in ("reclick", "k", "klick", "nachklicken"):
-                # **Der Editor schliesst sich dabei.** Die Runde laeuft aus dem
-                # Maus-Hook, und der braucht die Message-Pump des Main-Threads;
-                # ein blockierendes input() hier bekaeme keinen einzigen Klick zu
-                # sehen. Dieselbe Regel wie bei der Aufnahme.
-                from .editors.reclick import start_reclick
-                if start_reclick(state):
-                    return
-                continue
 
-            if user_input.lower() in ("manual", "m"):
-                handle_step_mode(state)
-                continue
+def _points_reclick(state: AutoClickerState, user_input: str) -> bool:
+    # **Der Editor schliesst sich dabei.** Die Runde laeuft aus dem
+    # Maus-Hook, und der braucht die Message-Pump des Main-Threads;
+    # ein blockierendes input() hier bekaeme keinen einzigen Klick zu
+    # sehen. Dieselbe Regel wie bei der Aufnahme.
+    from .editors.reclick import start_reclick
+    return bool(start_reclick(state))
 
-            if user_input.lower() in ("log", "detail"):
-                handle_debug_toggle(state, user_input.lower())
-                continue
 
-            if user_input.lower() in ("check", "pruefen", "prüfen"):
-                from .diagnostics import check_setup, print_report
-                print_report(check_setup(state))
-                continue
+def _points_manual(state: AutoClickerState, user_input: str) -> bool:
+    handle_step_mode(state)
+    return False
 
-            if user_input.lower() in ("fix", "kalib", "kalibrieren"):
-                from .editors.import_export_editor import run_calibration
-                run_calibration(state)
-                print_points(state)
-                continue
 
-            if user_input.lower() in ("list", "l"):
-                print_points(state)
-                continue
+def _points_debug(state: AutoClickerState, user_input: str) -> bool:
+    handle_debug_toggle(state, user_input.lower())
+    return False
 
-            # Zeigen-Befehl: Maus hinbewegen + Details, ohne Umbenennen-Abfrage
-            if user_input.lower().startswith("show "):
-                try:
-                    show_id = int(user_input[5:])
-                except ValueError:
-                    print(err("Format: show <Nr>"))
-                    continue
-                with state.lock:
-                    point = get_point_by_id(state, show_id)
-                if not point:
-                    print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
-                    continue
-                set_cursor_pos(point.x, point.y)
-                print(f"{col('[SHOW]', 'cyan')} #{point.id} {point.name} {coord_context(point.x, point.y)}")
-                if point.color:
-                    print(f"       Farbe:    {describe_color(point.color)}")
-                if point.source:
-                    print(f"       Herkunft: {point.source}")
-                print(hint("       Maus steht jetzt auf dem Punkt."))
-                continue
 
-            # Löschen-Befehl (per ID)
-            if user_input.lower().startswith("del "):
-                try:
-                    del_id = int(user_input[4:])
-                    with state.lock:
-                        point_to_del = get_point_by_id(state, del_id)
-                        if not point_to_del:
-                            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
-                            continue
-                        state.points.remove(point_to_del)
-                        num_points = len(state.points)
-                    save_points(state)
-                    print(f"{ok(f'Punkt #{del_id} gelöscht: {point_to_del}')}")
-                    if num_points == 0:
-                        print(info("Keine Punkte mehr vorhanden."))
-                        return
-                except ValueError:
-                    print(err("Format: del <ID>"))
-                continue
+def _points_check(state: AutoClickerState, user_input: str) -> bool:
+    from .diagnostics import check_setup, print_report
+    print_report(check_setup(state))
+    return False
 
-            parts = user_input.split(maxsplit=1)
-            point_id = int(parts[0])
 
-            with state.lock:
-                point = get_point_by_id(state, point_id)
-                if not point:
-                    print(err(f"Punkt #{point_id} nicht gefunden!"))
-                    continue
+def _points_calibrate(state: AutoClickerState, user_input: str) -> bool:
+    from .editors.import_export_editor import run_calibration
+    run_calibration(state)
+    print_points(state)
+    return False
 
-            if len(parts) == 1:
-                # Nur ID → Testen (Maus hinbewegen)
-                print(f"{col('[TEST]', 'cyan')} Bewege Maus zu {point.name} {coord_context(point.x, point.y)}...")
-                set_cursor_pos(point.x, point.y)
-                print(f"{col('[TEST]', 'cyan')} Maus ist jetzt bei {point.name}. Neuer Name? (Enter = behalten)")
 
-                new_name = safe_input("> ").strip()
-                if is_cancel(new_name):  # ESC/q darf nicht zum Namen werden
-                    new_name = ""
-                if new_name:
-                    with state.lock:
-                        point.name = new_name
-                    save_points(state)
-                    print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
-                else:
-                    print(ok(f"Name '{point.name}' beibehalten."))
+def _points_list(state: AutoClickerState, user_input: str) -> bool:
+    print_points(state)
+    return False
 
-            else:
-                # ID + Name → Direkt umbenennen
-                new_name = parts[1]
-                with state.lock:
-                    point.name = new_name
-                save_points(state)
-                print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
 
-        except ValueError:
-            print(f"{err('Ungültige Eingabe!')} {hint('(Zahl = testen, <Nr> <Name> = umbenennen, del <Nr> = löschen)')}")
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n{col('[PUNKTE]', 'cyan')} Editor geschlossen — Hotkeys wieder aktiv.")
-            return
+def _points_show(state: AutoClickerState, user_input: str) -> bool:
+    """show <Nr>: Maus hinbewegen + Details, ohne Umbenennen-Abfrage."""
+    try:
+        show_id = int(user_input[5:])
+    except ValueError:
+        print(err("Format: show <Nr>"))
+        return False
+    with state.lock:
+        point = get_point_by_id(state, show_id)
+    if not point:
+        print(f"{err(f'Punkt #{show_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
+        return False
+    set_cursor_pos(point.x, point.y)
+    print(f"{col('[SHOW]', 'cyan')} #{point.id} {point.name} {coord_context(point.x, point.y)}")
+    if point.color:
+        print(f"       Farbe:    {describe_color(point.color)}")
+    if point.source:
+        print(f"       Herkunft: {point.source}")
+    print(hint("       Maus steht jetzt auf dem Punkt."))
+    return False
+
+
+def _points_delete(state: AutoClickerState, user_input: str) -> bool:
+    """del <Nr>: löschen — der letzte gelöschte Punkt schliesst das Menü."""
+    try:
+        del_id = int(user_input[4:])
+    except ValueError:
+        print(err("Format: del <ID>"))
+        return False
+    with state.lock:
+        point = get_point_by_id(state, del_id)
+        if not point:
+            print(f"{err(f'Punkt #{del_id} nicht gefunden!')} {hint('(list = Punkte anzeigen)')}")
+            return False
+        state.points.remove(point)
+        num_points = len(state.points)
+    save_points(state)
+    print(f"{ok(f'Punkt #{del_id} gelöscht: {point}')}")
+    if num_points == 0:
+        print(info("Keine Punkte mehr vorhanden."))
+        return True
+    return False
+
+
+def _points_test_or_rename(state: AutoClickerState, user_input: str) -> bool:
+    """<Nr> = Maus hin und nach einem Namen fragen, <Nr> <Name> = direkt umbenennen."""
+    parts = user_input.split(maxsplit=1)
+    try:
+        point_id = int(parts[0])
+    except ValueError:
+        print(f"{err('Ungültige Eingabe!')} "
+              f"{hint('(Zahl = testen, <Nr> <Name> = umbenennen, del <Nr> = löschen)')}")
+        return False
+    with state.lock:
+        point = get_point_by_id(state, point_id)
+    if not point:
+        print(err(f"Punkt #{point_id} nicht gefunden!"))
+        return False
+
+    if len(parts) > 1:
+        new_name = parts[1]
+    else:
+        print(f"{col('[TEST]', 'cyan')} Bewege Maus zu {point.name} {coord_context(point.x, point.y)}...")
+        set_cursor_pos(point.x, point.y)
+        print(f"{col('[TEST]', 'cyan')} Maus ist jetzt bei {point.name}. Neuer Name? (Enter = behalten)")
+        new_name = safe_input("> ").strip()
+        if is_cancel(new_name):  # ESC/q darf nicht zum Namen werden
+            new_name = ""
+    if not new_name:
+        print(ok(f"Name '{point.name}' beibehalten."))
+        return False
+    with state.lock:
+        point.name = new_name
+    save_points(state)
+    print(ok(f"Punkt #{point_id} umbenannt zu '{new_name}'"))
+    return False
+
+
+_POINTS_EXACT = {
+    "walk": _points_walk, "w": _points_walk,
+    "reclick": _points_reclick, "k": _points_reclick,
+    "klick": _points_reclick, "nachklicken": _points_reclick,
+    # 'manuell' stand in der Hilfe, gelesen wurde nur 'manual' — wer der
+    # Hilfe folgte, bekam „Ungültige Eingabe".
+    "manual": _points_manual, "manuell": _points_manual, "m": _points_manual,
+    "log": _points_debug, "detail": _points_debug,
+    "check": _points_check, "pruefen": _points_check, "prüfen": _points_check,
+    "fix": _points_calibrate, "kalib": _points_calibrate, "kalibrieren": _points_calibrate,
+    "list": _points_list, "l": _points_list,
+}
+_POINTS_PREFIXED = (("show ", _points_show), ("del ", _points_delete))
 
 
 def handle_finish(state: AutoClickerState) -> None:
@@ -1316,21 +1348,32 @@ def handle_schedule(state: AutoClickerState) -> None:
         if state.countdown_active:
             print(f"\n{err('Es läuft bereits ein Countdown')} {hint('(CTRL+ALT+S zum Abbrechen)')}")
             return
-
-    # Keine Sequenz geladen → automatisch Lade-Menü öffnen
-    with state.lock:
-        has_sequence = state.active_sequence is not None
-    if not has_sequence:
-        print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
-        from .editors.sequence_editor import run_sequence_loader
-        run_sequence_loader(state)
-        with state.lock:
-            has_sequence = state.active_sequence is not None
-        if not has_sequence:
-            return  # Nichts geladen
-
+    if not _ensure_sequence_loaded(state):
+        return
     with state.lock:
         seq_name = state.active_sequence.name if state.active_sequence else "?"
+    _print_schedule_help(seq_name)
+    try:
+        _ask_schedule(state, seq_name)
+    except (KeyboardInterrupt, EOFError):
+        print(f"\n{col('[ABBRUCH]', 'yellow')}")
+    except ValueError as e:
+        print(err(str(e)))
+
+
+def _ensure_sequence_loaded(state: AutoClickerState) -> bool:
+    """Keine Sequenz geladen → Lade-Menü öffnen. False, wenn danach immer noch keine da ist."""
+    with state.lock:
+        if state.active_sequence is not None:
+            return True
+    print(f"\n{info('Keine Sequenz geladen - öffne Lade-Menü...')}")
+    from .editors.sequence_editor import run_sequence_loader
+    run_sequence_loader(state)
+    with state.lock:
+        return state.active_sequence is not None
+
+
+def _print_schedule_help(seq_name: str) -> None:
     print("\n" + col("=" * 50, 'cyan'))
     print(f"  {col('ZEITPLAN: Sequenz zu bestimmter Zeit starten', 'bold')}")
     print(col("=" * 50, 'cyan'))
@@ -1344,59 +1387,41 @@ def handle_schedule(state: AutoClickerState) -> None:
     print(f"  {col('30s/30m/2h', 'yellow')} - Wartet (Einheit s/m/h erforderlich!)")
     print(f"\nZeit eingeben (oder {col('cancel', 'yellow')}):")
 
-    try:
-        time_input = safe_input("> ").strip()
 
-        if not time_input or is_cancel(time_input):
-            print(col("[ABBRUCH]", "yellow"))
-            return
-
-        seconds, desc, target_timestamp = parse_time_input(time_input)
-
-        # Debug: Zeige was geparst wurde
-        if is_verbose_debug(state):
-            print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', target_timestamp={target_timestamp}"))
-
-        if seconds < 0:
-            print(err(desc))
-            return
-
-        if seconds < 1:
-            print(info("Zeit zu kurz - starte sofort..."))
-            # Starte sofort
-            handle_toggle(state)
-            return
-
-        # Zeige Countdown-Info und warte auf Bestätigung
-        # Bei absoluten Zeiten: target_timestamp enthält die Zielzeit
-        # Bei relativen Zeiten: target_timestamp ist None, wird nach Enter berechnet
-        if target_timestamp is not None:
-            target_time = target_timestamp
-            target_dt = datetime.fromtimestamp(target_time)
-            print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{seq_name}' startet {desc}")
-            print(f"          {col('Zielzeit:', 'cyan')} {target_dt.strftime('%H:%M:%S')}")
-            print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)}")
-        else:
-            target_time = datetime.now().timestamp() + seconds  # Nur für Vorschau
-            print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{seq_name}' startet {desc}")
-            print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)} (ab Enter-Bestätigung)")
-        print(f"\n          {col('Enter', 'yellow')} drücken zum Starten, {col('cancel', 'yellow')} zum Abbrechen")
-
-        # Bestätigung abwarten
-        confirm_input = safe_input("> ").strip()
-        if is_cancel(confirm_input):
-            print(col("[ABBRUCH]", "yellow"))
-            return
-
-        # Ab hier derselbe Countdown wie beim Studio. Nur die Eingabe und die
-        # Bestätigung sind TUI-spezifisch; Ablauf, Abbruch und Statusdatei nicht.
-        _start_schedule(state, time_input)
+def _ask_schedule(state: AutoClickerState, seq_name: str) -> None:
+    """Zeit lesen, Vorschau zeigen, nach Bestätigung den Countdown stellen."""
+    time_input = safe_input("> ").strip()
+    if not time_input or is_cancel(time_input):
+        print(col("[ABBRUCH]", "yellow"))
+        return
+    seconds, desc, target_timestamp = parse_time_input(time_input)
+    if is_verbose_debug(state):
+        print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', "
+                  f"target_timestamp={target_timestamp}"))
+    if seconds < 0:
+        print(err(desc))
+        return
+    if seconds < 1:
+        print(info("Zeit zu kurz - starte sofort..."))
+        handle_toggle(state)
         return
 
-    except (KeyboardInterrupt, EOFError):
-        print(f"\n{col('[ABBRUCH]', 'yellow')}")
-    except ValueError as e:
-        print(err(str(e)))
+    # Bei absoluten Zeiten steht die Zielzeit fest; bei relativen läuft die
+    # Wartezeit erst ab der Bestätigung.
+    print(f"\n{col('[GEPLANT]', 'cyan')} Sequenz '{seq_name}' startet {desc}")
+    if target_timestamp is not None:
+        target_dt = datetime.fromtimestamp(target_timestamp)
+        print(f"          {col('Zielzeit:', 'cyan')} {target_dt.strftime('%H:%M:%S')}")
+        print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)}")
+    else:
+        print(f"          {col('Wartezeit:', 'cyan')} {format_duration(seconds)} (ab Enter-Bestätigung)")
+    print(f"\n          {col('Enter', 'yellow')} drücken zum Starten, {col('cancel', 'yellow')} zum Abbrechen")
+    if is_cancel(safe_input("> ").strip()):
+        print(col("[ABBRUCH]", "yellow"))
+        return
+    # Ab hier derselbe Countdown wie beim Studio. Nur die Eingabe und die
+    # Bestätigung sind TUI-spezifisch; Ablauf, Abbruch und Statusdatei nicht.
+    _start_schedule(state, time_input)
 
 
 def handle_analyze(state: AutoClickerState) -> None:
