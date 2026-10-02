@@ -188,6 +188,23 @@ def _trigger_word(word: str) -> Optional[tuple[bool, bool]]:
     return None
 
 
+def _parse_click_delay(word: str) -> Optional[tuple[float, Optional[float]]]:
+    """Wartezeit vor einem Punkt-Klick: `(delay, delay_max)` — None bei Fehler (gesagt)."""
+    if "-" in word:
+        range_val, range_err = parse_non_negative_range(word, "Wartezeit")
+        if range_err:
+            print(f"  -> {range_err}")
+            print("     Format: <Nr> <Min>-<Max> (z.B. 1 5-10)")
+            return None
+        return range_val[0], range_val[1]
+    delay, delay_err = parse_non_negative_float(word, "Wartezeit")
+    if delay_err:
+        print(f"  -> {delay_err}")
+        print("     Format: <Nr> <Zeit> (z.B. 1 5)")
+        return None
+    return delay, None
+
+
 # Wer für eine Eingabe zuständig ist: erst die ganzen Befehle, dann die Präfixe
 # in dieser Reihenfolge — sonst endete "del all" als "del <Nr>" und "ins 0" als
 # "ins <Nr>". Was nirgends passt, ist ein Punkt-Klick ("1 30 color").
@@ -1320,31 +1337,31 @@ class _PhaseEditor:
         """Parst die Optionen nach der Punkt-ID. Returns (wait_condition, delay, delay_max).
 
         Bei Parse-Fehler: (False, 0, None) — der Caller bricht ab, Fehler ist
-        bereits ausgegeben. Formen: <Nr> <Farbwort> | <Nr> <Min>-<Max> |
-        <Nr> <Zeit> [<Farbwort>].
+        bereits ausgegeben. Form: <Nr> [<Zeit>|<Min>-<Max>] [<Farbwort>].
+
+        Was nicht verstanden wird, wird gesagt: ein vertipptes Farbwort fiel
+        früher still weg, und heraus kam ein Klick ohne die Bedingung, um die
+        es ging — hinter einem Zeitbereich sogar das richtig geschriebene.
         """
-        if len(main_parts) < 2:
-            return None, 0, None
-        arg = main_parts[1].lower()
-        if _trigger_word(arg) is not None:
-            condition = self._point_condition(arg, point)
-            return (False, 0, None) if condition is None else (condition, 0, None)
-        if "-" in arg:
-            range_val, range_err = parse_non_negative_range(arg, "Wartezeit")
-            if range_err:
-                print(f"  -> {range_err}")
-                print("     Format: <Nr> <Min>-<Max> (z.B. 1 5-10)")
+        words = [word.lower() for word in main_parts[1:]]
+        delay, delay_max = 0, None
+        if words and _trigger_word(words[0]) is None:
+            delays = _parse_click_delay(words.pop(0))
+            if delays is None:
                 return False, 0, None
-            return None, range_val[0], range_val[1]
-        delay, delay_err = parse_non_negative_float(arg, "Wartezeit")
-        if delay_err:
-            print(f"  -> {delay_err}")
-            print("     Format: <Nr> <Zeit> (z.B. 1 5)")
+            delay, delay_max = delays
+        trigger = words.pop(0) if words and _trigger_word(words[0]) is not None else None
+        if words:
+            print(f"  -> Nicht verstanden: '{' '.join(words)}' — erwartet wird höchstens "
+                  "ein Farbwort (color, colorgone, checkcolor, checkgone)")
+            print("     Format: <Nr> [<Zeit>|<Min>-<Max>] [color|colorgone|checkcolor|checkgone]")
             return False, 0, None
-        if len(main_parts) < 3 or _trigger_word(main_parts[2].lower()) is None:
-            return None, delay, None
-        condition = self._point_condition(main_parts[2].lower(), point)
-        return (False, 0, None) if condition is None else (condition, delay, None)
+        if trigger is None:
+            return None, delay, delay_max
+        condition = self._point_condition(trigger, point)
+        if condition is None:
+            return False, 0, None
+        return condition, delay, delay_max
 
     def _point_condition(self, word: str, point) -> Optional[WaitCondition]:
         """Die Farb-Bedingung zu einem Farbwort — None, wenn keine Farbe lesbar war (gesagt)."""

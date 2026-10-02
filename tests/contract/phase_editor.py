@@ -129,6 +129,23 @@ _r, _s = _one("1 5-x")
 check("Punkt-Klick: ein unlesbarer Bereich wird gesagt", _s is None and "<Min>-<Max>" in _r.output)
 _r, _s = _one("9")
 check("Punkt-Klick: ein unbekannter Punkt", _s is None and "nicht gefunden" in _r.output)
+# Das Farbwort stand nur hinter einer festen Zeit; hinter einem Bereich fiel es
+# still weg, und ein Tippfehler darin ergab einen Klick ohne Bedingung.
+_r, _s = _one("1 2-4 color")
+check("Punkt-Klick: Bereich und dann Farbe",
+      (_s.delay_before, _s.delay_max) == (2, 4) and _s.wait_condition is not None
+      and _s.wait_condition.until_gone is False)
+_r, _s = _one("1 2-4 checkgone")
+check("Punkt-Klick: Bereich und einmalige Prüfung",
+      _s.wait_condition.check_only and _s.wait_condition.until_gone)
+_r, _s = _one("1 5 colr")
+check("Punkt-Klick: ein unbekanntes Farbwort legt keinen Schritt an und wird gesagt",
+      _s is None and "Nicht verstanden: 'colr'" in _r.output)
+_r, _s = _one("1 color 5")
+check("Punkt-Klick: ein Wort hinter dem Farbwort wird gesagt",
+      _s is None and "Nicht verstanden: '5'" in _r.output)
+_r, _s = _one("1 5 color colorgone")
+check("Punkt-Klick: zwei Farbwörter sind eins zu viel", _s is None and "Nicht verstanden" in _r.output)
 _r, _s = _one("1 color else skip")
 check("Punkt-Klick: mit Bedingung und else", _s.else_config is not None and _s.else_config.action == "skip")
 _r, _s = _one("1 5 else skip")
