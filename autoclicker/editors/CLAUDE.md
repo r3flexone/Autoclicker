@@ -15,10 +15,42 @@ Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
 (**Fehleingabe wiederholen statt abbrechen**). Dazu `_apply_item_rename()`, weil
 am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
 
-Der Rest ist offen und soll **einer nach dem anderen** kommen, nicht am Stück:
-`item_editor/` (Lernen, Autoscan, Befehle), in `slot_editor.py` die
-Unter-Editoren (`create_slot`, `edit_slot`, `slot_auto_detect`, `slot_repair`),
-`import_export_editor.py`, `sequence_editor/steps.py`.
+Es kommt **einer nach dem anderen**, nicht am Stück — und immer in derselben
+Reihenfolge: **erst die Tastenfolgen auf dem alten Code, dann der Umbau** (Ziel:
+keine Funktion über Komplexität 11, `flake8 --select=C --max-complexity=11`).
+**Stand: kein Konsolen-Editor unter `editors/` hat noch eine Funktion über 11**
+(ausgenommen ist nur `sequence_studio/`, das kein Konsolen-Editor ist). Erledigt
+sind Slot-Editor samt Unter-Editoren, Boss- und Icon-Editor, `item_editor/`,
+`item_scan_editor.py`, `import_export_editor.py`, der ganze
+`sequence_editor/` und die Klick-Runde, dazu das Punkte-Menü und der Zeitplan
+(`handlers.py`) und das Aufnahme-Ende (`sequence_recorder._build_recording`).
+Je Stück ein Modul unter `tests/contract/` (`slot_editor`, `slot_sub_editors`,
+`detection_editors`, `item_editor`, `item_scan_wizard`,
+`import_export_editor`, `loop_phase_editor`, `phase_editor`,
+`sequence_editor_flow`, `points_menu`, `recording_build`); die Klick-Runde
+hatte ihre Prüfungen schon (`reclick`). Eine neue Funktion über 11 in diesem
+Ordner ist damit ein Rückschritt, kein Bestand.
+
+**Was beim Zerlegen keinen Aufrufer mehr hat, wird gelöscht, nicht zerlegt.**
+`loader._report_point_mismatches` verglich Schritte ohne `point_id` mit dem
+gleichnamigen Punkt — seit Koordinaten nur noch im Punkt stehen, kommt ein
+solcher Schritt mit (0, 0) aus dem Loader, und gerufen wurde sie seit dem
+Umzug auf sequenzlokale Punkte nicht mehr.
+
+**Beim Festhalten fallen Fehler auf, die niemand gemeldet hat** — das ist der
+halbe Ertrag. Gefunden und mit Test behoben: ein toter Import, an dem die
+Konsolen-Kalibrierung abstürzte; ein Autoscan, der Duplikate nicht mehr
+erkannte; ein Punkt-Klick, der `1 2-4 color` und `1 5 colr` still zu einem
+Klick ohne Bedingung machte; `manuell` aus der Hilfe des Punkte-Menüs, das
+der Code nicht kannte. Ein Verhalten, das beim Festhalten falsch aussieht,
+wird deshalb nicht mitfestgeschrieben, sondern behoben — mit einem Test, der
+auf dem alten Code rot ist.
+
+**Und wo schon Prüfungen standen, wird gegengeprüft, bevor man sich auf sie
+verlässt:** eine Sicherung im umgebauten Code kurz entschärfen und sehen, ob
+etwas rot wird. Bei der Klick-Runde wurde nichts rot — „die Farbe zieht nur
+mit, wenn der Punkt schon eine hatte“ stand im Code und hier, aber in keiner
+Prüfung.
 
 **Erledigt: die Befehlsschleife des Slot-Editors** (`run_global_slot_editor`,
 Komplexität 44, `tests/contract/slot_editor.py` mit 26 Prüfungen vorher). Der
