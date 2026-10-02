@@ -7,6 +7,7 @@ delegiert an edit_sequence. edit_sequence führt durch die drei Phasen
 und speichert die fertige Sequenz.
 """
 
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ...models import LoopPhase, Sequence, AutoClickerState
@@ -66,9 +67,51 @@ def _confirm_discard(init_steps: list, loop_phases: list, end_steps: list) -> bo
     return confirm(f"  {total} erstellte(r) Schritt(e) verwerfen?")
 
 
-def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None:
-    """Bearbeitet eine Sequenz (neu oder bestehend) mit Start + mehreren Loop-Phasen."""
+@dataclass
+class _SequenceDraft:
+    """Der Stand des Editors zwischen den Stufen — gespeichert wird erst am Ende."""
+    name: str
+    init_steps: list = field(default_factory=list)
+    loop_phases: list = field(default_factory=list)
+    end_steps: list = field(default_factory=list)
+    total_cycles: int = 1
+    description: str = ""
 
+
+def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None:
+    """Bearbeitet eine Sequenz (neu oder bestehend) mit Start + mehreren Loop-Phasen.
+
+    Stufen: Entwurf anlegen (`_start_draft`) → Beschreibung → INIT, LOOPs,
+    Zyklen, END (`_edit_phases`) → Zusammenfassung → speichern
+    (`_save_draft`). Jede Stufe kann abbrechen; geschrieben wird erst am Ende.
+    """
+    draft = _start_draft(state, existing)
+    if draft is None:
+        return
+    with state.lock:
+        has_points = bool(state.points)
+    if not has_points:
+        print(f"\n{err('Erst Punkte aufnehmen')} {hint('(CTRL+ALT+A)')}")
+        return
+
+    draft.description = _ask_description(existing, draft.description)
+
+    # Verfügbare Punkte anzeigen
+    with state.lock:
+        print("\nVerfügbare Punkte:")
+        for p in state.points:
+            print(f"  {p}")
+
+    if not _edit_phases(state, draft):
+        print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
+        return
+    _print_pre_save_summary(existing, draft.name, draft.init_steps, draft.loop_phases,
+                            draft.end_steps, draft.total_cycles)
+    _save_draft(state, draft)
+
+
+def _start_draft(state: AutoClickerState, existing: Optional[Sequence]) -> Optional[_SequenceDraft]:
+    """Der Entwurf: eine Kopie der bestehenden Sequenz oder ein neuer Name — None = abgebrochen."""
     if existing:
         # **Erst aktivieren, dann bearbeiten.** Der Editor arbeitet durchgehend
         # auf `state.points` — und das waren die Punkte der gerade AKTIVEN
@@ -79,100 +122,78 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
         # Editor soll die Scans DIESER Sequenz anbieten.
         activate_sequence(state, existing)
         print(f"\n--- Bearbeite Sequenz: {existing.name} ---")
-        seq_name = existing.name
-        init_steps = list(existing.init_steps)
-        loop_phases = [LoopPhase(lp.name, list(lp.steps), lp.repeat, lp.scheduled_start) for lp in existing.loop_phases]
-        end_steps = list(existing.end_steps)
-        total_cycles = existing.total_cycles
-        description = existing.description
-    else:
-        print("\n--- Neue Sequenz erstellen ---")
-        seq_name = confirm_new_sequence_name(
-            safe_input("Name der Sequenz: ").strip() or free_sequence_name("Neue Sequenz"))
-        if seq_name is None:
-            print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
-            return
-        init_steps = []
-        loop_phases = []
-        end_steps = []
-        total_cycles = 1
-        description = ""
+        return _SequenceDraft(
+            name=existing.name,
+            init_steps=list(existing.init_steps),
+            loop_phases=[LoopPhase(lp.name, list(lp.steps), lp.repeat, lp.scheduled_start)
+                         for lp in existing.loop_phases],
+            end_steps=list(existing.end_steps),
+            total_cycles=existing.total_cycles,
+            description=existing.description,
+        )
+    print("\n--- Neue Sequenz erstellen ---")
+    seq_name = confirm_new_sequence_name(
+        safe_input("Name der Sequenz: ").strip() or free_sequence_name("Neue Sequenz"))
+    if seq_name is None:
+        print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
+        return None
+    return _SequenceDraft(name=seq_name)
 
-    with state.lock:
-        has_points = bool(state.points)
-    if not has_points:
-        print(f"\n{err('Erst Punkte aufnehmen')} {hint('(CTRL+ALT+A)')}")
-        return
 
-    # Beschreibung (optional) — hilft beim Wiederfinden und beim Weitergeben
+def _ask_description(existing: Optional[Sequence], description: str) -> str:
+    """Beschreibung (optional) — hilft beim Wiederfinden und beim Weitergeben."""
     if existing and description:
         print(f"\nBeschreibung: {description}")
         desc_input = safe_input("Neue Beschreibung (Enter = behalten, '-' = löschen): ").strip()
         if desc_input == "-":
-            description = ""
-        elif desc_input:
-            description = desc_input
-    else:
-        desc_input = safe_input("Beschreibung (optional, Enter = keine): ").strip()
-        if desc_input:
-            description = desc_input
+            return ""
+        return desc_input or description
+    desc_input = safe_input("Beschreibung (optional, Enter = keine): ").strip()
+    return desc_input or description
 
-    # Verfügbare Punkte anzeigen
-    with state.lock:
-        print("\nVerfügbare Punkte:")
-        for p in state.points:
-            print(f"  {p}")
 
-    # INIT-Phase bearbeiten (einmalig vor allen Zyklen)
+def _edit_phases(state: AutoClickerState, draft: _SequenceDraft) -> bool:
+    """INIT → LOOPs → Zyklen → END. False = abgebrochen und Verwerfen bestätigt.
+
+    Bei einem Abbruch wird nur gefragt, falls schon Schritte existieren —
+    sonst geht die Arbeit kommentarlos verloren. Wer nicht verwerfen will,
+    macht mit dem bisherigen Stand der Phase weiter.
+    """
     print(header("PHASE 0: INIT-SEQUENZ (wird einmalig vor allen Zyklen ausgeführt)"))
     print("  (Optional: Login, Vorbereitung, etc. – läuft nur beim allerersten Start)")
-    result = edit_phase(state, init_steps, "INIT")
-    if result is None:
-        # Bei Abbruch: erst nachfragen, falls schon Schritte existieren —
-        # sonst geht die Arbeit kommentarlos verloren.
-        if _confirm_discard(init_steps, loop_phases, end_steps):
-            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-            return
-    else:
-        init_steps = result
+    result = edit_phase(state, draft.init_steps, "INIT")
+    if result is None and _confirm_discard(draft.init_steps, draft.loop_phases, draft.end_steps):
+        return False
+    draft.init_steps = draft.init_steps if result is None else result
 
-    # LOOP-Phasen bearbeiten (mehrere möglich)
     print(header("PHASE 1: LOOP-PHASEN (können mehrere sein)"))
-    new_loops = edit_loop_phases(state, loop_phases)
-    if new_loops is None:
-        if _confirm_discard(init_steps, loop_phases, end_steps):
-            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-            return
-    else:
-        loop_phases = new_loops
+    result = edit_loop_phases(state, draft.loop_phases)
+    if result is None and _confirm_discard(draft.init_steps, draft.loop_phases, draft.end_steps):
+        return False
+    draft.loop_phases = draft.loop_phases if result is None else result
+    if draft.loop_phases:
+        draft.total_cycles = _ask_total_cycles(draft.total_cycles)
 
-    # Gesamt-Zyklen abfragen
-    if loop_phases:
-        total_cycles = _ask_total_cycles(total_cycles)
-
-    # END-Phase bearbeiten (optional)
     print("\n" + "=" * 60)
     print("  PHASE 3: END-SEQUENZ (wird einmal am Ende ausgeführt)")
     print("=" * 60)
     print("\n  (Optional: Aufräumen, Logout, etc.)")
-    result = edit_phase(state, end_steps, "END")
-    if result is None:
-        if _confirm_discard(init_steps, loop_phases, end_steps):
-            print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
-            return
-    else:
-        end_steps = result
+    result = edit_phase(state, draft.end_steps, "END")
+    if result is None and _confirm_discard(draft.init_steps, draft.loop_phases, draft.end_steps):
+        return False
+    draft.end_steps = draft.end_steps if result is None else result
+    return True
 
-    _print_pre_save_summary(existing, seq_name, init_steps, loop_phases, end_steps, total_cycles)
 
-    # Sequenz erstellen und speichern
+def _save_draft(state: AutoClickerState, draft: _SequenceDraft) -> None:
+    """Sequenz bauen, aktivieren und NUR diese schreiben."""
     new_sequence = Sequence(
-        name=seq_name,
-        init_steps=init_steps,
-        loop_phases=loop_phases,
-        end_steps=end_steps,
-        total_cycles=total_cycles,
-        description=description
+        name=draft.name,
+        init_steps=draft.init_steps,
+        loop_phases=draft.loop_phases,
+        end_steps=draft.end_steps,
+        total_cycles=draft.total_cycles,
+        description=draft.description,
     )
 
     with state.lock:
@@ -196,11 +217,12 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     if not save_points(state):
         # Der Saver hat den Fehler genannt; „[ERFOLG] gespeichert!" darunter
         # waere die Zeile, die man liest. Im Speicher ist die Sequenz aktiv.
-        print(err(f"Sequenz '{seq_name}' ist geladen, aber NICHT auf Platte — "
+        print(err(f"Sequenz '{draft.name}' ist geladen, aber NICHT auf Platte — "
                   "'done' im Editor versucht es erneut."))
         return
 
-    _print_post_save_summary(seq_name, init_steps, loop_phases, end_steps, total_cycles)
+    _print_post_save_summary(draft.name, draft.init_steps, draft.loop_phases,
+                             draft.end_steps, draft.total_cycles)
 
 
 def _ask_total_cycles(current_total: int) -> int:
@@ -240,6 +262,18 @@ def _print_pre_save_summary(existing: Optional[Sequence], seq_name: str,
         print(f"    Zyklen: {cycles_desc}")
         return
 
+    changes = _changes_against(existing, init_steps, loop_phases, end_steps, total_cycles)
+    if changes:
+        print(col("  Änderungen:", "yellow"))
+        for c in changes:
+            print(f"  {c}")
+    else:
+        print(f"  {hint('Keine Änderungen')}")
+
+
+def _changes_against(existing: Sequence, init_steps: list, loop_phases: list,
+                     end_steps: list, total_cycles: int) -> list[str]:
+    """Was sich gegenüber der gespeicherten Fassung geändert hat, je Zeile."""
     changes = []
     old_i, new_i = len(existing.init_steps), len(init_steps)
     if old_i != new_i:
@@ -249,26 +283,19 @@ def _print_pre_save_summary(existing: Optional[Sequence], seq_name: str,
     if old_l != new_l:
         changes.append(f"  Loop-Phasen: {old_l} → {new_l}")
     for i, lp in enumerate(loop_phases):
-        if i < len(existing.loop_phases):
-            old_lp = existing.loop_phases[i]
-            if len(lp.steps) != len(old_lp.steps) or lp.repeat != old_lp.repeat:
-                changes.append(f"    {lp.name}: {len(old_lp.steps)}x{old_lp.repeat} → {len(lp.steps)}x{lp.repeat}")
-        else:
+        if i >= len(existing.loop_phases):
             changes.append(f"    {lp.name}: {col('NEU', 'green')} ({len(lp.steps)} Schritte x{lp.repeat})")
+            continue
+        old_lp = existing.loop_phases[i]
+        if len(lp.steps) != len(old_lp.steps) or lp.repeat != old_lp.repeat:
+            changes.append(f"    {lp.name}: {len(old_lp.steps)}x{old_lp.repeat} → {len(lp.steps)}x{lp.repeat}")
 
     old_e, new_e = len(existing.end_steps), len(end_steps)
     if old_e != new_e:
         changes.append(f"  End: {old_e} → {new_e} Schritte")
-
     if existing.total_cycles != total_cycles:
         changes.append(f"  Zyklen: {existing.total_cycles} → {total_cycles}")
-
-    if changes:
-        print(col("  Änderungen:", "yellow"))
-        for c in changes:
-            print(f"  {c}")
-    else:
-        print(f"  {hint('Keine Änderungen')}")
+    return changes
 
 
 def _print_post_save_summary(seq_name: str, init_steps: list, loop_phases: list,

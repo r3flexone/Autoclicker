@@ -342,3 +342,35 @@ _r = _Run(["link", "done"], steps=_three())
 _r.state.points = []
 _r.run()
 check("link: ohne Punkte", "Keine Punkte" in _r.output)
+
+# ============================================================ else-Formen
+section("ELSE-Bedingung: jede Form")
+_else_state = _ST()
+_else_state.points = [_CP(100, 200, "Knopf", 1), _CP(300, 400, "", 2)]
+
+
+def _else(text):
+    buffer = _io.StringIO()
+    with _cl.redirect_stdout(buffer):
+        result = _HE.parse_else_condition(text.split(), _else_state)
+    return result, buffer.getvalue()
+
+
+check("leer", _else("")[0] == {})
+for _word in ("skip", "skip_cycle", "restart", "SKIP"):
+    check(f"else {_word}", _else(_word)[0] == {"else_action": _word.lower()})
+check("else key <Taste>", _else("key Enter")[0] == {"else_action": "key", "else_key": "enter"})
+_res, _out = _else("key gibtsnicht")
+check("else key mit unbekannter Taste", _res == {} and "Unbekannte Taste" in _out)
+_res, _out = _else("key")
+check("else key ohne Taste ist ein unbekanntes Format", _res == {} and "Unbekanntes ELSE-Format" in _out)
+check("else <Nr>: Punkt mit Namen",
+      _else("1")[0] == {"else_action": "click", "else_point_id": 1, "else_x": 100, "else_y": 200,
+                        "else_name": "Knopf"})
+check("else <Nr> ohne Punktnamen", _else("2")[0]["else_name"] == "Punkt #2")
+check("else <Nr> <Sek>", _else("1 2.5")[0]["else_delay"] == 2.5)
+check("else <Nr> mit unlesbarer Zeit: ohne Verzögerung", "else_delay" not in _else("1 x")[0])
+_res, _out = _else("9")
+check("else <Nr>: unbekannter Punkt", _res == {} and "Punkt #9 nicht gefunden" in _out)
+_res, _out = _else("quatsch")
+check("else <Unsinn>", _res == {} and "Unbekanntes ELSE-Format" in _out)
