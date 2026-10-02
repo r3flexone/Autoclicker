@@ -7,6 +7,7 @@ delegiert an edit_sequence. edit_sequence führt durch die drei Phasen
 und speichert die fertige Sequenz.
 """
 
+import copy
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -76,6 +77,10 @@ class _SequenceDraft:
     end_steps: list = field(default_factory=list)
     total_cycles: int = 1
     description: str = ""
+    # Nur bei einer NEUEN Sequenz: die vorher aktive (für den Abbruch) und die
+    # IDs der Punkte, die von ihr als Kopie übernommen wurden.
+    previous: Optional[Sequence] = None
+    inherited: frozenset = frozenset()
 
 
 def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None:
@@ -93,6 +98,8 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
     if not has_points:
         print(f"\n{err('Erst Punkte aufnehmen')} {hint('(CTRL+ALT+A)')}")
         return
+    if existing is None:
+        _work_on_copy(state, draft)
 
     draft.description = _ask_description(existing, draft.description)
 
@@ -103,6 +110,8 @@ def edit_sequence(state: AutoClickerState, existing: Optional[Sequence]) -> None
             print(f"  {p}")
 
     if not _edit_phases(state, draft):
+        if draft.previous is not None:
+            activate_sequence(state, draft.previous)
         print(f"{col('[ABBRUCH]', 'yellow')} Sequenz nicht gespeichert.")
         return
     _print_pre_save_summary(existing, draft.name, draft.init_steps, draft.loop_phases,
@@ -138,6 +147,37 @@ def _start_draft(state: AutoClickerState, existing: Optional[Sequence]) -> Optio
         print(f"{col('[ABBRUCH]', 'yellow')} Editor beendet.")
         return None
     return _SequenceDraft(name=seq_name)
+
+
+def _work_on_copy(state: AutoClickerState, draft: _SequenceDraft) -> None:
+    """Eine NEUE Sequenz arbeitet auf einer Kopie der Punkte der aktiven.
+
+    Der Editor arbeitet durchgehend auf `state.points`, und bei einer neuen
+    Sequenz waren das die Punkte der gerade aktiven: `learn` hängte dort an,
+    und das Speichern schrieb die FALSCHE Datei — die aktive Sequenz bekam
+    einen Punkt, an dem niemand gearbeitet hatte. Die neue wird deshalb sofort
+    die aktive, mit einer Kopie als Bestand; übernommen werden beim Speichern
+    nur die kopierten Punkte, die ihre Schritte auch benutzen
+    (`_used_point_ids`). Ein Abbruch stellt die vorige wieder her.
+    """
+    with state.lock:
+        draft.previous = state.active_sequence
+        pool = copy.deepcopy(state.points)
+    draft.inherited = frozenset(p.id for p in pool)
+    activate_sequence(state, Sequence(name=draft.name, points=pool))
+
+
+def _used_point_ids(draft: _SequenceDraft) -> set:
+    """Jede Punkt-ID, auf die ein Schritt zeigt: Stelle, Vorbedingung, Nachprüfung, ELSE."""
+    used = set()
+    steps = draft.init_steps + [s for lp in draft.loop_phases for s in lp.steps] + draft.end_steps
+    for step in steps:
+        used.add(step.point_id)
+        for part in (step.wait_condition, step.verify_condition, step.else_config):
+            if part is not None:
+                used.add(part.point_id)
+    used.discard(None)
+    return used
 
 
 def _ask_description(existing: Optional[Sequence], description: str) -> str:
@@ -205,7 +245,11 @@ def _save_draft(state: AutoClickerState, draft: _SequenceDraft) -> None:
         # Schritte standen noch da, nur ohne Stelle. Derselbe Umbau
         # (sequenzlokale Punkte) hat auch `new()` im Studio die Punkte der
         # VORIGEN Sequenz erben lassen — hier fehlt, was dort zu viel war.
-        new_sequence.points = list(state.points)
+        points = list(state.points)
+    if draft.inherited:
+        used = _used_point_ids(draft)
+        points = [p for p in points if p.id not in draft.inherited or p.id in used]
+    new_sequence.points = points
     # Aktiv samt Punkten und Scans — bei einer neuen Sequenz sind das die
     # (noch leeren) Scans ihres eigenen Ordners, nicht die der vorigen.
     activate_sequence(state, new_sequence)

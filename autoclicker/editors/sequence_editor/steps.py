@@ -24,7 +24,7 @@ from typing import Optional
 from ...imaging import PILLOW_AVAILABLE, select_region
 from ...models import ClickPoint, WaitCondition, SequenceStep, AutoClickerState
 from ...persistence import (
-    get_next_point_id, get_point_by_id, save_points,
+    get_next_point_id, get_point_by_id,
 )
 from ...utils import (
     cancel_hint, cmd_hint, col, confirm, coord_context, describe_color, hint,
@@ -571,8 +571,12 @@ class _PhaseEditor:
             new_point = ClickPoint(x, y, point_name, new_id)
             self.state.points.append(new_point)
 
-        save_points(self.state)
-        print(f"  + Punkt #{new_id} '{point_name}' erstellt bei {coord_context(x, y)}")
+        # **Gespeichert wird mit `done`, nicht hier.** Hier stand
+        # `save_points()`, und das schreibt die AKTIVE Sequenz: beim Anlegen
+        # einer neuen war das die vorige, die damit einen fremden Punkt bekam.
+        # Wie jede andere Änderung im Editor gilt der Punkt erst mit `done`.
+        print(f"  + Punkt #{new_id} '{point_name}' erstellt bei {coord_context(x, y)} "
+              f"{hint('(gespeichert wird mit done)')}")
 
     # ---- Step-hinzufügen ----
 

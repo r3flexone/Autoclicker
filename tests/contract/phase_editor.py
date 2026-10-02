@@ -244,9 +244,12 @@ check("ins: zu gross, nicht aktiv, unlesbar",
 _r = _Run(["points", "p", "done"]).run()
 check("points zeigt die Punkte", _r.output.count("Knopf") >= 2)
 _r = _Run(["learn Neu", "", "done"], cursor=[(5, 6)]).run()
-check("learn <Name>: ein neuer Punkt an der Maus, gespeichert",
-      _r.state.points[-1].name == "Neu" and (_r.state.points[-1].x, _r.state.points[-1].y) == (5, 6)
-      and _r.saved == 1)
+check("learn <Name>: ein neuer Punkt an der Maus",
+      _r.state.points[-1].name == "Neu" and (_r.state.points[-1].x, _r.state.points[-1].y) == (5, 6))
+# Gespeichert wird mit `done` des Sequenz-Editors: `save_points` hier schrieb
+# die AKTIVE Sequenz, beim Anlegen einer neuen also die vorige.
+check("learn speichert nicht selbst, und sagt das",
+      _r.saved == 0 and "gespeichert wird mit done" in _r.output)
 _r = _Run(["learn", "cancel", "done"]).run()
 check("learn ohne Namen, abgebrochen", len(_r.state.points) == 2 and "Abgebrochen" in _r.output)
 

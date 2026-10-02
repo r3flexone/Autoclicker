@@ -309,8 +309,17 @@ hinterlassen bzw. vermissen lassen, und die Fehler sind spiegelbildlich:
 |---|---|---|
 | `new()` (Studio) | `self.points` wurde nicht geleert | eine frisch angelegte Sequenz kam mit dem **ganzen Punktebestand der vorher offenen** auf die Platte — `save()` schreibt `self.points` |
 | `edit_sequence()` (Konsole) | `new_sequence.points` wurde nicht gefüllt | die gespeicherte Sequenz hatte **gar keine Punkte**, während jeder Schritt weiter seine `point_id` trug |
+| `edit_sequence()` (Konsole, **neue** Sequenz) | sie wurde erst beim Speichern die aktive | `learn` im Editor schrieb seinen Punkt in die **vorher aktive** Sequenz (deren Liste war `state.points`, und `save_points` speichert die aktive), und die neue bekam deren ganzen Bestand |
 
-Beides ist derselbe Denkfehler aus der Zeit des globalen Bestands: dort war
+Der dritte Fall hat dieselbe Antwort wie der erste, nur früher im Ablauf: die
+neue Sequenz wird **beim Anlegen** die aktive, mit einer **Kopie** des
+bisherigen Bestands (`_work_on_copy`) — die Konsole braucht die Punkte, denn
+CTRL+ALT+A legt sie in der aktiven Sequenz an. Gespeichert werden davon nur
+die, die ein Schritt benutzt; ein Abbruch macht die vorige wieder aktiv. Und
+`learn` speichert nicht mehr selbst: wie jede Änderung im Editor gilt der
+Punkt mit `done`.
+
+Alle drei sind derselbe Denkfehler aus der Zeit des globalen Bestands: dort war
 `state.points` die eine Liste für alles, und ein Sequenzwechsel liess sie
 zurecht in Ruhe. Seither ist die Frage bei **jedem** Wechsel des Gegenstands zu
 beantworten — `load()`, `new()`, Import, Kalibrierung und der Konsolen-Editor

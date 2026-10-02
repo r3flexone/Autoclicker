@@ -169,5 +169,82 @@ try:
                save_ok=False).run()
     check("scheitert das Speichern, steht kein [ERFOLG] da",
           "NICHT auf Platte" in _r.output and "[ERFOLG]" not in _r.output)
+
+    # =========================================================================
+    section("Sequenz-Editor: eine neue Sequenz fasst die aktive nicht an")
+    # =========================================================================
+    # Bei aktiver Sequenz A eine neue B anlegen und darin `learn` benutzen:
+    # der Punkt landete in A's Liste, und `save_points` schrieb A — also die
+    # falsche Datei. B bekam beim Speichern A's ganzen Bestand, auch Punkte,
+    # die keiner ihrer Schritte benutzt. Im Studio ist dasselbe bei `new()`
+    # schon behoben; der Konsolen-Editor ist der zweite Weg zur neuen Sequenz.
+    # Gespeichert wird hier wirklich (in den Temp-Ordner), denn um die Datei geht es.
+    import autoclicker.editors.sequence_editor.steps as _PS
+    from autoclicker.persistence import (
+        load_sequence_file as _load_seq, save_sequence_file as _save_seq,
+        sequence_file as _seq_file,
+    )
+
+    def _learn_and_click(state, steps, label):
+        """Der echte Phasen-Editor: ein `learn`, dann ein Klick auf Punkt 1."""
+        editor = _PS._PhaseEditor(state, list(steps), label)
+        originals = (_PS.safe_input, _PS.get_cursor_pos)
+        _PS.safe_input, _PS.get_cursor_pos = (lambda *a, **k: ""), (lambda: (9, 9))
+        try:
+            with _cl.redirect_stdout(_io.StringIO()):
+                editor._handle_learn("learn Gelernt")
+        finally:
+            _PS.safe_input, _PS.get_cursor_pos = originals
+        editor.add_step(_step())
+        return editor.steps
+
+    def _new_beside_a(name, phases, discard=False):
+        """A ist aktiv und gespeichert; der Editor legt B an. `phases` antwortet
+        der Reihe nach für INIT, LOOP, END."""
+        seq_a = _SEQ("A-Bestand", points=[_CP(1, 2, "Eins", 1), _CP(3, 4, "Zwei", 2)],
+                     loop_phases=[_LP("L", [_step()])])
+        _save_seq(seq_a, _seq_file("A-Bestand"))
+        state = _ST()
+        with _cl.redirect_stdout(_io.StringIO()):
+            activate_sequence(state, seq_a)
+        answers, typed = list(phases), [name, ""]
+        stubs = [(_ed, "edit_phase", lambda s, st, lb: answers.pop(0)(s, st, lb)),
+                 (_ed, "edit_loop_phases", lambda s, ph: answers.pop(0)(s, ph, "LOOP")),
+                 (_ed, "safe_input", lambda *a, **k: typed.pop(0) if typed else ""),
+                 (_ed, "confirm_new_sequence_name", lambda n: n),
+                 (_ed, "confirm", lambda *a, **k: discard)]
+        saved = [(m, n, getattr(m, n)) for m, n, _ in stubs]
+        for module, attr, value in stubs:
+            setattr(module, attr, value)
+        try:
+            with _cl.redirect_stdout(_io.StringIO()):
+                _ed.edit_sequence(state, None)
+        finally:
+            for module, attr, value in reversed(saved):
+                setattr(module, attr, value)
+        return state, seq_a
+
+    def _empty(*_a):
+        return []
+
+    def _cancelled(*_a):
+        return None
+
+    _state, _a = _new_beside_a("B-Neu", [_learn_and_click, _empty, _empty])
+    _a_disk = _load_seq(_seq_file("A-Bestand"))
+    _b_disk = _load_seq(_seq_file("B-Neu"))
+    check("A auf der Platte behält genau seine Punkte",
+          _a_disk is not None and [p.id for p in _a_disk.points] == [1, 2])
+    check("A im Speicher ebenso", [p.id for p in _a.points] == [1, 2])
+    check("B behält nur die benutzten übernommenen Punkte und den gelernten",
+          _b_disk is not None and sorted(p.name for p in _b_disk.points) == ["Eins", "Gelernt"])
+    check("B ist danach die aktive Sequenz", _state.active_sequence.name == "B-Neu")
+
+    _state, _a = _new_beside_a("B-Weg", [_learn_and_click, _cancelled], discard=True)
+    check("nach dem Abbruch ist A wieder aktiv, mit seinen Punkten",
+          _state.active_sequence is _a and [p.id for p in _state.points] == [1, 2])
+    check("B wurde nicht angelegt", not _seq_file("B-Weg").exists())
+    check("und A auf der Platte ist unverändert",
+          [p.id for p in _load_seq(_seq_file("A-Bestand")).points] == [1, 2])
 finally:
     _os.chdir(_cwd)
