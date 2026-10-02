@@ -80,7 +80,9 @@ import autoclicker.runtime.steps as _steps_mod
 from autoclicker.editors.boss_scan_editor import _DEFAULT_ACTIONS as _console_defaults
 check("Klick und Taste sind als Fallback nicht vorgesehen",
       _BAC not in _VBDA and _BAK not in _VBDA and len(_VBDA) == 4)
-_runtime_src = _inspect.getsource(_steps_mod._execute_boss_scan_step)
+# Seit dem Zerlegen stehen die Fallbacks in `_boss_default_action`; was jeder
+# einzelne bewirkt, prüft tests/contract/boss_steps.py am Verhalten.
+_runtime_src = _inspect.getsource(_steps_mod._boss_default_action)
 check("die Laufzeit kennt jeden Fallback-Wert der Liste",
       all(name in _runtime_src for name in
           ("BOSS_ACTION_SKIP_CYCLE", "BOSS_ACTION_RESTART", "BOSS_ACTION_SCAN"))

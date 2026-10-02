@@ -10,6 +10,7 @@ auf welche optionalen Felder gesetzt sind.
 import os
 import time
 from datetime import datetime
+from typing import Optional
 from pathlib import Path
 
 from ..imaging import (
@@ -296,48 +297,71 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
             print(dbg("Kein Boss erkannt → else-Aktion"))
         return execute_else_action(state, step, phase, step_num, total_steps)
 
-    # Default-Aktion aus der BossScanConfig
     with state.lock:
         config = state.boss_scans.get(step.boss_scan)
     if config and config.default_action != BOSS_ACTION_SKIP:
-        if config.default_action == BOSS_ACTION_SKIP_CYCLE:
-            _step_status(debug, phase, step_num, total_steps,
-                         "Kein Boss → Zyklus überspringen",
-                         "Kein Boss erkannt → Zyklus überspringen (Default)")
-            state.skip_cycle_event.set()
-            return False
-        elif config.default_action == BOSS_ACTION_RESTART:
-            _step_status(debug, phase, step_num, total_steps,
-                         "Kein Boss → Neustart",
-                         "Kein Boss erkannt → Neustart (Default)")
-            state.restart_event.set()
-            return False
-        elif config.default_action == BOSS_ACTION_SCAN and config.default_scan:
-            if debug:
-                print(dbg(f"Kein Boss erkannt → Default-Scan '{config.default_scan}'"))
-            scan_results = execute_item_scan(state, config.default_scan)
-            if scan_results:
-                for pos, item, priority in scan_results:
-                    if state.stop_event.is_set():
-                        return False
-                    if not _click_scan_result(state, pos, item, priority, debug):
-                        return False
-        elif config.default_action not in VALID_BOSS_DEFAULT_ACTIONS:
-            # Ein Wert aus einer alten Datei (das Studio bot einmal „Punkt
-            # klicken" als Fallback an): nichts, was hier ausfuehrbar waere —
-            # gesagt wird es, einmal je Lauf, statt still zu ueberspringen.
-            with state.lock:
-                key = f"default_action:{config.name}"
-                first = key not in state.warned_inconsistencies
-                state.warned_inconsistencies.add(key)
-            if first:
-                print(warn(f"Boss-Scan '{config.name}': Fallback '{config.default_action}' "
-                           "ist ohne erkannten Boss nicht ausfuehrbar — im Studio neu "
-                           "waehlen (skip, skip_cycle, restart oder Item-Scan)."))
+        outcome = _boss_default_action(state, config, step_num, total_steps, phase, debug)
+        if outcome is not None:
+            return outcome
 
     _step_status(debug, phase, step_num, total_steps,
                  "Kein Boss erkannt", "Kein Boss erkannt → übersprungen")
     return True
+
+
+def _boss_default_action(state: AutoClickerState, config, step_num: int, total_steps: int,
+                         phase: str, debug: bool) -> Optional[bool]:
+    """Der Fallback der BossScanConfig, wenn kein Boss erkannt wurde.
+
+    False = abbrechen (Zyklus überspringen, Neustart, abgebrochener Klick),
+    None = weiter wie ohne Fallback.
+    """
+    action = config.default_action
+    if action == BOSS_ACTION_SKIP_CYCLE:
+        _step_status(debug, phase, step_num, total_steps,
+                     "Kein Boss → Zyklus überspringen",
+                     "Kein Boss erkannt → Zyklus überspringen (Default)")
+        state.skip_cycle_event.set()
+        return False
+    if action == BOSS_ACTION_RESTART:
+        _step_status(debug, phase, step_num, total_steps,
+                     "Kein Boss → Neustart",
+                     "Kein Boss erkannt → Neustart (Default)")
+        state.restart_event.set()
+        return False
+    if action == BOSS_ACTION_SCAN:
+        return _boss_default_scan(state, config, debug)
+    if action not in VALID_BOSS_DEFAULT_ACTIONS:
+        _warn_default_action_once(state, config)
+    return None
+
+
+def _boss_default_scan(state: AutoClickerState, config, debug: bool) -> Optional[bool]:
+    """Fallback Item-Scan: jeden Treffer klicken. False = abgebrochen."""
+    if not config.default_scan:
+        return None
+    if debug:
+        print(dbg(f"Kein Boss erkannt → Default-Scan '{config.default_scan}'"))
+    for pos, item, priority in execute_item_scan(state, config.default_scan) or []:
+        if state.stop_event.is_set():
+            return False
+        if not _click_scan_result(state, pos, item, priority, debug):
+            return False
+    return None
+
+
+def _warn_default_action_once(state: AutoClickerState, config) -> None:
+    """Ein Wert aus einer alten Datei (das Studio bot einmal „Punkt klicken" als
+    Fallback an): nichts, was hier ausfuehrbar waere — gesagt wird es, einmal je
+    Lauf, statt still zu ueberspringen."""
+    with state.lock:
+        key = f"default_action:{config.name}"
+        first = key not in state.warned_inconsistencies
+        state.warned_inconsistencies.add(key)
+    if first:
+        print(warn(f"Boss-Scan '{config.name}': Fallback '{config.default_action}' "
+                   "ist ohne erkannten Boss nicht ausfuehrbar — im Studio neu "
+                   "waehlen (skip, skip_cycle, restart oder Item-Scan)."))
 
 
 # =============================================================================
@@ -403,83 +427,99 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
         return True
 
     watcher_name = step.boss_watcher
-    interval = state.config.llm_watcher_interval
-    max_scans = state.config.llm_watcher_max_scans
-    timeout = state.config.llm_watcher_timeout
-
     with state.lock:
         watcher_known = watcher_name in state.boss_scans
     if not watcher_known:
         print(err(f"Boss-Watcher '{watcher_name}' nicht gefunden!"))
         return True
 
-    limits = []
-    if max_scans > 0:
-        limits.append(f"max {max_scans} Scans")
-    if timeout > 0:
-        limits.append(f"Timeout {timeout:.0f}s")
-    limit_str = f", {', '.join(limits)}" if limits else ""
-
+    watch = _Watch(state, watcher_name, debug, phase, step_num, total_steps)
     _step_status(debug, phase, step_num, total_steps,
                  f"Boss-Watcher '{watcher_name}' - warte auf Boss...",
-                 f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {interval}s{limit_str})")
+                 f"Boss-Watcher '{watcher_name}' gestartet (Intervall: {watch.interval}s"
+                 f"{watch.limits_text()})")
 
-    scan_count = 0
-    start_time = time.time()
     while not state.stop_event.is_set():
         # Ein wartender Lauf ist kein toter Lauf — siehe status.heartbeat().
         status.heartbeat(state)
+        interrupted = watch.interrupted()
+        if interrupted is not None:
+            return interrupted
 
-        if not wait_while_paused(state, f"Boss-Watcher '{watcher_name}' pausiert..."):
-            return False
-
-        if state.skip_event.is_set():
-            state.skip_event.clear()
-            _step_status(debug, phase, step_num, total_steps,
-                         "Boss-Watcher: übersprungen", "Boss-Watcher: SKIP!")
-            return True
-
-        if state.skip_step_event.is_set():
-            state.skip_step_event.clear()
-            _step_status(debug, phase, step_num, total_steps,
-                         "Block übersprungen", "Boss-Watcher: BLOCK ÜBERSPRUNGEN")
-            return True
-
-        scan_count += 1
+        watch.scan_count += 1
         found, boss = execute_boss_scan(state, watcher_name)
-
         if found and boss:
             _step_status(debug, phase, step_num, total_steps,
                          f"Boss erkannt: {boss.name}!",
-                         f"Boss-Watcher: {boss.name} ERKANNT! (nach {scan_count} Scan(s))")
+                         f"Boss-Watcher: {boss.name} ERKANNT! (nach {watch.scan_count} Scan(s))")
             return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
 
-        elapsed = time.time() - start_time
-        if max_scans > 0 and scan_count >= max_scans:
-            _step_status(debug, phase, step_num, total_steps,
-                         f"Boss-Watcher: max. Scans ({max_scans}) erreicht",
-                         f"Boss-Watcher: max. Scans ({max_scans}) erreicht - Abbruch")
+        if watch.exhausted(time.time() - watch.start_time):
             return True
-        if timeout > 0 and elapsed >= timeout:
-            _step_status(debug, phase, step_num, total_steps,
-                         f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht",
-                         f"Boss-Watcher: Timeout ({timeout:.0f}s) erreicht - Abbruch")
-            return True
-
-        # Status anzeigen (nur ohne debug, da _step_status im debug eine neue Zeile ausgibt)
-        if not debug:
-            status_parts = [f"Scan #{scan_count}"]
-            if max_scans > 0:
-                status_parts.append(f"von {max_scans}")
-            if timeout > 0:
-                status_parts.append(f"{elapsed:.0f}/{timeout:.0f}s")
-            _step_status(False, phase, step_num, total_steps,
-                         f"Boss-Watcher: kein Boss... ({', '.join(status_parts)})")
-
-        if state.stop_event.wait(interval):
+        if state.stop_event.wait(watch.interval):
             return False
-
     return False
+
+
+class _Watch:
+    """Stand und Grenzen eines Boss-Watchers über seine Durchgänge."""
+
+    def __init__(self, state: AutoClickerState, name: str, debug: bool, phase: str,
+                 step_num: int, total_steps: int):
+        self.state, self.name, self.debug = state, name, debug
+        self.phase, self.step_num, self.total_steps = phase, step_num, total_steps
+        self.interval = state.config.llm_watcher_interval
+        self.max_scans = state.config.llm_watcher_max_scans
+        self.timeout = state.config.llm_watcher_timeout
+        self.scan_count = 0
+        self.start_time = time.time()
+
+    def _status(self, msg: str, dbg_msg: str = None) -> None:
+        _step_status(self.debug, self.phase, self.step_num, self.total_steps, msg, dbg_msg)
+
+    def limits_text(self) -> str:
+        limits = []
+        if self.max_scans > 0:
+            limits.append(f"max {self.max_scans} Scans")
+        if self.timeout > 0:
+            limits.append(f"Timeout {self.timeout:.0f}s")
+        return f", {', '.join(limits)}" if limits else ""
+
+    def interrupted(self) -> Optional[bool]:
+        """Pause, CTRL+ALT+K oder Block-Skip: False = gestoppt, True = übersprungen,
+        None = weiter scannen. Die Skip-Ereignisse werden dabei verbraucht."""
+        if not wait_while_paused(self.state, f"Boss-Watcher '{self.name}' pausiert..."):
+            return False
+        if self.state.skip_event.is_set():
+            self.state.skip_event.clear()
+            self._status("Boss-Watcher: übersprungen", "Boss-Watcher: SKIP!")
+            return True
+        if self.state.skip_step_event.is_set():
+            self.state.skip_step_event.clear()
+            self._status("Block übersprungen", "Boss-Watcher: BLOCK ÜBERSPRUNGEN")
+            return True
+        return None
+
+    def exhausted(self, elapsed: float) -> bool:
+        """Grenze erreicht (max. Scans, Timeout)? Sonst den Fortschritt zeigen."""
+        if self.max_scans > 0 and self.scan_count >= self.max_scans:
+            self._status(f"Boss-Watcher: max. Scans ({self.max_scans}) erreicht",
+                         f"Boss-Watcher: max. Scans ({self.max_scans}) erreicht - Abbruch")
+            return True
+        if self.timeout > 0 and elapsed >= self.timeout:
+            self._status(f"Boss-Watcher: Timeout ({self.timeout:.0f}s) erreicht",
+                         f"Boss-Watcher: Timeout ({self.timeout:.0f}s) erreicht - Abbruch")
+            return True
+        # Status anzeigen (nur ohne debug, da _step_status im debug eine neue Zeile ausgibt)
+        if not self.debug:
+            parts = [f"Scan #{self.scan_count}"]
+            if self.max_scans > 0:
+                parts.append(f"von {self.max_scans}")
+            if self.timeout > 0:
+                parts.append(f"{elapsed:.0f}/{self.timeout:.0f}s")
+            _step_status(False, self.phase, self.step_num, self.total_steps,
+                         f"Boss-Watcher: kein Boss... ({', '.join(parts)})")
+        return False
 
 
 # =============================================================================
@@ -1016,14 +1056,37 @@ def execute_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
 def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                    total_steps: int, phase: str) -> bool:
-    """Der Rumpf von `execute_step`: warten/prüfen, dann die Aktion des Typs."""
+    """Der Rumpf von `execute_step`: ankündigen, Gate, dann der Schritt seines Typs.
+
+    Stufen: `_announce_step` (Laufstatus, Debug, Zeiger) → `step_gate` →
+    `_special_step` (Screenshot, unfertiger Scan, Scan) oder `_action_step`
+    (warten, dann Klick/Taste/nur warten).
+    """
     if _block_skip(state, phase, step_num, total_steps):
         return True
     if check_failsafe(state):
         print(col("\n[FAILSAFE] Maus in Ecke erkannt! Stoppe...", "red"))
         state.stop_event.set()
         return False
+    _announce_step(state, step, phase, step_num, total_steps)
 
+    # Manueller Modus: Ziel zeigen und auf Bestätigung warten. GATE_SKIP behandelt den
+    # Schritt wie erledigt, damit die Sequenz normal weiterläuft.
+    gate = step_gate(state, step, phase, step_num, total_steps)
+    if gate == GATE_SKIP:
+        return True
+    if gate != GATE_RUN:
+        return False
+
+    special = _special_step(state, step, phase, step_num, total_steps)
+    if special is not None:
+        return special
+    return _action_step(state, step, phase, step_num, total_steps)
+
+
+def _announce_step(state: AutoClickerState, step: SequenceStep, phase: str,
+                   step_num: int, total_steps: int) -> None:
+    """Laufstatus, Debug-Zeile und (Stufe 2) Zeiger für den Block, der jetzt dran ist."""
     # Laufstatus für das Sequenz-Studio. Gedrosselt (kein `immediately`): die Phasen-
     # und Zykluswechsel im Worker schreiben immer, ein einzelner Block darf
     # ausgelassen werden. `describe_step` statt eines Typ-Kürzels, weil es hier
@@ -1046,14 +1109,10 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     # Stufe 2: ausschreiben was kommt + Zeiger hinsetzen (blockiert nicht).
     print_step_detail(state, step, phase, step_num, total_steps)
 
-    # Manueller Modus: Ziel zeigen und auf Bestätigung warten. GATE_SKIP behandelt den
-    # Schritt wie erledigt, damit die Sequenz normal weiterläuft.
-    gate = step_gate(state, step, phase, step_num, total_steps)
-    if gate == GATE_SKIP:
-        return True
-    if gate != GATE_RUN:
-        return False
 
+def _special_step(state: AutoClickerState, step: SequenceStep, phase: str,
+                  step_num: int, total_steps: int) -> Optional[bool]:
+    """Screenshot, unfertiger Scan oder Scan — sein Ergebnis; None für Aktions-Schritte."""
     if step.screenshot_only:
         return _execute_screenshot_step(state, step, step_num, total_steps, phase)
 
@@ -1075,26 +1134,24 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
     scan = _scan_handler(step)
     if scan is not None:
         return _with_mouse_return(state, scan, step, step_num, total_steps, phase)
+    return None
 
-    # Ab hier die Aktions-Schritte: Klick, Taste, reines Warten. Sie
-    # unterscheiden sich NUR in der Aktion am Ende — gewartet wird davor für alle
-    # gleich, an genau einer Stelle. Vorher hatte die Taste ihre eigene
-    # Wartezeit-Behandlung und wurde VOR der Farb-Bedingung abgefertigt: ein
-    # Farb-Trigger an einem Tasten-Schritt wurde dadurch stillschweigend
-    # ignoriert (und mit ihm dessen else-Aktion).
-    if step.wait_condition:
-        color_gate = _execute_wait_for_color(state, step, step_num, total_steps, phase)
-        if color_gate == GATE_SKIP:
-            return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — keine eigene Aktion
-        if color_gate != GATE_RUN:
-            return False
-    elif not skip_waits(state):
-        actual_delay = step.get_actual_delay()
-        if actual_delay > 0:
-            if not wait_with_pause_skip(state, actual_delay, phase, step_num, total_steps,
-                                        _wait_text(step), point=_live_target(step),
-                                        label=step.name):
-                return False
+
+def _action_step(state: AutoClickerState, step: SequenceStep, phase: str,
+                 step_num: int, total_steps: int) -> bool:
+    """Klick, Taste, reines Warten: erst warten, dann die Aktion.
+
+    Sie unterscheiden sich NUR in der Aktion am Ende — gewartet wird davor für
+    alle gleich, an genau einer Stelle. Vorher hatte die Taste ihre eigene
+    Wartezeit-Behandlung und wurde VOR der Farb-Bedingung abgefertigt: ein
+    Farb-Trigger an einem Tasten-Schritt wurde dadurch stillschweigend
+    ignoriert (und mit ihm dessen else-Aktion).
+    """
+    waited = _wait_before_action(state, step, phase, step_num, total_steps)
+    if waited == GATE_SKIP:
+        return True   # else-Aktion lief bzw. Prüfung nicht erfüllt — keine eigene Aktion
+    if waited != GATE_RUN:
+        return False
 
     if state.stop_event.is_set():
         return False
@@ -1103,16 +1160,27 @@ def _dispatch_step(state: AutoClickerState, step: SequenceStep, step_num: int,
 
     if step.wait_only:
         # Reines Warten hat keine Wirkung, die man nachpruefen koennte.
-        debug_active = is_verbose_debug(state)
-        _step_status(debug_active, phase, step_num, total_steps, "Warten beendet (kein Klick)")
+        _step_status(is_verbose_debug(state), phase, step_num, total_steps,
+                     "Warten beendet (kein Klick)")
         return True
 
-    if step.key_press:
-        action = _execute_key
-    else:
-        action = _execute_click
-
+    action = _execute_key if step.key_press else _execute_click
     return _with_verification(state, step, step_num, total_steps, phase, action)
+
+
+def _wait_before_action(state: AutoClickerState, step: SequenceStep, phase: str,
+                        step_num: int, total_steps: int) -> str:
+    """Farb-Bedingung oder Wartezeit vor der Aktion: GATE_RUN, GATE_SKIP oder GATE_STOP."""
+    if step.wait_condition:
+        return _execute_wait_for_color(state, step, step_num, total_steps, phase)
+    if skip_waits(state):
+        return GATE_RUN
+    actual_delay = step.get_actual_delay()
+    if actual_delay > 0 and not wait_with_pause_skip(
+            state, actual_delay, phase, step_num, total_steps,
+            _wait_text(step), point=_live_target(step), label=step.name):
+        return GATE_STOP
+    return GATE_RUN
 
 
 # =============================================================================

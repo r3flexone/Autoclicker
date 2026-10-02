@@ -5652,9 +5652,10 @@ try:
     # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
     # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
     # `execute_step` ist seit dem Block-Skip-Fix nur noch die Huelle; der
-    # Rumpf mit dem Laufstatus-Schreiber heisst `_dispatch_step`.
+    # Rumpf heisst `_dispatch_step`, und der Laufstatus-Schreiber darin
+    # seit dem Zerlegen `_announce_step`.
     check("der Blockwechsel raeumt den Warte-Kasten ab",
-          '"waiting": None' in _insp16.getsource(_stp16._dispatch_step))
+          '"waiting": None' in _insp16.getsource(_stp16._announce_step))
 
     # Was nach dem Timeout kommt, gehoert neben den Countdown: dass in 8 s
     # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
@@ -6624,6 +6625,7 @@ import tests.contract.recording_build      # noqa: F401,E402
 import tests.contract.sequence_editor_flow # noqa: F401,E402
 import tests.contract.item_scan_wizard     # noqa: F401,E402
 import tests.contract.boss_detection_flow  # noqa: F401,E402
+import tests.contract.boss_steps           # noqa: F401,E402
 
 
 import shutil as _shD
