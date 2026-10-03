@@ -134,6 +134,90 @@ _text = _buffer.getvalue()
 check("der Kommandozeilen-Bericht druckt nach wie vor", "TIMEOUTS" in _text)
 check("und nennt dieselbe Zahl wie die Auswertung", "2x  Bank oeffnen" in _text)
 
+# Der ganze Text, Zeile für Zeile — festgehalten vor dem Zerlegen von
+# `report()`. Jeder Abschnitt kommt einmal vor; was die Konsole zeigt, ist
+# die Oberfläche dieses Werkzeugs, also wird sie wörtlich geprüft.
+_waits6 = _log(_sandbox / "logs6" / "2026-01-06_000000_farm.csv", [
+    ("2026-01-06 00:00:00", 0, "session_start", "Farm", "", "", ""),
+    ("2026-01-06 00:00:01", 1, "key", "Esc", "", "", ""),
+    ("2026-01-06 00:00:02", 2, "wait", "Bank", "", "", "s=30.00"),
+    ("2026-01-06 00:00:03", 3, "color_wait", "Kampf", 1, 2, "s=120.00,result=timeout"),
+    ("2026-01-06 00:00:04", 4, "color_wait", "Kampf", 1, 2, "s=60.00,result=ok"),
+    ("2026-01-06 00:00:05", 5, "pause", "", "", "", "s=90.00"),
+    ("2026-01-06 00:00:06", 6, "detected", "Kraken", "", "", ""),
+    ("2026-01-06 00:00:07", 7, "verify_ok", "Tor", "", "", ""),
+    ("2026-01-06 00:00:08", 8, "irgendwas_neues", "", "", "", ""),
+    ("2026-01-06 00:10:00", 600, "session_end", "Farm", "", "", ""),
+])
+_quiet7 = _log(_sandbox / "logs7" / "2026-01-07_000000_ruhe.csv", [
+    ("2026-01-07 00:00:00", 0, "session_start", "Ruhe", "", "", ""),
+    ("2026-01-07 00:00:05", 5, "session_end", "Ruhe", "", "", ""),
+])
+
+
+def _printed(paths):
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        _bericht(paths)
+    lines = buffer.getvalue().split("\n")
+    # Der Grund einer unlesbaren Datei ist ein Betriebssystem-Text.
+    return ([z for z in lines if z.startswith("  ! ")],
+            "\n".join(z for z in lines if not z.startswith("  ! ")))
+
+
+_RULE = "-" * 66
+_FULL = "\n".join([
+    "=" * 66,
+    "  3 Session(s)  |  Laufzeit gesamt: 1:40:00",
+    "=" * 66,
+    "",
+    "Aktionen: 3 Klick(s), 1 Taste(n)",
+    "          2 Klicks/Stunde",
+    "", _RULE,
+    "TIMEOUTS — wo die Sequenz haengt (3 gesamt):",
+    "      2x  Bank oeffnen",
+    "      1x  Truhe",
+    "       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.",
+    "", _RULE,
+    "NACHPRUEFUNG:",
+    "  2x bestaetigt, 1x ohne Wirkung",
+    "      1x ohne Wirkung  Verkaufen   (bestaetigt: 1/2)",
+    "       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das Spiel",
+    "       braucht laenger als verify_timeout.",
+    "", _RULE,
+    "WARTEZEITEN (1 Session(s) mit Messung, 10:00):",
+    "       0:30    5.0 %  geplant",
+    "       3:00   30.0 %  auf Farbe",
+    "       1:30   15.0 %  Pause",
+    "       5:00   50.0 %  Rest (Aktionen, Scans)",
+    "       3:00  auf Farbe  Kampf  (2x, laengste 120s, 1x Timeout)",
+    "", _RULE,
+    "GEFUNDENE ITEMS (4 gesamt):",
+    "      3x  Erz",
+    "      1x  Holz",
+    "", _RULE,
+    "ERKANNT (Boss/Icon):",
+    "      1x  Kraken",
+    "", _RULE,
+    "UNTERBRECHUNGEN:",
+    "      1x  focus_lost",
+    "",
+    "  Nicht ausgewertete Ereignisarten: irgendwas_neues",
+    "",
+])
+_bad, _text = _printed([_one, _two, _waits6, _sandbox / "fehlt.csv"])
+check("der volle Bericht, Abschnitt für Abschnitt", _text == _FULL)
+check("eine unlesbare Datei steht davor, mit Namen",
+      len(_bad) == 1 and _bad[0].startswith("  ! fehlt.csv: nicht lesbar ("))
+_bad, _text = _printed([_quiet7])
+check("ein ruhiger Lauf: nur der Kopf und 'keine Timeouts'", _text == "\n".join([
+    "=" * 66, "  1 Session(s)  |  Laufzeit gesamt: 0:05", "=" * 66, "",
+    "Aktionen: 0 Klick(s), 0 Taste(n)", "",
+    "Keine Timeouts — jede Farb-Bedingung ist aufgegangen.", ""]))
+_bad, _text = _printed([_sandbox / "fehlt.csv"])
+check("nichts Lesbares: das wird gesagt", _text == "Keine lesbaren Logs gefunden.\n"
+      and len(_bad) == 1)
+
 
 section("Bericht: was der Reiter daraus macht")
 

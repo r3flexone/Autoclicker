@@ -151,38 +151,43 @@ def color_distance(c1: tuple, c2: tuple) -> float:
 
 
 def get_color_name(rgb: tuple) -> str:
-    """Gibt einen Farbnamen fuer RGB zurueck."""
+    """Gibt einen Farbnamen fuer RGB zurueck — dieselbe Regel wie `imaging.get_color_name`.
+
+    Eine Kopie, weil dieses Werkzeug nichts aus `autoclicker/` laedt; ein Test
+    haelt beide auf einem Farbraster gleich.
+    """
     r, g, b = rgb
     if abs(r - g) < 30 and abs(g - b) < 30 and abs(r - b) < 30:
-        if r < 50:
-            return "Schwarz"
-        elif r < 120:
-            return "Dunkelgrau"
-        elif r < 200:
-            return "Grau"
-        else:
-            return "Weiss"
+        return next((name for limit, name in ((50, "Schwarz"), (120, "Dunkelgrau"),
+                                              (200, "Grau")) if r < limit), "Weiss")
+    return _dominant_color_name(r, g, b) or _mixed_color_name(r, g, b)
+
+
+def _dominant_color_name(r: int, g: int, b: int):
+    """Der Name nach dem staerksten Kanal — None, wenn keiner allein vorn liegt."""
     if r > g and r > b:
         if g > b + 50:
             return "Orange" if r > 200 else "Braun"
-        elif b > g + 30:
-            return "Pink/Magenta"
-        else:
-            return "Rot"
-    elif g > r and g > b:
+        return "Pink/Magenta" if b > g + 30 else "Rot"
+    if g > r and g > b:
         if r > b + 30:
             return "Gelb/Lime"
-        elif b > r + 30:
-            return "Tuerkis/Cyan"
-        else:
-            return "Gruen"
-    elif b > r and b > g:
+        return "Tuerkis/Cyan" if b > r + 30 else "Gruen"
+    if b > r and b > g:
         if r > g + 30:
             return "Lila/Violett"
-        elif g > r + 30:
-            return "Tuerkis/Cyan"
-        else:
-            return "Blau"
+        return "Tuerkis/Cyan" if g > r + 30 else "Blau"
+    return None
+
+
+def _mixed_color_name(r: int, g: int, b: int) -> str:
+    """Zwei gleich starke Kanaele: Gelb, Magenta, Cyan oder gemischt."""
+    if r > 200 and g > 200 and b < 100:
+        return "Gelb"
+    if r > 200 and g < 100 and b > 200:
+        return "Magenta"
+    if r < 100 and g > 200 and b > 200:
+        return "Cyan"
     return "Gemischt"
 
 
@@ -468,36 +473,43 @@ def main():
     print("  [0] Beenden")
 
     try:
-        choice = input("\n> ").strip()
-
-        if choice == "1":
-            test_all_slots(use_bitblt=False)
-        elif choice == "2":
-            test_all_slots(use_bitblt=True)
-        elif choice == "3":
-            print("\nVerfuegbare Slots:")
-            slot_names = list(slots.keys())
-            for i, name in enumerate(slot_names):
-                print(f"  {i+1}. {name}")
-
-            idx = int(input("\nSlot-Nummer: ").strip()) - 1
-            if 0 <= idx < len(slot_names):
-                name = slot_names[idx]
-                use_bb = input("BitBlt verwenden? (j/n): ").strip().lower() == "j"
-                test_single_slot(name, slots[name], use_bb)
-        elif choice == "4":
-            test_template_matching()
-        elif choice == "0":
-            return
-        else:
-            print("Ungueltige Option!")
-
+        _run_choice(input("\n> ").strip(), slots)
     except (KeyboardInterrupt, EOFError):
         print("\n[ABBRUCH]")
     except Exception as e:
         print(f"\n[FEHLER] {e}")
         import traceback
         traceback.print_exc()
+
+
+def _run_choice(choice: str, slots: dict) -> None:
+    """Fuehrt die gewaehlte Option aus; 0 beendet ohne etwas zu tun."""
+    actions = {
+        "1": lambda: test_all_slots(use_bitblt=False),
+        "2": lambda: test_all_slots(use_bitblt=True),
+        "3": lambda: _test_chosen_slot(slots),
+        "4": test_template_matching,
+        "0": lambda: None,
+    }
+    action = actions.get(choice)
+    if action is None:
+        print("Ungueltige Option!")
+        return
+    action()
+
+
+def _test_chosen_slot(slots: dict) -> None:
+    """Option 3: einen Slot aus der Liste waehlen und einzeln testen."""
+    print("\nVerfuegbare Slots:")
+    slot_names = list(slots.keys())
+    for i, name in enumerate(slot_names):
+        print(f"  {i+1}. {name}")
+
+    idx = int(input("\nSlot-Nummer: ").strip()) - 1
+    if 0 <= idx < len(slot_names):
+        name = slot_names[idx]
+        use_bb = input("BitBlt verwenden? (j/n): ").strip().lower() == "j"
+        test_single_slot(name, slots[name], use_bb)
 
 
 if __name__ == "__main__":

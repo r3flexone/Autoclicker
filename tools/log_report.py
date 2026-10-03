@@ -127,11 +127,7 @@ def evaluate(paths: list[Path]) -> dict:
     bei einer Nacht voller Logs liest man dann jede Datei doppelt.
     """
     total_events = Counter()
-    timeouts_per_step = Counter()
-    items = Counter()
-    detected = Counter()
-    verify_miss = Counter()
-    verify_ok = Counter()
+    counters = {name: Counter() for name, _unnamed in _COUNTED.values()}
     sessions = []
     unreadable = []
     total_duration = 0.0
@@ -139,8 +135,7 @@ def evaluate(paths: list[Path]) -> dict:
     # (Wartezeit am Block), `color_wait` hat das Spiel entschieden (Farb-
     # Trigger), `pause` der Nutzer. Je Block: [Sekunden, Anzahl, laengste,
     # davon Timeouts].
-    planned_per_step: dict = {}
-    color_per_step: dict = {}
+    per_step = {"planned": {}, "color": {}}
     waits = {"planned": 0.0, "color": 0.0, "pause": 0.0,
              "measured_duration": 0.0, "measured_sessions": 0}
 
@@ -159,45 +154,8 @@ def evaluate(paths: list[Path]) -> dict:
             ev = z.get("event", "")
             total_events[ev] += 1
             own[ev] += 1
-            detail = (z.get("detail") or "").strip()
-            if ev == "timeout":
-                timeouts_per_step[detail or "(ohne Namen)"] += 1
-            elif ev == "item_found":
-                items[detail] += 1
-            elif ev == "detected":
-                detected[detail] += 1
-            elif ev == "verify_miss":
-                verify_miss[detail or "(ohne Namen)"] += 1
-            elif ev == "verify_ok":
-                verify_ok[detail or "(ohne Namen)"] += 1
-            elif ev in ("wait", "color_wait"):
-                sec = _seconds(z)
-                own_waits["planned" if ev == "wait" else "color"] += sec
-                table = planned_per_step if ev == "wait" else color_per_step
-                row = table.setdefault(detail or "(ohne Namen)", [0.0, 0, 0.0, 0])
-                row[0] += sec
-                row[1] += 1
-                row[2] = max(row[2], sec)
-                if _extra(z).get("result") == "timeout":
-                    row[3] += 1
-            elif ev == "pause":
-                own_waits["pause"] += _seconds(z)
-        sessions.append({
-            "file": path.name,
-            "sequence": _sequence_name(path, lines),
-            "begin": (lines[0].get("timestamp") or "").strip(),
-            "duration": duration,
-            "clicks": own.get("click", 0),
-            "timeouts": own.get("timeout", 0),
-            "items": own.get("item_found", 0),
-            "verify_miss": own.get("verify_miss", 0),
-            # Ein Log von vor der Wartezeit-Erfassung hat keine dieser Zeilen.
-            # Es zaehlt dann nicht mit, statt seine ganze Laufzeit als „Rest"
-            # auszuweisen.
-            "waits_measured": bool(own.get("wait") or own.get("color_wait")),
-            "planned": round(own_waits["planned"], 2),
-            "color": round(own_waits["color"], 2),
-        })
+            _tally_line(z, ev, counters, own_waits, per_step)
+        sessions.append(_session_row(path, lines, duration, own, own_waits))
         if sessions[-1]["waits_measured"]:
             for k in ("planned", "color", "pause"):
                 waits[k] += own_waits[k]
@@ -212,18 +170,75 @@ def evaluate(paths: list[Path]) -> dict:
         "unreadable": unreadable,
         "duration": total_duration,
         "events": dict(total_events),
-        "timeouts": _rank(timeouts_per_step),
-        "items": _rank(items),
-        "detected": _rank(detected),
-        "verify_miss": _rank(verify_miss),
-        "verify_ok": dict(verify_ok),
+        "timeouts": _rank(counters["timeouts"]),
+        "items": _rank(counters["items"]),
+        "detected": _rank(counters["detected"]),
+        "verify_miss": _rank(counters["verify_miss"]),
+        "verify_ok": dict(counters["verify_ok"]),
         "disturbances": sorted([k, v] for k, v in disturbances.items()),
         "unknown": sorted(unknown),
         "waits": {k: (round(v, 2) if isinstance(v, float) else v)
                   for k, v in waits.items()},
-        "planned_waits": _rank_waits(planned_per_step),
-        "color_waits": _rank_waits(color_per_step),
+        "planned_waits": _rank_waits(per_step["planned"]),
+        "color_waits": _rank_waits(per_step["color"]),
     }
+
+
+_UNNAMED = "(ohne Namen)"
+
+# Ereignisse, die nur gezählt werden: Ereignis → (Zähler, ob ein leerer Name
+# als „(ohne Namen)" zählt). Ein Item ohne Namen bleibt ohne — es gibt keins.
+_COUNTED = {
+    "timeout": ("timeouts", True),
+    "item_found": ("items", False),
+    "detected": ("detected", False),
+    "verify_miss": ("verify_miss", True),
+    "verify_ok": ("verify_ok", True),
+}
+
+
+def _tally_line(z: dict, ev: str, counters: dict, own_waits: dict, per_step: dict) -> None:
+    """Zählt EINE Log-Zeile: in ihren Zähler, ihre Wartezeit oder ihre Pause."""
+    detail = (z.get("detail") or "").strip()
+    if ev in _COUNTED:
+        name, unnamed = _COUNTED[ev]
+        counters[name][(detail or _UNNAMED) if unnamed else detail] += 1
+    elif ev in ("wait", "color_wait"):
+        kind = "planned" if ev == "wait" else "color"
+        sec = _seconds(z)
+        own_waits[kind] += sec
+        row = per_step[kind].setdefault(detail or _UNNAMED, [0.0, 0, 0.0, 0])
+        row[0] += sec
+        row[1] += 1
+        row[2] = max(row[2], sec)
+        if _extra(z).get("result") == "timeout":
+            row[3] += 1
+    elif ev == "pause":
+        own_waits["pause"] += _seconds(z)
+
+
+def _session_row(path: Path, lines: list[dict], duration: float, own: Counter,
+                 own_waits: dict) -> dict:
+    """Die Zeile einer Sitzung in der Liste des Reiters."""
+    return {
+        "file": path.name,
+        "sequence": _sequence_name(path, lines),
+        "begin": (lines[0].get("timestamp") or "").strip(),
+        "duration": duration,
+        "clicks": own.get("click", 0),
+        "timeouts": own.get("timeout", 0),
+        "items": own.get("item_found", 0),
+        "verify_miss": own.get("verify_miss", 0),
+        # Ein Log von vor der Wartezeit-Erfassung hat keine dieser Zeilen.
+        # Es zaehlt dann nicht mit, statt seine ganze Laufzeit als „Rest"
+        # auszuweisen.
+        "waits_measured": bool(own.get("wait") or own.get("color_wait")),
+        "planned": round(own_waits["planned"], 2),
+        "color": round(own_waits["color"], 2),
+    }
+
+
+_RULE = "-" * 66
 
 
 def report(paths: list[Path]) -> None:
@@ -237,9 +252,6 @@ def report(paths: list[Path]) -> None:
         return
 
     total_events = data["events"]
-    timeouts_per_step = data["timeouts"]
-    verify_miss = data["verify_miss"]
-    verify_ok = data["verify_ok"]
     total_duration = data["duration"]
 
     print("=" * 66)
@@ -251,59 +263,76 @@ def report(paths: list[Path]) -> None:
     if total_duration > 0 and clicks:
         print(f"          {clicks / (total_duration / 3600):.0f} Klicks/Stunde")
 
-    # DIE Frage, fuer die es das Werkzeug gibt
-    if timeouts_per_step:
-        print(f"\n{'-' * 66}\nTIMEOUTS — wo die Sequenz haengt "
-              f"({sum(n for _, n in timeouts_per_step)} gesamt):")
-        for name, n in timeouts_per_step[:10]:
-            print(f"  {n:>5}x  {name}")
-        print("       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.")
-    else:
+    for part in (_report_timeouts, _report_verify, _report_waits, _report_findings):
+        part(data)
+
+
+def _report_timeouts(data: dict) -> None:
+    """DIE Frage, fuer die es das Werkzeug gibt."""
+    timeouts_per_step = data["timeouts"]
+    if not timeouts_per_step:
         print("\nKeine Timeouts — jede Farb-Bedingung ist aufgegangen.")
+        return
+    print(f"\n{_RULE}\nTIMEOUTS — wo die Sequenz haengt "
+          f"({sum(n for _, n in timeouts_per_step)} gesamt):")
+    for name, n in timeouts_per_step[:10]:
+        print(f"  {n:>5}x  {name}")
+    print("       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.")
 
-    # Nachpruefung: wie oft musste wiederholt werden?
-    if verify_ok or verify_miss:
-        print(f"\n{'-' * 66}\nNACHPRUEFUNG:")
-        print(f"  {sum(verify_ok.values())}x bestaetigt, "
-              f"{sum(n for _, n in verify_miss)}x ohne Wirkung")
-        for name, n in verify_miss[:10]:
-            good = verify_ok.get(name, 0)
-            quote = f"{good}/{good + n}" if (good + n) else "-"
-            print(f"  {n:>5}x ohne Wirkung  {name}   (bestaetigt: {quote})")
-        if verify_miss:
-            print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
-                  "Spiel\n       braucht laenger als verify_timeout.")
 
+def _report_verify(data: dict) -> None:
+    """Nachpruefung: wie oft musste wiederholt werden?"""
+    verify_miss, verify_ok = data["verify_miss"], data["verify_ok"]
+    if not (verify_ok or verify_miss):
+        return
+    print(f"\n{_RULE}\nNACHPRUEFUNG:")
+    print(f"  {sum(verify_ok.values())}x bestaetigt, "
+          f"{sum(n for _, n in verify_miss)}x ohne Wirkung")
+    for name, n in verify_miss[:10]:
+        good = verify_ok.get(name, 0)
+        quote = f"{good}/{good + n}" if (good + n) else "-"
+        print(f"  {n:>5}x ohne Wirkung  {name}   (bestaetigt: {quote})")
+    if verify_miss:
+        print("       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das "
+              "Spiel\n       braucht laenger als verify_timeout.")
+
+
+def _report_waits(data: dict) -> None:
+    """Die Laufzeit aufgeteilt — nur über die Sitzungen, die Wartezeiten mitschreiben."""
     waits = data["waits"]
-    if waits["measured_sessions"]:
-        span = waits["measured_duration"]
-        rest = max(0.0, span - waits["planned"] - waits["color"] - waits["pause"])
-        print(f"\n{'-' * 66}\nWARTEZEITEN ({waits['measured_sessions']} "
-              f"Session(s) mit Messung, {_fmt_duration(span)}):")
-        for label, sec in (("geplant", waits["planned"]),
-                           ("auf Farbe", waits["color"]),
-                           ("Pause", waits["pause"]),
-                           ("Rest (Aktionen, Scans)", rest)):
-            share = f"{sec / span * 100:5.1f} %" if span else "    -"
-            print(f"  {_fmt_duration(sec):>9}  {share}  {label}")
-        for name, sec, n, longest, timeouts in data["color_waits"][:10]:
-            suffix = f", {timeouts}x Timeout" if timeouts else ""
-            print(f"  {_fmt_duration(sec):>9}  auf Farbe  {name}  "
-                  f"({n}x, laengste {longest:.0f}s{suffix})")
+    if not waits["measured_sessions"]:
+        return
+    span = waits["measured_duration"]
+    rest = max(0.0, span - waits["planned"] - waits["color"] - waits["pause"])
+    print(f"\n{_RULE}\nWARTEZEITEN ({waits['measured_sessions']} "
+          f"Session(s) mit Messung, {_fmt_duration(span)}):")
+    for label, sec in (("geplant", waits["planned"]),
+                       ("auf Farbe", waits["color"]),
+                       ("Pause", waits["pause"]),
+                       ("Rest (Aktionen, Scans)", rest)):
+        share = f"{sec / span * 100:5.1f} %" if span else "    -"
+        print(f"  {_fmt_duration(sec):>9}  {share}  {label}")
+    for name, sec, n, longest, timeouts in data["color_waits"][:10]:
+        suffix = f", {timeouts}x Timeout" if timeouts else ""
+        print(f"  {_fmt_duration(sec):>9}  auf Farbe  {name}  "
+              f"({n}x, laengste {longest:.0f}s{suffix})")
 
+
+def _report_findings(data: dict) -> None:
+    """Was gefunden, erkannt und unterbrochen wurde — und was der Bericht nicht kennt."""
     if data["items"]:
-        print(f"\n{'-' * 66}\nGEFUNDENE ITEMS "
+        print(f"\n{_RULE}\nGEFUNDENE ITEMS "
               f"({sum(n for _, n in data['items'])} gesamt):")
         for name, n in data["items"][:15]:
             print(f"  {n:>5}x  {name}")
 
     if data["detected"]:
-        print(f"\n{'-' * 66}\nERKANNT (Boss/Icon):")
+        print(f"\n{_RULE}\nERKANNT (Boss/Icon):")
         for name, n in data["detected"][:10]:
             print(f"  {n:>5}x  {name}")
 
     if data["disturbances"]:
-        print(f"\n{'-' * 66}\nUNTERBRECHUNGEN:")
+        print(f"\n{_RULE}\nUNTERBRECHUNGEN:")
         for k, v in data["disturbances"]:
             print(f"  {v:>5}x  {k}")
 
