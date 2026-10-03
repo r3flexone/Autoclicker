@@ -208,18 +208,6 @@ def main(argv: list[str]) -> int:
     )
     _attach_close_handler(window, bridge, quit_with_window)
 
-    def _after_start() -> None:
-        """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
-
-        Deshalb die Frist: zum Zeitpunkt dieses Aufrufs existiert das Fenster nicht,
-        und `set_window_icon()` fiele still auf `False` zurück.
-        """
-        try:
-            from .winapi import set_window_icon
-            set_window_icon(WINDOW_TITLE, waiting=15.0)
-        except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
-            pass
-
     try:
         # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).
         webview.start(_after_start)
@@ -231,6 +219,19 @@ def main(argv: list[str]) -> int:
 
     _closing_message(bridge)
     return 0
+
+
+def _after_start() -> None:
+    """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
+
+    Deshalb die Frist: zum Zeitpunkt dieses Aufrufs existiert das Fenster nicht,
+    und `set_window_icon()` fiele still auf `False` zurück.
+    """
+    try:
+        from .winapi import set_window_icon
+        set_window_icon(WINDOW_TITLE, waiting=15.0)
+    except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
+        pass
 
 
 def _closing_message(bridge) -> None:

@@ -912,46 +912,82 @@ def _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap) -> None:
             pass
 
 
+class _GdiBitmap:
+    """Speicher-DC mit Bitmap über dem Fenster-DC von `hwnd`, als Kontext.
+
+    Beim Verlassen wird alles abgegeben, was bis dahin geholt wurde — auf jedem
+    Weg, auch wenn schon das Holen mittendrin scheitert. `ready` sagt, ob alle
+    drei Handles da sind; ohne sie gibt es nichts zu zeichnen.
+    """
+
+    def __init__(self, hwnd, width: int, height: int) -> None:
+        self.hwnd, self.width, self.height = hwnd, width, height
+        self.window_dc = self.mem_dc = self.bitmap = self.old_bitmap = None
+
+    def __enter__(self) -> "_GdiBitmap":
+        try:
+            self.window_dc = user32.GetWindowDC(self.hwnd)
+            if self.window_dc:
+                self.mem_dc = gdi32.CreateCompatibleDC(self.window_dc)
+                self.bitmap = gdi32.CreateCompatibleBitmap(self.window_dc, self.width, self.height)
+            if self.ready:
+                self.old_bitmap = gdi32.SelectObject(self.mem_dc, self.bitmap)
+        except BaseException:
+            self._release()
+            raise
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self._release()
+        return False
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.window_dc and self.mem_dc and self.bitmap)
+
+    def image(self):
+        return _bitmap_to_image(self.mem_dc, self.bitmap, self.width, self.height)
+
+    def _release(self) -> None:
+        _release_bitmap(self.hwnd, self.window_dc, self.mem_dc, self.bitmap, self.old_bitmap)
+
+
 def _capture_screen_bitblt(region=None):
     """Schneller GDI-Pfad; ``None`` signalisiert den ImageGrab-Fallback."""
-    if region is None:
-        rect = get_virtual_desktop()
-        if rect is None:
-            return None
-        left, top, right, bottom = rect
-    else:
-        try:
-            left, top, right, bottom = (int(value) for value in region)
-        except (TypeError, ValueError):
-            return None
+    rect = _bitblt_rect(region)
+    if rect is None:
+        return None
+    left, top, right, bottom = rect
     width, height = right - left, bottom - top
     if width <= 0 or height <= 0:
         return None
 
-    hwnd = window_dc = mem_dc = bitmap = old_bitmap = None
     try:
-        hwnd = user32.GetDesktopWindow()
-        window_dc = user32.GetWindowDC(hwnd)
-        if not window_dc:
-            return None
-        mem_dc = gdi32.CreateCompatibleDC(window_dc)
-        bitmap = gdi32.CreateCompatibleBitmap(window_dc, width, height)
-        if not mem_dc or not bitmap:
-            return None
-        old_bitmap = gdi32.SelectObject(mem_dc, bitmap)
-        if not gdi32.BitBlt(
-                mem_dc, 0, 0, width, height, window_dc, left, top, SRCCOPY):
-            logger.warning("BitBlt fehlgeschlagen; verwende ImageGrab-Fallback")
-            return None
-        image = _bitmap_to_image(mem_dc, bitmap, width, height)
+        with _GdiBitmap(user32.GetDesktopWindow(), width, height) as gdi:
+            if not gdi.ready:
+                return None
+            if not gdi32.BitBlt(
+                    gdi.mem_dc, 0, 0, width, height, gdi.window_dc, left, top, SRCCOPY):
+                logger.warning("BitBlt fehlgeschlagen; verwende ImageGrab-Fallback")
+                return None
+            image = gdi.image()
         if image is None:
             logger.warning("GetDIBits fehlgeschlagen; verwende ImageGrab-Fallback")
         return image
     except (OSError, ValueError, AttributeError) as error:
         logger.warning("BitBlt-Screenshot fehlgeschlagen: %s", error)
         return None
-    finally:
-        _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
+
+
+def _bitblt_rect(region):
+    """`(links, oben, rechts, unten)` der Aufnahme — None, wenn es keins gibt."""
+    if region is None:
+        return get_virtual_desktop()
+    try:
+        left, top, right, bottom = (int(value) for value in region)
+    except (TypeError, ValueError):
+        return None
+    return left, top, right, bottom
 
 
 def capture_screen(region=None):
@@ -984,57 +1020,57 @@ def capture_window(hwnd: int):
     if not hwnd:
         return None
 
-    window_dc = mem_dc = bitmap = old_bitmap = None
     try:
-        window_rect = wintypes.RECT()
-        client_rect = wintypes.RECT()
-        client_origin = wintypes.POINT(0, 0)
-        if not user32.GetWindowRect(hwnd, ctypes.byref(window_rect)):
+        geometry = _window_geometry(hwnd)
+        if geometry is None:
             return None
-        if not user32.GetClientRect(hwnd, ctypes.byref(client_rect)):
-            return None
-        if not user32.ClientToScreen(hwnd, ctypes.byref(client_origin)):
-            return None
-
-        width = window_rect.right - window_rect.left
-        height = window_rect.bottom - window_rect.top
-        client_width = client_rect.right - client_rect.left
-        client_height = client_rect.bottom - client_rect.top
-        if min(width, height, client_width, client_height) <= 0:
-            return None
-
-        window_dc = user32.GetWindowDC(hwnd)
-        if not window_dc:
-            return None
-        mem_dc = gdi32.CreateCompatibleDC(window_dc)
-        bitmap = gdi32.CreateCompatibleBitmap(window_dc, width, height)
-        if not mem_dc or not bitmap:
-            return None
-        old_bitmap = gdi32.SelectObject(mem_dc, bitmap)
-        if not user32.PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT):
-            logger.warning("PrintWindow fehlgeschlagen")
-            return None
-        image = _bitmap_to_image(mem_dc, bitmap, width, height)
+        (width, height), crop, screen_rect = geometry
+        with _GdiBitmap(hwnd, width, height) as gdi:
+            if not gdi.ready:
+                return None
+            if not user32.PrintWindow(hwnd, gdi.mem_dc, PW_RENDERFULLCONTENT):
+                logger.warning("PrintWindow fehlgeschlagen")
+                return None
+            image = gdi.image()
         if image is None:
             logger.warning("GetDIBits für Fensteraufnahme fehlgeschlagen")
             return None
-
-        offset_x = client_origin.x - window_rect.left
-        offset_y = client_origin.y - window_rect.top
-        image = image.crop((
-            offset_x, offset_y,
-            offset_x + client_width, offset_y + client_height,
-        ))
-        screen_rect = (
-            client_origin.x, client_origin.y,
-            client_origin.x + client_width, client_origin.y + client_height,
-        )
-        return image, screen_rect
+        return image.crop(crop), screen_rect
     except (OSError, TypeError, ValueError, AttributeError) as error:
         logger.error("Fenster-Screenshot fehlgeschlagen: %s", error)
         return None
-    finally:
-        _release_bitmap(hwnd, window_dc, mem_dc, bitmap, old_bitmap)
+
+
+def _window_geometry(hwnd: int):
+    """`((Breite, Höhe) des Fensters, Client-Ausschnitt im Fensterbild, Client am Bildschirm)`.
+
+    None, wenn Windows eines der Masse nicht liefert oder eine Fläche leer ist.
+    PrintWindow zeichnet das GANZE Fenster samt Rahmen; der Ausschnitt ist der
+    Versatz des Client-Bereichs gegen die Fensterecke.
+    """
+    window_rect = wintypes.RECT()
+    client_rect = wintypes.RECT()
+    client_origin = wintypes.POINT(0, 0)
+    if not (user32.GetWindowRect(hwnd, ctypes.byref(window_rect))
+            and user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+            and user32.ClientToScreen(hwnd, ctypes.byref(client_origin))):
+        return None
+
+    width = window_rect.right - window_rect.left
+    height = window_rect.bottom - window_rect.top
+    client_width = client_rect.right - client_rect.left
+    client_height = client_rect.bottom - client_rect.top
+    if min(width, height, client_width, client_height) <= 0:
+        return None
+
+    offset_x = client_origin.x - window_rect.left
+    offset_y = client_origin.y - window_rect.top
+    crop = (offset_x, offset_y, offset_x + client_width, offset_y + client_height)
+    screen_rect = (
+        client_origin.x, client_origin.y,
+        client_origin.x + client_width, client_origin.y + client_height,
+    )
+    return (width, height), crop, screen_rect
 
 
 def flush_hotkey_messages() -> None:

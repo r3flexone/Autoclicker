@@ -6631,6 +6631,9 @@ import tests.contract.core_guards          # noqa: F401,E402
 import tests.contract.time_input           # noqa: F401,E402
 import tests.contract.console_input        # noqa: F401,E402
 import tests.contract.console_texts        # noqa: F401,E402
+import tests.contract.llm_connection       # noqa: F401,E402
+import tests.contract.svg_path             # noqa: F401,E402
+import tests.contract.gdi_capture          # noqa: F401,E402
 
 
 import shutil as _shD
