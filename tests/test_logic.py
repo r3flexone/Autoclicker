@@ -6628,6 +6628,9 @@ import tests.contract.boss_detection_flow  # noqa: F401,E402
 import tests.contract.boss_steps           # noqa: F401,E402
 import tests.contract.runtime_guards       # noqa: F401,E402
 import tests.contract.core_guards          # noqa: F401,E402
+import tests.contract.time_input           # noqa: F401,E402
+import tests.contract.console_input        # noqa: F401,E402
+import tests.contract.console_texts        # noqa: F401,E402
 
 
 import shutil as _shD

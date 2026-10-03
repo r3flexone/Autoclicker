@@ -7,6 +7,7 @@ crash-sicher in eine Datei (Temp + os.replace) und wird von der Persistenz genut
 """
 
 import json
+import math
 import os
 import stat
 import tempfile
@@ -31,7 +32,6 @@ def parse_time_input(time_str: str) -> tuple[float, str, float | None]:
     Zeitstempel nur bei Uhrzeiten. Bei Fehler `(-1, fehlermeldung, None)`.
     """
     time_str = time_str.strip().lower()
-
     if not time_str:
         return (-1, "Keine Zeit angegeben", None)
 
@@ -40,92 +40,66 @@ def parse_time_input(time_str: str) -> tuple[float, str, float | None]:
     if has_plus_prefix:
         time_str = time_str[1:]
 
-    def calculate_time_to_target(hour: int, minute: int) -> tuple[float, str, float]:
-        """Berechnet Sekunden bis zur Zielzeit und gibt (seconds, description, timestamp) zurück."""
-        now = datetime.now()
-        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-        if target <= now:
-            target += timedelta(days=1)
-            day_str = "morgen"
-        else:
-            day_str = "heute"
-
-        seconds = (target - now).total_seconds()
-        target_timestamp = target.timestamp()
-
-        return (seconds, f"{day_str} um {hour:02d}:{minute:02d}", target_timestamp)
-
     # Format: HH:MM (Uhrzeit mit Doppelpunkt)
     if ":" in time_str:
         try:
             parts = time_str.split(":")
             hour = int(parts[0])
             minute = int(parts[1]) if len(parts) > 1 else 0
-
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                return (-1, f"Ungültige Uhrzeit: {time_str}", None)
-
-            return calculate_time_to_target(hour, minute)
         except ValueError:
             return (-1, f"Ungültiges Zeitformat: {time_str}", None)
+        return _time_to_target(hour, minute, f"Ungültige Uhrzeit: {time_str}")
 
     # Format: HHMM (4-stellige Uhrzeit ohne Doppelpunkt, 0000-2359)
     if time_str.isdigit() and len(time_str) == 4:
-        try:
-            hour = int(time_str[:2])
-            minute = int(time_str[2:])
+        return _time_to_target(int(time_str[:2]), int(time_str[2:]),
+                               f"Ungültige Uhrzeit: {time_str} (gültig: 0000-2359)")
 
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                return (-1, f"Ungültige Uhrzeit: {time_str} (gültig: 0000-2359)", None)
+    return _parse_duration(time_str, has_plus_prefix)
 
-            return calculate_time_to_target(hour, minute)
-        except ValueError:
-            return (-1, f"Ungültiges Zeitformat: {time_str}", None)
 
-    # Format: Zahl mit Einheit (30s, 30m, 30min, 2h, 2std)
+def _time_to_target(hour: int, minute: int, invalid: str) -> tuple[float, str, float | None]:
+    """Sekunden bis zur nächsten Uhrzeit hour:minute (heute oder morgen)."""
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return (-1, invalid, None)
+    now = datetime.now()
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+        day_str = "morgen"
+    else:
+        day_str = "heute"
+    seconds = (target - now).total_seconds()
+    return (seconds, f"{day_str} um {hour:02d}:{minute:02d}", target.timestamp())
+
+
+# Einheiten einer Dauer: (Endung, Einheit) — die längeren zuerst, sonst
+# endete "30min" als "30mi" Minuten und "2std" als "2st" Stunden.
+_DURATION_SUFFIXES = (("std", "h"), ("min", "m"), ("h", "h"), ("m", "m"), ("s", "s"))
+_SECONDS_PER = {"h": 3600, "m": 60, "s": 1}
+
+
+def _parse_duration(time_str: str, has_plus_prefix: bool) -> tuple[float, str, None]:
+    """Zahl mit Einheit (30s, 30m, 30min, 2h, 2std); mit + ohne Einheit = Minuten."""
+    unit, value_str = next(((u, time_str[:-len(end)]) for end, u in _DURATION_SUFFIXES
+                            if time_str.endswith(end)), (None, time_str))
+    if unit is None:
+        if not has_plus_prefix:
+            return (-1, f"Einheit fehlt! Nutze z.B. '{time_str}s', '{time_str}m' oder '{time_str}h'",
+                    None)
+        unit = "m"  # + Präfix ohne Einheit = Minuten
     try:
-        unit = None
-        value_str = time_str
-
-        if time_str.endswith("std"):
-            unit = "h"
-            value_str = time_str[:-3]
-        elif time_str.endswith("min"):
-            unit = "m"
-            value_str = time_str[:-3]
-        elif time_str.endswith("h"):
-            unit = "h"
-            value_str = time_str[:-1]
-        elif time_str.endswith("m"):
-            unit = "m"
-            value_str = time_str[:-1]
-        elif time_str.endswith("s"):
-            unit = "s"
-            value_str = time_str[:-1]
-        elif has_plus_prefix:
-            unit = "m"  # + Präfix ohne Einheit = Minuten
-        else:
-            return (-1, f"Einheit fehlt! Nutze z.B. '{time_str}s', '{time_str}m' oder '{time_str}h'", None)
-
         value = float(value_str)
-
-        if value < 0:
-            return (-1, "Zeit muss positiv sein", None)
-
-        if unit == "h":
-            seconds = value * 3600
-            desc = f"{value:.0f}h" if value == int(value) else f"{value}h"
-        elif unit == "m":
-            seconds = value * 60
-            desc = f"{value:.0f}m" if value == int(value) else f"{value}m"
-        else:
-            seconds = value
-            desc = f"{value:.0f}s" if value == int(value) else f"{value}s"
-
-        return (seconds, desc, None)
     except ValueError:
         return (-1, f"Ungültige Zahl: {time_str}", None)
+    # 'nans' und 'infs' sind für float() Zahlen — 'infs' brachte die
+    # Beschreibung unten früher mit OverflowError zum Absturz.
+    if not math.isfinite(value):
+        return (-1, f"Ungültige Zahl: {time_str}", None)
+    if value < 0:
+        return (-1, "Zeit muss positiv sein", None)
+    desc = f"{value:.0f}{unit}" if value == int(value) else f"{value}{unit}"
+    return (value * _SECONDS_PER[unit], desc, None)
 
 
 # =============================================================================
@@ -324,29 +298,34 @@ def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        # os.replace kann auf Windows mit PermissionError (WinError 5) fehlschlagen:
-        #  - persistent: die Ziel-Datei trägt das Read-only-Attribut → Flag entfernen
-        #  - transient: Virenscanner/Indexer/Editor sperrt Temp-/Zieldatei kurz → Retry
-        last_err = None
-        for attempt in range(5):
-            try:
-                os.replace(tmp, path)
-                last_err = None
-                break
-            except PermissionError as e:
-                last_err = e
-                # Read-only-Flag des Ziels entfernen (häufigste persistente Ursache).
-                try:
-                    if path.exists():
-                        os.chmod(path, stat.S_IWRITE)
-                except OSError:
-                    pass
-                time.sleep(0.1 * (attempt + 1))
-        if last_err is not None:
-            raise last_err
+        _replace_with_retry(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+def _replace_with_retry(tmp: str, path: Path) -> None:
+    """os.replace, das unter Windows ein paar Mal nachfasst.
+
+    os.replace kann auf Windows mit PermissionError (WinError 5) fehlschlagen:
+     - persistent: die Ziel-Datei trägt das Read-only-Attribut → Flag entfernen
+     - transient: Virenscanner/Indexer/Editor sperrt Temp-/Zieldatei kurz → Retry
+    """
+    last_err = None
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as e:
+            last_err = e
+            # Read-only-Flag des Ziels entfernen (häufigste persistente Ursache).
+            try:
+                if path.exists():
+                    os.chmod(path, stat.S_IWRITE)
+            except OSError:
+                pass
+            time.sleep(0.1 * (attempt + 1))
+    raise last_err

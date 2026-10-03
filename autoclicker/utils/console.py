@@ -85,36 +85,32 @@ def dbg(msg: str) -> str:
     return f"{col('[DEBUG]', 'gray')} {msg}"
 
 
+# Grauachse (kaum Sättigung): bis zu welcher Helligkeit welcher Name gilt.
+_GREY_NAMES = ((50, "Schwarz"), (120, "Dunkelgrau"), (200, "Grau"))
+# Farbkreis: (bis Farbton, Name dunkel, Name hell, „dunkel“ unter dieser Helligkeit).
+# Braun = dunkles Orange; die Schwelle liegt höher als die generelle Dark-Grenze,
+# damit klassische Brauntöne (z.B. 139,69,19) nicht als Orange landen.
+_HUE_NAMES = (
+    (15, "Dunkelrot", "Rot", 128),
+    (45, "Braun", "Orange", 170),
+    (70, "Oliv", "Gelb", 128),
+    (160, "Dunkelgrün", "Grün", 128),
+    (200, "Türkis", "Türkis", 128),
+    (255, "Dunkelblau", "Blau", 128),
+    (290, "Lila", "Lila", 128),
+    (345, "Pink", "Pink", 128),
+    (361, "Dunkelrot", "Rot", 128),
+)
+
+
 def _color_name(r: int, g: int, b: int) -> str:
     """Heuristischer deutscher Farbname für einen RGB-Wert (Hue-basiert)."""
     mx, mn = max(r, g, b), min(r, g, b)
     if mx - mn < 30:  # Grauachse: kaum Sättigung
-        if mx < 50:
-            return "Schwarz"
-        if mx < 120:
-            return "Dunkelgrau"
-        if mx < 200:
-            return "Grau"
-        return "Weiss"
+        return next((name for limit, name in _GREY_NAMES if mx < limit), "Weiss")
     hue = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)[0] * 360
-    dark = mx < 128
-    if hue < 15 or hue >= 345:
-        return "Dunkelrot" if dark else "Rot"
-    if hue < 45:
-        # Braun = dunkles Orange; Schwelle höher als die generelle Dark-Grenze,
-        # damit klassische Brauntöne (z.B. 139,69,19) nicht als Orange landen.
-        return "Braun" if mx < 170 else "Orange"
-    if hue < 70:
-        return "Oliv" if dark else "Gelb"
-    if hue < 160:
-        return "Dunkelgrün" if dark else "Grün"
-    if hue < 200:
-        return "Türkis"
-    if hue < 255:
-        return "Dunkelblau" if dark else "Blau"
-    if hue < 290:
-        return "Lila"
-    return "Pink"
+    return next(dark_name if mx < dark_below else light_name
+                for limit, dark_name, light_name, dark_below in _HUE_NAMES if hue < limit)
 
 
 def describe_color(color) -> str:
@@ -203,42 +199,29 @@ def coord_context(x: int, y: int) -> str:
     try:
         from ..winapi import get_screen_size
         size = get_screen_size()
-        if not size:
-            return f"({x}, {y})"
-        screen_w, screen_h = size
     except (AttributeError, ImportError, OSError):
+        size = None
+    if not size or size[0] <= 0 or size[1] <= 0:
         return f"({x}, {y})"
-
-    if screen_w <= 0 or screen_h <= 0:
-        return f"({x}, {y})"
-
-    if x < screen_w * 0.33:
-        h_pos = "links"
-    elif x < screen_w * 0.66:
-        h_pos = "mitte"
-    else:
-        h_pos = "rechts"
-
-    if y < screen_h * 0.33:
-        v_pos = "oben"
-    elif y < screen_h * 0.66:
-        v_pos = "mitte"
-    else:
-        v_pos = "unten"
-
+    screen_w, screen_h = size
+    h_pos = _third(x, screen_w, "links", "rechts")
+    v_pos = _third(y, screen_h, "oben", "unten")
     if v_pos == "mitte" and h_pos == "mitte":
         pos_str = "Mitte"
-    elif v_pos == "mitte":
-        pos_str = h_pos
-    elif h_pos == "mitte":
-        pos_str = v_pos
     else:
-        pos_str = f"{v_pos} {h_pos}"
-
+        pos_str = " ".join(part for part in (v_pos, h_pos) if part != "mitte")
     pct_x = x * 100 // screen_w
     pct_y = y * 100 // screen_h
-
     return f"({x}, {y}) {hint(f'= {pos_str} ({pct_x}%, {pct_y}%)')}"
+
+
+def _third(value: int, size: int, low: str, high: str) -> str:
+    """In welchem Drittel einer Strecke liegt `value`?"""
+    if value < size * 0.33:
+        return low
+    if value < size * 0.66:
+        return "mitte"
+    return high
 
 
 # Sichtbare Länge der zuletzt geschriebenen Status-Zeile. Feste 80 Leerzeichen

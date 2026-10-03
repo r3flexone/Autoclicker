@@ -199,44 +199,45 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         # Schnelle NumPy-Version (ca. 100x schneller)
         # asarray vermeidet Kopie wenn PIL-Daten bereits im richtigen Format
         img_array = np.asarray(img)
-        if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
-            target = np.array(target_color, dtype=np.float32)
-
-            def enough(rgb) -> bool:
-                # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
-                values = rgb.astype(np.float32)
-                distances = np.sum((values - target) ** 2, axis=2)
-                return int(np.count_nonzero(
-                    distances <= tolerance * tolerance)) >= min_pixels
-
-            # In fast allen Fällen trifft schon das kleine Raster. Nur beim
-            # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
-            # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
-            if enough(img_array[::pixel_step, ::pixel_step, :3]):
-                return True
-            return pixel_step > 1 and enough(img_array[:, :, :3])
-        return False
-    else:
-        # Fallback: Langsame PIL-Version
-        pixels = img.load()
-        width, height = img.size
-
-        def enough(step: int) -> bool:
-            matches = 0
-            for x in range(0, width, step):
-                for y in range(0, height, step):
-                    pixel = pixels[x, y][:3]
-                    if color_distance(pixel, target_color) <= tolerance:
-                        matches += 1
-                        if matches >= min_pixels:
-                            return True
+        if len(img_array.shape) != 3 or img_array.shape[2] < 3:
             return False
 
-        if enough(pixel_step):
-            return True
-        if pixel_step > 1:
-            return enough(1)
-        return False
+        def enough(step: int) -> bool:
+            return _enough_color_numpy(img_array[::step, ::step, :3], target_color,
+                                       tolerance, min_pixels)
+    else:
+        # Fallback: Langsame PIL-Version
+        def enough(step: int) -> bool:
+            return _enough_color_pil(img, target_color, tolerance, min_pixels, step)
+
+    # In fast allen Fällen trifft schon das kleine Raster. Nur beim
+    # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
+    # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
+    if enough(pixel_step):
+        return True
+    return pixel_step > 1 and enough(1)
+
+
+def _enough_color_numpy(rgb, target_color: tuple, tolerance: float, min_pixels: int) -> bool:
+    # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
+    target = np.array(target_color, dtype=np.float32)
+    values = rgb.astype(np.float32)
+    distances = np.sum((values - target) ** 2, axis=2)
+    return int(np.count_nonzero(distances <= tolerance * tolerance)) >= min_pixels
+
+
+def _enough_color_pil(img, target_color: tuple, tolerance: float, min_pixels: int,
+                      step: int) -> bool:
+    pixels = img.load()
+    width, height = img.size
+    matches = 0
+    for x in range(0, width, step):
+        for y in range(0, height, step):
+            if color_distance(pixels[x, y][:3], target_color) <= tolerance:
+                matches += 1
+                if matches >= min_pixels:
+                    return True
+    return False
 
 
 # TEMPLATE-CACHE
@@ -453,12 +454,9 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
 
     Gibt `(gefunden, konfidenz, (x, y) relativ zum Suchbereich | None)` zurück.
     """
-    if not OPENCV_AVAILABLE:
-        logger.warning("OpenCV nicht verfügbar für Template Matching")
-        return (False, 0.0, None)
-
-    if not NUMPY_AVAILABLE:
-        logger.warning("NumPy nicht verfügbar für Template Matching")
+    missing = "OpenCV" if not OPENCV_AVAILABLE else ("NumPy" if not NUMPY_AVAILABLE else None)
+    if missing:
+        logger.warning(f"{missing} nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
     template_path = _template_path(template_name, template_root)
@@ -477,60 +475,29 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         # Grössenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
-
-        if (tw != iw or th != ih) and not resize_template:
+        size_differs = tw != iw or th != ih
+        if size_differs and not resize_template:
             return (False, 0.0, None)
-
-        if (tw != iw or th != ih) and tw > 0 and th > 0:
+        if size_differs and tw > 0 and th > 0:
             # Grössen-Diskrepanz! Template an Scan-Bildgrösse anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
             logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_at_size(template_path, template_cv, iw, ih)
 
-        # Debug: Scan-Bild und Template speichern zum Vergleich. Unter den
-        # Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit dem
-        # Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
         if CONFIG.debug_save_templates:
-            debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
-            base_name = Path(template_path).stem
-            # Aktuelles Scan-Bild (was im Slot ist)
-            img.save(os.path.join(debug_dir, f"{base_name}_scan.png"))
-            # Template/Maske (was cv2 zum Vergleich verwendet)
-            cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
+            _save_debug_templates(img, template_path, template_cv)
 
-        # Traegt das Template eine Maske, wird nur ueber das Item verglichen -
-        # der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
-        mask = None
-        if template_cv.ndim == 3 and template_cv.shape[2] == 4:
-            mask = template_cv[:, :, 3]
-            template_cv = np.ascontiguousarray(template_cv[:, :, :3])
-
-        if mask is not None and template_cv.shape[:2] == img_cv.shape[:2]:
-            max_val = _masked_confidence(img_cv, template_cv, mask)
-            max_loc = (0, 0)
-        else:
-            # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
-            result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
+        max_val, max_loc = _template_confidence(img_cv, template_cv)
         # max_val ist die Konfidenz (0.0 - 1.0)
         if max_val >= min_confidence:
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
-        else:
-            # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
-            # melden - siehe _size_hint(), nur eine der Ursachen ist ein Fehler.
-            if (report_size_mismatch and max_val < 0.3
-                    and (tw != iw or th != ih)):
-                key_name = (tw, th, iw, ih)
-                if key_name not in _reported_sizes:
-                    _reported_sizes.add(key_name)
-                    logger.warning(_size_hint(template_name, tw, th, iw, ih,
-                                                     max_val))
-            return (False, max_val, None)
+        # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
+        # melden - siehe _size_hint(), nur eine der Ursachen ist ein Fehler.
+        if report_size_mismatch and max_val < 0.3 and size_differs:
+            _report_size_once(template_name, (tw, th, iw, ih), max_val)
+        return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:
         # cv2.error explizit fangen (z.B. Grössen-Mismatch nach Resize, leere Matrix) —
@@ -541,51 +508,84 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         return (False, 0.0, None)
 
 
+def _report_size_once(template_name: str, sizes: tuple, max_val: float) -> None:
+    """Meldet eine Grössenpaarung `(tw, th, iw, ih)` genau einmal (`_reported_sizes`)."""
+    if sizes in _reported_sizes:
+        return
+    _reported_sizes.add(sizes)
+    logger.warning(_size_hint(template_name, *sizes, max_val))
+
+
+def _save_debug_templates(img, template_path, template_cv) -> None:
+    """Debug: Scan-Bild und Template speichern zum Vergleich.
+
+    Unter den Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit
+    dem Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
+    """
+    debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
+    os.makedirs(debug_dir, exist_ok=True)
+    # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
+    base_name = Path(template_path).stem
+    # Aktuelles Scan-Bild (was im Slot ist)
+    img.save(os.path.join(debug_dir, f"{base_name}_scan.png"))
+    # Template/Maske (was cv2 zum Vergleich verwendet)
+    cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
+
+
+def _template_confidence(img_cv, template_cv) -> tuple:
+    """`(Konfidenz, Stelle)` — mit Maske nur über die deckenden Pixel.
+
+    Traegt das Template eine Maske, wird nur ueber das Item verglichen -
+    der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
+    """
+    mask = None
+    if template_cv.ndim == 3 and template_cv.shape[2] == 4:
+        mask = template_cv[:, :, 3]
+        template_cv = np.ascontiguousarray(template_cv[:, :, :3])
+    if mask is not None and template_cv.shape[:2] == img_cv.shape[:2]:
+        return _masked_confidence(img_cv, template_cv, mask), (0, 0)
+    # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
+    result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+    _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+    return max_val, max_loc
+
+
 def get_color_name(rgb: tuple) -> str:
     """Gibt einen ungefähren Farbnamen für RGB zurück."""
     r, g, b = rgb
-
     # Graustufen
     if abs(r - g) < 30 and abs(g - b) < 30 and abs(r - b) < 30:
-        if r < 50:
-            return "Schwarz"
-        elif r < 120:
-            return "Dunkelgrau"
-        elif r < 200:
-            return "Grau"
-        else:
-            return "Weiss"
+        return next((name for limit, name in ((50, "Schwarz"), (120, "Dunkelgrau"),
+                                              (200, "Grau")) if r < limit), "Weiss")
+    return _dominant_color_name(r, g, b) or _mixed_color_name(r, g, b)
 
-    # Dominante Farbe bestimmen
+
+def _dominant_color_name(r: int, g: int, b: int) -> Optional[str]:
+    """Der Name nach dem stärksten Kanal — None, wenn keiner allein vorn liegt."""
     if r > g and r > b:
         if g > b + 50:
             return "Orange" if r > 200 else "Braun"
-        elif b > g + 30:
-            return "Pink/Magenta"
-        else:
-            return "Rot"
-    elif g > r and g > b:
+        return "Pink/Magenta" if b > g + 30 else "Rot"
+    if g > r and g > b:
         if r > b + 30:
             return "Gelb/Lime"
-        elif b > r + 30:
-            return "Türkis/Cyan"
-        else:
-            return "Grün"
-    elif b > r and b > g:
+        return "Türkis/Cyan" if b > r + 30 else "Grün"
+    if b > r and b > g:
         if r > g + 30:
             return "Lila/Violett"
-        elif g > r + 30:
-            return "Türkis/Cyan"
-        else:
-            return "Blau"
-    elif r > 200 and g > 200 and b < 100:
+        return "Türkis/Cyan" if g > r + 30 else "Blau"
+    return None
+
+
+def _mixed_color_name(r: int, g: int, b: int) -> str:
+    """Zwei gleich starke Kanäle: Gelb, Magenta, Cyan oder gemischt."""
+    if r > 200 and g > 200 and b < 100:
         return "Gelb"
-    elif r > 200 and g < 100 and b > 200:
+    if r > 200 and g < 100 and b > 200:
         return "Magenta"
-    elif r < 100 and g > 200 and b > 200:
+    if r < 100 and g > 200 and b > 200:
         return "Cyan"
-    else:
-        return "Gemischt"
+    return "Gemischt"
 
 
 def compose_regions(pieces: list, max_side: int = 900) -> Optional[tuple]:
