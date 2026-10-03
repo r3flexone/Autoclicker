@@ -76,6 +76,17 @@ samt Rauchtests und Gegenproben hinterlässt keinen Ordner mehr. Die Bilder aus
 `Window.image()` (`rauchtest_*.png`) liegen bewusst daneben: sie werden bei
 jedem Lauf überschrieben und sind zum Ansehen da.
 
+**Lokal grün heisst nicht CI grün — ein Unterschied ist die Umgebung.** Auf dem
+Entwicklungsrechner ist `PYTHONDONTWRITEBYTECODE` gesetzt; Python legt dort nie
+einen `__pycache__` an. In der CI schon, und ein `import main` legt ihn im
+Wurzelordner an — die Prüfung „hat im Repo nichts angelegt" meldete ihn, und
+alle sechs Suite-Jobs standen vier Läufe lang rot, während jeder lokale Lauf
+grün war. `repo_entries()` nimmt den Cache deshalb aus. Wer einen CI-Fehler
+lokal nachstellen will, nimmt einen frischen Arbeitsbaum
+(`git worktree add`), ein venv nur mit den Paketen der Achse und
+`env -u PYTHONDONTWRITEBYTECODE` vor dem Aufruf aus `tests.yml`. Die Logs
+der CI zeigt GitHub nur angemeldet.
+
 **Was fehlt, wird übersprungen und gesagt, nicht als Fehler gemeldet.** Ein roter
 Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen —
 dieselbe Regel wie bei OpenCV und Pillow im Produktivcode.

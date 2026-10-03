@@ -94,7 +94,12 @@ def repo_entries() -> set[str]:
     wird, was die Suite NEU anlegt (ein Sequenzordner, ein Laufstatus); dass sie
     vorhandene Dateien nicht ueberschreibt, sichert der eigene Arbeitsordner.
     """
-    names = {p.name for p in REPO.iterdir()}
+    # `__pycache__` legt Python selbst an, nicht die Suite: ein `import main`
+    # schreibt ihn in den Wurzelordner, und in einem frischen Checkout gab es
+    # ihn vorher nicht. Die CI war daran vier Läufe lang in allen sechs
+    # Suite-Jobs rot, während jeder lokale Lauf grün war — hier ist
+    # PYTHONDONTWRITEBYTECODE gesetzt, also entsteht er gar nicht.
+    names = {p.name for p in REPO.iterdir()} - {"__pycache__"}
     sequences = REPO / "sequences"
     if sequences.is_dir():
         names |= {f"sequences/{p.name}" for p in sequences.iterdir()}
