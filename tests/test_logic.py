@@ -6627,6 +6627,7 @@ import tests.contract.item_scan_wizard     # noqa: F401,E402
 import tests.contract.boss_detection_flow  # noqa: F401,E402
 import tests.contract.boss_steps           # noqa: F401,E402
 import tests.contract.runtime_guards       # noqa: F401,E402
+import tests.contract.core_guards          # noqa: F401,E402
 
 
 import shutil as _shD

@@ -59,6 +59,59 @@ SCAN_MOUSE_PARK = "park"       # auf die Parkposition (`scan_park_mouse`)
 SCAN_MOUSE_AFTER = (SCAN_MOUSE_BACK, SCAN_MOUSE_PARK)
 
 
+def _config_rules() -> tuple:
+    """Die Prüfregeln der Config: `(Feld, ungültig?, Ersatzwert)`.
+
+    Eine Funktion statt einer Konstante, weil die Aktions-Konstanten aus
+    `models.py` kommen und das zirkulär importiert (models.py importiert
+    bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
+    """
+    from .models import (
+        TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
+        CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
+    )
+    timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
+    consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
+    return (
+        ("click_per_point", lambda v: v < 1, 1),
+        ("pixel_wait_timeout", lambda v: v < 0, 0),
+        ("pixel_check_interval", lambda v: v <= 0, 0.1),
+        ("timing_pause_interval", lambda v: v <= 0, 0.1),
+        ("session_max_hours", lambda v: v < 0, 0),
+        ("pixel_max_consecutive_timeouts", lambda v: v < 0, 0),
+        ("scan_min_confidence", lambda v: v < 0 or v > 1, 0.8),
+        ("scan_marker_count", lambda v: v < 1, 1),
+        ("scan_marker_min_pixels", lambda v: v < 1, 1),
+        ("pixel_timeout_action", lambda v: v not in timeout_actions, TIMEOUT_SKIP_CYCLE),
+        ("pixel_consecutive_action", lambda v: v not in consec_actions, CONSEC_STOP),
+        # LLM
+        ("llm_provider", lambda v: v not in ("ollama", "lmstudio"), "ollama"),
+        ("llm_timeout", lambda v: v < 1, 10),
+        ("llm_watcher_interval", lambda v: v < 1, 2.0),
+        ("llm_watcher_max_scans", lambda v: v < 0, 0),
+        ("llm_watcher_timeout", lambda v: v < 0, 0),
+        ("llm_retry_count", lambda v: v < 0, 0),
+        ("llm_max_tokens", lambda v: v < 0, 0),
+        # OCR
+        ("ocr_backend", lambda v: v is not None and v not in ("easyocr", "tesseract"), None),
+        ("ocr_min_confidence", lambda v: v < 0 or v > 1, 0.3),
+        ("ocr_retry_count", lambda v: v < 0, 0),
+        ("scan_mouse_after", lambda v: v not in SCAN_MOUSE_AFTER, "back"),
+        # Window-Fokus-Check
+        ("window_focus_action", lambda v: v not in ("pause", "stop"), "pause"),
+        ("humanize_click_jitter", lambda v: v < 0, 0),
+    )
+
+
+def _shown(value) -> str:
+    """Ein Config-Wert, wie ihn die Korrektur-Meldung nennt."""
+    if value is None:
+        return "None (Auto)"
+    if isinstance(value, str):
+        return f"'{value}'"
+    return str(value)
+
+
 @dataclass
 class AppConfig:
     """Typisierte Konfiguration für den Autoclicker.
@@ -188,93 +241,24 @@ class AppConfig:
     debug_save_templates: bool = False              # Speichert Scan+Template in screenshots/debug/
 
     def __post_init__(self):
-        """Validiert Config-Werte nach Erstellung."""
-        # Konstanten lokal importieren — vermeidet Zirkular-Import (models.py importiert
-        # bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
-        from .models import (
-            TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
-            CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
-        )
-        valid_timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
-        valid_consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
+        """Validiert Config-Werte nach Erstellung.
 
+        Jede Regel ist eine Zeile in `_config_rules()`: ein ungültiger Wert wird
+        auf den Ersatz gehoben und gemeldet. Die Humanize-Spannen werden danach
+        still in Ordnung gebracht (min nicht unter 0, max nicht unter min).
+        """
         warnings = []
-        if self.click_per_point < 1:
-            warnings.append(f"click_per_point={self.click_per_point} → 1")
-            self.click_per_point = 1
-        if self.pixel_wait_timeout < 0:
-            warnings.append(f"pixel_wait_timeout={self.pixel_wait_timeout} → 0")
-            self.pixel_wait_timeout = 0
-        if self.pixel_check_interval <= 0:
-            warnings.append(f"pixel_check_interval={self.pixel_check_interval} → 0.1")
-            self.pixel_check_interval = 0.1
-        if self.timing_pause_interval <= 0:
-            warnings.append(f"timing_pause_interval={self.timing_pause_interval} → 0.1")
-            self.timing_pause_interval = 0.1
-        if self.session_max_hours < 0:
-            warnings.append(f"session_max_hours={self.session_max_hours} → 0")
-            self.session_max_hours = 0
-        if self.pixel_max_consecutive_timeouts < 0:
-            warnings.append(f"pixel_max_consecutive_timeouts={self.pixel_max_consecutive_timeouts} → 0")
-            self.pixel_max_consecutive_timeouts = 0
-        if self.scan_min_confidence < 0 or self.scan_min_confidence > 1:
-            warnings.append(f"scan_min_confidence={self.scan_min_confidence} → 0.8")
-            self.scan_min_confidence = 0.8
-        if self.scan_marker_count < 1:
-            warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
-            self.scan_marker_count = 1
-        if self.scan_marker_min_pixels < 1:
-            warnings.append(f"scan_marker_min_pixels={self.scan_marker_min_pixels} → 1")
-            self.scan_marker_min_pixels = 1
-        if self.pixel_timeout_action not in valid_timeout_actions:
-            warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → '{TIMEOUT_SKIP_CYCLE}'")
-            self.pixel_timeout_action = TIMEOUT_SKIP_CYCLE
-        if self.pixel_consecutive_action not in valid_consec_actions:
-            warnings.append(f"pixel_consecutive_action='{self.pixel_consecutive_action}' → '{CONSEC_STOP}'")
-            self.pixel_consecutive_action = CONSEC_STOP
-        # LLM-Einstellungen validieren
-        if self.llm_provider not in ("ollama", "lmstudio"):
-            warnings.append(f"llm_provider='{self.llm_provider}' → 'ollama'")
-            self.llm_provider = "ollama"
-        if self.llm_timeout < 1:
-            warnings.append(f"llm_timeout={self.llm_timeout} → 10")
-            self.llm_timeout = 10
-        if self.llm_watcher_interval < 1:
-            warnings.append(f"llm_watcher_interval={self.llm_watcher_interval} → 2.0")
-            self.llm_watcher_interval = 2.0
-        if self.llm_watcher_max_scans < 0:
-            warnings.append(f"llm_watcher_max_scans={self.llm_watcher_max_scans} → 0")
-            self.llm_watcher_max_scans = 0
-        if self.llm_watcher_timeout < 0:
-            warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
-            self.llm_watcher_timeout = 0
-        if self.llm_retry_count < 0:
-            warnings.append(f"llm_retry_count={self.llm_retry_count} → 0")
-            self.llm_retry_count = 0
-        if self.llm_max_tokens < 0:
-            warnings.append(f"llm_max_tokens={self.llm_max_tokens} → 0")
-            self.llm_max_tokens = 0
-        # OCR-Einstellungen validieren
-        if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
-            warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
-            self.ocr_backend = None
-        if self.ocr_min_confidence < 0 or self.ocr_min_confidence > 1:
-            warnings.append(f"ocr_min_confidence={self.ocr_min_confidence} → 0.3")
-            self.ocr_min_confidence = 0.3
-        if self.ocr_retry_count < 0:
-            warnings.append(f"ocr_retry_count={self.ocr_retry_count} → 0")
-            self.ocr_retry_count = 0
-        if self.scan_mouse_after not in SCAN_MOUSE_AFTER:
-            warnings.append(f"scan_mouse_after='{self.scan_mouse_after}' → 'back'")
-            self.scan_mouse_after = "back"
-        # Window-Fokus-Check
-        if self.window_focus_action not in ("pause", "stop"):
-            warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
-            self.window_focus_action = "pause"
-        # Humanization: min darf nicht > max sein
-        if self.humanize_click_jitter < 0:
-            warnings.append(f"humanize_click_jitter={self.humanize_click_jitter} → 0")
-            self.humanize_click_jitter = 0
+        for name, invalid, fallback in _config_rules():
+            value = getattr(self, name)
+            if invalid(value):
+                warnings.append(f"{name}={_shown(value)} → {_shown(fallback)}")
+                setattr(self, name, fallback)
+        self._order_humanize_ranges()
+        for w in warnings:
+            print(warn(f"Config-Wert korrigiert: {w}"))
+
+    def _order_humanize_ranges(self) -> None:
+        """Humanization: min darf nicht < 0 und nicht > max sein (still, ohne Meldung)."""
         if self.humanize_micro_delay_min < 0:
             self.humanize_micro_delay_min = 0
         if self.humanize_micro_delay_max < self.humanize_micro_delay_min:
@@ -285,9 +269,6 @@ class AppConfig:
             self.humanize_break_duration_min = 0
         if self.humanize_break_duration_max < self.humanize_break_duration_min:
             self.humanize_break_duration_max = self.humanize_break_duration_min
-        if warnings:
-            for w in warnings:
-                print(warn(f"Config-Wert korrigiert: {w}"))
 
     def to_dict(self) -> dict:
         """Konvertiert zu JSON-serialisierbarem dict."""

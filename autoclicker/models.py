@@ -272,6 +272,23 @@ class SequenceStep:
 
     def _description(self) -> str:
         else_str = self._verify_str() + self._else_str()
+        special = self._special_description(else_str)
+        if special is not None:
+            return special
+        wc = self.wait_condition
+        if self.wait_only:
+            return self._wait_only_description(wc, else_str)
+        ref = f" #{self.point_id}" if self.point_id is not None else ""
+        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
+                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
+        if wc:
+            return self._triggered_click_description(wc, pos_str, else_str)
+        if self.delay_before > 0:
+            return f"warte {self._delay_str()} → klicke {pos_str}"
+        return f"sofort → klicke {pos_str}"
+
+    def _special_description(self, else_str: str) -> Optional[str]:
+        """Watcher, Screenshot, Taste und die Scans — None für Klick und Warten."""
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
@@ -291,34 +308,25 @@ class SequenceStep:
             mode_strs = {SCAN_MODE_ALL: "bestes/Kategorie", SCAN_MODE_BEST: "1 bestes", SCAN_MODE_EVERY: "JEDES"}
             mode_str = mode_strs.get(self.item_scan_mode, self.item_scan_mode)
             return f"SCAN '{self.item_scan}' → klicke {mode_str}{else_str}"
-        wc = self.wait_condition
-        if self.wait_only:
-            if wc:
-                gone_str = "WEG ist" if wc.until_gone else "DA ist"
-                if wc.check_only:
-                    return (f"PRÜFE einmal ob Farbe {gone_str} bei "
-                            f"({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}")
-                return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
+        return None
+
+    def _wait_only_description(self, wc, else_str: str) -> str:
+        if not wc:
             return f"WARTE {self._delay_str()} (kein Klick)"
-        ref = f" #{self.point_id}" if self.point_id is not None else ""
-        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
-                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
-        if wc:
-            if wc.check_only:
-                state_value = "WEG" if wc.until_gone else "DA"
-                lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
-                return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
-                        f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
-                        f"{else_str or ' | sonst: überspringen'}")
-            gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
-            delay_str = self._delay_str()
-            if self.delay_before > 0:
-                return f"warte {delay_str}, dann {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
-            return f"warte {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
-        elif self.delay_before > 0:
-            return f"warte {self._delay_str()} → klicke {pos_str}"
-        else:
-            return f"sofort → klicke {pos_str}"
+        gone_str = "WEG ist" if wc.until_gone else "DA ist"
+        verb = "PRÜFE einmal ob" if wc.check_only else "WARTE bis"
+        return f"{verb} Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
+
+    def _triggered_click_description(self, wc, pos_str: str, else_str: str) -> str:
+        if wc.check_only:
+            state_value = "WEG" if wc.until_gone else "DA"
+            lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+            return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
+                    f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
+                    f"{else_str or ' | sonst: überspringen'}")
+        gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
+        lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else "warte "
+        return f"{lead_in}{gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
 
     def _trigger_str(self) -> str:
         """Was VOR der Aktion passiert: Farb-Bedingung und/oder Wartezeit.
