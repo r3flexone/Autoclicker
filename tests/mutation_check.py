@@ -62,9 +62,10 @@ CASES = {
         "state.active_sequence = seq; state.points = seq.points",
         RUNTIME + "test_konsolen_loader_laedt_die_scans_der_sequenz"),
     "new-sequence-collision": (
-        "autoclicker.editors.sequence_studio.bridge_services", "BridgeServicesMixin.save",
-        "if renamed and new_folder.exists():",
-        "if renamed and old.exists() and new_folder.exists():",
+        "autoclicker.editors.sequence_studio.bridge_services",
+        "BridgeServicesMixin._save_move_folder",
+        "if new_folder.exists():",
+        "if old.exists() and new_folder.exists():",
         STUDIO + "test_neue_sequenz_ueberschreibt_keine_vorhandene"),
     "scan-block-skip": (
         "autoclicker.runtime.item_scan", "_scan_interrupted",
