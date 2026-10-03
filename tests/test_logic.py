@@ -6700,6 +6700,11 @@ check("die Suite arbeitet in ihrem eigenen Ordner, nicht im Repo",
 _new_entries = sorted(_H.repo_entries() - _H.REPO_ENTRIES)
 check(f"und hat im Repo nichts angelegt {_new_entries or ''}".rstrip(),
       _new_entries == [])
+# Ebenso nichts im Temp-Ordner des Systems: ein `mkdtemp()` irgendwo in einem
+# Testfall landet in der Sandbox und geht mit ihr weg (s. `_harness.py`).
+import tempfile as _tf_end                                          # noqa: E402
+check("Temp-Ordner der Testfälle entstehen in der Sandbox",
+      Path(_tf_end.mkdtemp(prefix="probe_")).resolve().parent == _H.SANDBOX.resolve())
 
 
 PASS, FAIL = _H.PASS, _H.FAIL

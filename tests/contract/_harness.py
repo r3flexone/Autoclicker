@@ -104,6 +104,13 @@ def repo_entries() -> set[str]:
 REPO_ENTRIES = repo_entries()
 SANDBOX = Path(tempfile.mkdtemp(prefix="vertragssuite_"))
 os.chdir(SANDBOX)
+# **Und jeder Temp-Ordner eines Tests entsteht IN der Sandbox.** Rund hundert
+# Stellen legen mit `mkdtemp()` einen Ordner an, und kaum eine räumte ihn weg —
+# jeder Lauf liess Dutzende liegen, jede Gegenprobe noch einmal so viele: am
+# 03.10.2026 waren es über 44.000 Ordner im Temp-Verzeichnis. Hier statt in
+# jedem Testfall, aus demselben Grund wie beim Arbeitsordner: mit der Sandbox
+# geht beim Beenden alles weg, was darin angelegt wurde.
+tempfile.tempdir = str(SANDBOX)
 
 
 def _remove_sandbox() -> None:

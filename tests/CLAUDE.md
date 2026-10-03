@@ -63,6 +63,19 @@ nackten `unittest discover` aus dem Repo** — der umgeht den Ordner. Wer Repo-D
 relativen Pfad. Die Vertragssuite prüft am Ende, dass sie im Repo nichts
 angelegt hat.
 
+**Und auch im Temp-Ordner des Systems bleibt nichts liegen.** Rund hundert
+Testfälle legen mit `mkdtemp()` einen Ordner an, und kaum einer räumte ihn weg:
+am 03.10.2026 lagen über 44.000 davon im Temp-Verzeichnis, gut 600 MB — jeder
+Lauf liess Dutzende zurück, jede Gegenprobe noch einmal so viele. Statt jeden
+Testfall nachzurüsten, setzen dieselben Stellen, die den Arbeitsordner anlegen,
+auch `tempfile.tempdir` darauf (`_harness.py`, `root_tests.main()`,
+`run_check()` in `mutation_check.py`); die Rauchtests räumen ihren Datenordner
+beim Prozessende weg (`sandbox()` in `tests/smoke/_bridge.py`). Damit geht
+mit dem Arbeitsordner alles weg, was darin entstand — gemessen: ein voller Lauf
+samt Rauchtests und Gegenproben hinterlässt keinen Ordner mehr. Die Bilder aus
+`Window.image()` (`rauchtest_*.png`) liegen bewusst daneben: sie werden bei
+jedem Lauf überschrieben und sind zum Ansehen da.
+
 **Was fehlt, wird übersprungen und gesagt, nicht als Fehler gemeldet.** Ein roter
 Lauf, der nur die Testumgebung beschreibt, verdeckt echte Fehler im Rauschen —
 dieselbe Regel wie bei OpenCV und Pillow im Produktivcode.

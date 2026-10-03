@@ -18,7 +18,9 @@ meldet die Testumgebung statt eines Fehlers.
 
 from __future__ import annotations
 
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -131,7 +133,16 @@ def sandbox(prefix: str) -> str:
     sandbox_dir = tempfile.mkdtemp(prefix=prefix)
     os.chdir(sandbox_dir)
     Path("sequences").mkdir()
+    # Jeder Rauchtest ist ein eigener Prozess: mit ihm geht auch sein
+    # Datenordner. Die Bilder aus `image()` liegen daneben und bleiben.
+    atexit.register(_remove_sandbox, sandbox_dir)
     return sandbox_dir
+
+
+def _remove_sandbox(sandbox_dir: str) -> None:
+    # Unter Windows laesst sich das aktuelle Verzeichnis nicht loeschen.
+    os.chdir(tempfile.gettempdir())
+    shutil.rmtree(sandbox_dir, ignore_errors=True)
 
 
 class Window:

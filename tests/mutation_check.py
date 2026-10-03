@@ -86,6 +86,9 @@ def run_check(name: str, mutated: bool) -> int:
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))
     module_name, path, old, new, test = CASES[name]
+    # Der Aufrufer startet jeden Lauf in einem eigenen Ordner, der danach
+    # weggeräumt wird; Temp-Ordner der Testfälle entstehen darin mit.
+    tempfile.tempdir = os.getcwd()
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
     function_obj = importlib.import_module(module_name)
     for part in path.split("."):
