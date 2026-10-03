@@ -21,7 +21,10 @@ class _Keys:
         self.wide, self.raw = list(wide), list(raw)
 
     def getwch(self):
-        return self.wide.pop(0)
+        # Ist die Folge zu Ende, drückt die Tastatur Enter: eine Eingabe, die
+        # weiterliest, wo sie hätte aufhören sollen, endet so mit einem falschen
+        # Ergebnis statt mit einem IndexError aus dem Test selbst.
+        return self.wide.pop(0) if self.wide else "\r"
 
     def getch(self):
         return self.raw.pop(0)

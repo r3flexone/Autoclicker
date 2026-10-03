@@ -30,6 +30,8 @@ def _parse(*argv):
             return _OCR.parse_args(), out.getvalue()
     except SystemExit as e:
         return ("exit", e.code), out.getvalue()
+    except Exception as e:                                  # noqa: BLE001
+        return ("Absturz", repr(e)), out.getvalue()
     finally:
         _sys.argv = saved
 

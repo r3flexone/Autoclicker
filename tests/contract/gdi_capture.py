@@ -159,12 +159,14 @@ section("Bildschirmaufnahme per BitBlt")
 with _gdi(_Gdi()) as _fake:
     _shot = _win._capture_screen_bitblt()
 check("ohne Region der ganze virtuelle Desktop, ab seiner linken Kante",
-      _shot.size == (3840, 1080) and _fake.blit == (3840, 1080, -1920, 0))
+      _shot is not None and _shot.size == (3840, 1080)
+      and _fake.blit == (3840, 1080, -1920, 0))
 check("alles abgegeben", _fake.handed_out == set())
 
 with _gdi(_Gdi()) as _fake:
     _shot = _win._capture_screen_bitblt(("10", 20, 110.0, 70))
-check("eine Region wird zu ganzen Zahlen", _shot.size == (100, 50) and _fake.blit[2:] == (10, 20))
+check("eine Region wird zu ganzen Zahlen",
+      _shot is not None and _shot.size == (100, 50) and _fake.blit[2:] == (10, 20))
 
 with _gdi(_Gdi(), desktop=None) as _fake:
     check("ohne Desktop-Mass der Rückfall", _win._capture_screen_bitblt() is None)
@@ -198,3 +200,19 @@ with _gdi(_Exploding()) as _fake:
     _shot = _win._capture_screen_bitblt((0, 0, 10, 10))
 check("eine Ausnahme mittendrin: Rückfall, alles abgegeben",
       _shot is None and _fake.handed_out == set())
+
+
+class _FailsWhileTaking(_Gdi):
+    """Scheitert beim Holen der Bitmap — Fenster-DC und Speicher-DC sind schon da."""
+
+    def CreateCompatibleBitmap(self, dc, width, height):
+        raise OSError("kein Speicher")
+
+
+with _gdi(_FailsWhileTaking()) as _fake:
+    _shot = _win._capture_screen_bitblt((0, 0, 10, 10))
+check("scheitert schon das Holen: Rückfall, und was geholt war, ist abgegeben",
+      _shot is None and _fake.handed_out == set())
+with _gdi(_FailsWhileTaking()) as _fake:
+    _shot = _win.capture_window(42)
+check("ebenso bei der Fensteraufnahme", _shot is None and _fake.handed_out == set())

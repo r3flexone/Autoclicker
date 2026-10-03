@@ -10,7 +10,11 @@ import autoclicker.symbol as _SYM
 
 
 def _polygons(data):
-    return _SYM._path_polygons(data)
+    """Die Polygone — oder der Fehlertext, damit ein Fehler rot wird statt abzustürzen."""
+    try:
+        return _SYM._path_polygons(data)
+    except ValueError as e:
+        return str(e)
 
 
 def _error(data):

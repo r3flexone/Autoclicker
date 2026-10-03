@@ -267,6 +267,101 @@ class ImportExportSecurityTest(unittest.TestCase):
             state.item_scans["Live"].capture_window_rect, (50, -10, 150, 90))
         self.assertEqual(counts["item_scans"], 1)
 
+    # Die folgenden fünf hielten bis zum Zerlegen von `import_export.py` keine
+    # Prüfung: man konnte die Sicherung herausnehmen, und alles blieb grün.
+
+    def _folder_bundle(self, entries):
+        manifest = _manifest_data()
+        manifest["layout"] = "sequence-folders"
+        with zipfile.ZipFile("bundle.zip", "w") as zf:
+            zf.writestr("manifest.json", json.dumps(manifest))
+            for name, content in entries:
+                zf.writestr(name, content)
+
+    def test_zwei_namen_die_sich_nur_in_der_schreibweise_unterscheiden_werden_abgelehnt(self):
+        # Unter Windows wären es dieselbe Datei — welcher Inhalt gewinnt,
+        # entschiede die Reihenfolge im Archiv.
+        self._folder_bundle([
+            ("sequences/Farm/sequence.json", json.dumps(_sequence_data("Farm"))),
+            ("sequences/farm/sequence.json", json.dumps(_sequence_data("farm"))),
+        ])
+        ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
+        self.assertFalse(ok)
+        self.assertIn("doppelte", message)
+        self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
+
+    def test_ein_buendel_ueber_der_gesamtgroesse_wird_abgelehnt(self):
+        from autoclicker import import_export as module_name
+        self._folder_bundle([
+            ("sequences/farm/sequence.json", json.dumps(_sequence_data("farm"))),
+            ("sequences/farm/templates/a.png", b"x" * 40),
+        ])
+        with patch.object(module_name, "MAX_BUNDLE_TOTAL_SIZE", 60):
+            ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
+        self.assertFalse(ok)
+        self.assertIn("zu groß", message)
+        self.assertFalse(Path("sequences/farm").exists())
+
+    def test_ein_pfad_aus_dem_importordner_heraus_faellt_auch_ohne_namenspruefung_auf(self):
+        # Die Namensprüfung (`_safe_bundle_path`) ist die erste Tür; die zweite
+        # misst das Ziel. Hier wird die erste ausgehängt, um die zweite zu sehen.
+        import tempfile as tempfile_module
+        from pathlib import PurePosixPath
+        from autoclicker import import_export as module_name
+        inner = Path("tief/innen")
+        inner.mkdir(parents=True)
+        real = tempfile_module.TemporaryDirectory
+        self._folder_bundle([
+            ("sequences/farm/sequence.json", json.dumps(_sequence_data("farm"))),
+            ("sequences/farm/../../ausserhalb.txt", b"fremd"),
+        ])
+        # Nur die Sequenzordner, wie die echte Prüfung — aber ohne Blick auf "..".
+        def names_only(name):
+            return PurePosixPath(name) if name.startswith("sequences/") else None
+
+        with patch.object(module_name, "_safe_bundle_path", names_only), \
+                patch.object(module_name.tempfile, "TemporaryDirectory",
+                             lambda prefix="": real(prefix=prefix, dir=inner)):
+            ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
+        self.assertFalse(ok)
+        self.assertIn("verlässt den Importordner", message)
+        self.assertEqual([], list(inner.rglob("ausserhalb.txt")))
+
+    def test_else_klick_ohne_punkt_steht_in_der_kalibrier_vorschau(self):
+        from autoclicker.import_export import collect_click_positions
+        from autoclicker.models import ElseConfig, LoopPhase, SequenceStep
+        state = AutoClickerState()
+        with_point = SequenceStep(point_id=3, else_config=ElseConfig("click", point_id=4))
+        without = SequenceStep(point_id=3, else_config=ElseConfig("click", x=70, y=80))
+        state.active_sequence = Sequence(
+            name="Farm", loop_phases=[LoopPhase("L", [with_point, without])])
+        positions = collect_click_positions(state)
+        self.assertIn(("Seq 'Farm'/L #2 (else)", 70, 80), positions)
+        self.assertFalse(any(label.endswith("#1 (else)") for label, _x, _y in positions))
+
+    def test_kalibrieren_rechnet_die_geladene_sequenz_nur_einmal_um(self):
+        # Die geladene Sequenz schreibt `save_points()` aus dem Speicher —
+        # schon umgerechnet. Ein zweiter Durchgang über ihre Datei verschöbe
+        # ihre Screenshot-Regionen doppelt.
+        from autoclicker.models import LoopPhase, SequenceStep
+        from autoclicker.persistence import (
+            activate_sequence, load_sequence_file, save_sequence_file, sequence_file,
+        )
+        seq = Sequence(name="Farm", loop_phases=[LoopPhase("L", [
+            SequenceStep(screenshot_only=True, screenshot_region=(10, 10, 20, 20))])])
+        path = sequence_file("Farm")
+        self.assertTrue(save_sequence_file(seq, path))
+        state = AutoClickerState()
+        activate_sequence(state, load_sequence_file(path))
+
+        calibrate_inventory(state, {"scale_x": 1.0, "scale_y": 1.0,
+                                    "offset_x": 100, "offset_y": 0},
+                            with_scans=False, with_sequences=True)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual([110, 10, 120, 20],
+                         data["loop_phases"][0]["steps"][0]["screenshot_region"])
+
 
 if __name__ == "__main__":
     unittest.main()

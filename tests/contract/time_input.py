@@ -32,7 +32,13 @@ for _text, _message in (("", "Keine Zeit angegeben"),
                         ("ab:cd", "Ungültiges Zeitformat: ab:cd"),
                         ("2460", "Ungültige Uhrzeit: 2460 (gültig: 0000-2359)"),
                         ("0099", "Ungültige Uhrzeit: 0099 (gültig: 0000-2359)")):
-    check(f"'{_text}' wird abgelehnt", _pti(_text) == (-1, _message, None))
+    # Ein Absturz ist hier ein Befund, kein Testende: abgelehnt heisst
+    # „Meldung zurück", und genau das soll rot werden, wenn es fehlt.
+    try:
+        _answer = _pti(_text)
+    except Exception as _e:                                # noqa: BLE001
+        _answer = ("Absturz", repr(_e))
+    check(f"'{_text}' wird abgelehnt", _answer == (-1, _message, None))
 
 
 def _clock(text, hour, minute):

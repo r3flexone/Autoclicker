@@ -104,6 +104,18 @@ check("ohne Startzeile faellt er auf den Dateinamen zurueck",
 # den es zu reparieren lohnt — also muss die Liste absteigend sortiert sein.
 check("die Timeouts stehen absteigend", _d["timeouts"] == [["Bank oeffnen", 2],
                                                            ["Truhe", 1]])
+# Ein Block ohne Namen hängt trotzdem — er steht als „(ohne Namen)" da, nicht
+# als leere Zeile, die man für einen Darstellungsfehler hält. Ein Item ohne
+# Namen gibt es dagegen nicht; es bleibt, wie es ist.
+_nameless = _log(_sandbox / "logs8" / "2026-01-08_000000_farm.csv", [
+    ("2026-01-08 00:00:00", 0, "timeout", "", "", "", ""),
+    ("2026-01-08 00:00:01", 1, "verify_miss", "  ", "", "", ""),
+    ("2026-01-08 00:00:02", 2, "item_found", "", "", "", ""),
+])
+_dn = _auswerten([_nameless])
+check("ein Timeout ohne Blocknamen zählt als „(ohne Namen)“",
+      _dn["timeouts"] == [["(ohne Namen)", 1]] and _dn["verify_miss"] == [["(ohne Namen)", 1]])
+check("ein Item ohne Namen bleibt ohne", _dn["items"] == [["", 1]])
 check("die Items ebenso", _d["items"] == [["Erz", 3], ["Holz", 1]])
 check("die Nachpruefung kommt von beiden Seiten",
       _d["verify_miss"] == [["Verkaufen", 1]] and _d["verify_ok"] == {"Verkaufen": 1})
