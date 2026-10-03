@@ -1525,7 +1525,7 @@ python tests/all_tests.py                      # alles
 python tests/all_tests.py --only contract       # nur die Vertragssuite (schnell)
 python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
 python tests/all_tests.py --mutations         # zusätzlich gezielte Gegenproben
-python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
+python -m flake8                                # Regeln und Ausnahmen in .flake8
 ```
 
 | Schicht | was sie prüft | braucht |

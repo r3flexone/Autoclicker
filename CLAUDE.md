@@ -46,7 +46,7 @@ python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
 python tests/all_tests.py --mutations      # dazu die Gegenproben (so ruft CI es auf)
 python tests/all_tests.py --only smoke --smoke-required  # fehlender Browser = rot
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
-python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
+python -m flake8 --select=F,C90 autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
 
 # Die Schichten einzeln, falls man sie direkt braucht:
@@ -98,7 +98,7 @@ Was man beim Schreiben von Tests wissen muss (Begründungen in `tests/CLAUDE.md`
   `settle()` auf die Seite, nicht auf die Uhr.
 - **CI** (`.github/workflows/tests.yml`, Push und PR auf jedem Branch): Ubuntu
   und Windows, Python 3.14, der Test-Job in drei Achsen (`ohne`/`pillow`/`mit`
-  Bildpaketen), dazu Rauchtests und `flake8 --select=F`. Jeder Job muss grün
+  Bildpaketen), dazu Rauchtests und `flake8 --select=F,C90`. Jeder Job muss grün
   sein. Wer an `imaging.py` arbeitet, installiert die Bildpakete auch lokal.
 - **`--mutations` prüft die Tests, nicht den Code**: jeder Fall in
   `tests/mutation_check.py` entschärft eine Sicherung und erwartet, dass ein

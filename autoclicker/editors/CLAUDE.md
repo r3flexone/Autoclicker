@@ -28,8 +28,25 @@ Je Stück ein Modul unter `tests/contract/` (`slot_editor`, `slot_sub_editors`,
 `detection_editors`, `item_editor`, `item_scan_wizard`,
 `import_export_editor`, `loop_phase_editor`, `phase_editor`,
 `sequence_editor_flow`, `points_menu`, `recording_build`); die Klick-Runde
-hatte ihre Prüfungen schon (`reclick`). Eine neue Funktion über 11 in diesem
-Ordner ist damit ein Rückschritt, kein Bestand.
+hatte ihre Prüfungen schon (`reclick`).
+
+**Danach kam der Rest, nach derselben Reihenfolge, und seitdem wird die Grenze
+erzwungen.** Laufzeit, Persistenz, Config, Import/Export, `utils`, `imaging`,
+das Studio, LLM, Plattform, `main.py` und `tools/` — in ganz `autoclicker/`,
+`main.py` und `tools/` steht keine Funktion mehr über 11, und `.flake8` hat
+`C90` deshalb in `select` (CI-Job `lint` ebenso; ausgenommen sind nur
+`market_analysis/` und `tests/`). Eine neue Funktion über 11 fällt damit nicht
+mehr erst beim nächsten Aufräumen auf, sondern beim nächsten Lauf.
+
+**Nach jedem Umbau kam die Gegenprobe**: jede tragende Bedingung der neuen
+Stufen einmal entschärft, die Suite dagegen laufen lassen. Rund ein Drittel
+blieb dabei zunächst grün — Sicherungen, die vorher schon keine Prüfung hatten.
+Sie stehen jetzt in `core_guards`, `runtime_guards`, `studio_guards` und
+`test_import_export_security.py`. Ein Test, der bei der Gegenprobe abstürzt
+statt rot zu werden, zählt dabei nicht als erkannt — die Hilfen dort fangen
+den Absturz deshalb ab und melden ein falsches Ergebnis. Zwei Fehler kamen so
+heraus: eine Dauer „infs“ stürzte ab, und die Slot-Suche des Studios meldete
+vorhandene Slots als „in den Scan aufgenommen“.
 
 **Was beim Zerlegen keinen Aufrufer mehr hat, wird gelöscht, nicht zerlegt.**
 `loader._report_point_mismatches` verglich Schritte ohne `point_id` mit dem

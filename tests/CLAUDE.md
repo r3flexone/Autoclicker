@@ -107,7 +107,8 @@ deshalb läuft die komplette Logik-Schicht auch hier.
 **Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**
 Push und Pull Request auf jedem Branch, als Matrix auf Ubuntu und Windows. Dazu
 zwei eigene Jobs: die Rauchtests (Browser, nur Linux — es geht um die Seite, nicht
-um die Plattform) und `flake8 --select=F` (tote Importe, Tippfehler in Namen).
+um die Plattform) und `flake8 --select=F,C90` (tote Importe, Tippfehler in Namen,
+Funktionen über Komplexität 11 — Grenze und Ausnahmen in `.flake8`).
 Jeder Job muss grün sein; ein roter Lauf ist ein Fehler, kein Hinweis.
 Geprüft wird auf **Python 3.14**, der unteren Grenze — und die ist die Version,
 die wirklich benutzt wird. Hier stand 3.10, ohne dass jemand 3.10 benutzte: ein
