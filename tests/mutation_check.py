@@ -72,8 +72,8 @@ CASES = {
         "Rest des Blocks lief weiter.\n        state.skip_step_event.clear()\n        return True",
         RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
     "auto-learn-active-variant": (
-        "autoclicker.runtime.item_scan", "_learn_unknown_slot_item",
-        "if needs_variant and known_active:", "if False:",
+        "autoclicker.runtime.item_scan", "_learn_against_known",
+        "    if known_active:", "    if False:",
         RUNTIME + "test_auto_lernen_haengt_keine_variante_an_ein_eingeschaltetes_item"),
 }
 

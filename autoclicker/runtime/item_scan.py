@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from typing import Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger("autoclicker")
@@ -545,11 +546,8 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
         return
     # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
     # kein Import-Zyklus mit runtime/)
-    from ..editors.item_editor.markers import (
-        _find_matching_existing_item, _item_has_compatible_template,
-        _prepare_learning_image,
-    )
-    from ..persistence import active_templates_dir, free_template_file
+    from ..editors.item_editor.markers import _prepare_learning_image
+    from ..persistence import active_templates_dir
 
     # Dieselbe Leer-Regel wie im Studio: komplett ausmaskiert = kein Item.
     masked, marker_colors, is_blank = _prepare_learning_image(img, slot.slot_color)
@@ -558,10 +556,6 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
             print(dbg(f"  → {slot.name}: leer (nur Hintergrund bzw. kein Slot zu sehen) — kein Auto-Lernen"))
         return
 
-    # Dedup: schon in DIESEM Scan bekannt (z.B. in früherem Zyklus gelernt)?
-    with state.lock:
-        existing = [(it.name, it) for it in config.items if it.template_names()]
-    min_confidence = state.config.scan_min_confidence
     # **Der Vorlagenordner MUSS mit.** Ohne ihn faellt `_template_path()` auf den
     # globalen `items/templates/` zurueck, den es seit dem Umzug auf
     # Besitzeinheiten nicht mehr gibt: `template_size()` liefert dann fuer JEDE
@@ -569,51 +563,95 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     # `learn_unknown` legt denselben Slot in jedem Zyklus erneut als neues Item
     # an. Vier Zeilen tiefer stand der richtige Ordner laengst da.
     templates_folder = active_templates_dir(state)
-    known = _find_matching_existing_item(img, existing, min_confidence,
+    done, resembles = _learn_against_known(state, slot, img, masked, config,
+                                           templates_folder, debug)
+    if done:
+        return
+    item = _reserve_learned_item(state, config, slot, marker_colors, templates_folder)
+    if not _store_learned_template(state, config, item, masked, templates_folder):
+        return
+
+    _save_learned(config)
+    print(col(f"[AUTO-LERNEN] Neues Item '{item.name}' aus {slot.name} in Scan "
+              f"'{config.name}' geparkt (Kategorie 'Auto', aus — im Studio "
+              "einschalten)", "green"))
+    if resembles:
+        width, height = img.size
+        print(info(f"Ähnelt '{resembles}' (dort keine {width}×{height}-Vorlage) — "
+                   f"nicht angehängt, weil '{resembles}' eingeschaltet ist und "
+                   "sonst ungeprüft geklickt würde. Im Studio ansehen, dann "
+                   "einschalten oder löschen."))
+
+
+def _learn_against_known(state: AutoClickerState, slot, img, masked, config,
+                         templates_folder, debug: bool) -> tuple[bool, Optional[str]]:
+    """Dedup gegen die Items DIESES Scans (auch geparkte, z.B. in einem früheren
+    Zyklus gelernte). `(erledigt, ähnelt)`: erledigt = bekannt bzw. als Variante
+    an ein geparktes Item gehängt; ähnelt = ein eingeschaltetes Item, das nur
+    über eine skalierte Vorlage passt — dann wird ein eigenes Item gelernt."""
+    from ..editors.item_editor.markers import (
+        _find_matching_existing_item, _item_has_compatible_template,
+    )
+    with state.lock:
+        existing = [(it.name, it) for it in config.items if it.template_names()]
+    known = _find_matching_existing_item(img, existing, state.config.scan_min_confidence,
                                          templates_folder)
-    resembles = None
-    if known:
-        known_item = next((it for name, it in existing if name == known), None)
-        needs_variant = known_item is not None and not _item_has_compatible_template(
-            known_item, img, templates_folder)
-        with state.lock:
-            known_active = known_item is not None and known_item.enabled
-        if needs_variant and known_active:
-            # Nur ueber eine skalierte Vorlage erkannt — ungeprueft an ein
-            # Item gehaengt, das geklickt wird, waere es sofort scharf.
-            resembles = known
-        elif needs_variant:
-            width, height = img.size
-            template_file = free_template_file(templates_folder, f"{known}_{width}x{height}")
-            template_path = templates_folder / template_file
-            try:
-                template_path.parent.mkdir(parents=True, exist_ok=True)
-                masked.save(template_path)
-            except (OSError, ValueError) as e:
-                print(warn(f"Auto-Lernen: Vorlage für '{known}' konnte nicht "
-                           f"gespeichert werden: {e}"))
-                return
-            with state.lock:
-                if template_file not in known_item.template_variants:
-                    known_item.template_variants.append(template_file)
-            _save_learned(config)
-            print(col(f"[AUTO-LERNEN] '{known}' (geparkt) kann jetzt auch in "
-                      f"{width}×{height}-Slots erkannt werden", "green"))
-            return
-        else:
-            if debug:
-                print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
-            return
+    if not known:
+        return False, None
+    known_item = next((it for name, it in existing if name == known), None)
+    needs_variant = known_item is not None and not _item_has_compatible_template(
+        known_item, img, templates_folder)
+    if not needs_variant:
+        if debug:
+            print(dbg(f"  → {slot.name}: bekannt als '{known}' — kein Auto-Lernen"))
+        return True, None
+    with state.lock:
+        known_active = known_item.enabled
+    if known_active:
+        # Nur ueber eine skalierte Vorlage erkannt — ungeprueft an ein
+        # Item gehaengt, das geklickt wird, waere es sofort scharf.
+        return False, known
+    _add_learned_variant(state, config, known_item, img, masked, templates_folder)
+    return True, None
 
-    # Schnellen Namen vergeben — KEIN LLM während des Scans (würde den Worker
-    # pro Item bis zu llm_timeout Sekunden blockieren). Sinnvolle Namen vergibt
-    # man danach im Studio („Namen vorschlagen") oder im Item-Editor ('autoname').
+
+def _add_learned_variant(state: AutoClickerState, config, known_item, img, masked,
+                         templates_folder) -> None:
+    """Eine neue Grössenvariante an ein GEPARKTES Item hängen — es wird ohnehin
+    erst nach dem Hinsehen eingeschaltet."""
+    from ..persistence import free_template_file
+    width, height = img.size
+    template_file = free_template_file(templates_folder, f"{known_item.name}_{width}x{height}")
+    template_path = templates_folder / template_file
+    try:
+        template_path.parent.mkdir(parents=True, exist_ok=True)
+        masked.save(template_path)
+    except (OSError, ValueError) as e:
+        print(warn(f"Auto-Lernen: Vorlage für '{known_item.name}' konnte nicht "
+                   f"gespeichert werden: {e}"))
+        return
+    with state.lock:
+        if template_file not in known_item.template_variants:
+            known_item.template_variants.append(template_file)
+    _save_learned(config)
+    print(col(f"[AUTO-LERNEN] '{known_item.name}' (geparkt) kann jetzt auch in "
+              f"{width}×{height}-Slots erkannt werden", "green"))
+
+
+def _reserve_learned_item(state: AutoClickerState, config, slot, marker_colors,
+                          templates_folder) -> ItemProfile:
+    """Das neue Item unter einem freien Namen anlegen und sofort reservieren.
+
+    Schnellen Namen vergeben — KEIN LLM während des Scans (würde den Worker
+    pro Item bis zu llm_timeout Sekunden blockieren). Sinnvolle Namen vergibt
+    man danach im Studio („Namen vorschlagen") oder im Item-Editor ('autoname').
+    Eindeutig vergeben + sofort reservieren (Worker/Editor-Race).
+    """
+    from ..persistence import free_template_file
     base = f"Auto {slot.name}"
-
-    # Eindeutigen Namen vergeben + sofort reservieren (Worker/Editor-Race)
     item = ItemProfile(
         name="", marker_colors=marker_colors, category="Auto",
-        priority=99, template=None, min_confidence=min_confidence,
+        priority=99, template=None, min_confidence=state.config.scan_min_confidence,
         enabled=False,
     )
     with state.lock:
@@ -630,37 +668,31 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
         # Frei auf der PLATTE, nicht nur im Namen: ein umbenanntes Item behält
         # seine Vorlage `auto_slot_19_2.png`, und „Auto Slot 19 2" ist dann
         # wieder frei — die Datei aber nicht (s. `free_template_file`).
-        template_file = free_template_file(templates_folder, name)
-        item.template = template_file
+        item.template = free_template_file(templates_folder, name)
         config.items.append(item)
         # Die Konsolen-Arbeitsansicht zeigt auf denselben Scan? Dann muss sie
         # das Item auch sehen — sonst schriebe ihr naechstes `done` die Liste
         # ohne das Item zurueck (flush_item_scan_context ersetzt cfg.items).
         if state.active_item_scan == config.name:
             state.global_items[name] = item
+    return item
 
-    template_path = templates_folder / template_file
+
+def _store_learned_template(state: AutoClickerState, config, item, masked,
+                            templates_folder) -> bool:
+    """Die Vorlage schreiben; scheitert das, verschwindet das reservierte Item wieder."""
+    template_path = templates_folder / item.template
     try:
         template_path.parent.mkdir(parents=True, exist_ok=True)
         masked.save(template_path)
+        return True
     except (OSError, ValueError) as e:
         with state.lock:
             config.items = [it for it in config.items if it is not item]
             if state.active_item_scan == config.name:
-                state.global_items.pop(name, None)
-        print(warn(f"Auto-Lernen: Template für '{name}' konnte nicht gespeichert werden: {e}"))
-        return
-
-    _save_learned(config)
-    print(col(f"[AUTO-LERNEN] Neues Item '{name}' aus {slot.name} in Scan "
-              f"'{config.name}' geparkt (Kategorie 'Auto', aus — im Studio "
-              "einschalten)", "green"))
-    if resembles:
-        width, height = img.size
-        print(info(f"Ähnelt '{resembles}' (dort keine {width}×{height}-Vorlage) — "
-                   f"nicht angehängt, weil '{resembles}' eingeschaltet ist und "
-                   "sonst ungeprüft geklickt würde. Im Studio ansehen, dann "
-                   "einschalten oder löschen."))
+                state.global_items.pop(item.name, None)
+        print(warn(f"Auto-Lernen: Template für '{item.name}' konnte nicht gespeichert werden: {e}"))
+        return False
 
 
 def _save_learned(config) -> bool:
@@ -766,28 +798,7 @@ def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, 
         print(col(f"[SCAN] {len(found_items)} Item(s) gefunden - klicke alle!", "cyan"))
         return [(slot.click_pos, item, priority) for slot, item, priority in found_items]
 
-    # Gruppiere nach Kategorie, aber behalte die Scan-Reihenfolge
-    best_per_category = {}
-    ordered_categories = []
-    for slot, item, priority in found_items:
-        cat = item.category or item.name
-
-        with state.lock:
-            if cat in state.clicked_categories:
-                best_clicked_prio = state.clicked_categories[cat]
-                if priority >= best_clicked_prio:
-                    if debug:
-                        print(dbg(f"  → {item.name} übersprungen ('{cat}' bereits geklickt)"))
-                    continue
-
-        if cat not in best_per_category:
-            ordered_categories.append(cat)
-            best_per_category[cat] = (slot, item, priority)
-        elif priority < best_per_category[cat][2]:
-            best_per_category[cat] = (slot, item, priority)
-
-    filtered_items = [best_per_category[cat] for cat in ordered_categories]
-
+    filtered_items = _best_per_category(state, found_items, debug)
     if mode == SCAN_MODE_ALL:
         print(col(f"[SCAN] {len(filtered_items)} Item(s) gefunden - klicke alle!", "cyan"))
         return [(slot.click_pos, item, priority) for slot, item, priority in filtered_items]
@@ -799,6 +810,28 @@ def _filter_scan_results(state: AutoClickerState, found_items: list, mode: str, 
     best_slot, best_item, best_priority = filtered_items[0]
     print(col(f"[SCAN] Bestes Item: {best_item.name} (P{best_priority})", "cyan"))
     return [(best_slot.click_pos, best_item, best_priority)]
+
+
+def _best_per_category(state: AutoClickerState, found_items: list, debug: bool) -> list:
+    """Je Kategorie der Treffer mit der kleinsten Priorität, in Scan-Reihenfolge.
+
+    Eine Kategorie, in der dieser Zyklus schon etwas mindestens so Gutes
+    geklickt hat, fällt ganz weg.
+    """
+    best_per_category = {}
+    for slot, item, priority in found_items:
+        cat = item.category or item.name
+        with state.lock:
+            best_clicked = state.clicked_categories.get(cat)
+        if best_clicked is not None and priority >= best_clicked:
+            if debug:
+                print(dbg(f"  → {item.name} übersprungen ('{cat}' bereits geklickt)"))
+            continue
+        # Ein dict behält die Einfügereihenfolge — die Kategorie bleibt an der
+        # Stelle ihres ersten Treffers, auch wenn ein besserer sie ersetzt.
+        if cat not in best_per_category or priority < best_per_category[cat][2]:
+            best_per_category[cat] = (slot, item, priority)
+    return list(best_per_category.values())
 
 
 # =============================================================================
@@ -827,24 +860,24 @@ def _click_scan_result(state: AutoClickerState, pos, item, priority, debug: bool
               x=pos[0], y=pos[1],
               extra=f"kategorie={item.category or ''},prio={priority}")
 
-    if item.confirm_point is not None:
-        if item.confirm_delay > 0:
-            if debug:
-                print(dbg(f"Warte {item.confirm_delay}s vor Confirm..."))
-            if state.stop_event.wait(item.confirm_delay):
-                return False
-
-        if debug:
-            print(dbg(f"Confirm-Klick @ ({item.confirm_point.x}, {item.confirm_point.y})"))
-
-        if not safe_click(state, item.confirm_point.x, item.confirm_point.y,
-                          label=f"confirm:{item.name}"):
-            return False
-        with state.lock:
-            state.total_clicks += 1
-
+    if item.confirm_point is not None and not _confirm_click(state, item, debug):
+        return False
     click_delay = state.config.scan_item_click_delay
-    if click_delay > 0:
-        if state.stop_event.wait(click_delay):
+    return not (click_delay > 0 and state.stop_event.wait(click_delay))
+
+
+def _confirm_click(state: AutoClickerState, item, debug: bool) -> bool:
+    """Der Klick DANACH (z.B. „wirklich verkaufen?"). False = gestoppt/verweigert."""
+    if item.confirm_delay > 0:
+        if debug:
+            print(dbg(f"Warte {item.confirm_delay}s vor Confirm..."))
+        if state.stop_event.wait(item.confirm_delay):
             return False
+    if debug:
+        print(dbg(f"Confirm-Klick @ ({item.confirm_point.x}, {item.confirm_point.y})"))
+    if not safe_click(state, item.confirm_point.x, item.confirm_point.y,
+                      label=f"confirm:{item.name}"):
+        return False
+    with state.lock:
+        state.total_clicks += 1
     return True

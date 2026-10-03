@@ -12,6 +12,7 @@ und die generische else_config-Aktion (Fallback bei Trigger-Miss).
 
 import random
 import time
+from typing import Optional
 
 from ..models import (
     AutoClickerState, SequenceStep,
@@ -397,7 +398,7 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
                     debug_active: bool, last_remaining: int, phase: str,
                     step_num: int, total_steps: int, message: str, point=None) -> bool:
     """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
-    last_image, live = 0.0, {}
+    live = _LiveImage(state, point)
     while remaining > 0:
         if state.stop_event.is_set():
             return False
@@ -408,37 +409,17 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
                    "since": time.time() - (seconds - remaining),
                    "until": time.time() + remaining,
                    "total": round(seconds, 2)}
-        if point is not None:
-            now = time.time()
-            if now - last_image >= _LIVE_INTERVAL:
-                last_image, live = now, _live_point(state, point)
-            waiting.update(live)
+        waiting.update(live.fields())
         status.waiting_for(state, waiting)
 
-        if state.skip_event.is_set():
-            state.skip_event.clear()
-            _c = _phase_color(phase)
-            if debug_active:
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c))
-            else:
-                status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!", _c))
-            return True
-
-        # Der eigene Block-Skip bleibt gesetzt. Der Dispatcher konsumiert ihn
-        # direkt nach dieser Schleife und beendet den Block VOR Klick/Taste.
-        if state.skip_step_event.is_set():
-            return True
-
-        if not wait_while_paused(state, message):
-            return False
+        interrupted = _wait_interrupted(state, debug_active, phase, step_num, total_steps, message)
+        if interrupted is not None:
+            return interrupted
 
         current_remaining = int(remaining)
         if current_remaining != last_remaining:
-            _c = _phase_color(phase)
-            if debug_active:
-                print(col(f"[{phase}] Schritt {step_num}/{total_steps} | {message} ({round(remaining, 1):g}s)...", _c))
-            else:
-                status_line(col(f"[{phase}] Schritt {step_num}/{total_steps} | {message} ({round(remaining, 1):g}s)...", _c))
+            _say(debug_active, phase, f"[{phase}] Schritt {step_num}/{total_steps} | "
+                                      f"{message} ({round(remaining, 1):g}s)...")
             last_remaining = current_remaining
 
         wait_time = min(1.0, remaining)
@@ -447,6 +428,49 @@ def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
         remaining -= wait_time
 
     return True
+
+
+class _LiveImage:
+    """Der Live-Ausschnitt um die Stelle, die nach dem Warten dran ist —
+    höchstens einmal je `_LIVE_INTERVAL` neu aufgenommen."""
+
+    def __init__(self, state: AutoClickerState, point):
+        self.state, self.point = state, point
+        self.taken, self.last = 0.0, {}
+
+    def fields(self) -> dict:
+        if self.point is None:
+            return {}
+        now = time.time()
+        if now - self.taken >= _LIVE_INTERVAL:
+            self.taken, self.last = now, _live_point(self.state, self.point)
+        return self.last
+
+
+def _wait_interrupted(state: AutoClickerState, debug_active: bool, phase: str,
+                      step_num: int, total_steps: int, message: str) -> Optional[bool]:
+    """CTRL+ALT+K, Block-Skip oder eine gestoppte Pause: True = Wartezeit vorbei,
+    False = gestoppt, None = weiter warten."""
+    if state.skip_event.is_set():
+        state.skip_event.clear()
+        _say(debug_active, phase, f"[{phase}] Schritt {step_num}/{total_steps} | SKIP!")
+        return True
+    # Der eigene Block-Skip bleibt gesetzt. Der Dispatcher konsumiert ihn
+    # direkt nach dieser Schleife und beendet den Block VOR Klick/Taste.
+    if state.skip_step_event.is_set():
+        return True
+    if not wait_while_paused(state, message):
+        return False
+    return None
+
+
+def _say(debug_active: bool, phase: str, text: str) -> None:
+    """Im Debug eine eigene Zeile, sonst die überschreibbare Status-Zeile."""
+    line = col(text, _phase_color(phase))
+    if debug_active:
+        print(line)
+    else:
+        status_line(line)
 
 
 # =============================================================================
@@ -464,63 +488,71 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
     ec = step.else_config
     if not ec:
         return True
-
-    debug = is_verbose_debug(state)
-
-    if ec.action == ELSE_SKIP:
-        _step_status(debug, phase, step_num, total_steps, "ELSE: übersprungen")
+    handler = _ELSE_ACTIONS.get(ec.action)
+    if handler is None:
         return True
+    return handler(state, step, ec, phase, step_num, total_steps, is_verbose_debug(state))
 
-    elif ec.action == ELSE_CLICK:
-        if ec.unresolved:
-            # Der Punkt hinter dem Else-Klick fehlt (`resolve()` hat es gemeldet).
-            # Ein Klick auf (0, 0) waere die Bildschirmecke — also wie `skip`.
-            _step_status(debug, phase, step_num, total_steps,
-                         "ELSE: Klick entfaellt — Punkt fehlt (wie skip)")
-            return True
-        if ec.delay > 0:
-            if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        "ELSE: klicke in", point=(ec.x, ec.y, None),
-                                        label=step.name):
-                return False
 
-        if state.stop_event.is_set():
-            return False
-
-        name = ec.name or f"({ec.x},{ec.y})"
-        if not safe_click(state, ec.x, ec.y, label=f"else:{name}"):
-            return False
-        with state.lock:
-            state.total_clicks += 1
-
-        _step_status(debug, phase, step_num, total_steps,
-                     f"ELSE: Klick auf {name}!", f"ELSE: Klick auf '{name}' ({ec.x}, {ec.y})")
-        return True
-
-    elif ec.action == ELSE_KEY:
-        if ec.delay > 0:
-            if not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
-                                        "ELSE: Taste in", label=step.name):
-                return False
-
-        if state.stop_event.is_set():
-            return False
-
-        if safe_key(state, ec.key, label="else"):
-            with state.lock:
-                state.key_presses += 1
-            _step_status(debug, phase, step_num, total_steps, f"ELSE: Taste '{ec.key}'!")
-            return True
-        return not input_refused(state)
-
-    elif ec.action == ELSE_RESTART:
-        _step_status(debug, phase, step_num, total_steps, "ELSE: Neustart!")
-        state.restart_event.set()
-        return False
-
-    elif ec.action == ELSE_SKIP_CYCLE:
-        _step_status(debug, phase, step_num, total_steps, "ELSE: Zyklus überspringen!")
-        state.skip_cycle_event.set()
-        return False
-
+def _else_skip(state, step, ec, phase, step_num, total_steps, debug) -> bool:
+    _step_status(debug, phase, step_num, total_steps, "ELSE: übersprungen")
     return True
+
+
+def _else_click(state, step, ec, phase, step_num, total_steps, debug) -> bool:
+    if ec.unresolved:
+        # Der Punkt hinter dem Else-Klick fehlt (`resolve()` hat es gemeldet).
+        # Ein Klick auf (0, 0) waere die Bildschirmecke — also wie `skip`.
+        _step_status(debug, phase, step_num, total_steps,
+                     "ELSE: Klick entfaellt — Punkt fehlt (wie skip)")
+        return True
+    if ec.delay > 0 and not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
+                                                 "ELSE: klicke in", point=(ec.x, ec.y, None),
+                                                 label=step.name):
+        return False
+    if state.stop_event.is_set():
+        return False
+
+    name = ec.name or f"({ec.x},{ec.y})"
+    if not safe_click(state, ec.x, ec.y, label=f"else:{name}"):
+        return False
+    with state.lock:
+        state.total_clicks += 1
+    _step_status(debug, phase, step_num, total_steps,
+                 f"ELSE: Klick auf {name}!", f"ELSE: Klick auf '{name}' ({ec.x}, {ec.y})")
+    return True
+
+
+def _else_key(state, step, ec, phase, step_num, total_steps, debug) -> bool:
+    if ec.delay > 0 and not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
+                                                 "ELSE: Taste in", label=step.name):
+        return False
+    if state.stop_event.is_set():
+        return False
+    if safe_key(state, ec.key, label="else"):
+        with state.lock:
+            state.key_presses += 1
+        _step_status(debug, phase, step_num, total_steps, f"ELSE: Taste '{ec.key}'!")
+        return True
+    return not input_refused(state)
+
+
+def _else_restart(state, step, ec, phase, step_num, total_steps, debug) -> bool:
+    _step_status(debug, phase, step_num, total_steps, "ELSE: Neustart!")
+    state.restart_event.set()
+    return False
+
+
+def _else_skip_cycle(state, step, ec, phase, step_num, total_steps, debug) -> bool:
+    _step_status(debug, phase, step_num, total_steps, "ELSE: Zyklus überspringen!")
+    state.skip_cycle_event.set()
+    return False
+
+
+_ELSE_ACTIONS = {
+    ELSE_SKIP: _else_skip,
+    ELSE_CLICK: _else_click,
+    ELSE_KEY: _else_key,
+    ELSE_RESTART: _else_restart,
+    ELSE_SKIP_CYCLE: _else_skip_cycle,
+}
