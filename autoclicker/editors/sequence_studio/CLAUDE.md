@@ -1139,8 +1139,16 @@ demselben Inventar legte deshalb nichts an — nahm aber auch nichts auf, und we
 die Listen nur Mitglieder zeigen, blieb er leer: „45 Slot(s) gefunden, alle schon
 da" und keine einzige Marke im Bild. Genau der Fall, in dem man den Fehler bei
 der Erkennung sucht, obwohl sie funktioniert hat. `_slot_at_position()` gibt
-deshalb den **Namen** zurück statt ja/nein, und der Durchgang zählt drei Sorten
-getrennt: angelegt, aufgenommen, war schon dabei.
+deshalb den **Namen** zurück statt ja/nein.
+
+**Mit den Besitzeinheiten ist daraus wieder EINE Frage geworden: gibt es den
+Slot schon?** Der Durchgang zählte drei Sorten (angelegt, aufgenommen, war schon
+dabei), aber seit ein Scan seine Slots selbst besitzt, gibt es keinen Slot im
+Bestand, der nicht dazugehört — `_add_to_scan()` meldete deshalb bei jedem
+vorhandenen Slot „aufgenommen“, und ein zweiter Suchlauf über dasselbe Inventar
+sagte „45 schon vorhandene in den Scan aufgenommen“ statt „alle schon da“. Die
+Gegenprobe fand den toten Zweig („war schon dabei“ war nie mehr erreichbar).
+Heute: angelegt oder schon dabei, und `_add_to_scan()` gibt nichts mehr zurück.
 
 **Ein zweiter Suchlauf rät die Grösse nicht neu.** `detect_slots_in_image()`
 normalisiert auf den Median **eines** Durchgangs — ein zweiter Lauf über

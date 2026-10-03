@@ -343,21 +343,19 @@ class ScanStateMixin:
             cfg.slots = list(self.slots.values())
             cfg.items = list(self.items.values())
 
-    def _add_to_scan(self, kind: str, name: str) -> bool:
+    def _add_to_scan(self, kind: str, name: str) -> None:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
         Wer in einem offenen Scan etwas anlegt, legt es für ihn an — sonst wäre es
         sofort wieder weg (die Listen zeigen nur die Mitglieder). Ohne offenen Scan
-        passiert nichts. Gibt zurück, ob es eine Änderung war.
+        passiert nichts.
         """
         cfg = self.scans.get(self.open_scan)
         if cfg is None:
-            return False
+            return
         inventory = self.slots if kind == KIND_SLOT else self.items
-        if name not in inventory:
-            return False
-        self._sync_objects()
-        return True
+        if name in inventory:
+            self._sync_objects()
 
     def _scan_report(self, text: str, kind: str = "ok") -> dict:
         self._scan_status = (text, kind)

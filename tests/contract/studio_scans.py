@@ -417,6 +417,18 @@ try:
                 # heraus. Das enger werdende Band faengt genau das ab.
                 check("das Panel wird nicht als ein Riesen-Slot genommen",
                       all(s["width"] < 200 for s in _z18["slots"]))
+                # Fehlt einer, kommt er wieder — und die Meldung sagt, dass die
+                # übrigen schon da waren, statt sie als neu zu zählen.
+                _b18.slots.pop(next(iter(_b18.slots)))
+                _b18._sync_objects()
+                _b18.scan_mode_set({"mode": _MF18})
+                _b18.scan_click({"x": 20, "y": 20})
+                _b18.scan_click({"x": 280, "y": 200})
+                _z18 = _b18.scan_click({"x": 42, "y": 42})
+                check("ein fehlender Slot kommt wieder, die übrigen gelten als schon dabei",
+                      len(_z18["slots"]) == 6
+                      and "1 Slot(s) angelegt" in _z18["status"]["text"]
+                      and "5 war(en) schon dabei" in _z18["status"]["text"])
                 # Gegenprobe zum Suchbereich: derselbe Klick, aber ein Bereich,
                 # der auch den Koeder umfasst - dann sind es sieben.
                 _b18.slots.clear()

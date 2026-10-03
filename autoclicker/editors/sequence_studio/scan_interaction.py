@@ -199,21 +199,17 @@ class ScanInteractionMixin:
                 "Slot klicken, nicht auf ein Item.", "warn")
 
         self._remember("Slots gesucht")
-        new, added_to, already = self._place_found_slots(rects, color)
+        new, already = self._place_found_slots(rects, color)
         # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
         # endet er auch dann im Auswählen, wenn alles schon dastand. Nur bei
         # Erfolg zurückzuschalten hiesse: derselbe Klick lässt einen mal im
         # Modus stehen und mal nicht, je nach Ergebnis.
         self._search_area = None
         self.scan_mode = MODE_CHOICE
-        if not new and not added_to:
+        if not new:
             return self._scan_report(f"{already} Slot(s) gefunden — alle schon da."
                                     f"{self._detect_immediately()}", "info")
-        parts = []
-        if new:
-            parts.append(f"{new} Slot(s) angelegt")
-        if added_to:
-            parts.append(f"{added_to} schon vorhandene in den Scan aufgenommen")
+        parts = [f"{new} Slot(s) angelegt"]
         if already:
             parts.append(f"{already} war(en) schon dabei")
         return self._scan_changed(f"{', '.join(parts)} · Hintergrund {hex_color(color)}"
@@ -238,27 +234,24 @@ class ScanInteractionMixin:
             return self._scan_report("Der Suchbereich liegt nicht im Bild.", "warn")
         return color, crop_value
 
-    def _place_found_slots(self, rects: list, color) -> tuple[int, int, int]:
-        """Treffer als Slots anlegen bzw. aufnehmen: `(angelegt, aufgenommen, schon dabei)`."""
+    def _place_found_slots(self, rects: list, color) -> tuple[int, int]:
+        """Treffer als Slots anlegen: `(angelegt, schon dabei)`.
+
+        Hier stand eine dritte Sorte, „schon vorhanden, in den Scan
+        aufgenommen" — aus der Zeit des globalen Bestands, als Slots eines
+        anderen Spiels in derselben Liste lagen. Seit der Scan seine Slots
+        selbst besitzt, IST ein vorhandener Slot schon dabei; gemeldet wurde
+        trotzdem „in den Scan aufgenommen", bei jedem zweiten Suchlauf über
+        dasselbe Inventar.
+        """
         sx1, sy1 = self._search_area[0], self._search_area[1]
         target = self._existing_slot_size()
-        new, added_to, already = 0, 0, 0
+        new, already = 0, 0
         for rx, ry, rb, rh in rects:
             region = self._fit_found_region(
                 self._with_inset((sx1 + rx, sy1 + ry, sx1 + rx + rb, sy1 + ry + rh)), target)
-            existing = self._slot_at_position(region)
-            if existing is not None:
-                # **Gefunden ist gefunden, auch wenn der Slot schon existiert.**
-                # Bei zwei Spielen liegen die Slots des einen längst im Bestand —
-                # ein zweiter Scan über demselben Inventar legte deshalb nichts
-                # an, nahm aber auch nichts auf, und weil die Listen nur
-                # Mitglieder zeigen, blieb er leer: „45 gefunden, alle schon da"
-                # und keine einzige Marke im Bild. Wer hier sucht, meint diesen
-                # Scan — also gehören die Treffer hinein, angelegt oder nicht.
-                if self._add_to_scan(KIND_SLOT, existing):
-                    added_to += 1
-                else:
-                    already += 1
+            if self._slot_at_position(region) is not None:
+                already += 1
                 continue
             name = next_slot_name(self.slots)
             self.slots[name] = ItemSlot(
@@ -267,7 +260,7 @@ class ScanInteractionMixin:
                 slot_color=color, id=self._next_slot_id())
             self._add_to_scan(KIND_SLOT, name)
             new += 1
-        return new, added_to, already
+        return new, already
 
     def _fit_found_region(self, region: tuple, target) -> tuple:
         """Ein Fund nahe an der schon feststehenden Grösse übernimmt diese."""
