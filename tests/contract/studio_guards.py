@@ -74,8 +74,12 @@ try:
         from PIL import Image as _PIL
     except ImportError:
         _PIL = None
-    if _PIL is None:
-        print("  ----  Vorlagen-Teil uebersprungen (Pillow nicht installiert)")
+    # Die Grösse einer gespeicherten Vorlage misst `template_size()` über
+    # OpenCV. Ohne OpenCV ist sie unbekannt, und eine zweite Vorlage kommt
+    # dazu — der Rückfall, denn verglichen wird ohne OpenCV ohnehin nicht.
+    from autoclicker.imaging import OPENCV_AVAILABLE as _CV
+    if _PIL is None or not _CV:
+        print("  ----  Vorlagen-Teil uebersprungen (Pillow oder OpenCV fehlt)")
     else:
         # Eine Vorlage in genau dieser Slot-Grösse gibt es schon — eine zweite
         # wäre eine Kopie, keine Variante.

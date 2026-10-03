@@ -67,14 +67,24 @@ class _Img:
     size = (4, 3)
 
 
+# Ohne Pillow bricht `main()` schon vor dem Öffnen einer Datei ab; dann gibt
+# es auch nichts zu ersetzen. Gefragt wird VOR `_run()`, nicht darin — dort
+# stand ein nackter Import, und die Suite starb in den CI-Jobs ohne Pillow.
+try:
+    import PIL.Image as _pil
+except ImportError:
+    _pil = None
+_has_pil = _pil is not None
+
+
 def _run(*argv, available=True, screen=_Img(), region_pick=(0, 0, 5, 5), exists=True,
          open_image=_Img):
     """Führt `main()` mit allem Systemnahen ersetzt aus — `(analysiert mit, Ausgabe)`."""
     import autoclicker.imaging as imaging
-    import PIL.Image as pil_image
     calls = {}
     saved = (_sys.argv, _OCR.is_available, _OCR.analyze, _OCR.test_backends, _OCR.print_help,
-             imaging.take_screenshot, imaging.select_region, _OCR.os.path.exists, pil_image.open)
+             imaging.take_screenshot, imaging.select_region, _OCR.os.path.exists,
+             _pil.open if _has_pil else None)
 
     def shoot(region=None):
         calls["region"] = region
@@ -95,7 +105,8 @@ def _run(*argv, available=True, screen=_Img(), region_pick=(0, 0, 5, 5), exists=
     imaging.take_screenshot = shoot
     imaging.select_region = lambda: region_pick
     _OCR.os.path.exists = lambda path: exists
-    pil_image.open = opened
+    if _has_pil:
+        _pil.open = opened
     out = _io.StringIO()
     try:
         with _cl.redirect_stdout(out):
@@ -103,15 +114,11 @@ def _run(*argv, available=True, screen=_Img(), region_pick=(0, 0, 5, 5), exists=
     finally:
         (_sys.argv, _OCR.is_available, _OCR.analyze, _OCR.test_backends, _OCR.print_help,
          imaging.take_screenshot, imaging.select_region, _OCR.os.path.exists,
-         pil_image.open) = saved
+         pil_open) = saved
+        if _has_pil:
+            _pil.open = pil_open
     return calls, out.getvalue()
 
-
-try:
-    import PIL.Image as _pil   # noqa: F401
-    _has_pil = True
-except ImportError:
-    _has_pil = False
 
 _calls, _out = _run("--help")
 check("Hilfe: nur die Hilfe", _calls == {"helped": True})
