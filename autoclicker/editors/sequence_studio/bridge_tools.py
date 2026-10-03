@@ -333,34 +333,18 @@ class BridgeToolsMixin:
             return {"ok": False, "message": "Eine Sequenz läuft — Analyse ist gesperrt."}
         kind = str((data or {}).get("kind") or "point")
         if kind == "point":
-            x, y, message = self._await_position()
-            if x is None:
-                return {"ok": False, "message": message + " — nichts analysiert."}
-            color = self._color_at(x, y)
-            if not color:
-                return {"ok": False, "message": "Farbe konnte nicht gelesen werden."}
-            from ...imaging import get_color_name
-            return {"ok": True, "kind": "point", "position": [x, y],
-                    "colors": [self._color_json(tuple(color), 1, 1, get_color_name)],
-                    "message": f"Farbe bei ({x}, {y}) gelesen."}
-
-        region = None
+            return self._color_under_mouse()
         if kind == "region":
-            x1, y1, message = self._await_position()
-            if x1 is None:
-                return {"ok": False, "message": message + " — keine erste Ecke."}
-            x2, y2, message = self._await_position()
-            if x2 is None:
-                return {"ok": False, "message": message + " — keine zweite Ecke."}
-            region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
-            if region[2] - region[0] < 2 or region[3] - region[1] < 2:
-                return {"ok": False, "message": "Der gewählte Bereich ist zu klein."}
+            region = self._color_region()
+            if isinstance(region, dict):
+                return region
         elif kind == "fullscreen":
             # ENTER ist die Übergabe: Das Studio kann in den Hintergrund, bevor
             # der Screenshot entsteht.
             _, _, message = self._await_position()
             if message:
                 return {"ok": False, "message": message + " — nichts analysiert."}
+            region = None
         else:
             return {"ok": False, "message": "Unbekannte Analyseart."}
 
@@ -373,6 +357,31 @@ class BridgeToolsMixin:
         return {"ok": True, "kind": kind, "region": list(region) if region else None,
                 "colors": [self._color_json(f, n, total, get_color_name) for f, n in top],
                 "message": f"{total} Stichproben analysiert."}
+
+    def _color_under_mouse(self) -> dict:
+        x, y, message = self._await_position()
+        if x is None:
+            return {"ok": False, "message": message + " — nichts analysiert."}
+        color = self._color_at(x, y)
+        if not color:
+            return {"ok": False, "message": "Farbe konnte nicht gelesen werden."}
+        from ...imaging import get_color_name
+        return {"ok": True, "kind": "point", "position": [x, y],
+                "colors": [self._color_json(tuple(color), 1, 1, get_color_name)],
+                "message": f"Farbe bei ({x}, {y}) gelesen."}
+
+    def _color_region(self):
+        """Zwei Ecken mit der Maus — die Region, sonst die Absage."""
+        x1, y1, message = self._await_position()
+        if x1 is None:
+            return {"ok": False, "message": message + " — keine erste Ecke."}
+        x2, y2, message = self._await_position()
+        if x2 is None:
+            return {"ok": False, "message": message + " — keine zweite Ecke."}
+        region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+        if region[2] - region[0] < 2 or region[3] - region[1] < 2:
+            return {"ok": False, "message": "Der gewählte Bereich ist zu klein."}
+        return region
 
     @staticmethod
     def _color_json(color, count: int, total: int, name_function) -> dict:

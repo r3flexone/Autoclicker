@@ -435,8 +435,16 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     if new_type != BLOCK_SCREENSHOT:
         step.screenshot_region = None
 
-    if new_type == BLOCK_CLICK:
+    named = _NAMED_BLOCK_FIELDS.get(new_type)
+    if named is not None:
+        # Taste und Scans: das eigene Feld behalten (oder vorbelegen), eine
+        # Farb-Bedingung werten sie nicht aus.
+        field, fallback = named
+        setattr(step, field, previous[field] or fallback)
         step.wait_condition = None
+    elif new_type in (BLOCK_CLICK, BLOCK_SCREENSHOT):
+        step.wait_condition = None
+        step.screenshot_only = new_type == BLOCK_SCREENSHOT
     elif new_type == BLOCK_WAIT_CLICK:
         # **Am Punkt, nicht an den rohen Koordinaten.** Eine Bedingung ohne
         # `point_id` landet als `wait_pixel`/`wait_color` in der Datei — eine
@@ -449,24 +457,6 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     elif new_type == BLOCK_WAIT:
         # wait_condition bleibt optional erhalten (Farb-Trigger-Feature).
         step.wait_only = True
-    elif new_type == BLOCK_KEY:
-        step.key_press = previous["key_press"] or "enter"
-        step.wait_condition = None
-    elif new_type == BLOCK_ITEM_SCAN:
-        step.item_scan = previous["item_scan"] or ""
-        step.wait_condition = None
-    elif new_type == BLOCK_ICON_SCAN:
-        step.icon_scan = previous["icon_scan"] or ""
-        step.wait_condition = None
-    elif new_type == BLOCK_BOSS_SCAN:
-        step.boss_scan = previous["boss_scan"] or ""
-        step.wait_condition = None
-    elif new_type == BLOCK_BOSS_WATCHER:
-        step.boss_watcher = previous["boss_watcher"] or ""
-        step.wait_condition = None
-    elif new_type == BLOCK_SCREENSHOT:
-        step.screenshot_only = True
-        step.wait_condition = None
 
     if new_type in POSITIONLESS_BLOCKS:
         drop_position(step)
@@ -474,6 +464,16 @@ def set_block_type(step: SequenceStep, new_type: str) -> None:
     # bliebe ein Aus unsichtbar in der Datei stehen — der Schalter faellt ja weg.
     if new_type not in SCAN_BLOCKS:
         step.mouse_return = True
+
+
+# Block-Typen, die über EIN benanntes Feld bestimmt sind: (Feld, Vorbelegung).
+_NAMED_BLOCK_FIELDS = {
+    BLOCK_KEY: ("key_press", "enter"),
+    BLOCK_ITEM_SCAN: ("item_scan", ""),
+    BLOCK_ICON_SCAN: ("icon_scan", ""),
+    BLOCK_BOSS_SCAN: ("boss_scan", ""),
+    BLOCK_BOSS_WATCHER: ("boss_watcher", ""),
+}
 
 
 def ensure_else(step: SequenceStep, action: str) -> ElseConfig:

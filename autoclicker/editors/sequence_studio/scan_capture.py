@@ -39,7 +39,7 @@ class ScanCaptureMixin:
             return locked
         try:
             from ...imaging import PILLOW_AVAILABLE, take_screenshot
-            from ...winapi import get_virtual_origin, resolve_window
+            from ...winapi import get_virtual_origin
         except ImportError:
             return self._scan_report("Bildmodule fehlen — kein Screenshot möglich.", "err")
         if not PILLOW_AVAILABLE:
@@ -48,37 +48,10 @@ class ScanCaptureMixin:
         area = self._area_from(data) if data else None
         if area is None:
             area = self.scan_area
-
-        # Eine gespeicherte Quelle wird bei JEDER Aufnahme neu aufgelöst: HWNDs
-        # überleben keinen Neustart. Editor und Runtime rufen danach exakt
-        # denselben Aufnahmehelfer auf.
-        cfg = self.scans.get(self.open_scan)
-        image, hint, window_used, alignment_warning = None, "", False, False
-        if cfg is not None and cfg.capture_window_title:
-            window = resolve_window(
-                cfg.capture_window_title, cfg.capture_window_index,
-                cfg.capture_window_rect)
-            if window is None:
-                self.scan_window_id = 0
-                return self._scan_report(
-                    f"Fenster '{cfg.capture_window_title}' nicht gefunden. Spiel "
-                    "öffnen oder rechts eine andere Aufnahmequelle wählen.", "err")
-            self.scan_window_id = int(window[2])
-            image, area, hint = self._window_image()
-            if image is None:
-                return self._scan_report(
-                    f"Fenster '{cfg.capture_window_title}' konnte nicht aufgenommen "
-                    "werden.", "err")
-            window_used = True
-            alignment, alignment_warning = self._slots_to_window(cfg, area)
-            hint += alignment
-        elif self.scan_window_id:
-            image, area, hint = self._window_image()
-            if image is None:
-                return self._scan_report("Gewähltes Fenster konnte nicht aufgenommen werden.",
-                                        "err")
-            window_used = True
-
+        captured = self._window_capture(area)
+        if isinstance(captured, dict):
+            return captured
+        image, area, hint, window_used, alignment_warning = captured
         if image is None:
             image = take_screenshot(area) if area else take_screenshot()
         if image is None:
@@ -105,6 +78,43 @@ class ScanCaptureMixin:
                                 f"{self._outside_hint()}",
                                 "warn" if hint.startswith(" Direkte")
                                 or alignment_warning else "ok")
+
+    def _window_capture(self, area):
+        """Die Aufnahme über ein Fenster, wenn eines gilt.
+
+        `(Bild, Bereich, Hinweis, über Fenster, Ausrichtungs-Warnung)` — Bild None
+        heisst: kein Fenster, also gleich ein Desktop-Ausschnitt. Scheitert ein
+        Fenster, kommt die Absage als Meldung zurück.
+
+        Eine gespeicherte Quelle wird bei JEDER Aufnahme neu aufgelöst: HWNDs
+        überleben keinen Neustart. Editor und Runtime rufen danach exakt
+        denselben Aufnahmehelfer auf.
+        """
+        from ...winapi import resolve_window
+        cfg = self.scans.get(self.open_scan)
+        if cfg is not None and cfg.capture_window_title:
+            window = resolve_window(
+                cfg.capture_window_title, cfg.capture_window_index, cfg.capture_window_rect)
+            if window is None:
+                self.scan_window_id = 0
+                return self._scan_report(
+                    f"Fenster '{cfg.capture_window_title}' nicht gefunden. Spiel "
+                    "öffnen oder rechts eine andere Aufnahmequelle wählen.", "err")
+            self.scan_window_id = int(window[2])
+            image, area, hint = self._window_image()
+            if image is None:
+                return self._scan_report(
+                    f"Fenster '{cfg.capture_window_title}' konnte nicht aufgenommen "
+                    "werden.", "err")
+            alignment, alignment_warning = self._slots_to_window(cfg, area)
+            return image, area, hint + alignment, True, alignment_warning
+        if self.scan_window_id:
+            image, area, hint = self._window_image()
+            if image is None:
+                return self._scan_report("Gewähltes Fenster konnte nicht aufgenommen werden.",
+                                        "err")
+            return image, area, hint, True, False
+        return None, area, "", False, False
 
     def _window_image(self):
         """Bildet das gewählte Fenster ab. `(bild, bereich, hinweis)`.
@@ -240,53 +250,17 @@ class ScanCaptureMixin:
         locked = self._scan_requirement(data)
         if locked is not None:
             return locked
-        new_area = self._area_from(data or {})
         try:
             window_id = int((data or {}).get("window") or 0)
         except (TypeError, ValueError):
             window_id = 0
-
         cfg = self.scans.get(self.open_scan)
         if window_id:
-            try:
-                from ...winapi import list_windows
-                window = list_windows()
-            except ImportError:
-                window = []
-            selected = next((e for e in window if int(e[2]) == window_id), None)
-            if selected is None:
-                return self._scan_report(
-                    "Das gewählte Fenster ist nicht mehr offen. Liste neu wählen.", "err")
-            title, rect_value, _identity = selected
-            same = [e for e in window if e[0].casefold() == title.casefold()]
-            index = next((i for i, e in enumerate(same)
-                          if int(e[2]) == window_id), 0)
-            if cfg is not None:
-                change = (cfg.capture_window_title != title
-                              or cfg.capture_window_index != index
-                              or cfg.capture_window_rect is None)
-                if change:
-                    self._remember("Fensterquelle gewählt")
-                    cfg.capture_window_title = title
-                    cfg.capture_window_index = index
-                    # Beim ersten Verankern gelten vorhandene Slots für die
-                    # aktuelle Lage. Danach bleibt die alte Referenz bis zur
-                    # Aufnahme stehen, damit die Slots mitwandern können.
-                    if cfg.capture_window_rect is None:
-                        cfg.capture_window_rect = tuple(rect_value)
-                    self._scan_dirty = True
-            self.scan_window_id = window_id
-            self.scan_area = tuple(rect_value)
+            refused = self._area_from_window(cfg, window_id)
+            if refused is not None:
+                return refused
         else:
-            if cfg is not None and (cfg.capture_window_title
-                                    or cfg.capture_window_rect is not None):
-                self._remember("Fensterquelle entfernt")
-                cfg.capture_window_title = None
-                cfg.capture_window_index = 0
-                cfg.capture_window_rect = None
-                self._scan_dirty = True
-            self.scan_window_id = 0
-            self.scan_area = new_area
+            self._area_without_window(cfg, self._area_from(data or {}))
         if not self.scan_area:
             return self._scan_report("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
                                     "info")
@@ -297,6 +271,48 @@ class ScanCaptureMixin:
             f"jetzt „{wo} aufnehmen“."
             + (" Slots folgen diesem Fenster danach automatisch."
                if self.scan_window_id else ""), "info")
+
+    def _area_from_window(self, cfg, window_id: int) -> Optional[dict]:
+        """Ein Fenster als Aufnahmequelle — None, sonst die Absage als Meldung."""
+        try:
+            from ...winapi import list_windows
+            window = list_windows()
+        except ImportError:
+            window = []
+        selected = next((e for e in window if int(e[2]) == window_id), None)
+        if selected is None:
+            return self._scan_report(
+                "Das gewählte Fenster ist nicht mehr offen. Liste neu wählen.", "err")
+        title, rect_value, _identity = selected
+        same = [e for e in window if e[0].casefold() == title.casefold()]
+        index = next((i for i, e in enumerate(same) if int(e[2]) == window_id), 0)
+        if cfg is not None and (cfg.capture_window_title != title
+                                or cfg.capture_window_index != index
+                                or cfg.capture_window_rect is None):
+            self._remember("Fensterquelle gewählt")
+            cfg.capture_window_title = title
+            cfg.capture_window_index = index
+            # Beim ersten Verankern gelten vorhandene Slots für die
+            # aktuelle Lage. Danach bleibt die alte Referenz bis zur
+            # Aufnahme stehen, damit die Slots mitwandern können.
+            if cfg.capture_window_rect is None:
+                cfg.capture_window_rect = tuple(rect_value)
+            self._scan_dirty = True
+        self.scan_window_id = window_id
+        self.scan_area = tuple(rect_value)
+        return None
+
+    def _area_without_window(self, cfg, new_area) -> None:
+        """Bereich oder Vollbild — eine gespeicherte Fensterquelle fällt dabei weg."""
+        if cfg is not None and (cfg.capture_window_title
+                                or cfg.capture_window_rect is not None):
+            self._remember("Fensterquelle entfernt")
+            cfg.capture_window_title = None
+            cfg.capture_window_index = 0
+            cfg.capture_window_rect = None
+            self._scan_dirty = True
+        self.scan_window_id = 0
+        self.scan_area = new_area
 
     def scan_windows(self, data: Optional[dict] = None) -> list:
         """Die offenen Fenster mit ihrer Lage — zur Auswahl des Bereichs.

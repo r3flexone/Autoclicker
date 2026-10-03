@@ -1234,24 +1234,24 @@ class ScanDetectMixin:
     def _detection_save(self) -> list:
         """Schreibt Boss-Scans, Icon-Scans und die Bibliothek. Fehler als Liste."""
         from ...persistence import save_boss_scan, save_global_bosses, save_icon_scan
-        error = []
-        for cfg in self.boss_scans.values():
-            try:
-                cfg.owner_sequence = self.board.name
-                if not save_boss_scan(cfg):
-                    error.append(f"boss_scans/{cfg.name}.json")
-            except (OSError, ValueError):
-                error.append(f"boss_scans/{cfg.name}.json")
-        for cfg in self.icon_scans.values():
-            try:
-                cfg.owner_sequence = self.board.name
-                if not save_icon_scan(cfg):
-                    error.append(f"icon_scans/{cfg.name}.json")
-            except (OSError, ValueError):
-                error.append(f"icon_scans/{cfg.name}.json")
+        error = (self._detection_save_each(self.boss_scans, save_boss_scan, "boss_scans")
+                 + self._detection_save_each(self.icon_scans, save_icon_scan, "icon_scans"))
         try:
             if not save_global_bosses(_LibraryState(self.global_bosses), self.board.name):
                 error.append("boss_scans/bibliothek.json")
         except OSError:
             error.append("boss_scans/bibliothek.json")
+        return error
+
+    def _detection_save_each(self, configs: dict, saver, folder: str) -> list:
+        """Jede Konfiguration einer Art schreiben — die gescheiterten als Liste."""
+        error = []
+        for cfg in configs.values():
+            try:
+                cfg.owner_sequence = self.board.name
+                saved = saver(cfg)
+            except (OSError, ValueError):
+                saved = False
+            if not saved:
+                error.append(f"{folder}/{cfg.name}.json")
         return error

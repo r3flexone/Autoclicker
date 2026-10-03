@@ -122,21 +122,14 @@ class ScanInteractionMixin:
             x, y = int((data or {})["x"]), int((data or {})["y"])
         except (KeyError, TypeError, ValueError):
             return self._scan_report("Klick ohne Stelle — ignoriert.", "err")
-
-        if self.scan_mode == MODE_SLOT:
-            return self._click_slot(x, y)
-        if self.scan_mode == MODE_MEASURE:
-            return self._click_measure(x, y)
-        if self.scan_mode == MODE_CLICK:
-            return self._click_clickpoint(x, y)
-        if self.scan_mode == MODE_AREA:
-            return self._click_area(x, y)
-        if self.scan_mode == MODE_FIND:
-            return self._click_find(x, y)
-        if self.scan_mode == MODE_REGION:
-            return self._click_region(x, y)
-        if self.scan_mode == MODE_ACTION:
-            return self._click_action(x, y)
+        handler = {
+            MODE_SLOT: self._click_slot, MODE_MEASURE: self._click_measure,
+            MODE_CLICK: self._click_clickpoint, MODE_AREA: self._click_area,
+            MODE_FIND: self._click_find, MODE_REGION: self._click_region,
+            MODE_ACTION: self._click_action,
+        }.get(self.scan_mode)
+        if handler is not None:
+            return handler(x, y)
         return self._click_select(x, y, bool((data or {}).get("additive")))
 
     def _click_slot(self, x: int, y: int) -> dict:
@@ -192,7 +185,43 @@ class ScanInteractionMixin:
             return self._scan_report("Erst ein Bild aufnehmen.", "warn")
         if self._search_area is None:
             return self._search_corner(x, y)
+        ready = self._find_inputs(x, y)
+        if isinstance(ready, dict):
+            return ready
+        color, crop_value = ready
+        try:
+            rects = self._slots_search(crop_value, color)
+        except Exception as error:                     # OpenCV/NumPy-Innenleben
+            return self._scan_report(f"Erkennung fehlgeschlagen: {error}", "err")
+        if not rects:
+            return self._scan_report(
+                f"Nichts gefunden zu {hex_color(color)} — auf eine LEERE Stelle im "
+                "Slot klicken, nicht auf ein Item.", "warn")
 
+        self._remember("Slots gesucht")
+        new, added_to, already = self._place_found_slots(rects, color)
+        # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
+        # endet er auch dann im Auswählen, wenn alles schon dastand. Nur bei
+        # Erfolg zurückzuschalten hiesse: derselbe Klick lässt einen mal im
+        # Modus stehen und mal nicht, je nach Ergebnis.
+        self._search_area = None
+        self.scan_mode = MODE_CHOICE
+        if not new and not added_to:
+            return self._scan_report(f"{already} Slot(s) gefunden — alle schon da."
+                                    f"{self._detect_immediately()}", "info")
+        parts = []
+        if new:
+            parts.append(f"{new} Slot(s) angelegt")
+        if added_to:
+            parts.append(f"{added_to} schon vorhandene in den Scan aufgenommen")
+        if already:
+            parts.append(f"{already} war(en) schon dabei")
+        return self._scan_changed(f"{', '.join(parts)} · Hintergrund {hex_color(color)}"
+                                    f"{self._inset_hint()}"
+                                    f"{self._detect_immediately()}")
+
+    def _find_inputs(self, x: int, y: int):
+        """Hintergrundfarbe und Ausschnitt des Suchbereichs — oder die Absage als Meldung."""
         sx1, sy1, sx2, sy2 = self._search_area
         if not (sx1 <= x <= sx2 and sy1 <= y <= sy2):
             return self._scan_report(
@@ -207,28 +236,16 @@ class ScanInteractionMixin:
         crop_value = self._photo_crop(self._search_area)
         if crop_value is None:
             return self._scan_report("Der Suchbereich liegt nicht im Bild.", "warn")
+        return color, crop_value
 
-        try:
-            rects = self._slots_search(crop_value, color)
-        except Exception as error:                     # OpenCV/NumPy-Innenleben
-            return self._scan_report(f"Erkennung fehlgeschlagen: {error}", "err")
-        if not rects:
-            return self._scan_report(
-                f"Nichts gefunden zu {hex_color(color)} — auf eine LEERE Stelle im "
-                "Slot klicken, nicht auf ein Item.", "warn")
-
-        self._remember("Slots gesucht")
+    def _place_found_slots(self, rects: list, color) -> tuple[int, int, int]:
+        """Treffer als Slots anlegen bzw. aufnehmen: `(angelegt, aufgenommen, schon dabei)`."""
+        sx1, sy1 = self._search_area[0], self._search_area[1]
         target = self._existing_slot_size()
         new, added_to, already = 0, 0, 0
         for rx, ry, rb, rh in rects:
-            region = self._with_inset(
-                (sx1 + rx, sy1 + ry, sx1 + rx + rb, sy1 + ry + rh))
-            if target is not None:
-                zb, zh = target
-                width, height = region[2] - region[0], region[3] - region[1]
-                if abs(width - zb) <= self._SIZE_TOLERANCE \
-                        and abs(height - zh) <= self._SIZE_TOLERANCE:
-                    region = self._to_size(region, target)
+            region = self._fit_found_region(
+                self._with_inset((sx1 + rx, sy1 + ry, sx1 + rx + rb, sy1 + ry + rh)), target)
             existing = self._slot_at_position(region)
             if existing is not None:
                 # **Gefunden ist gefunden, auch wenn der Slot schon existiert.**
@@ -250,25 +267,17 @@ class ScanInteractionMixin:
                 slot_color=color, id=self._next_slot_id())
             self._add_to_scan(KIND_SLOT, name)
             new += 1
-        # Der Durchgang ist vorbei, ob er etwas angelegt hat oder nicht — also
-        # endet er auch dann im Auswählen, wenn alles schon dastand. Nur bei
-        # Erfolg zurückzuschalten hiesse: derselbe Klick lässt einen mal im
-        # Modus stehen und mal nicht, je nach Ergebnis.
-        self._search_area = None
-        self.scan_mode = MODE_CHOICE
-        if not new and not added_to:
-            return self._scan_report(f"{already} Slot(s) gefunden — alle schon da."
-                                    f"{self._detect_immediately()}", "info")
-        parts = []
-        if new:
-            parts.append(f"{new} Slot(s) angelegt")
-        if added_to:
-            parts.append(f"{added_to} schon vorhandene in den Scan aufgenommen")
-        if already:
-            parts.append(f"{already} war(en) schon dabei")
-        return self._scan_changed(f"{', '.join(parts)} · Hintergrund {hex_color(color)}"
-                                    f"{self._inset_hint()}"
-                                    f"{self._detect_immediately()}")
+        return new, added_to, already
+
+    def _fit_found_region(self, region: tuple, target) -> tuple:
+        """Ein Fund nahe an der schon feststehenden Grösse übernimmt diese."""
+        if target is None:
+            return region
+        zb, zh = target
+        width, height = region[2] - region[0], region[3] - region[1]
+        if abs(width - zb) <= self._SIZE_TOLERANCE and abs(height - zh) <= self._SIZE_TOLERANCE:
+            return self._to_size(region, target)
+        return region
 
     def _detect_immediately(self) -> str:
         """Prüft die frisch gefundenen Slots sofort gegen den Item-Bestand.

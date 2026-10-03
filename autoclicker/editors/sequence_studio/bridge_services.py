@@ -135,6 +135,13 @@ class BridgeServicesMixin:
         cached = self._last_run_cache.get(key)
         if cached and cached[0] == stamp:
             return cached[1]
+        out = self._last_run_evaluate(path, stamp)
+        if out is not None:
+            self._last_run_cache[key] = (stamp, out)
+        return out
+
+    def _last_run_evaluate(self, path, stamp: float) -> Optional[dict]:
+        """Die Kennzahlen einer Log-Datei — None, wenn das Werkzeug fehlt oder nichts liefert."""
         evaluate, _ = self._report_tool()
         if evaluate is None:
             return None
@@ -150,11 +157,9 @@ class BridgeServicesMixin:
             begin = datetime.strptime(session["begin"][:19], "%Y-%m-%d %H:%M:%S").timestamp()
         except (ValueError, KeyError):
             begin = stamp
-        out = {"begin": begin, "duration": session["duration"],
-               "clicks": session["clicks"], "timeouts": session["timeouts"],
-               "file": path.name}
-        self._last_run_cache[key] = (stamp, out)
-        return out
+        return {"begin": begin, "duration": session["duration"],
+                "clicks": session["clicks"], "timeouts": session["timeouts"],
+                "file": path.name}
 
     def sequence_duplicate(self, data: Optional[dict] = None) -> dict:
         """Kopiert einen Sequenzordner — samt Scans, Vorlagen und Bildern.
@@ -837,32 +842,25 @@ class BridgeServicesMixin:
             # fuer den Nutzer: er hat die Datei nicht. Der Grund steht dabei,
             # damit "geht nicht" nicht die ganze Auskunft ist.
             return {"ok": False, "message": f"Nicht erreichbar: {e}"}
-        if not catalog.get("items"):
-            return {"ok": False, "message": "Die API hat keine Items geliefert — "
-                                            "nichts geschrieben."}
-        try:
-            from ...utils import atomic_write
-            import json as _json
-            target.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(target, _json.dumps(catalog, ensure_ascii=False, indent=1))
-        except OSError as e:
-            return {"ok": False, "message": f"Konnte '{target}' nicht schreiben: {e}"}
+        refused = _write_catalog(target, catalog)
+        if refused is not None:
+            return refused
 
         message = _summary(catalog).splitlines()[0]
         kind = "ok"
         if hints:
             message += " — " + " ".join(hints)
             kind = "warn"
-        if not str(CONFIG.scan_catalog_file or "").strip():
-            res = self.config_write({"values": {"scan_catalog_file": str(target)}})
-            if not res.get("ok"):
-                return {"ok": False,
-                        "message": f"{message} — geschrieben nach '{target}', aber der "
-                                   f"Pfad liess sich nicht eintragen: "
-                                   f"{res.get('message', '')}"}
-            return {"ok": True, "kind": kind, "message": f"{message}. Eingetragen: {target}",
+        if str(CONFIG.scan_catalog_file or "").strip():
+            return {"ok": True, "kind": kind, "message": f"{message}. Aktualisiert: {target}",
                     "path": str(target)}
-        return {"ok": True, "kind": kind, "message": f"{message}. Aktualisiert: {target}",
+        res = self.config_write({"values": {"scan_catalog_file": str(target)}})
+        if not res.get("ok"):
+            return {"ok": False,
+                    "message": f"{message} — geschrieben nach '{target}', aber der "
+                               f"Pfad liess sich nicht eintragen: "
+                               f"{res.get('message', '')}"}
+        return {"ok": True, "kind": kind, "message": f"{message}. Eingetragen: {target}",
                 "path": str(target)}
 
     def command_pending(self, data: Optional[dict] = None) -> bool:
@@ -980,6 +978,10 @@ class BridgeServicesMixin:
         anlegt, um seine Stelle im Ablauf festzuhalten, soll ihn speichern können.
         Repariert ist der Fall dort, wo er kaputt war — `execute_step` überspringt so
         einen Block mit Ansage. Gemeldet wird er hier trotzdem.
+
+        Stufen: Rückfrage bei einer Fremdänderung → Ordner umbenennen
+        (`_save_move_folder`) → schreiben (bei Fehler zurückbenennen) → Stand
+        merken.
         """
         if not (self.board.name or "").strip():
             # Der Name ist etwas anderes: er IST der Dateiname. Ohne ihn gibt es
@@ -989,7 +991,6 @@ class BridgeServicesMixin:
         old = self.filepath
         new = (Path(self.sequences_dir) / sanitize_filename(self.board.name)
                / "sequence.json")
-        renamed = new != old
 
         # Hat der Hauptprozess dieselbe Datei zwischenzeitlich geschrieben?
         # Beide Prozesse teilen sich den Ordner: eine Aufnahme legt Punkte an,
@@ -1007,33 +1008,9 @@ class BridgeServicesMixin:
             }
             return self.snapshot()
 
-        # Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
-        # Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
-        old_folder = old.parent
-        new_folder = new.parent
-        moved = False
-        # **Die Pruefung gilt fuer JEDES Umbenennen, nicht nur fuer eines mit
-        # alter Datei.** Sie stand im Zweig `old.exists()` — eine frisch
-        # angelegte, nie gespeicherte Sequenz kam daran vorbei: „Neu", den Namen
-        # einer vorhandenen eintippen, Speichern, und deren sequence.json war
-        # ueberschrieben (Schritte und Punkte weg, gemeldet als „Gespeichert").
-        if renamed and new_folder.exists():
-            return self._report(
-                f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.",
-                "err")
-        # Verschoben wird, sobald es den alten ORDNER gibt: auch eine nie
-        # gespeicherte Sequenz kann dort schon gemerkte Bildschirme haben. Aber
-        # nur ein eigener Unterordner von `sequences/` — bei einem flachen Pfad
-        # (`sequences/x.json`) waere der „alte Ordner" der Sequenzordner selbst.
-        own_folder = (old_folder.is_dir() and old_folder.resolve().parent
-                      == Path(self.sequences_dir).resolve())
-        if renamed and own_folder:
-            try:
-                old_folder.rename(new_folder)
-                moved = True
-            except OSError as error:
-                return self._report(f"Sequenzordner konnte nicht umbenannt werden: {error}",
-                                   "err")
+        moved = self._save_move_folder(old, new)
+        if isinstance(moved, dict):
+            return moved
 
         from .model import palette_to_points
         sequence = board_to_sequence(self.board)
@@ -1041,11 +1018,46 @@ class BridgeServicesMixin:
         if not save_sequence_file(sequence, new):
             if moved:
                 try:
-                    new_folder.rename(old_folder)
+                    new.parent.rename(old.parent)
                 except OSError:
                     pass
             return self._report("Speichern fehlgeschlagen!", "err")
+        return self._save_done(new, moved)
 
+    def _save_move_folder(self, old: Path, new: Path):
+        """Beim Umbenennen den Sequenzordner mitnehmen. True = verschoben,
+        False = nichts zu verschieben, sonst die Absage als Meldung.
+
+        Der Ordner ist die Besitzeinheit. Beim Umbenennen wandern deshalb
+        Scans, Vorlagen und Bilder gemeinsam mit der Sequenz.
+        """
+        if new == old:
+            return False
+        old_folder, new_folder = old.parent, new.parent
+        # **Die Pruefung gilt fuer JEDES Umbenennen, nicht nur fuer eines mit
+        # alter Datei.** Sie stand im Zweig `old.exists()` — eine frisch
+        # angelegte, nie gespeicherte Sequenz kam daran vorbei: „Neu", den Namen
+        # einer vorhandenen eintippen, Speichern, und deren sequence.json war
+        # ueberschrieben (Schritte und Punkte weg, gemeldet als „Gespeichert").
+        if new_folder.exists():
+            return self._report(
+                f"Nicht gespeichert: Ordner '{new_folder.name}' existiert bereits.", "err")
+        # Verschoben wird, sobald es den alten ORDNER gibt: auch eine nie
+        # gespeicherte Sequenz kann dort schon gemerkte Bildschirme haben. Aber
+        # nur ein eigener Unterordner von `sequences/` — bei einem flachen Pfad
+        # (`sequences/x.json`) waere der „alte Ordner" der Sequenzordner selbst.
+        own_folder = (old_folder.is_dir() and old_folder.resolve().parent
+                      == Path(self.sequences_dir).resolve())
+        if not own_folder:
+            return False
+        try:
+            old_folder.rename(new_folder)
+        except OSError as error:
+            return self._report(f"Sequenzordner konnte nicht umbenannt werden: {error}", "err")
+        return True
+
+    def _save_done(self, new: Path, moved: bool) -> dict:
+        """Nach dem Schreiben: Pfad, gemerkter Stand, „zuletzt benutzt“, Meldung."""
         self.filepath = new
         if moved and (self._scan_loaded or self._scan_configs_loaded):
             # Alles im Scans-Reiter leitet seine Pfade bei Gebrauch aus
@@ -1061,10 +1073,8 @@ class BridgeServicesMixin:
         self._state_remember()
         from ...sequence_studio import remember_last_used
         remember_last_used(self.filepath)
-        text = f"Gespeichert: {new.name}"
-        if moved:
-            text = f"Umbenannt → {new_folder.name}/ (alle Scans mitgenommen)"
-
+        text = f"Umbenannt → {new.parent.name}/ (alle Scans mitgenommen)" if moved \
+            else f"Gespeichert: {new.name}"
         empty = self._scan_without_name()
         if empty:
             return self._report(f"{text} — {empty} hat noch keine Konfiguration "
@@ -1123,3 +1133,21 @@ class BridgeServicesMixin:
         except (IOError, OSError):
             return None
         return None
+
+
+def _write_catalog(target: Path, catalog: dict) -> Optional[dict]:
+    """Den geholten Katalog schreiben — None, sonst die Absage.
+
+    Eine leere Antwort fasst die vorhandene Datei nicht an.
+    """
+    if not catalog.get("items"):
+        return {"ok": False, "message": "Die API hat keine Items geliefert — "
+                                        "nichts geschrieben."}
+    try:
+        from ...utils import atomic_write
+        import json as _json
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(target, _json.dumps(catalog, ensure_ascii=False, indent=1))
+    except OSError as e:
+        return {"ok": False, "message": f"Konnte '{target}' nicht schreiben: {e}"}
+    return None

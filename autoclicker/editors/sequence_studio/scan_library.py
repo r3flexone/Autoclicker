@@ -10,6 +10,17 @@ from .scan_contract import (
 )
 
 
+# Feld → Methode, die es setzt. Jede legt ihren Rückgängig-Stand selbst ab,
+# und zwar erst, wenn sich wirklich etwas ändert.
+_SCAN_SETTERS = {
+    "name": "_scan_set_name",
+    "tolerance": "_scan_set_tolerance",
+    "learn": "_scan_set_learn",
+    "use_catalog": "_scan_set_catalog",
+    "reverse": "_scan_set_reverse",
+}
+
+
 class ScanLibraryMixin:
     """Verwaltet die Scan-Bibliothek und ihre Beziehungen zu Slots und Items."""
 
@@ -93,79 +104,86 @@ class ScanLibraryMixin:
         return self._scan_changed(f"Scan '{name}' angelegt und geöffnet.")
 
     def scan_set(self, data: dict) -> dict:
-        """Ein Feld einer Scan-Konfiguration."""
+        """Ein Feld einer Scan-Konfiguration (je Feld eine Methode, `_SCAN_SETTERS`)."""
         name = str((data or {}).get("name") or "")
         field = str((data or {}).get("field") or "")
         value = (data or {}).get("value")
         cfg = self.scans.get(name)
         if cfg is None:
             return self._scan_report(f"Scan '{name}' gibt es nicht.", "err")
+        setter = _SCAN_SETTERS.get(field)
+        if setter is None:
+            return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
+        return getattr(self, setter)(cfg, name, value)
 
-        if field == "name":
-            new = clean_scan_name(value)
-            if not new or new == cfg.name:
-                return self.scan_data()
-            clash = scan_name_taken(new, self.scans, old=cfg.name)
-            if clash:
-                return self._scan_report(f"'{clash}' gibt es schon.", "warn")
-            self._remember(f"Scan '{cfg.name}' umbenannt")
-            old = cfg.name
-            self.scans = {(new if k == old else k): v for k, v in self.scans.items()}
-            cfg.name = new
-            self.scan_name = new
-            if self.open_scan == old:
-                self.open_scan = new
-            # Der Name IST die Referenz, und sie steht an ZWEI Stellen: im
-            # Schritt und als Fallback-Scan eines Boss-Scans, den
-            # `runtime/steps.py` bei „kein Boss erkannt" wirklich ausfuehrt.
-            # Ohne die zweite lief der Fallback nach dem Umbenennen ins Leere.
-            rename_references(self.board, "item", old, new)
-            for boss_cfg in getattr(self, "boss_scans", {}).values():
-                if boss_cfg.default_scan == old:
-                    boss_cfg.default_scan = new
-            # **Nur Schreibweise geändert = dieselbe Datei.** Aus `item_scan_raid`
-            # wird „Item Scan Raid", und beide heissen `item_scan_raid.json`:
-            # die alte Datei zu löschen hiesse, die einzige zu löschen.
-            if sanitize_filename(old) == sanitize_filename(new):
-                return self._scan_changed(f"'{old}' heisst jetzt '{new}'.")
-            # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
-            try:
-                self._photo_path(old).replace(self._photo_path(new))
-            except OSError:
-                pass
-            old_path = self.filepath.parent / "item_scans" / f"{sanitize_filename(old)}.json"
-            try:
-                old_path.unlink(missing_ok=True)
-            except OSError:
-                return self._scan_report(
-                    f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
-            return self._scan_changed(
-                f"'{old}' heisst jetzt '{new}'.")
-        if field == "tolerance":
-            try:
-                tolerance = int(value)
-            except (TypeError, ValueError):
-                return self._scan_report(
-                    "Die Farb-Toleranz muss eine ganze Zahl sein.", "err")
-            self._remember(f"'{name}': Farb-Toleranz")
-            cfg.color_tolerance = max(0, tolerance)
-            return self._scan_changed()
-        if field == "learn":
-            self._remember(f"'{name}': Unbekanntes lernen")
-            cfg.learn_unknown = bool(value)
-            return self._scan_changed()
-        if field == "use_catalog":
-            self._remember(f"'{name}': Katalog")
-            cfg.use_catalog = bool(value)
-            return self._scan_changed(
-                f"'{cfg.name}': Katalog {'an' if cfg.use_catalog else 'aus'}")
-        if field == "reverse":
-            self._remember(f"'{name}': Laufrichtung")
-            cfg.reverse = bool(value)
-            return self._scan_changed(
-                f"'{cfg.name}': Slots laufen "
-                f"{'rückwärts' if cfg.reverse else 'vorwärts'}")
-        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
+    def _scan_set_name(self, cfg, name: str, value) -> dict:
+        new = clean_scan_name(value)
+        if not new or new == cfg.name:
+            return self.scan_data()
+        clash = scan_name_taken(new, self.scans, old=cfg.name)
+        if clash:
+            return self._scan_report(f"'{clash}' gibt es schon.", "warn")
+        self._remember(f"Scan '{cfg.name}' umbenannt")
+        old = cfg.name
+        self.scans = {(new if k == old else k): v for k, v in self.scans.items()}
+        cfg.name = new
+        self.scan_name = new
+        if self.open_scan == old:
+            self.open_scan = new
+        # Der Name IST die Referenz, und sie steht an ZWEI Stellen: im
+        # Schritt und als Fallback-Scan eines Boss-Scans, den
+        # `runtime/steps.py` bei „kein Boss erkannt" wirklich ausfuehrt.
+        # Ohne die zweite lief der Fallback nach dem Umbenennen ins Leere.
+        rename_references(self.board, "item", old, new)
+        for boss_cfg in getattr(self, "boss_scans", {}).values():
+            if boss_cfg.default_scan == old:
+                boss_cfg.default_scan = new
+        return self._scan_rename_files(old, new)
+
+    def _scan_rename_files(self, old: str, new: str) -> dict:
+        """Erinnerungsbild mitnehmen, alte Datei weg — ausser es ist dieselbe."""
+        # **Nur Schreibweise geändert = dieselbe Datei.** Aus `item_scan_raid`
+        # wird „Item Scan Raid", und beide heissen `item_scan_raid.json`:
+        # die alte Datei zu löschen hiesse, die einzige zu löschen.
+        if sanitize_filename(old) == sanitize_filename(new):
+            return self._scan_changed(f"'{old}' heisst jetzt '{new}'.")
+        # Das Erinnerungsbild gehört zum Scan, nicht zum Dateinamen.
+        try:
+            self._photo_path(old).replace(self._photo_path(new))
+        except OSError:
+            pass
+        old_path = self.filepath.parent / "item_scans" / f"{sanitize_filename(old)}.json"
+        try:
+            old_path.unlink(missing_ok=True)
+        except OSError:
+            return self._scan_report(
+                f"'{old}' wurde umbenannt, die alte Datei blieb liegen.", "warn")
+        return self._scan_changed(f"'{old}' heisst jetzt '{new}'.")
+
+    def _scan_set_tolerance(self, cfg, name: str, value) -> dict:
+        try:
+            tolerance = int(value)
+        except (TypeError, ValueError):
+            return self._scan_report("Die Farb-Toleranz muss eine ganze Zahl sein.", "err")
+        self._remember(f"'{name}': Farb-Toleranz")
+        cfg.color_tolerance = max(0, tolerance)
+        return self._scan_changed()
+
+    def _scan_set_learn(self, cfg, name: str, value) -> dict:
+        self._remember(f"'{name}': Unbekanntes lernen")
+        cfg.learn_unknown = bool(value)
+        return self._scan_changed()
+
+    def _scan_set_catalog(self, cfg, name: str, value) -> dict:
+        self._remember(f"'{name}': Katalog")
+        cfg.use_catalog = bool(value)
+        return self._scan_changed(f"'{cfg.name}': Katalog {'an' if cfg.use_catalog else 'aus'}")
+
+    def _scan_set_reverse(self, cfg, name: str, value) -> dict:
+        self._remember(f"'{name}': Laufrichtung")
+        cfg.reverse = bool(value)
+        return self._scan_changed(
+            f"'{cfg.name}': Slots laufen {'rückwärts' if cfg.reverse else 'vorwärts'}")
 
     def scan_delete_all(self, data: dict) -> dict:
         """Löscht alle Slots bzw. alle Items dieses Scans auf einen Schlag.

@@ -753,9 +753,6 @@ class BridgeEditingMixin:
           Quelle samt Vorlagen; fehlen sie hier, sagt die Meldung welche, und
           die Diagnose springt später genau dorthin.
         """
-        from ...persistence import load_sequence_file
-        from ...utils import sanitize_filename
-
         name = str((data or {}).get("name") or "").strip()
         if not name:
             return self._report("Erst eine Sequenz wählen, aus der eingefügt wird.", "warn")
@@ -766,44 +763,14 @@ class BridgeEditingMixin:
         if step is None or lane is None or row is None:
             return self._report("Bitte genau einen Block wählen — eingefügt wird dahinter.",
                                 "warn")
-        folder = self._sequence_folder(name)
-        source = load_sequence_file(folder / "sequence.json") if folder else None
-        if source is None:
-            return self._report(f"'{name}' ist nicht lesbar.", "err")
-        steps = [*source.init_steps,
-                 *(s for phase in source.loop_phases for s in phase.steps),
-                 *source.end_steps]
-        if not steps:
-            return self._report(f"'{name}' hat keine Blöcke.", "warn")
-
-        pool = {p.id: p for p in source.points}
-
-        def dangling(s) -> bool:
-            ids = [s.point_id] + [getattr(getattr(s, f, None), "point_id", None)
-                                  for f in self._REF_FIELDS]
-            return any(i is not None and i not in pool for i in ids)
+        source = self._import_source(name)
+        if isinstance(source, dict):
+            return source
+        steps, pool = source
 
         before = len(self.points)
-        mapping: dict = {}
         at = row + 1
-        taken = 0
-        skipped = 0
-        missing_scans: list[str] = []
-        base = self.filepath.parent
-        for original in steps:
-            if dangling(original):
-                skipped += 1
-                continue
-            copy_of = copy.deepcopy(original)
-            copy_of.unresolved = False
-            self._points_copy_along(copy_of, mapping, source=pool.get)
-            self.board.add_step(lane, copy_of, at + taken)
-            taken += 1
-            for field, subdir in self._SCAN_DIRS:
-                scan = getattr(copy_of, field, None)
-                if scan and scan not in missing_scans and not (
-                        base / subdir / f"{sanitize_filename(scan)}.json").exists():
-                    missing_scans.append(scan)
+        taken, skipped, missing_scans = self._import_steps(steps, pool, lane, at)
         if not taken:
             return self._report(f"Kein Block aus '{name}' übernommen — alle zeigen auf "
                                 f"Punkte, die es dort nicht mehr gibt.", "warn")
@@ -819,6 +786,54 @@ class BridgeEditingMixin:
                      + ", ".join(f"'{s}'" for s in missing_scans) + ".")
         return self._changed(text, "warn" if (skipped or missing_scans) else "ok",
                              offer=True, what=f"Blöcke aus '{name}' eingefügt")
+
+    def _import_source(self, name: str):
+        """Die Blöcke der Quelle in Laufreihenfolge und ihr Punktebestand — oder die Absage."""
+        from ...persistence import load_sequence_file
+        folder = self._sequence_folder(name)
+        source = load_sequence_file(folder / "sequence.json") if folder else None
+        if source is None:
+            return self._report(f"'{name}' ist nicht lesbar.", "err")
+        steps = [*source.init_steps,
+                 *(s for phase in source.loop_phases for s in phase.steps),
+                 *source.end_steps]
+        if not steps:
+            return self._report(f"'{name}' hat keine Blöcke.", "warn")
+        return steps, {p.id: p for p in source.points}
+
+    def _import_steps(self, steps: list, pool: dict, lane, at: int) -> tuple[int, int, list]:
+        """Kopien hinter `at` einfügen, mit eigenen Punkten.
+
+        Gibt `(übernommen, ausgelassen, fehlende Scans)` zurück; ausgelassen wird
+        ein Block, dessen Punkt schon in der Quelle fehlt.
+        """
+        from ...utils import sanitize_filename
+        mapping: dict = {}
+        taken, skipped = 0, 0
+        missing_scans: list[str] = []
+        base = self.filepath.parent
+        for original in steps:
+            if self._dangling_in(original, pool):
+                skipped += 1
+                continue
+            copy_of = copy.deepcopy(original)
+            copy_of.unresolved = False
+            self._points_copy_along(copy_of, mapping, source=pool.get)
+            self.board.add_step(lane, copy_of, at + taken)
+            taken += 1
+            for field, subdir in self._SCAN_DIRS:
+                scan = getattr(copy_of, field, None)
+                if scan and scan not in missing_scans and not (
+                        base / subdir / f"{sanitize_filename(scan)}.json").exists():
+                    missing_scans.append(scan)
+        return taken, skipped, missing_scans
+
+    def _dangling_in(self, step, pool: dict) -> bool:
+        """Zeigt der Schritt (Stelle, Bedingung, Nachprüfung, ELSE) auf einen Punkt,
+        den es in `pool` nicht gibt?"""
+        ids = [step.point_id] + [getattr(getattr(step, f, None), "point_id", None)
+                                 for f in self._REF_FIELDS]
+        return any(i is not None and i not in pool for i in ids)
 
     def selection_delete(self, data: Optional[dict] = None) -> dict:
         groups = self._selection_groups()
@@ -1140,8 +1155,7 @@ class BridgeEditingMixin:
             gone = self._else_cleanup(step)
             return self._changed(gone, "warn" if gone else "ok")
         if cond is None:
-            point_id = data.get("point", step.point_id)
-            point = self._point(point_id)
+            point = self._point(data.get("point", step.point_id))
             if point is None:
                 return self._report(
                     "Ohne Punkt gibt es nichts zu prüfen — erst einen wählen.", "warn")
@@ -1153,25 +1167,33 @@ class BridgeEditingMixin:
         if "check_only" in data:
             cond.check_only = bool(data["check_only"])
         if "timeout" in data and field == "wait_condition":
-            # Leer = die Einstellung gilt (None), 0 = ohne Grenze — dieselbe
-            # Bedeutung wie bei `pixel_wait_timeout`.
-            raw = data["timeout"]
-            if raw is None or str(raw).strip() == "":
-                cond.timeout = None
-            else:
-                try:
-                    seconds = float(str(raw).replace(",", "."))
-                except ValueError:
-                    return self._report(f"Timeout '{raw}' ist keine Zahl.", "warn")
-                if seconds < 0:
-                    return self._report("Der Timeout kann nicht negativ sein.", "warn")
-                cond.timeout = seconds
+            refused = self._trigger_timeout(cond, data["timeout"])
+            if refused is not None:
+                return refused
         if data.get("point") is not None:
             point = self._point(data["point"])
             if point is not None:
                 cond.point_id = point.id
                 self._points_apply()
         return self._changed()
+
+    def _trigger_timeout(self, cond: WaitCondition, raw) -> Optional[dict]:
+        """Eigene Zeitgrenze der Vorbedingung. None = gesetzt, sonst die Absage.
+
+        Leer = die Einstellung gilt (None), 0 = ohne Grenze — dieselbe
+        Bedeutung wie bei `pixel_wait_timeout`.
+        """
+        if raw is None or str(raw).strip() == "":
+            cond.timeout = None
+            return None
+        try:
+            seconds = float(str(raw).replace(",", "."))
+        except ValueError:
+            return self._report(f"Timeout '{raw}' ist keine Zahl.", "warn")
+        if seconds < 0:
+            return self._report("Der Timeout kann nicht negativ sein.", "warn")
+        cond.timeout = seconds
+        return None
 
     def block_else(self, data: dict) -> dict:
         """ELSE-Aktion setzen oder entfernen (leere Aktion = keine)."""
