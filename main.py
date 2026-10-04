@@ -44,7 +44,8 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_sequence_studio, handle_scan_studio, COMMANDS
+    handle_sequence_studio, handle_scan_studio, reload_if_pending,
+    start_next_if_pending, COMMANDS
 )
 from autoclicker.mailbox import fetch_command, discard_command
 
@@ -188,6 +189,11 @@ def _check_commands(state) -> None:
         return
     _command_last = now
 
+    # Ein Speichern aus dem Studio während des Laufs wurde nur vorgemerkt.
+    run_safely("Nachladen nach dem Lauf", reload_if_pending, state)
+    # Eine Sequenz ist regulär fertig und nennt eine Folgesequenz.
+    run_safely("Folgesequenz", start_next_if_pending, state)
+
     command = fetch_command()
     if command is None:
         return
@@ -311,33 +317,8 @@ def main() -> int:
         print(warn("Nicht alle Hotkeys konnten registriert werden."))
         print()
 
-    # LLM-Verbindung prüfen wenn aktiviert
-    if state.config.llm_enabled:
-        try:
-            from autoclicker.llm_vision import test_connection
-            provider = state.config.llm_provider
-            ok, msg = test_connection(provider)
-            if ok:
-                print(col(f"[LLM] {provider} verbunden: {msg}", 'green'))
-            else:
-                provider_name = "LM Studio" if provider == "lmstudio" else "Ollama"
-                print(warn(f"[LLM] {provider_name} nicht erreichbar! {msg}"))
-                print(warn(f"       Bitte {provider_name} starten für Boss-Erkennung."))
-        except Exception:
-            pass
-        print()
-
-    # OCR-Status prüfen wenn aktiviert
-    if state.config.ocr_enabled:
-        try:
-            from autoclicker.ocr import is_available, get_status
-            if is_available():
-                print(col(f"[OCR] {get_status()}", 'green'))
-            else:
-                print(warn(f"[OCR] {get_status()}"))
-        except Exception:
-            pass
-        print()
+    _report_llm(state)
+    _report_ocr(state)
 
     if tui_start:
         _tui_show_ready(state)
@@ -354,18 +335,61 @@ def main() -> int:
     # wuerde `discard_command()` genau diesen ersten Auftrag wegwerfen.
     studio_open = _studio_opens_on_start(state)
     if not tui_start and not studio_open:
-        # Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten
-        # Hauptprozess hinterlassen. In diesem Sonderfall wird die TUI sichtbar
-        # zur Startoberflaeche und nennt auch beim ersten Start die Anleitung.
-        print(warn("Studio konnte nicht geöffnet werden — starte in der Konsole."))
-        print_banner()
-        if first_start:
-            print()
-            print_help()
-        _tui_show_ready(state)
+        _fall_back_to_console(state, first_start)
 
-    # Hotkey-Handler Zuordnung
-    hotkey_handlers = {
+    _event_loop(state, main_thread_id)
+    return 0
+
+
+def _report_llm(state) -> None:
+    """LLM-Verbindung prüfen, wenn eingeschaltet — ein Fehler dabei hält den Start nicht auf."""
+    if not state.config.llm_enabled:
+        return
+    try:
+        from autoclicker.llm_vision import test_connection
+        provider = state.config.llm_provider
+        ok, msg = test_connection(provider)
+        if ok:
+            print(col(f"[LLM] {provider} verbunden: {msg}", 'green'))
+        else:
+            provider_name = "LM Studio" if provider == "lmstudio" else "Ollama"
+            print(warn(f"[LLM] {provider_name} nicht erreichbar! {msg}"))
+            print(warn(f"       Bitte {provider_name} starten für Boss-Erkennung."))
+    except Exception:
+        pass
+    print()
+
+
+def _report_ocr(state) -> None:
+    """OCR-Status zeigen, wenn eingeschaltet."""
+    if not state.config.ocr_enabled:
+        return
+    try:
+        from autoclicker.ocr import is_available, get_status
+        if is_available():
+            print(col(f"[OCR] {get_status()}", 'green'))
+        else:
+            print(warn(f"[OCR] {get_status()}"))
+    except Exception:
+        pass
+    print()
+
+
+def _fall_back_to_console(state, first_start: bool) -> None:
+    """Ein fehlgeschlagenes GUI darf keinen unsichtbaren, scheinbar toten
+    Hauptprozess hinterlassen. In diesem Sonderfall wird die TUI sichtbar
+    zur Startoberflaeche und nennt auch beim ersten Start die Anleitung."""
+    print(warn("Studio konnte nicht geöffnet werden — starte in der Konsole."))
+    print_banner()
+    if first_start:
+        print()
+        print_help()
+    _tui_show_ready(state)
+
+
+def _hotkey_handlers() -> dict:
+    """Hotkey-ID → Handler. CTRL+ALT+Q fehlt: Beenden verlässt die Schleife."""
+    return {
         HOTKEY_RECORD: handle_record,
         HOTKEY_UNDO: handle_undo,
         HOTKEY_CLEAR: handle_clear,
@@ -395,22 +419,26 @@ def main() -> int:
         HOTKEY_HELP: lambda _state: print_help(),
     }
 
+
+def _event_loop(state, main_thread_id) -> None:
+    """Holt Hotkeys ab und im Leerlauf die Befehle aus dem Studio — bis zum Beenden."""
+    hotkey_handlers = _hotkey_handlers()
     try:
         # Haupt-Event-Loop
         while not state.quit_event.is_set():
             hk_id = poll_hotkey()
-            if hk_id is not None:
-                if hk_id == HOTKEY_QUIT:
-                    handle_quit(state, main_thread_id)
-                    break
-                if hk_id in hotkey_handlers:
-                    run_safely("Hotkey-Aktion", hotkey_handlers[hk_id], state)
-                    # Während ein blockierender Handler lief, aufgestaute
-                    # Hotkeys verwerfen (sonst feuern sie als Burst).
-                    flush_hotkey_messages()
-            else:
+            if hk_id is None:
                 _check_commands(state)
                 time.sleep(0.01)
+                continue
+            if hk_id == HOTKEY_QUIT:
+                handle_quit(state, main_thread_id)
+                break
+            if hk_id in hotkey_handlers:
+                run_safely("Hotkey-Aktion", hotkey_handlers[hk_id], state)
+                # Während ein blockierender Handler lief, aufgestaute
+                # Hotkeys verwerfen (sonst feuern sie als Burst).
+                flush_hotkey_messages()
 
     except KeyboardInterrupt:
         print(f"\n{col('[ABBRUCH]', 'red')} Programm wird beendet...")
@@ -422,8 +450,6 @@ def main() -> int:
         print(f"\n{info('Hotkeys deregistriert.')}")
         time.sleep(0.2)
         print(info("Programm beendet."))
-
-    return 0
 
 
 if __name__ == "__main__":

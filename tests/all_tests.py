@@ -33,8 +33,10 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -56,7 +58,8 @@ for _stream in (sys.stdout, sys.stderr):
 # Die Rauchtests, in der Reihenfolge, in der sie aufeinander aufbauen: erst was
 # die Scans zeigen, dann die Reiter darum herum.
 SMOKE_TESTS = ("items", "detection", "sequences", "share", "tools",
-              "report", "sequence_delete", "catalog")
+              "report", "sequence_delete", "catalog", "live_run", "next_sequence",
+              "guidance")
 
 LAYERS = ("contract", "root", "smoke")
 
@@ -79,7 +82,8 @@ class Result:
                 f"  ({self.duration:.1f}s)")
 
 
-def _run(command: list[str], environment: dict | None = None) -> tuple[int, str]:
+def _run(command: list[str], environment: dict | None = None,
+         cwd: Path = ROOT) -> tuple[int, str]:
     """Ein Unterprozess mit geerbter Ausgabe — und dem Text zum Auswerten.
 
     Warum als Unterprozess und nicht per Import: die Vertragssuite stubbt
@@ -90,7 +94,7 @@ def _run(command: list[str], environment: dict | None = None) -> tuple[int, str]
     env_vars["PYTHONUTF8"] = "1"
     env_vars["PYTHONIOENCODING"] = "utf-8"
     env_vars.update(environment or {})
-    done = subprocess.run(command, cwd=ROOT, env=env_vars, capture_output=True,
+    done = subprocess.run(command, cwd=cwd, env=env_vars, capture_output=True,
                             text=True, encoding="utf-8", errors="replace")
     sys.stdout.write(done.stdout)
     sys.stderr.write(done.stderr)
@@ -151,10 +155,20 @@ def smoke(only: tuple[str, ...] = SMOKE_TESTS, required: bool = False) -> Result
 
     start = time.monotonic()
     failed = []
-    for name in only:
-        code, _ = _run([sys.executable, "-m", f"tests.smoke.{name}"])
-        if code != 0:
-            failed.append(name)
+    # Gestartet wird in einem leeren Ordner, nicht im Repo: die Rauchtests
+    # wechseln zwar in ihre eigene Sandbox, importieren `autoclicker` aber
+    # vorher — und lasen dabei die echte `config.json` (CWD-relativ). Lokal
+    # galten damit andere Werte als in der CI. Das Repo kommt ueber PYTHONPATH.
+    workdir = Path(tempfile.mkdtemp(prefix="rauchtests_"))
+    path = os.pathsep.join(filter(None, (str(ROOT), os.environ.get("PYTHONPATH"))))
+    try:
+        for name in only:
+            code, _ = _run([sys.executable, "-m", f"tests.smoke.{name}"],
+                           {"PYTHONPATH": path}, cwd=workdir)
+            if code != 0:
+                failed.append(name)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
     e.duration = time.monotonic() - start
     e.ok = not failed
     e.summary = (f"{len(only)} Ansichten"

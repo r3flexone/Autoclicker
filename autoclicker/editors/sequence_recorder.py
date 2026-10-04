@@ -95,8 +95,12 @@ def _status_events(events: list) -> list[dict]:
 
 
 def _write_status(state: AutoClickerState, events: list | None = None,
-                       active: bool | None = None) -> None:
-    """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören."""
+                       active: bool | None = None, busy: bool = False) -> None:
+    """Überschreibt den Live-Stand; Fehler dürfen die Aufnahme nie stören.
+
+    `busy` heisst „gestoppt, aber die Blöcke sind noch nicht geschrieben" —
+    s. `stop_recording()`.
+    """
     try:
         with state.lock:
             listing = list(state.recording_events) if events is None else list(events)
@@ -106,6 +110,7 @@ def _write_status(state: AutoClickerState, events: list | None = None,
             right_clicks = state.recording_right_clicks
         atomic_write(_RECORDING_STATUS, compact_json({
             "active": bool(running),
+            "busy": bool(busy),
             "paused": bool(paused and running),
             "name": name,
             "count": len(listing),
@@ -651,8 +656,30 @@ def stop_recording(state: AutoClickerState) -> str | None:
     remove_keyboard_hook()
     # Der Zaehler bleibt bis hierher stehen, damit die Zusammenfassung ihn
     # noch mitschreibt - erst der naechste Start setzt ihn zurueck.
-    _write_status(state, events, active=False)
+    #
+    # **„Nicht mehr aktiv" heisst noch nicht „geschrieben".** Hier stand
+    # `active=False` allein, und das Studio las daraus „fertig": die
+    # Einfüge-Aufnahme lud die Sequenz neu, BEVOR `_finish_insert_recording`
+    # sie gespeichert hatte — in der Konsole stand der Block, im Studio nicht,
+    # und das nächste Speichern dort hätte ihn überschrieben. `busy` bleibt
+    # stehen, bis der Aufbau durch ist, egal auf welchem Weg er endet.
+    _write_status(state, events, active=False, busy=True)
+    try:
+        return _build_recording(state, events, right_clicks, ui_name, ui_cycles,
+                                ui_description, insert_target)
+    finally:
+        _write_status(state, events, active=False)
 
+
+def _build_recording(state: AutoClickerState, events: list, right_clicks: int,
+                     ui_name: str, ui_cycles: int, ui_description: str,
+                     insert_target: dict | None) -> str | None:
+    """Wertet die Ereignisse einer gestoppten Aufnahme aus und speichert sie.
+
+    Stufen: aufbereiten (`_prepare_events`) → zeigen (`_print_recorded`) →
+    einfügen ODER Angaben holen (`_recording_details`) und speichern
+    (`_save_recording`).
+    """
     # VOR der Auswertung, nicht danach: eine Aufnahme aus lauter Rechtsklicks
     # ist "nichts aufgezeichnet", und genau dann muss der Grund dastehen.
     if right_clicks:
@@ -665,8 +692,33 @@ def stop_recording(state: AutoClickerState) -> str | None:
         print(f"\n{col('[AUFNAHME]', 'yellow')} Gestoppt — nichts aufgezeichnet.")
         return None
 
-    # Feste Reihenfolge - jede Stufe entfernt eine Sonderform: Bereichs-Ecken
-    # falten, Phasengrenzen herausziehen, haltlose Warte-Marker verwerfen.
+    events, limits = _prepare_events(events)
+    if not events:
+        print(f"{col('[AUFNAHME]', 'yellow')} Nichts Verwertbares übrig.")
+        return None
+
+    print(f"\n{col('╚══ AUFNAHME GESTOPPT ══╝', 'green')} "
+          f"{len(events)} Ereignis(se) aufgezeichnet.")
+    _print_recorded(events, limits)
+
+    # Einfüge-Aufnahme ("Ab hier aufnehmen"): keine neue Sequenz, sondern die
+    # Schritte werden in eine bestehende gespleisst. Ab hier trennen sich die
+    # Wege komplett — Name/Zyklen/Beschreibung gelten nur fuer eine NEUE Sequenz.
+    if insert_target:
+        return _finish_insert_recording(state, events, insert_target)
+
+    details = _recording_details(ui_name, ui_cycles, ui_description)
+    if details is None:
+        return None
+    return _save_recording(state, events, limits, *details)
+
+
+def _prepare_events(events: list) -> tuple[list, list]:
+    """Feste Reihenfolge — jede Stufe entfernt eine Sonderform.
+
+    Bereichs-Ecken falten, Phasengrenzen herausziehen, haltlose Warte-Marker
+    verwerfen. Gibt die übrigen Ereignisse und die Phasengrenzen zurück.
+    """
     events, half_corner = merge_regions(events)
     if half_corner:
         print(f"\n{warn('Einzelne Bereichs-Ecke verworfen — die zweite fehlt.')}")
@@ -678,111 +730,121 @@ def stop_recording(state: AutoClickerState) -> str | None:
     if discarded:
         print(f"\n{warn(f'{discarded} Warte-Marker verworfen — danach kam kein Klick.')}")
         print(hint("       Ein Marker wartet auf die Farbe DES Klicks, der ihm folgt."))
+    return events, limits
 
-    if not events:
-        print(f"{col('[AUFNAHME]', 'yellow')} Nichts Verwertbares übrig.")
-        return None
 
-    print(f"\n{col('╚══ AUFNAHME GESTOPPT ══╝', 'green')} "
-          f"{len(events)} Ereignis(se) aufgezeichnet.")
+def _recording_phase_name(number: int) -> str:
+    """Wie in build_phases(), damit hier dasselbe steht wie danach in der Datei."""
+    return "Loop" if number == 1 else f"Loop {number}"
 
-    # Aufgezeichnetes zeigen. Die Phasengrenzen stehen nicht mehr im Strom (sie wurden
-    # oben herausgezogen), muessen hier aber sichtbar sein — sonst sieht der Nutzer die
-    # Aufteilung erst im Editor und kann sie beim Benennen nicht mehr einordnen.
-    # Namen wie in build_phases(), damit hier dasselbe steht wie danach in der
-    # Datei. Der Schnitt liegt VOR dem Schritt mit diesem Index.
-    def _phase_name(number):
-        return "Loop" if number == 1 else f"Loop {number}"
 
-    _cut = {g: _phase_name(nr + 2) for nr, g in enumerate(limits)}
+def _print_recorded(events: list, limits: list) -> None:
+    """Aufgezeichnetes zeigen, samt Phasengrenzen und schnellen Doppelklicks.
+
+    Die Phasengrenzen stehen nicht mehr im Strom (`_prepare_events` hat sie
+    herausgezogen), muessen hier aber sichtbar sein — sonst sieht der Nutzer
+    die Aufteilung erst im Editor und kann sie beim Benennen nicht mehr
+    einordnen. Der Schnitt liegt VOR dem Schritt mit diesem Index.
+    """
+    cuts = {g: _recording_phase_name(nr + 2) for nr, g in enumerate(limits)}
     if limits:
         print(f"\n{col('Aufgezeichnet:', 'bold')} {hint('(Phasen sind markiert)')}")
-        print(f"  {col('┌─ ' + _phase_name(1), 'magenta')}")
+        print(f"  {col('┌─ ' + _recording_phase_name(1), 'magenta')}")
     else:
         print(f"\n{col('Aufgezeichnet:', 'bold')}")
     fast_clicks = 0
-    created_ones = 0
+    steps_so_far = 0
     for i, ev in enumerate(events):
         if ev.kind != REC_WAIT_COLOR:
-            if created_ones in _cut:
-                print(f"  {col('├─ ' + _cut.pop(created_ones), 'magenta')}")
-            created_ones += 1
+            if steps_so_far in cuts:
+                print(f"  {col('├─ ' + cuts.pop(steps_so_far), 'magenta')}")
+            steps_so_far += 1
+        delay_str, fast = _recorded_delay(events, i)
+        fast_clicks += fast
         color_str = f"  {describe_color(ev.color)}" if ev.color else ""
-        if i == 0:
-            delay_str = "sofort"
-        else:
-            d = ev.t - events[i - 1].t
-            delay_str = f"+{d:.2f}s"
-            if events[i - 1].kind == REC_WAIT_COLOR:
-                # Diese Spanne ersetzt die Farb-Bedingung (siehe steps_from_events);
-                # sie als Wartezeit oder gar als Doppelklick zu zeigen waere falsch.
-                delay_str = col(f"wartet auf {describe_color(ev.color)}", "cyan") \
-                    if ev.color else col("wartet auf die Farbe hier", "cyan")
-            elif d < _FAST_CLICK_GAP and ev.kind == REC_CLICK and events[i - 1].kind == REC_CLICK:
-                fast_clicks += 1
-                delay_str = col(delay_str + " ⚡", "yellow")
         print(f"  {col(str(i+1), 'cyan'):>4}  {str(ev):<38}  {delay_str}{color_str}")
 
     if fast_clicks:
-        print(f"\n{col('Hinweis:', 'yellow')} {fast_clicks} sehr schnelle(r) Klick(s) (⚡, < {_FAST_CLICK_GAP:.2f}s Abstand).")
+        print(f"\n{col('Hinweis:', 'yellow')} {fast_clicks} sehr schnelle(r) Klick(s) "
+              f"(⚡, < {_FAST_CLICK_GAP:.2f}s Abstand).")
         print(hint("        Falls das versehentliche Doppelklicks waren: im Editor mit 'del <Nr>' entfernen."))
 
-    # Einfüge-Aufnahme ("Ab hier aufnehmen"): keine neue Sequenz, sondern die
-    # Schritte werden in eine bestehende gespleisst. Ab hier trennen sich die
-    # Wege komplett — Name/Zyklen/Beschreibung gelten nur fuer eine NEUE Sequenz.
-    if insert_target:
-        return _finish_insert_recording(state, events, insert_target)
 
-    if ui_name:
-        # UI-Aufnahme: alle Angaben stehen schon vor dem ersten Klick fest. So
-        # wartet der Abschluss nie unsichtbar in der Konsole auf eine Eingabe.
-        # Das Studio hat den Namen beim Start geprueft; ist er seither vergeben
-        # worden, wird ausgewichen statt ueberschrieben — fragen geht hier nicht.
-        seq_name = free_sequence_name(ui_name)
-        if seq_name != ui_name:
-            print(warn(f"'{ui_name}' gibt es inzwischen — gespeichert als '{seq_name}'."))
-        total_cycles = ui_cycles
-        description = ui_description
-    else:
+def _recorded_delay(events: list, i: int) -> tuple[str, bool]:
+    """Die Spanne vor Ereignis i als Text — und ob sie ein schneller Doppelklick ist."""
+    ev = events[i]
+    if i == 0:
+        return "sofort", False
+    previous = events[i - 1]
+    if previous.kind == REC_WAIT_COLOR:
+        # Diese Spanne ersetzt die Farb-Bedingung (siehe steps_from_events);
+        # sie als Wartezeit oder gar als Doppelklick zu zeigen waere falsch.
+        if ev.color:
+            return col(f"wartet auf {describe_color(ev.color)}", "cyan"), False
+        return col("wartet auf die Farbe hier", "cyan"), False
+    d = ev.t - previous.t
+    if d < _FAST_CLICK_GAP and ev.kind == REC_CLICK and previous.kind == REC_CLICK:
+        return col(f"+{d:.2f}s ⚡", "yellow"), True
+    return f"+{d:.2f}s", False
+
+
+def _recording_details(ui_name: str, ui_cycles: int, ui_description: str):
+    """Name, Zyklen und Beschreibung einer NEUEN Sequenz — None = verworfen.
+
+    UI-Aufnahme: alle Angaben stehen schon vor dem ersten Klick fest. So
+    wartet der Abschluss nie unsichtbar in der Konsole auf eine Eingabe. Das
+    Studio hat den Namen beim Start geprueft; ist er seither vergeben worden,
+    wird ausgewichen statt ueberschrieben — fragen geht dort nicht.
+    """
+    if not ui_name:
         # Klassischer TUI-Weg — absichtlich als zweite Bedienart erhalten.
-        auto_name = f"Aufnahme_{datetime.now().strftime('%H%M%S')}"
-        print(f"\nSequenz-Name (Enter = {col(auto_name, 'cyan')}, {col('cancel', 'yellow')} = verwerfen):")
-        try:
-            name_input = safe_input("> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print(f"\n{col('[VERWORFEN]', 'yellow')}")
-            return None
+        return _ask_recording_details()
+    seq_name = free_sequence_name(ui_name)
+    if seq_name != ui_name:
+        print(warn(f"'{ui_name}' gibt es inzwischen — gespeichert als '{seq_name}'."))
+    return seq_name, ui_cycles, ui_description
 
-        if is_cancel(name_input):
-            print(f"{col('[VERWORFEN]', 'yellow')} Aufnahme nicht gespeichert.")
-            return None
 
-        seq_name = confirm_new_sequence_name(name_input if name_input else auto_name)
-        if seq_name is None:
-            print(f"{col('[VERWORFEN]', 'yellow')} Aufnahme nicht gespeichert.")
-            return None
-        print(f"\nZyklen (0 = unendlich, Enter = {col('unendlich', 'cyan')}):")
-        try:
-            cycles_input = safe_input("> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            cycles_input = ""
-        total_cycles = 0
-        if cycles_input:
-            try:
-                total_cycles = max(0, int(cycles_input))
-            except ValueError:
-                print(f"  -> '{cycles_input}' ungültig — nutze unendlich")
-        print(f"\nBeschreibung (optional, Enter = {col('keine', 'cyan')}):")
-        try:
-            description = safe_input("> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            description = ""
-        if is_cancel(description):
-            description = ""
+def _ask_recording_details():
+    """Die Angaben in der Konsole — None, wenn der Name abgebrochen wurde."""
+    auto_name = f"Aufnahme {datetime.now().strftime('%H:%M:%S')}"
+    print(f"\nSequenz-Name (Enter = {col(auto_name, 'cyan')}, {col('cancel', 'yellow')} = verwerfen):")
+    try:
+        name_input = safe_input("> ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print(f"\n{col('[VERWORFEN]', 'yellow')}")
+        return None
+    seq_name = None if is_cancel(name_input) else confirm_new_sequence_name(name_input or auto_name)
+    if seq_name is None:
+        print(f"{col('[VERWORFEN]', 'yellow')} Aufnahme nicht gespeichert.")
+        return None
 
+    print(f"\nZyklen (0 = unendlich, Enter = {col('unendlich', 'cyan')}):")
+    total_cycles = 0
+    cycles_input = _optional_input()
+    if cycles_input:
+        try:
+            total_cycles = max(0, int(cycles_input))
+        except ValueError:
+            print(f"  -> '{cycles_input}' ungültig — nutze unendlich")
+    print(f"\nBeschreibung (optional, Enter = {col('keine', 'cyan')}):")
+    description = _optional_input()
+    return seq_name, total_cycles, "" if is_cancel(description) else description
+
+
+def _optional_input() -> str:
+    """Eine Eingabe, bei der STRG+C/EOF schlicht „leer" heisst."""
+    try:
+        return safe_input("> ").strip()
+    except (KeyboardInterrupt, EOFError):
+        return ""
+
+
+def _save_recording(state: AutoClickerState, events: list, limits: list,
+                    seq_name: str, total_cycles: int, description: str) -> str | None:
+    """Punkte, Schritte, Phasen bauen, speichern und aktivieren."""
     # ERST die Punkte, DANN die Schritte — die Reihenfolge ist der Punkt.
     point_id_for, points = points_for_events(events)
-
     # SequenceSteps aus den Events bauen — jeder mit Referenz auf seinen Punkt
     steps = steps_from_events(events, point_id_for)
     # INIT und END bleiben leer: eine Aufnahme sieht nicht, welcher Abschnitt
@@ -791,47 +853,46 @@ def stop_recording(state: AutoClickerState) -> str | None:
     seq = Sequence(name=seq_name, loop_phases=loop_phases, total_cycles=total_cycles,
                    description=description, points=points)
 
-    # Speichern
     ensure_sequences_dir()
     # Eine Aufnahme ist eine vollständige Sequenz und bekommt deshalb dieselbe
     # Besitzeinheit wie jede im Studio angelegte: sequences/<name>/sequence.json.
     # Direkte JSON-Dateien unter sequences/ waeren wieder das alte Mischlayout,
     # in dem Scans und Vorlagen nicht eindeutig zugeordnet werden konnten.
-    filepath = recording_file(seq_name)
-
-    if save_sequence_file(seq, filepath):
-        # Ueber den EINEN Weg, der Punkte und Scans gemeinsam umstellt — hier
-        # stand die Zuweisung von Hand, und die Scans der vorigen Sequenz
-        # blieben im Speicher. Loest zugleich auf: sonst zeigte der Editor
-        # direkt nach der Aufnahme "(0,0)" statt der Stelle, auf die gewartet wird.
-        activate_sequence(state, seq)
-
-        cycles_str = "unendlich" if total_cycles == 0 else str(total_cycles)
-        saved_msg = ok(f'Sequenz "{seq_name}" gespeichert!')
-        print(f"\n{saved_msg}")
-        if len(loop_phases) > 1:
-            partition = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in loop_phases)
-            print(f"  {partition}  |  Zyklen: {cycles_str}")
-        else:
-            print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
-        if points:
-            print(f"  {len(points)} Punkt(e) in dieser Sequenz gespeichert "
-                  f"{hint('(im Editor + Studio-Palette nutzbar)')}")
-        print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
-        print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")
-        print(hint("  Tipp: Im Editor wandelt 'color <Nr>' einen Klick in einen"))
-        print(hint("        Farb-Trigger um (nutzt die aufgenommene Farbe),"))
-        print(hint("        'noclick <Nr>' macht reines Warten daraus."))
-        if any(e.kind == REC_WAIT_COLOR for e in events):
-            print(hint("        'colorgone <Nr>' dreht einen Warte-Marker um:"))
-            print(hint("        warten bis die Farbe WEG ist statt bis sie da ist."))
-        if any(e.kind == REC_SCREENSHOT and not e.region for e in events):
-            print(hint("        'screenshot x1 y1 x2 y2' bzw. 'ss' grenzt einen"))
-            print(hint("        Vollbild-Screenshot nachträglich auf einen Bereich ein."))
-        return seq_name
-    else:
+    if not save_sequence_file(seq, recording_file(seq_name)):
         print(f"\n{err('Sequenz konnte nicht gespeichert werden!')}")
         return None
+    # Ueber den EINEN Weg, der Punkte und Scans gemeinsam umstellt — hier
+    # stand die Zuweisung von Hand, und die Scans der vorigen Sequenz
+    # blieben im Speicher. Loest zugleich auf: sonst zeigte der Editor
+    # direkt nach der Aufnahme "(0,0)" statt der Stelle, auf die gewartet wird.
+    activate_sequence(state, seq)
+    _print_recording_saved(seq, steps, events)
+    return seq_name
+
+
+def _print_recording_saved(seq: Sequence, steps: list, events: list) -> None:
+    cycles_str = "unendlich" if seq.total_cycles == 0 else str(seq.total_cycles)
+    saved_msg = ok(f'Sequenz "{seq.name}" gespeichert!')
+    print(f"\n{saved_msg}")
+    if len(seq.loop_phases) > 1:
+        partition = "  |  ".join(f"{len(lp.steps)} {lp.name}" for lp in seq.loop_phases)
+        print(f"  {partition}  |  Zyklen: {cycles_str}")
+    else:
+        print(f"  {len(steps)} Schritte  |  Zyklen: {cycles_str}")
+    if seq.points:
+        print(f"  {len(seq.points)} Punkt(e) in dieser Sequenz gespeichert "
+              f"{hint('(im Editor + Studio-Palette nutzbar)')}")
+    print(f"  Starten:    {col('CTRL+ALT+S', 'yellow')}")
+    print(f"  Bearbeiten: {col('CTRL+ALT+E', 'yellow')}")
+    print(hint("  Tipp: Im Editor wandelt 'color <Nr>' einen Klick in einen"))
+    print(hint("        Farb-Trigger um (nutzt die aufgenommene Farbe),"))
+    print(hint("        'noclick <Nr>' macht reines Warten daraus."))
+    if any(e.kind == REC_WAIT_COLOR for e in events):
+        print(hint("        'colorgone <Nr>' dreht einen Warte-Marker um:"))
+        print(hint("        warten bis die Farbe WEG ist statt bis sie da ist."))
+    if any(e.kind == REC_SCREENSHOT and not e.region for e in events):
+        print(hint("        'screenshot x1 y1 x2 y2' bzw. 'ss' grenzt einen"))
+        print(hint("        Vollbild-Screenshot nachträglich auf einen Bereich ein."))
 
 
 def handle_record_sequence(state: AutoClickerState) -> None:

@@ -367,9 +367,6 @@ def walk_points(state: AutoClickerState) -> None:
 
     Läuft im Main-Thread, blockiert also nur die Hotkey-Loop.
     """
-    from ..imaging import get_pixel_color
-    from ..persistence import save_points
-
     with state.lock:
         points = list(state.points)
 
@@ -398,49 +395,15 @@ def walk_points(state: AutoClickerState) -> None:
         key = read_command()
         if key in _KEYS_STOP:
             break
-        if key in _KEYS_BACK:
+        if key == "n" and _walk_move(state, p):
+            changed += 1
+            i += 1
+        elif key == "f":
+            changed += _walk_recolor(state, p)
+        elif key in _KEYS_BACK:
             i = max(0, i - 1)
-            continue
-
-        if key == "n":
-            new_x, new_y = get_cursor_pos()
-            if (new_x, new_y) == (p.x, p.y):
-                print(col("      Maus steht noch auf der alten Stelle - nichts geändert.",
-                          "yellow"))
-                continue
-            old = (p.x, p.y)
-            with state.lock:
-                p.x, p.y = new_x, new_y
-                # Die Farbe gehört zur Position. Hatte der Punkt eine, wird sie
-                # mitgezogen — sonst zeigt ein Farb-Trigger auf die alte Farbe an
-                # der neuen Stelle und schlägt bei jedem Lauf fehl.
-                if p.color:
-                    new_color = get_pixel_color(new_x, new_y)
-                    if new_color:
-                        p.color = new_color
-            save_points(state)
-            changed += 1
-            print(col(f"      gesetzt: {old} -> ({new_x}, {new_y})"
-                      f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
+        elif key in _KEYS_NEXT:
             i += 1
-            continue
-
-        if key == "f":
-            new_color = get_pixel_color(p.x, p.y)
-            if not new_color:
-                print(col("      Farbe konnte nicht gelesen werden.", "yellow"))
-                continue
-            with state.lock:
-                old_color, p.color = p.color, new_color
-            save_points(state)
-            changed += 1
-            print(col(f"      Farbe: {color_swatch(old_color) if old_color else '(keine)'}"
-                      f"  ->  {color_swatch(new_color)}", "green"))
-            continue
-
-        if key in _KEYS_NEXT:
-            i += 1
-            continue
         # Unbekannte Taste: stehenbleiben statt blind weiterzublaettern — sonst
         # schiebt jeder Fehlgriff den Durchgang vor und man sucht die Stelle neu.
 
@@ -449,3 +412,44 @@ def walk_points(state: AutoClickerState) -> None:
         print(col("   Schritte mit point_id ziehen beim nächsten Lauf automatisch nach.",
                   "gray"))
     print(col("   Punkte-Durchgang beendet.", "cyan"))
+
+
+def _walk_move(state: AutoClickerState, p) -> bool:
+    """`n`: den Punkt auf die Mausposition setzen. False = Maus steht noch dort."""
+    from ..imaging import get_pixel_color
+    from ..persistence import save_points
+    new_x, new_y = get_cursor_pos()
+    if (new_x, new_y) == (p.x, p.y):
+        print(col("      Maus steht noch auf der alten Stelle - nichts geändert.",
+                  "yellow"))
+        return False
+    old = (p.x, p.y)
+    with state.lock:
+        p.x, p.y = new_x, new_y
+        # Die Farbe gehört zur Position. Hatte der Punkt eine, wird sie
+        # mitgezogen — sonst zeigt ein Farb-Trigger auf die alte Farbe an
+        # der neuen Stelle und schlägt bei jedem Lauf fehl.
+        if p.color:
+            new_color = get_pixel_color(new_x, new_y)
+            if new_color:
+                p.color = new_color
+    save_points(state)
+    print(col(f"      gesetzt: {old} -> ({new_x}, {new_y})"
+              f"{'  Farbe mitgezogen' if p.color else ''}", "green"))
+    return True
+
+
+def _walk_recolor(state: AutoClickerState, p) -> int:
+    """`f`: nur die Farbe an der Stelle neu einlesen. 1 = geändert, 0 = nicht lesbar."""
+    from ..imaging import get_pixel_color
+    from ..persistence import save_points
+    new_color = get_pixel_color(p.x, p.y)
+    if not new_color:
+        print(col("      Farbe konnte nicht gelesen werden.", "yellow"))
+        return 0
+    with state.lock:
+        old_color, p.color = p.color, new_color
+    save_points(state)
+    print(col(f"      Farbe: {color_swatch(old_color) if old_color else '(keine)'}"
+              f"  ->  {color_swatch(new_color)}", "green"))
+    return 1

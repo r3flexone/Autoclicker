@@ -31,54 +31,51 @@ def color(text, c):
 
 
 def parse_args():
-    backend = None
-    action = "screenshot"
-    boss_names = []
-    region = None
-    languages = ["en"]
-
+    options = {"backend": None, "action": "screenshot", "boss_names": [],
+               "region": None, "languages": ["en"]}
     args = sys.argv[1:]
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--backend" and i + 1 < len(args):
-            backend = args[i + 1]
+        if arg in _VALUE_OPTIONS and i + 1 < len(args):
+            field, convert = _VALUE_OPTIONS[arg]
+            options[field] = convert(args[i + 1])
             i += 2
-        elif arg == "--bosses" and i + 1 < len(args):
-            boss_names = [b.strip() for b in args[i + 1].split(",")]
-            i += 2
-        elif arg == "--languages" and i + 1 < len(args):
-            languages = [l.strip() for l in args[i + 1].split(",")]
-            i += 2
-        elif arg == "--region" and i + 1 < len(args):
-            try:
-                parts = [int(p.strip()) for p in args[i + 1].split(",")]
-                if len(parts) != 4:
-                    raise ValueError(f"Erwarte 4 Werte (x1,y1,x2,y2), bekam {len(parts)}")
-                x1, y1, x2, y2 = parts
-                if x1 > x2:
-                    x1, x2 = x2, x1
-                if y1 > y2:
-                    y1, y2 = y2, y1
-                region = (x1, y1, x2, y2)
-            except ValueError as e:
-                print(f"{color('Ungültige --region:', 'red')} {e}")
-                sys.exit(1)
-            i += 2
-        elif arg in ("--help", "-h"):
-            action = "help"
-            i += 1
-        elif arg == "test":
-            action = "test"
-            i += 1
-        elif arg == "screenshot":
-            action = "screenshot"
-            i += 1
-        else:
-            action = arg
-            i += 1
+            continue
+        # `--help`/`-h`, `test`, `screenshot` — alles andere ist eine Bild-Datei.
+        options["action"] = _ACTIONS.get(arg, arg)
+        i += 1
 
-    return backend, action, boss_names, region, languages
+    return (options["backend"], options["action"], options["boss_names"],
+            options["region"], options["languages"])
+
+
+def _split(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",")]
+
+
+def _parse_region(value: str) -> tuple:
+    """`x1,y1,x2,y2` als Rechteck mit links-oben zuerst; Unlesbares beendet das Werkzeug."""
+    try:
+        parts = [int(p) for p in _split(value)]
+        if len(parts) != 4:
+            raise ValueError(f"Erwarte 4 Werte (x1,y1,x2,y2), bekam {len(parts)}")
+    except ValueError as e:
+        print(f"{color('Ungültige --region:', 'red')} {e}")
+        sys.exit(1)
+    x1, y1, x2, y2 = parts
+    return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+
+
+# Option mit Wert → (Feld, Umwandlung). Steht der Wert nicht mehr da, zählt
+# die Option wie jedes andere Wort als Aktion.
+_VALUE_OPTIONS = {
+    "--backend": ("backend", lambda value: value),
+    "--bosses": ("boss_names", _split),
+    "--languages": ("languages", _split),
+    "--region": ("region", _parse_region),
+}
+_ACTIONS = {"--help": "help", "-h": "help", "test": "test", "screenshot": "screenshot"}
 
 
 def print_help():
@@ -190,44 +187,56 @@ def main():
         print(f"\n{color('Pillow nicht installiert!', 'red')} pip install pillow")
         return
 
-    img = None
-
     if action == "screenshot":
-        print(f"\n{color('=== SCREENSHOT ===', 'bold')}")
-        try:
-            from autoclicker.imaging import take_screenshot, select_region
-
-            if region is not None:
-                img = take_screenshot(region)
-                print(f"  Screenshot: Region {region}")
-            else:
-                sel_region = select_region()
-                if sel_region:
-                    img = take_screenshot(sel_region)
-                else:
-                    print("  -> Abgebrochen")
-                    return
-        except Exception as e:
-            print(f"  Screenshot fehlgeschlagen: {e}")
-            return
+        img = _screenshot(region)
     else:
-        filepath = action
-        if not os.path.exists(filepath):
-            print(f"\n{color(f'Datei nicht gefunden: {filepath}', 'red')}")
-            return
-        try:
-            img = Image.open(filepath)
-            print(f"\n  Bild geladen: {filepath}")
-        except Exception as e:
-            print(f"\n{color(f'Bild konnte nicht geladen werden: {e}', 'red')}")
-            return
-
+        img = _open_image(Image, action)
+    if img is _STOP:
+        return
     if img is None:
         print(f"\n{color('Kein Bild verfügbar!', 'red')}")
         return
 
     analyze(backend, img, boss_names, languages)
     print()
+
+
+# Ein Bild-Weg hat schon gesagt, warum es kein Bild gibt — `main` hört still auf.
+_STOP = object()
+
+
+def _screenshot(region):
+    """Ein Screenshot der Region oder eines mit der Maus gewählten Bereichs."""
+    print(f"\n{color('=== SCREENSHOT ===', 'bold')}")
+    try:
+        from autoclicker.imaging import take_screenshot, select_region
+
+        if region is not None:
+            img = take_screenshot(region)
+            print(f"  Screenshot: Region {region}")
+            return img
+        sel_region = select_region()
+        if not sel_region:
+            print("  -> Abgebrochen")
+            return _STOP
+        return take_screenshot(sel_region)
+    except Exception as e:
+        print(f"  Screenshot fehlgeschlagen: {e}")
+        return _STOP
+
+
+def _open_image(image_module, filepath: str):
+    """Die Bild-Datei aus der Kommandozeile."""
+    if not os.path.exists(filepath):
+        print(f"\n{color(f'Datei nicht gefunden: {filepath}', 'red')}")
+        return _STOP
+    try:
+        img = image_module.open(filepath)
+        print(f"\n  Bild geladen: {filepath}")
+        return img
+    except Exception as e:
+        print(f"\n{color(f'Bild konnte nicht geladen werden: {e}', 'red')}")
+        return _STOP
 
 
 if __name__ == "__main__":

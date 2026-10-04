@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import textwrap
 import unittest
 
@@ -61,15 +62,20 @@ CASES = {
         "state.active_sequence = seq; state.points = seq.points",
         RUNTIME + "test_konsolen_loader_laedt_die_scans_der_sequenz"),
     "new-sequence-collision": (
-        "autoclicker.editors.sequence_studio.bridge_services", "BridgeServicesMixin.save",
-        "if renamed and new_folder.exists():",
-        "if renamed and old.exists() and new_folder.exists():",
+        "autoclicker.editors.sequence_studio.bridge_services",
+        "BridgeServicesMixin._save_move_folder",
+        "if new_folder.exists():",
+        "if old.exists() and new_folder.exists():",
         STUDIO + "test_neue_sequenz_ueberschreibt_keine_vorhandene"),
     "scan-block-skip": (
-        "autoclicker.runtime.item_scan", "execute_item_scan",
-        "Rest des Blocks lief weiter.\n            break",
-        "Rest des Blocks lief weiter.\n            state.skip_step_event.clear()\n            break",
+        "autoclicker.runtime.item_scan", "_scan_interrupted",
+        "Rest des Blocks lief weiter.\n        return True",
+        "Rest des Blocks lief weiter.\n        state.skip_step_event.clear()\n        return True",
         RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
+    "auto-learn-active-variant": (
+        "autoclicker.runtime.item_scan", "_learn_against_known",
+        "    if known_active:", "    if False:",
+        RUNTIME + "test_auto_lernen_haengt_keine_variante_an_ein_eingeschaltetes_item"),
 }
 
 
@@ -80,6 +86,9 @@ def run_check(name: str, mutated: bool) -> int:
         if str(_path) not in sys.path:
             sys.path.insert(0, str(_path))
     module_name, path, old, new, test = CASES[name]
+    # Der Aufrufer startet jeden Lauf in einem eigenen Ordner, der danach
+    # weggeräumt wird; Temp-Ordner der Testfälle entstehen darin mit.
+    tempfile.tempdir = os.getcwd()
     suite = unittest.defaultTestLoader.loadTestsFromName(test)
     function_obj = importlib.import_module(module_name)
     for part in path.split("."):
@@ -126,12 +135,23 @@ def main() -> int:
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.case or CASES:
         for mode in ("basis", "mutiert"):
-            try:
-                run = subprocess.run(
-                    [sys.executable, str(Path(__file__).resolve()), "--case", name, "--kind", mode],
-                    cwd=ROOT, env=environment, capture_output=True, text=True,
-                    encoding="utf-8", errors="replace", timeout=60)
-            except subprocess.TimeoutExpired:
+            # Jeder Lauf in einem eigenen, leeren Ordner — nie im Repo. Die
+            # Pfade der App sind CWD-relativ, und die Testfaelle hier werden
+            # beim Namen geladen, also ohne den Arbeitsordner von
+            # `root_tests.main()`: ein Item-Scan-Fall schrieb so bei jeder
+            # Gegenprobe `.run.json` in die echten Daten. `run_check` legt das
+            # Repo selbst in `sys.path`.
+            with tempfile.TemporaryDirectory(prefix="gegenprobe_",
+                                             ignore_cleanup_errors=True) as workdir:
+                try:
+                    run = subprocess.run(
+                        [sys.executable, str(Path(__file__).resolve()),
+                         "--case", name, "--kind", mode],
+                        cwd=workdir, env=environment, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=60)
+                except subprocess.TimeoutExpired:
+                    run = None
+            if run is None:
                 print(f"FEHLER {name}: Zeitlimit ({mode})", flush=True)
                 error += 1
                 break

@@ -47,6 +47,13 @@ config.json
 .recording.json
 .studio-sequence.json
 .reclick.json
+# Was der letzte Item-Scan gesehen hat (Live-Run), vom naechsten ueberschrieben.
+.last-scan.png
+# Zwischendateien von atomic_write() (utils/parsing.py): `.<name>.<zufall>.tmp`
+# neben dem Ziel. Bei einer Ausnahme raeumt die Funktion selbst auf; wird der
+# Prozess hart beendet (Konsole zu, PyCharm-Stopp) waehrend der Laufstatus
+# schreibt, bleibt eine liegen.
+.*.tmp
 
 # Briefkasten fuer Befehle aus dem Sequenz-Studio (mailbox.py) - existiert nur
 # Sekundenbruchteile, wird beim Lesen geleert. Aus denselben Gruenden hier oben

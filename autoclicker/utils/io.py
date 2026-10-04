@@ -77,51 +77,56 @@ def safe_input(prompt: str = "") -> str:
     'q', 'cancel' oder 'abbruch' zum Abbrechen tippen).
     """
     flush_input_buffer()
-
     if _REAL_CONSOLE and msvcrt is not None:
+        return _console_line(prompt)
+    # Non-Windows/IDE: Prompt manuell ausgeben, dann stdin lesen
+    try:
         if prompt:
-            print(prompt, end="", flush=True)
-
-        chars = []
-        while True:
-            try:
-                ch = msvcrt.getwch()
-            except (EOFError, KeyboardInterrupt):
-                raise
-
-            if ch == '\x1b':  # ESC
-                print()
-                return "\x1b"
-            elif ch in ('\r', '\n'):  # Enter
-                print()
-                return ''.join(chars)
-            elif ch in ('\x08', '\x7f'):  # Backspace
-                if chars:
-                    chars.pop()
-                    print('\b \b', end='', flush=True)
-            elif ch == '\x03':  # Ctrl+C
-                print()
-                raise KeyboardInterrupt
-            elif ch == '\x04' or ch == '\x1a':  # Ctrl+D / Ctrl+Z (EOF)
-                print()
-                raise EOFError
-            elif ch in ('\x00', '\xe0'):  # Spezial-Tasten Prefix (Pfeile etc.)
-                msvcrt.getwch()  # Zweites Byte lesen und verwerfen
-            elif ch >= ' ':  # Druckbare Zeichen
-                chars.append(ch)
-                print(ch, end='', flush=True)
-    else:
-        # Non-Windows/IDE: Prompt manuell ausgeben, dann stdin lesen
-        try:
-            if prompt:
-                sys.stdout.write(prompt)
-                sys.stdout.flush()
-            line = sys.stdin.readline()
-            if not line:  # EOF
-                return ""
-            return line.rstrip('\n\r')
-        except (EOFError, KeyboardInterrupt):
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+        line = sys.stdin.readline()
+        if not line:  # EOF
             return ""
+        return line.rstrip('\n\r')
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+
+def _console_line(prompt: str) -> str:
+    """Eine Zeile aus einzelnen Tasten (msvcrt) — mit ESC, Rücktaste, STRG+C/D/Z."""
+    if prompt:
+        print(prompt, end="", flush=True)
+    chars = []
+    while True:
+        line = _console_key(msvcrt.getwch(), chars)
+        if line is not None:
+            return line
+
+
+def _console_key(ch: str, chars: list) -> "str | None":
+    """Eine Taste verarbeiten: die fertige Zeile, oder None = weiter lesen."""
+    if ch == '\x1b':  # ESC
+        print()
+        return "\x1b"
+    if ch in ('\r', '\n'):  # Enter
+        print()
+        return ''.join(chars)
+    if ch == '\x03':  # Ctrl+C
+        print()
+        raise KeyboardInterrupt
+    if ch in ('\x04', '\x1a'):  # Ctrl+D / Ctrl+Z (EOF)
+        print()
+        raise EOFError
+    if ch in ('\x08', '\x7f'):  # Backspace
+        if chars:
+            chars.pop()
+            print('\b \b', end='', flush=True)
+    elif ch in ('\x00', '\xe0'):  # Spezial-Tasten Prefix (Pfeile etc.)
+        msvcrt.getwch()  # Zweites Byte lesen und verwerfen
+    elif ch >= ' ':  # Druckbare Zeichen
+        chars.append(ch)
+        print(ch, end='', flush=True)
+    return None
 
 
 def confirm(message: str, default: bool = False) -> bool:
@@ -155,32 +160,20 @@ for _i in range(10):
     _VK_MAP[0x60 + _i] = str(_i)
 
 
+_EXTENDED_KEYS = {b'H': 'up', b'P': 'down', b'K': 'left', b'M': 'right'}
+_PLAIN_KEYS = {b'\r': 'enter', b'\x1b': 'escape', b'\x08': 'backspace'}
+
+
 def _read_key_msvcrt() -> str:
     """Liest Tastendruck via msvcrt.getch() (echte Windows-Konsole)."""
     if msvcrt is None:
         return "unknown"
     byte = msvcrt.getch()
-
     # Pfeiltasten und andere erweiterte Tasten (0xE0 oder 0x00 Prefix)
     if byte in (b'\xe0', b'\x00'):
-        next_byte = msvcrt.getch()
-        if next_byte == b'H':
-            return 'up'
-        elif next_byte == b'P':
-            return 'down'
-        elif next_byte == b'K':
-            return 'left'
-        elif next_byte == b'M':
-            return 'right'
-        return 'unknown'
-
-    if byte == b'\r':
-        return 'enter'
-    if byte == b'\x1b':
-        return 'escape'
-    if byte == b'\x08':
-        return 'backspace'
-
+        return _EXTENDED_KEYS.get(msvcrt.getch(), 'unknown')
+    if byte in _PLAIN_KEYS:
+        return _PLAIN_KEYS[byte]
     try:
         return byte.decode('utf-8')
     except UnicodeDecodeError:

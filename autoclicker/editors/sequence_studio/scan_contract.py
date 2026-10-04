@@ -1,5 +1,7 @@
 """Stabiles Protokoll zwischen Scan-Logik, Brücke und Weboberfläche."""
 
+from ...utils import sanitize_filename
+
 MODE_CHOICE = "choice"
 MODE_SLOT = "slot"
 MODE_MEASURE = "measure"
@@ -69,6 +71,41 @@ _REF_FIELDS = {
 # Die Boss-Felder tragen verschiedene Vorsaetze, deshalb einzeln.
 _REF_PREFIX = {"item_scan": "Scan:", "boss_scan": "Boss:",
                 "boss_watcher": "Watcher:", "icon_scan": "Icon:"}
+
+
+def clean_scan_name(value) -> str:
+    """Ein Scan-Name, wie er angezeigt wird: Leerraum zusammengezogen, sonst nichts.
+
+    **Der Name ist kein Dateiname.** Hier stand `sanitize_filename()`, und aus
+    „Raid Scan" wurde beim Umbenennen `raid_scan` — klein und mit Unterstrichen,
+    in jeder Liste und auf jeder Karte. Die Datei heisst weiter
+    `sanitize_filename(name).json` (`write_scan`), geladen wird über den Namen
+    IN der Datei; der Anzeigename braucht die Bereinigung also nirgends.
+    """
+    return " ".join(str(value or "").split())
+
+
+def scan_name_taken(name: str, inventory, old: str = "") -> str:
+    """Der vorhandene Scan, der in DIESELBE Datei schriebe — oder "".
+
+    Mit freien Namen reicht `name in inventory` nicht mehr: „Raid Scan" und
+    „raid scan" sind zwei Namen, aber eine Datei, und der zweite überschriebe
+    beim Speichern still den ersten. Verglichen wird deshalb die Datei.
+    """
+    def file_of(value):
+        return sanitize_filename(clean_scan_name(value))
+
+    target = file_of(name)
+    return next((k for k in inventory if k != old and file_of(k) == target), "")
+
+
+def free_scan_name(base: str, inventory) -> str:
+    """`base` — oder mit Zähler, bis keine andere Datei mehr im Weg ist."""
+    name, number = base, 1
+    while scan_name_taken(name, inventory):
+        number += 1
+        name = f"{base} {number}"
+    return name
 
 
 def rename_references(board, kind: str, old: str, new: str) -> int:

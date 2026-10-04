@@ -6,7 +6,7 @@ die Funktionen waren einmal modulprivat.
 """
 
 from dataclasses import asdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..models import (
     DEFAULT_MIN_CONFIDENCE,
@@ -421,6 +421,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "wait_color": None if (wc is None or wait_at_point) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
+            "wait_timeout": wc.timeout if wc else None,
             "item_scan": s.item_scan, "item_scan_mode": s.item_scan_mode,
             "boss_scan": s.boss_scan,
             "boss_watcher": s.boss_watcher,
@@ -441,6 +442,7 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "breakpoint": bool(s.breakpoint),
+            "mouse_return": bool(s.mouse_return),
             "recorded_color": None if click_at_point or not s.recorded_color
                               else list(s.recorded_color)}
     return _without_defaults(full_value, _STEP_DEFAULTS)
@@ -461,6 +463,7 @@ _STEP_DEFAULTS = {
     "wait_color": None,
     "wait_until_gone": False,
     "wait_check_only": False,
+    "wait_timeout": None,
     "verify_point_id": None,
     "verify_pixel": None,
     "verify_color": None,
@@ -482,6 +485,7 @@ _STEP_DEFAULTS = {
     "screenshot_only": False,
     "screenshot_region": None,
     "breakpoint": False,
+    "mouse_return": True,
     "recorded_color": None,
 }
 
@@ -495,6 +499,9 @@ def _sequence_to_dict(seq: Sequence) -> dict:
         "name": seq.name,
         **({"total_cycles": seq.total_cycles} if seq.total_cycles != 1 else {}),
         **({"description": seq.description} if seq.description else {}),
+        **({"next_sequence": seq.next_sequence} if seq.next_sequence else {}),
+        **({"next_delay": seq.next_delay}
+           if seq.next_sequence and seq.next_delay != 30.0 else {}),
         "points": [_point_to_dict(p) for p in seq.points],
         "init_steps": [_step_to_dict(s) for s in seq.init_steps],
         "loop_phases": [
@@ -512,105 +519,114 @@ def _sequence_to_dict(seq: Sequence) -> dict:
 
 def _parse_steps(steps_data: list) -> list[SequenceStep]:
     """Parst die Schritt-Liste aus einer Sequence-JSON. Behandelt alle Legacy-Formate."""
-    from ..utils import warn
-
     if not isinstance(steps_data, list) or any(not isinstance(s, dict) for s in steps_data):
         raise ValueError("Schritte müssen eine Liste von Objekten sein")
-    steps = []
-    for s in steps_data:
-        wait_pixel = s.get("wait_pixel")
-        if wait_pixel:
-            wait_pixel = tuple(int(v) for v in wait_pixel)
-        wait_color = s.get("wait_color")
-        if wait_color:
-            wait_color = tuple(int(v) for v in wait_color)
-        # `delay_after` (der Vorlaeufer) kennt der Loader nicht mehr — der
-        # Migrationsschritt dafuer ist mit seinem Altbestand geloescht.
-        delay_raw = s.get("delay_before")
-        if delay_raw is None:
-            delay_raw = 0
-        delay_max_raw = s.get("delay_max")
-        # WaitCondition zusammenbauen. Mit `wait_point_id` liefert der Punkt Position UND
-        # Farbe nach - pixel/color bleiben hier leer und fuellt resolve_point_references().
-        wait_cond = None
-        wait_point_id = s.get("wait_point_id")
-        if wait_point_id is not None:
-            wait_cond = WaitCondition(
-                point_id=wait_point_id,
-                until_gone=s.get("wait_until_gone", False),
-                check_only=s.get("wait_check_only", False),
-            )
-        elif wait_pixel and wait_color:
-            wait_cond = WaitCondition(
-                pixel=wait_pixel, color=wait_color,
-                until_gone=s.get("wait_until_gone", False),
-                check_only=s.get("wait_check_only", False),
-            )
-        # Nachpruefung ("hat der Klick gewirkt?") - gleiche Bauart wie wait_condition.
-        verify_cond = None
-        verify_point_id = s.get("verify_point_id")
-        verify_pixel = s.get("verify_pixel")
-        verify_color = s.get("verify_color")
-        if verify_point_id is not None:
-            verify_cond = WaitCondition(
-                point_id=verify_point_id,
-                until_gone=s.get("verify_until_gone", False),
-            )
-        elif verify_pixel and verify_color:
-            verify_cond = WaitCondition(
-                pixel=tuple(int(v) for v in verify_pixel),
-                color=tuple(int(v) for v in verify_color),
-                until_gone=s.get("verify_until_gone", False),
-            )
-        # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
-        recorded_color_raw = s.get("recorded_color")
-        recorded_color = tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None
-        # Screenshot-Region validieren (muss 4 Werte haben)
-        screenshot_region_raw = s.get("screenshot_region")
-        screenshot_region = None
-        if screenshot_region_raw:
-            if len(screenshot_region_raw) == 4:
-                screenshot_region = tuple(int(v) for v in screenshot_region_raw)
-            else:
-                print(warn(f"Ungültige screenshot_region (erwarte 4 Werte, habe {len(screenshot_region_raw)}) - ignoriert"))
-        # ElseConfig zusammenbauen
-        else_cfg = None
-        else_action = s.get("else_action")
-        if else_action:
-            # Gegen explizites null in der JSON absichern: .get(key, default)
-            # liefert bei "else_delay": null den Wert None (nicht den Default),
-            # und None > 0 / safe_click(None, None) würde später crashen.
-            else_x = s.get("else_x") if s.get("else_x") is not None else 0
-            else_y = s.get("else_y") if s.get("else_y") is not None else 0
-            else_delay = s.get("else_delay") if s.get("else_delay") is not None else 0
-            else_cfg = ElseConfig(
-                action=else_action,
-                point_id=s.get("else_point_id"),
-                x=else_x, y=else_y,
-                delay=else_delay,
-                key=s.get("else_key"), name=s.get("else_name") or ""
-            )
-        step = SequenceStep(
-            x=s.get("x", 0),
-            y=s.get("y", 0),
-            delay_before=float(delay_raw),
-            name=s.get("name", ""),
-            point_id=s.get("point_id"),
-            wait_condition=wait_cond,
-            verify_condition=verify_cond,
-            item_scan=s.get("item_scan"),
-            item_scan_mode=s.get("item_scan_mode", "all"),
-            boss_scan=s.get("boss_scan"),
-            boss_watcher=s.get("boss_watcher"),
-            icon_scan=s.get("icon_scan"),
-            wait_only=s.get("wait_only", False),
-            delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
-            key_press=s.get("key_press"),
-            else_config=else_cfg,
-            screenshot_only=s.get("screenshot_only", False),
-            screenshot_region=screenshot_region,
-            breakpoint=bool(s.get("breakpoint", False)),
-            recorded_color=recorded_color,
-        )
-        steps.append(step)
-    return steps
+    return [_parse_step(s) for s in steps_data]
+
+
+def _parse_step(s: dict) -> SequenceStep:
+    """Ein Schritt aus seinem Dict — Bedingung, Nachprüfung und ELSE je für sich."""
+    # `delay_after` (der Vorlaeufer) kennt der Loader nicht mehr — der
+    # Migrationsschritt dafuer ist mit seinem Altbestand geloescht.
+    delay_raw = s.get("delay_before")
+    if delay_raw is None:
+        delay_raw = 0
+    delay_max_raw = s.get("delay_max")
+    # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
+    recorded_color_raw = s.get("recorded_color")
+    return SequenceStep(
+        x=s.get("x", 0),
+        y=s.get("y", 0),
+        delay_before=float(delay_raw),
+        name=s.get("name", ""),
+        point_id=s.get("point_id"),
+        wait_condition=_parse_wait_condition(s),
+        verify_condition=_parse_verify_condition(s),
+        item_scan=s.get("item_scan"),
+        item_scan_mode=s.get("item_scan_mode", "all"),
+        boss_scan=s.get("boss_scan"),
+        boss_watcher=s.get("boss_watcher"),
+        icon_scan=s.get("icon_scan"),
+        wait_only=s.get("wait_only", False),
+        delay_max=float(delay_max_raw) if delay_max_raw is not None else None,
+        key_press=s.get("key_press"),
+        else_config=_parse_else_config(s),
+        screenshot_only=s.get("screenshot_only", False),
+        screenshot_region=_parse_screenshot_region(s.get("screenshot_region")),
+        breakpoint=bool(s.get("breakpoint", False)),
+        mouse_return=bool(s.get("mouse_return", True)),
+        recorded_color=tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None,
+    )
+
+
+def _int_tuple(raw):
+    return tuple(int(v) for v in raw) if raw else raw
+
+
+def _parse_wait_condition(s: dict) -> Optional[WaitCondition]:
+    """Die Vorbedingung. Mit `wait_point_id` liefert der Punkt Position UND Farbe
+    nach — pixel/color bleiben hier leer und fuellt resolve_point_references()."""
+    # Eigene Zeitgrenze des Blocks; fehlt sie oder ist sie unlesbar, gilt
+    # die Config — ein kaputter Wert soll den Block nicht ohne Grenze lassen.
+    wait_timeout = s.get("wait_timeout")
+    try:
+        wait_timeout = max(0.0, float(wait_timeout)) if wait_timeout is not None else None
+    except (TypeError, ValueError):
+        wait_timeout = None
+    common = {"until_gone": s.get("wait_until_gone", False),
+              "check_only": s.get("wait_check_only", False),
+              "timeout": wait_timeout}
+    wait_point_id = s.get("wait_point_id")
+    if wait_point_id is not None:
+        return WaitCondition(point_id=wait_point_id, **common)
+    wait_pixel, wait_color = _int_tuple(s.get("wait_pixel")), _int_tuple(s.get("wait_color"))
+    if wait_pixel and wait_color:
+        return WaitCondition(pixel=wait_pixel, color=wait_color, **common)
+    return None
+
+
+def _parse_verify_condition(s: dict) -> Optional[WaitCondition]:
+    """Nachpruefung ("hat der Klick gewirkt?") - gleiche Bauart wie wait_condition."""
+    until_gone = s.get("verify_until_gone", False)
+    verify_point_id = s.get("verify_point_id")
+    if verify_point_id is not None:
+        return WaitCondition(point_id=verify_point_id, until_gone=until_gone)
+    verify_pixel, verify_color = s.get("verify_pixel"), s.get("verify_color")
+    if verify_pixel and verify_color:
+        return WaitCondition(pixel=_int_tuple(verify_pixel), color=_int_tuple(verify_color),
+                             until_gone=until_gone)
+    return None
+
+
+def _parse_screenshot_region(raw) -> Optional[tuple]:
+    """Screenshot-Region validieren (muss 4 Werte haben)."""
+    if not raw:
+        return None
+    if len(raw) == 4:
+        return tuple(int(v) for v in raw)
+    from ..utils import warn
+    print(warn(f"Ungültige screenshot_region (erwarte 4 Werte, habe {len(raw)}) - ignoriert"))
+    return None
+
+
+def _parse_else_config(s: dict) -> Optional[ElseConfig]:
+    """ElseConfig zusammenbauen.
+
+    Gegen explizites null in der JSON absichern: .get(key, default) liefert bei
+    "else_delay": null den Wert None (nicht den Default), und None > 0 /
+    safe_click(None, None) würde später crashen.
+    """
+    else_action = s.get("else_action")
+    if not else_action:
+        return None
+    return ElseConfig(
+        action=else_action,
+        point_id=s.get("else_point_id"),
+        x=_or_zero(s.get("else_x")), y=_or_zero(s.get("else_y")),
+        delay=_or_zero(s.get("else_delay")),
+        key=s.get("else_key"), name=s.get("else_name") or "",
+    )
+
+
+def _or_zero(value):
+    return value if value is not None else 0

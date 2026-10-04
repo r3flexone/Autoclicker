@@ -200,6 +200,16 @@ META: dict = {
         "Die Maus an eine Stelle fahren, bevor der Screenshot entsteht — sonst "
         "verdeckt der Cursor (oder ein Tooltip darunter) genau das Item, das "
         "erkannt werden soll."),
+    "scan_mouse_after": M(
+        "Maus nach dem Scan", CONTROL_ENUM,
+        "Wohin der Zeiger nach einem Scan-Block geht. Ein Scan klickt, was er "
+        "findet, und der Zeiger bliebe auf dem letzten Treffer stehen — dort "
+        "zeigt das Spiel dessen Infotext, und der kann das Ziel des nächsten "
+        "Blocks verdecken. OB die Maus danach geht, schaltet jeder Scan-Block "
+        "selbst (Schalter „Maus danach absetzen“, an ist Standard). Nach einem "
+        "Stopp oder in der Pause bleibt sie, wo sie ist.",
+        options=(("back", "zurück an die Stelle davor"),
+                 ("park", "auf die Parkposition (ohne: zurück)"))),
     "scan_slot_delay": M(
         "Pause zwischen Slots", CONTROL_FLOAT, "Zeit zwischen zwei Slot-Scans.",
         unit="s"),

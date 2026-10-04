@@ -77,18 +77,21 @@ check("und die Seite fuehrt dieselbe Liste",
 from autoclicker.models import (VALID_BOSS_DEFAULT_ACTIONS as _VBDA,
                                 BOSS_ACTION_CLICK as _BAC, BOSS_ACTION_KEY as _BAK)
 import autoclicker.runtime.steps as _steps_mod
-from autoclicker.editors.boss_scan_editor import edit_boss_scan as _console_editor
+from autoclicker.editors.boss_scan_editor import _DEFAULT_ACTIONS as _console_defaults
 check("Klick und Taste sind als Fallback nicht vorgesehen",
       _BAC not in _VBDA and _BAK not in _VBDA and len(_VBDA) == 4)
-_runtime_src = _inspect.getsource(_steps_mod._execute_boss_scan_step)
+# Seit dem Zerlegen stehen die Fallbacks in `_boss_default_action`; was jeder
+# einzelne bewirkt, prüft tests/contract/boss_steps.py am Verhalten.
+_runtime_src = _inspect.getsource(_steps_mod._boss_default_action)
 check("die Laufzeit kennt jeden Fallback-Wert der Liste",
       all(name in _runtime_src for name in
           ("BOSS_ACTION_SKIP_CYCLE", "BOSS_ACTION_RESTART", "BOSS_ACTION_SCAN"))
       and "VALID_BOSS_DEFAULT_ACTIONS" in _runtime_src)
-_console_src = _inspect.getsource(_console_editor)
+# Gemessen wird die Liste, die der Editor anbietet — nicht ihre Schreibweise im
+# Quelltext: die hiess einmal `default_map` in der Funktion und steht seit dem
+# Zerlegen in Stufen als `_DEFAULT_ACTIONS` auf Modulebene.
 check("der Konsolen-Editor bietet genau diese vier an",
-      "default_map = [BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART, "
-      "BOSS_ACTION_SCAN]" in _console_src)
+      sorted(action for _label, action in _console_defaults) == sorted(_VBDA))
 check("die Seite nimmt die Fallback-Kacheln aus der eigenen Liste",
       "SC.actions.boss_default" in _web
       and "detActionTiles(SC.actions.boss, c.default_action" not in _web)

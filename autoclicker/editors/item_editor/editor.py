@@ -96,37 +96,38 @@ def run_global_item_editor(state: AutoClickerState) -> None:
 
     while True:
         try:
-            with state.lock:
-                item_count = len(state.global_items)
-            prompt = f"[ITEMS: {item_count}]"
-            user_input = safe_input(f"{prompt} > ").strip()
-            cmd = user_input.lower()
-
-            if cmd in ("done", "d"):
-                if not save_global_items(state):
-                    print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
-                    continue
-                print(ok("Item-Editor beendet."))
+            if _editor_step(state, transaction):
                 return
-            elif is_cancel(cmd):
-                if _cancel(state, transaction):
-                    return
-                continue
-            elif cmd == "":
-                continue
-
-            if not _dispatch_command(state, cmd, user_input):
-                _known = ["autoscan", "learn", "add", "edit", "rename", "autoname", "del", "show",
-                          "template", "templates", "save", "load", "preset",
-                          "help", "done", "cancel"]
-                suggestion = suggest_command(cmd, _known)
-                print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
-
         except (KeyboardInterrupt, EOFError):
             if _cancel(state, transaction):
                 return
         except OSError as e:
             print(err(f"Dateioperation fehlgeschlagen: {e}"))
+
+
+_KNOWN = ["autoscan", "learn", "add", "edit", "rename", "autoname", "del", "show",
+          "template", "templates", "save", "load", "preset", "help", "done", "cancel"]
+
+
+def _editor_step(state: AutoClickerState, transaction: _ItemTransaction) -> bool:
+    """Eine Eingabe des Item-Editors. True = der Editor ist beendet."""
+    with state.lock:
+        item_count = len(state.global_items)
+    user_input = safe_input(f"[ITEMS: {item_count}] > ").strip()
+    cmd = user_input.lower()
+
+    if cmd in ("done", "d"):
+        if not save_global_items(state):
+            print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
+            return False
+        print(ok("Item-Editor beendet."))
+        return True
+    if is_cancel(cmd):
+        return _cancel(state, transaction)
+    if cmd and not _dispatch_command(state, cmd, user_input):
+        suggestion = suggest_command(cmd, _KNOWN)
+        print(f"  -> Unbekannter Befehl.{suggestion} {hint('(? = Hilfe)')}")
+    return False
 
 
 def _print_editor_overview(state: AutoClickerState) -> None:
@@ -194,95 +195,127 @@ def _print_item_help(full: bool = False) -> None:
 
 
 def _dispatch_command(state: AutoClickerState, cmd: str, user_input: str) -> bool:
-    """Verarbeitet einen Editor-Befehl. Gibt False zurück wenn der Befehl unbekannt ist."""
-    if cmd == "help":
-        _print_item_help()
-        return True
+    """Verarbeitet einen Editor-Befehl. Gibt False zurück wenn der Befehl unbekannt ist.
 
-    if cmd in ("?", "help full", "??"):
-        _print_item_help(full=True)
-        return True
+    Ganze Befehle zuerst (`del all` vor `del <Nr>`, `templates` vor
+    `template <Nr>`), dann die Präfixe in fester Reihenfolge. `autoscan` und
+    `learn` bekommen die ganze Eingabe — sie lesen ihre Modi selbst.
+    """
+    handler = _EXACT.get(cmd)
+    if handler is None:
+        handler = next((h for prefix, h in _PREFIXED if cmd.startswith(prefix)), None)
+    if handler is None:
+        return False
+    handler(state, cmd, user_input)
+    return True
 
-    if cmd in ("show", "s"):
+
+def _cmd_help(state, cmd, user_input) -> None:
+    _print_item_help()
+
+
+def _cmd_help_full(state, cmd, user_input) -> None:
+    _print_item_help(full=True)
+
+
+def _cmd_show(state, cmd, user_input) -> None:
+    with state.lock:
+        if not state.global_items:
+            print("  (Keine Items)")
+            return
+        print(f"\nItems ({len(state.global_items)}):")
+        # Alle Nummernbefehle verwenden dieselbe Einfügereihenfolge.
+        for i, item in enumerate(state.global_items.values()):
+            print(f"  {i+1}. {item}")
+
+
+def _cmd_autoscan(state, cmd, user_input) -> None:
+    item_autoscan_command(state, cmd)
+
+
+def _cmd_learn(state, cmd, user_input) -> None:
+    item_learn_command(state, cmd)
+
+
+def _cmd_add(state, cmd, user_input) -> None:
+    item = create_item(state)
+    if item:
         with state.lock:
-            if state.global_items:
-                print(f"\nItems ({len(state.global_items)}):")
-                # Alle Nummernbefehle verwenden dieselbe Einfügereihenfolge.
-                for i, item in enumerate(state.global_items.values()):
-                    print(f"  {i+1}. {item}")
-            else:
-                print("  (Keine Items)")
-        return True
+            state.global_items[item.name] = item
+        print(f"  + Item '{item.name}' hinzugefügt")
 
-    if cmd.startswith("autoscan"):
-        item_autoscan_command(state, cmd)
-        return True
 
-    if cmd.startswith("learn"):
-        item_learn_command(state, cmd)
-        return True
+def _cmd_edit(state, cmd, user_input) -> None:
+    _handle_edit(state, cmd)
 
-    if cmd == "add":
-        item = create_item(state)
-        if item:
-            with state.lock:
-                state.global_items[item.name] = item
-            print(f"  + Item '{item.name}' hinzugefügt")
-        return True
 
-    if cmd.startswith("edit "):
-        _handle_edit(state, cmd)
-        return True
+def _cmd_delete_all(state, cmd, user_input) -> None:
+    _handle_delete_all(state)
 
-    if cmd == "del all":
-        _handle_delete_all(state)
-        return True
 
-    if cmd.startswith("del "):
-        _handle_delete_single(state, cmd)
-        return True
+def _cmd_delete_one(state, cmd, user_input) -> None:
+    _handle_delete_single(state, cmd)
 
-    if cmd.startswith("rename "):
-        handle_rename_command(state, cmd)
-        return True
 
-    if cmd == "autoname":
-        handle_autoname_command(state)
-        return True
+def _cmd_rename(state, cmd, user_input) -> None:
+    handle_rename_command(state, cmd)
 
-    if cmd == "templates":
-        handle_templates_command(state)
-        return True
 
-    if cmd.startswith("template "):
-        handle_template_command(state, cmd)
-        return True
+def _cmd_autoname(state, cmd, user_input) -> None:
+    handle_autoname_command(state)
 
-    if cmd.startswith("save "):
-        preset_name = user_input[5:].strip()
-        if preset_name:
-            save_item_preset(state, preset_name)
-        else:
-            print("  -> Format: save <Name>")
-        return True
 
-    if cmd.startswith("load "):
-        preset_name = user_input[5:].strip()
-        if preset_name:
-            load_item_preset(state, preset_name)
-        else:
-            print("  -> Format: load <Name>")
-        return True
+def _cmd_templates(state, cmd, user_input) -> None:
+    handle_templates_command(state)
 
-    if cmd.startswith("preset del "):
-        preset_name = user_input[11:].strip()
-        if preset_name:
-            delete_item_preset(preset_name)
-        else:
-            print("  -> Format: preset del <Name>")
-        return True
 
-    return False
+def _cmd_template(state, cmd, user_input) -> None:
+    handle_template_command(state, cmd)
+
+
+def _preset_command(user_input: str, prefix: str, action, usage: str) -> None:
+    """Preset-Befehle: der Name behält die getippte Schreibweise."""
+    preset_name = user_input[len(prefix):].strip()
+    if preset_name:
+        action(preset_name)
+    else:
+        print(f"  -> Format: {usage}")
+
+
+def _cmd_preset_save(state, cmd, user_input) -> None:
+    _preset_command(user_input, "save ", lambda name: save_item_preset(state, name),
+                    "save <Name>")
+
+
+def _cmd_preset_load(state, cmd, user_input) -> None:
+    _preset_command(user_input, "load ", lambda name: load_item_preset(state, name),
+                    "load <Name>")
+
+
+def _cmd_preset_delete(state, cmd, user_input) -> None:
+    _preset_command(user_input, "preset del ", delete_item_preset, "preset del <Name>")
+
+
+_EXACT = {
+    "help": _cmd_help,
+    "?": _cmd_help_full, "help full": _cmd_help_full, "??": _cmd_help_full,
+    "show": _cmd_show, "s": _cmd_show,
+    "add": _cmd_add,
+    "del all": _cmd_delete_all,
+    "autoname": _cmd_autoname,
+    "templates": _cmd_templates,
+}
+_PREFIXED = [
+    ("autoscan", _cmd_autoscan),
+    ("learn", _cmd_learn),
+    ("edit ", _cmd_edit),
+    ("del ", _cmd_delete_one),
+    ("rename ", _cmd_rename),
+    ("template ", _cmd_template),
+    ("save ", _cmd_preset_save),
+    ("load ", _cmd_preset_load),
+    ("preset del ", _cmd_preset_delete),
+]
 
 
 def _handle_edit(state: AutoClickerState, cmd: str) -> None:

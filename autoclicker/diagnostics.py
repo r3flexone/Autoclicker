@@ -235,55 +235,71 @@ def _check_sequences(state: AutoClickerState, report: CheckReport) -> None:
 
     files = list_available_sequences()
     report.checked.append(f"{len(files)} Sequenz(en)")
-
+    names = {n for n, _ in files}
     for name, path in files:
         seq = load_sequence_file(path)
         if seq is None:
             report.add_finding(LEVEL_ERROR, f"Sequenz '{name}'",
                           f"{path.name} ist nicht ladbar", "Datei prüfen oder neu anlegen")
             continue
+        _check_sequence(seq, names, report)
 
-        from .persistence import (list_available_item_scans, list_available_boss_scans,
-                                  list_available_icon_scans)
-        point_ids = {p.id for p in seq.points}
-        known = {
-            "item_scan": {n for n, _ in list_available_item_scans(seq.name)},
-            "boss_scan": {n for n, _ in list_available_boss_scans(seq.name)},
-            "boss_watcher": {n for n, _ in list_available_boss_scans(seq.name)},
-            "icon_scan": {n for n, _ in list_available_icon_scans(seq.name)},
-        }
-        phases = [("INIT", seq.init_steps)]
-        phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
-        phases.append(("END", seq.end_steps))
 
-        # Die Sprungmarke zeigt auf den Block: Lane-Index wie im Studio-Board
-        # (0 = INIT, dann die Loop-Phasen, zuletzt END), Zeile ab 0.
-        dead_refs, dead_scans = [], []
-        for lane, (phase, steps) in enumerate(phases):
-            for i, step in enumerate(steps, 1):
-                target = _block_target(lane, i - 1, seq.name)
-                if step.point_id is not None and step.point_id not in point_ids:
-                    dead_refs.append((f"{phase}[{i}] → Punkt #{step.point_id}", target))
-                for attr, names in known.items():
-                    ref = getattr(step, attr, None)
-                    if ref and ref not in names:
-                        dead_scans.append((f"{phase}[{i}] → {attr} '{ref}'", target))
+def _check_sequence(seq, sequence_names: set, report: CheckReport) -> None:
+    """Eine geladene Sequenz: tote Verweise, Folgesequenz, leere Phasen."""
+    subject = f"Sequenz '{seq.name}'"
+    dead_refs, dead_scans = _dead_references(seq)
+    for entry, target in _truncated(dead_refs):
+        report.add_finding(LEVEL_HINT, subject, f"{entry} gibt es nicht mehr",
+                           "Punkt im Punkte-Editor dieser Sequenz neu setzen", target)
+    for entry, target in _truncated(dead_scans):
+        report.add_finding(LEVEL_ERROR, subject, f"{entry} existiert nicht", target=target)
 
-        for entry, target in _truncated(dead_refs):
-            report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
-                          f"{entry} gibt es nicht mehr",
-                          "Punkt im Punkte-Editor dieser Sequenz neu setzen", target)
-        for entry, target in _truncated(dead_scans):
-            report.add_finding(LEVEL_ERROR, f"Sequenz '{seq.name}'",
-                          f"{entry} existiert nicht", target=target)
+    # Die Folgesequenz steht per Namen da — umbenannt oder gelöscht, fällt
+    # sie erst am Ende eines langen Laufs auf, und dann schläft man.
+    if seq.next_sequence and seq.next_sequence not in sequence_names:
+        report.add_finding(LEVEL_ERROR, subject,
+                           f"Folgesequenz '{seq.next_sequence}' existiert nicht",
+                           "im Studio unter SEQUENZ → Danach starten neu wählen",
+                           {"view": "editor", "sequence": seq.name, "field": "seq-next"})
+    if seq.total_steps() == 0:
+        report.add_finding(LEVEL_HINT, subject, "hat keine Schritte")
+    for lane, lp in enumerate(seq.loop_phases, 1):
+        if not lp.steps:
+            report.add_finding(LEVEL_HINT, subject, f"Loop-Phase '{lp.name}' ist leer",
+                               target=_block_target(lane, 0, seq.name))
 
-        if seq.total_steps() == 0:
-            report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'", "hat keine Schritte")
-        for lane, lp in enumerate(seq.loop_phases, 1):
-            if not lp.steps:
-                report.add_finding(LEVEL_HINT, f"Sequenz '{seq.name}'",
-                              f"Loop-Phase '{lp.name}' ist leer",
-                              target=_block_target(lane, 0, seq.name))
+
+def _dead_references(seq) -> tuple[list, list]:
+    """`(tote Punkt-Verweise, tote Scan-Verweise)`, je als `(Text, Sprungziel)`.
+
+    Die Sprungmarke zeigt auf den Block: Lane-Index wie im Studio-Board
+    (0 = INIT, dann die Loop-Phasen, zuletzt END), Zeile ab 0.
+    """
+    from .persistence import (list_available_item_scans, list_available_boss_scans,
+                              list_available_icon_scans)
+    point_ids = {p.id for p in seq.points}
+    boss_scans = {n for n, _ in list_available_boss_scans(seq.name)}
+    known = {
+        "item_scan": {n for n, _ in list_available_item_scans(seq.name)},
+        "boss_scan": boss_scans,
+        "boss_watcher": boss_scans,
+        "icon_scan": {n for n, _ in list_available_icon_scans(seq.name)},
+    }
+    phases = [("INIT", seq.init_steps)]
+    phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
+    phases.append(("END", seq.end_steps))
+
+    dead_refs, dead_scans = [], []
+    for lane, (phase, steps) in enumerate(phases):
+        for i, step in enumerate(steps, 1):
+            target = _block_target(lane, i - 1, seq.name)
+            if step.point_id is not None and step.point_id not in point_ids:
+                dead_refs.append((f"{phase}[{i}] → Punkt #{step.point_id}", target))
+            dead_scans += [(f"{phase}[{i}] → {attr} '{getattr(step, attr)}'", target)
+                           for attr, names in known.items()
+                           if getattr(step, attr, None) and getattr(step, attr) not in names]
+    return dead_refs, dead_scans
 
 
 def _truncated(entries: list) -> list:

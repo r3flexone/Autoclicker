@@ -1,12 +1,16 @@
 """
-Sequenz-Loader: lädt eine gespeicherte Sequenz und meldet, wenn Schritt-Koordinaten
-nicht zum gleichnamigen lokalen Punkt passen (z.B. nach Kopie von einem anderen PC).
-Geändert oder gespeichert wird dabei nichts - siehe _report_point_mismatches.
+Sequenz-Loader: lädt eine gespeicherte Sequenz und macht sie zur aktiven.
+
+Hier stand zusätzlich eine Diagnose, die Schritte ohne `point_id` mit dem
+gleichnamigen lokalen Punkt verglich. Seit Koordinaten nur noch im Punkt
+stehen, kommt ein solcher Schritt mit (0, 0) aus dem Loader — es gab nichts
+mehr zu vergleichen, und gerufen wurde sie auch nicht mehr. Gemeldet werden
+fehlende Punkte von `resolve()`.
 """
 
-from ...models import Sequence, AutoClickerState, ELSE_CLICK
+from ...models import AutoClickerState
 from ...persistence import activate_sequence, list_available_sequences, load_sequence_file
-from ...utils import col, hint, info, interactive_select, warn
+from ...utils import col, info, interactive_select
 
 
 def run_sequence_loader(state: AutoClickerState) -> None:
@@ -42,83 +46,3 @@ def run_sequence_loader(state: AutoClickerState) -> None:
     # CTRL+ALT+L, CTRL+ALT+S und CTRL+ALT+T ohne geladene Sequenz.
     activate_sequence(state, seq)
     print(f"\n{col('[ERFOLG]', 'green')} Sequenz '{seq.name}' geladen!\n")
-
-
-# Wie viele abweichende Schritte einzeln gezeigt werden, bevor nur noch gezählt wird.
-_MAX_HINTS = 5
-
-
-def _report_point_mismatches(state: AutoClickerState, sequence: Sequence) -> None:
-    """Meldet Schritte, deren Koordinaten nicht zum gleichnamigen lokalen Punkt passen.
-
-    Hier stand früher ein automatischer Remap: Schritte wurden über ihren NAMEN einem
-    lokalen Punkt zugeordnet, auf dessen Koordinaten umgeschrieben und die Sequenzdatei
-    sofort überschrieben. Das ist ersatzlos entfallen, aus zwei Gründen:
-
-    1. Für "der Punkt ist die Wahrheit" gibt es die Referenz (`point_id`), die zur Laufzeit
-       greift und nichts auf Platte anfasst. Zwei Mechanismen für dieselbe Aufgabe, einer
-       davon still und schreibend - das war die Altlast.
-    2. Der Name taugt nicht als Schlüssel: aufgenommene Punkte heissen per Default `P<id>`.
-       Eine Sequenz von einem anderen Rechner bringt also Schritte namens "P3" mit, und der
-       lokale "P3" liegt garantiert woanders. Der Remap hat solche Schritte stillschweigend
-       verschoben und gespeichert.
-
-    Geblieben ist die Diagnose. Zusammenführen kann man danach gezielt:
-    Editor -> `link` (verknüpft über exakte Koordinaten, meldet Mehrdeutigkeiten), oder
-    für einen anderen Bildschirm der Import mit Fenster-Remapping.
-    """
-    with state.lock:
-        local_by_name = {p.name: p for p in state.points if p.name}
-
-    if not local_by_name:
-        return
-
-    all_steps = (
-        sequence.init_steps +
-        [s for lp in sequence.loop_phases for s in lp.steps] +
-        sequence.end_steps
-    )
-
-    deviating = []   # (name, alt_xy, punkt_xy)
-    missing = set()
-
-    for step in all_steps:
-        # Schritte MIT Referenz regelt resolve_point_references beim Start - und meldet
-        # das dort auch. Hier nur die ohne.
-        if step.point_id is None and not step.wait_only and not step.key_press \
-                and not step.item_scan:
-            if step.name and (step.x != 0 or step.y != 0):
-                lp = local_by_name.get(step.name)
-                if lp is None:
-                    missing.add(step.name)
-                elif (step.x, step.y) != (lp.x, lp.y):
-                    deviating.append((step.name, (step.x, step.y), (lp.x, lp.y)))
-
-        ec = step.else_config
-        if ec and ec.action == ELSE_CLICK and ec.name:
-            lp = local_by_name.get(ec.name)
-            if lp is None:
-                if ec.x != 0 or ec.y != 0:
-                    missing.add(ec.name)
-            elif (ec.x, ec.y) != (lp.x, lp.y):
-                deviating.append((f"{ec.name} (else)", (ec.x, ec.y), (lp.x, lp.y)))
-
-    if missing:
-        print(f"\n{warn(f'{len(missing)} Punktname(n) gibt es lokal nicht:')}")
-        for name in sorted(missing):
-            print(f"    - '{name}'")
-        print(f"    {hint('Die Schritte klicken auf ihre eigenen Koordinaten - oft völlig ok.')}")
-
-    if deviating:
-        names = {a[0] for a in deviating}
-        print(f"\n{info(f'{len(names)} Schritt-Name(n) liegen woanders als der gleichnamige Punkt:')}")
-        shown = set()
-        for name, old, new in deviating:
-            if name in shown:
-                continue
-            shown.add(name)
-            if len(shown) > _MAX_HINTS:
-                print(f"    ... und {len(names) - _MAX_HINTS} weitere")
-                break
-            print(f"    '{name}': Schritt {old}, Punkt {new}")
-        print(f"    {hint('Nichts wurde geändert. Verknüpfen: Editor -> link (über Koordinaten).')}")

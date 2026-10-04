@@ -17,7 +17,11 @@ So sieht ein neues Modul aus:
     from autoclicker.irgendwas import funktion
     check("die Eigenschaft, um die es geht", function_obj(1) == 2)
 """
+import atexit
+import os
+import shutil
 import sys
+import tempfile
 import types
 from pathlib import Path
 
@@ -70,6 +74,57 @@ if not hasattr(ctypes, "windll"):
 REPO = Path(__file__).resolve().parent.parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
+
+# **Die Suite arbeitet in einem eigenen Ordner, nie im Repo.** Alle Pfade der
+# App sind CWD-relativ (`persistence/paths.py`), und jeder Test, der zwischen
+# zwei eigenen Sandboxen lief, schrieb in den Ordner, aus dem man die Suite
+# startet — also in die echten Daten: `.run.json`, `.recording.json` und
+# `.reclick.json` bei jedem Lauf (ein offenes Studio zeigte dann eine
+# Klick-Runde „Grund", die es nie gab, und die Zusammenfassung des letzten
+# echten Laufs war weg), dazu frueher ganze Sequenzordner („Studio", „Fokus",
+# „Ruhig" …). Gelesen wurde dabei auch die echte `config.json`, womit lokal
+# andere Werte galten als in der CI. Gesetzt wird der Ordner HIER, weil dieses
+# Modul vor dem ersten `autoclicker`-Import geladen wird — sonst laese
+# `config.py` beim Import schon die Datei im Repo.
+def repo_entries() -> set[str]:
+    """Was im Repo-Wurzelordner und unter `sequences/` liegt — nur Namen.
+
+    Namen statt Zeitstempel: eine nebenher laufende App darf ihre eigenen
+    Dateien weiterschreiben, ohne dass die Suite deshalb rot wird. Gefangen
+    wird, was die Suite NEU anlegt (ein Sequenzordner, ein Laufstatus); dass sie
+    vorhandene Dateien nicht ueberschreibt, sichert der eigene Arbeitsordner.
+    """
+    # `__pycache__` legt Python selbst an, nicht die Suite: ein `import main`
+    # schreibt ihn in den Wurzelordner, und in einem frischen Checkout gab es
+    # ihn vorher nicht. Die CI war daran vier Läufe lang in allen sechs
+    # Suite-Jobs rot, während jeder lokale Lauf grün war — hier ist
+    # PYTHONDONTWRITEBYTECODE gesetzt, also entsteht er gar nicht.
+    names = {p.name for p in REPO.iterdir()} - {"__pycache__"}
+    sequences = REPO / "sequences"
+    if sequences.is_dir():
+        names |= {f"sequences/{p.name}" for p in sequences.iterdir()}
+    return names
+
+
+REPO_ENTRIES = repo_entries()
+SANDBOX = Path(tempfile.mkdtemp(prefix="vertragssuite_"))
+os.chdir(SANDBOX)
+# **Und jeder Temp-Ordner eines Tests entsteht IN der Sandbox.** Rund hundert
+# Stellen legen mit `mkdtemp()` einen Ordner an, und kaum eine räumte ihn weg —
+# jeder Lauf liess Dutzende liegen, jede Gegenprobe noch einmal so viele: am
+# 03.10.2026 waren es über 44.000 Ordner im Temp-Verzeichnis. Hier statt in
+# jedem Testfall, aus demselben Grund wie beim Arbeitsordner: mit der Sandbox
+# geht beim Beenden alles weg, was darin angelegt wurde.
+tempfile.tempdir = str(SANDBOX)
+
+
+def _remove_sandbox() -> None:
+    # Unter Windows laesst sich das aktuelle Verzeichnis nicht loeschen.
+    os.chdir(REPO)
+    shutil.rmtree(SANDBOX, ignore_errors=True)
+
+
+atexit.register(_remove_sandbox)
 
 PASS, FAIL = 0, 0
 

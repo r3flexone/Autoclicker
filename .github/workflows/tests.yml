@@ -114,9 +114,10 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install flake8
-      # Nur die F-Regeln (das ist genau pyflakes: tote Importe, Tippfehler in Namen,
-      # doppelte Definitionen) - kein Formatierer, ueber Stil entscheidet hier
-      # niemand ausser dem Autor. flake8 statt pyflakes direkt, weil nur flake8 die
+      # Die F-Regeln (das ist genau pyflakes: tote Importe, Tippfehler in Namen,
+      # doppelte Definitionen) und die Komplexitaet (C90, Grenze und Ausnahmen in
+      # `.flake8`) - kein Formatierer, ueber Stil entscheidet hier niemand ausser
+      # dem Autor. flake8 statt pyflakes direkt, weil nur flake8 die
       # `# noqa: F401`-Kommentare kennt, mit denen die msvcrt-Stubs markiert sind;
       # pyflakes meldet die sonst bei jedem Lauf.
-      - run: python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/ tests/
+      - run: python -m flake8 --select=F,C90 autoclicker/ market_analysis/ main.py tools/ tests/

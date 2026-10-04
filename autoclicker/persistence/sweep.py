@@ -139,26 +139,7 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     seq_dir = _sequences_dir()
     if seq_dir.is_dir():
         for folder in sorted(e for e in seq_dir.iterdir() if e.is_dir()):
-            run_smoke = folder / "sequence.json"
-            if run_smoke.exists():
-                files.append((run_smoke, KIND_SEQUENCE, _rt_sequence))
-            for below, kind, rt in (
-                ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
-                ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
-                ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
-            ):
-                d = folder / below
-                if not d.is_dir():
-                    continue
-                for file in sorted(d.glob("*.json")):
-                    # Die Boss-Bibliothek liegt als `bibliothek.json` zwischen den
-                    # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
-                    # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
-                    # unlesbar und wuerde als "uebersprungen" gemeldet.
-                    if below == "boss_scans" and file.name == "bibliothek.json":
-                        files.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
-                    else:
-                        files.append((file, kind, rt))
+            files.extend(_sequence_folder_files(folder))
 
     # Presets sind programmweit und gehoeren keiner Sequenz.
     for folder, kind, rt in (
@@ -167,9 +148,33 @@ def collect_files() -> list[tuple[Path, str, RoundTrip]]:
     ):
         d = Path(folder)
         if d.is_dir():
-            for file in sorted(d.glob("*.json")):
-                files.append((file, kind, rt))
+            files.extend((file, kind, rt) for file in sorted(d.glob("*.json")))
+    return files
 
+
+def _sequence_folder_files(folder: Path) -> list[tuple[Path, str, RoundTrip]]:
+    """Was zu EINER Sequenz gehört: ihre sequence.json und ihre Scans."""
+    files = []
+    sequence_json = folder / "sequence.json"
+    if sequence_json.exists():
+        files.append((sequence_json, KIND_SEQUENCE, _rt_sequence))
+    for below, kind, rt in (
+        ("item_scans", KIND_ITEM_SCAN, _rt_item_scan),
+        ("boss_scans", KIND_BOSS_SCAN, _rt_boss_scan),
+        ("icon_scans", KIND_ICON_SCAN, _rt_icon_scan),
+    ):
+        d = folder / below
+        if not d.is_dir():
+            continue
+        for file in sorted(d.glob("*.json")):
+            # Die Boss-Bibliothek liegt als `bibliothek.json` zwischen den
+            # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
+            # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
+            # unlesbar und wuerde als "uebersprungen" gemeldet.
+            if below == "boss_scans" and file.name == "bibliothek.json":
+                files.append((file, KIND_GLOBAL_BOSSES, _rt_bosses))
+            else:
+                files.append((file, kind, rt))
     return files
 
 

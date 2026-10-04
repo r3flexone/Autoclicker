@@ -97,9 +97,11 @@ def run():
             "ns => ns.map(n => Math.round(n.getBoundingClientRect().height))")
         expect(len(field_heights) == 2 and field_heights[0] == field_heights[1],
                f"Zyklen und Bloecke haben verschiedene Kachelhoehen: {field_heights}")
+        # Eine Kachel ja — aber gestrichelt: mit derselben durchgezogenen wie
+        # „Zyklen" daneben sah die Anzahl aus wie ein Feld zum Tippen.
         expect(f.page.eval_on_selector(
-            "#seq-blocks", "e => getComputedStyle(e).borderTopStyle") == "solid",
-            "der berechneten Blockanzahl fehlt die sichtbare Kachel")
+            "#seq-blocks", "e => getComputedStyle(e).borderTopStyle") == "dashed",
+            "die berechnete Blockanzahl sieht aus wie ein Eingabefeld")
         sticky = f.page.eval_on_selector(head, "e => getComputedStyle(e).position")
         expect(sticky == "sticky", f"der oberste Block klebt nicht: {sticky}")
         # Und er klebt an der SPALTE: hinge er an einem nicht scrollenden

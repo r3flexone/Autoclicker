@@ -2,6 +2,7 @@
 
 import base64
 import io
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ...models import ItemProfile, ItemScanConfig, ItemSlot
@@ -9,6 +10,40 @@ from ...utils import unique_name
 from .model import hex_color
 from .scan_contract import KIND_ITEM
 from .scan_model import existing_categories, next_item_name, save_template
+
+
+@dataclass
+class _LearnResult:
+    """Was das Übernehmen der Lernvorschau bewirkt hat — für die Meldung."""
+    assigned: set
+    new: list = field(default_factory=list)
+    variants: list = field(default_factory=list)
+    edited: list = field(default_factory=list)
+    unchanged: set = field(default_factory=set)
+    metadata_set: set = field(default_factory=set)
+
+    def text(self) -> str:
+        parts = []
+        if self.new:
+            parts.append(f"{len(self.new)} neue Item(s)")
+        if self.variants:
+            parts.append(f"{len(self.variants)} Grössenvariante(n) ergänzt")
+        if self.edited:
+            parts.append(f"{len(self.edited)} bestehende Item(s) bearbeitet")
+        if self.unchanged:
+            parts.append(f"{len(self.unchanged)} bereits vollständig eingerichtet")
+        return ", ".join(parts) + "." if parts else "Keine Änderungen."
+
+
+_ITEM_SETTERS = {
+    "name": "_item_set_name",
+    "active": "_item_set_active",
+    "category": "_item_set_category",
+    "priority": "_item_set_priority",
+    "confidence": "_item_set_confidence",
+    "confirmation": "_item_set_confirmation",
+    "confirmation_delay": "_item_set_confirmation_delay",
+}
 
 
 class ScanLearningMixin:
@@ -69,73 +104,69 @@ class ScanLearningMixin:
         if self._photo is None:
             return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
 
+        review = []
+        empty_slots = 0
+        assigned = set(self.items)
+        for slot in slots:
+            row = self._learn_row(slot, assigned)
+            if row == "empty":
+                empty_slots += 1
+            elif row is not None:
+                review.append(row)
+        self._learn_review = review
+        return self._learn_preview_report(review, empty_slots)
+
+    def _learn_row(self, slot, assigned: set):
+        """Eine Zeile der Lernvorschau — "empty" für einen leeren Slot, None ohne Bild."""
         from ..item_editor.markers import (
             _find_matching_existing_item, _item_has_compatible_template,
             _prepare_learning_image,
         )
         from ...config import CONFIG
-
-        review = []
-        empty_slots = 0
-        assigned = set(self.items)
-        for slot in slots:
-            crop = self._photo_crop(slot.scan_region)
-            if crop is None:
-                continue
-            masked, _marker, is_blank = _prepare_learning_image(
-                crop, slot.slot_color)
-            if is_blank:
-                empty_slots += 1
-                continue
-            match = (_find_matching_existing_item(
-                crop, list(self.items.items()), CONFIG.scan_min_confidence,
-                self.filepath.parent / "templates")
-                if self._has_opencv() else None)
-            compatible = bool(
-                match and _item_has_compatible_template(
-                    self.items[match], crop, self.filepath.parent / "templates"))
-            variant = match if match and not compatible else ""
-            # Ein sicher erkannter Treffer IST das vorhandene Item. Zuvor stand
-            # bei einem kompatiblen Treffer oben „Bogen erkannt", im Namensfeld
-            # aber „Item 1". Der Platzhalter war nur fuer einen moeglichen
-            # manuellen Widerspruch gedacht und bereitete beim Ankreuzen sogar
-            # ein Duplikat vor. Der vorhandene Datensatz ist deshalb immer der
-            # sichtbare Standard; `new_name` bleibt nur fuer die ausdrueckliche
-            # UI-Aktion „Als anderes Item lernen" erhalten.
-            new_name = next_item_name({n: None for n in assigned})
-            assigned.add(new_name)
-            if match:
-                item = self.items[match]
-                name = match
-                category = item.category or ""
-                priority = item.priority
-            else:
-                name = new_name
-                category = ""
-                priority = 1
+        crop = self._photo_crop(slot.scan_region)
+        if crop is None:
+            return None
+        masked, _marker, is_blank = _prepare_learning_image(crop, slot.slot_color)
+        if is_blank:
+            return "empty"
+        templates = self.filepath.parent / "templates"
+        match = (_find_matching_existing_item(
+            crop, list(self.items.items()), CONFIG.scan_min_confidence, templates)
+            if self._has_opencv() else None)
+        compatible = bool(match and _item_has_compatible_template(self.items[match], crop, templates))
+        # Ein sicher erkannter Treffer IST das vorhandene Item. Zuvor stand
+        # bei einem kompatiblen Treffer oben „Bogen erkannt", im Namensfeld
+        # aber „Item 1". Der Platzhalter war nur fuer einen moeglichen
+        # manuellen Widerspruch gedacht und bereitete beim Ankreuzen sogar
+        # ein Duplikat vor. Der vorhandene Datensatz ist deshalb immer der
+        # sichtbare Standard; `new_name` bleibt nur fuer die ausdrueckliche
+        # UI-Aktion „Als anderes Item lernen" erhalten.
+        new_name = next_item_name({n: None for n in assigned})
+        assigned.add(new_name)
+        item = self.items[match] if match else None
+        return {
+            "slot": slot.name,
+            "name": match or new_name,
+            "category": (item.category or "") if item else "",
+            "priority": item.priority if item else 1,
+            "existing": match or "", "new_name": new_name,
+            "duplicate": match if compatible else "",
+            "variant": match if match and not compatible else "",
             # Der Arbeitsbestand gehört bereits vollständig zum offenen Scan.
             # Es gibt keine zweite Mitgliedschaft mehr.
-            in_scan = bool(match)
-            can_add = False
-            review.append({
-                "slot": slot.name, "name": name, "category": category,
-                "priority": priority,
-                "existing": match or "", "new_name": new_name,
-                "duplicate": match if compatible else "",
-                "variant": variant,
-                "in_scan": in_scan, "can_add": can_add,
-                # Das Haekchen beschreibt die gewuenschte Scan-Mitgliedschaft:
-                # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
-                # bewusst abwaehlen und damit aus genau diesem Scan entfernen.
-                "ticked": True,
-                "image": self._image_url(masked), "crop": masked,
-            })
-        self._learn_review = review
+            "in_scan": bool(match), "can_add": False,
+            # Das Haekchen beschreibt die gewuenschte Scan-Mitgliedschaft:
+            # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
+            # bewusst abwaehlen und damit aus genau diesem Scan entfernen.
+            "ticked": True,
+            "image": self._image_url(masked), "crop": masked,
+        }
+
+    def _learn_preview_report(self, review: list, empty_slots: int) -> dict:
         if not review:
             if empty_slots:
                 return self._scan_report(
-                    f"{empty_slots} leere Slot(s) übersprungen — nichts zu lernen.",
-                    "info")
+                    f"{empty_slots} leere Slot(s) übersprungen — nichts zu lernen.", "info")
             return self._scan_report("Keiner der Slots liegt im Screenshot.", "warn")
         duplicate = sum(bool(z["duplicate"]) for z in review)
         variants = sum(bool(z["variant"]) for z in review)
@@ -147,8 +178,7 @@ class ScanLearningMixin:
         if empty_slots:
             parts.append(f"{empty_slots} leere übersprungen")
         extra = " - " + ", ".join(parts) if parts else ""
-        return self._scan_report(
-            f"{len(review)} Vorschlaege vorbereitet{extra}.", "info")
+        return self._scan_report(f"{len(review)} Vorschlaege vorbereitet{extra}.", "info")
 
     @staticmethod
     def _image_url(img) -> str:
@@ -203,31 +233,20 @@ class ScanLearningMixin:
         """Uebernimmt Items und die gewuenschte Mitgliedschaft im offenen Scan."""
         inputs = (data or {}).get("rows") or []
         by_slot = {str(z.get("slot") or ""): z for z in inputs if isinstance(z, dict)}
-
-        def is_selected(line: dict) -> bool:
-            user_input = by_slot.get(line["slot"], {})
-            return bool(user_input.get("ticked", line["ticked"]))
-
-        ticked = [
-            line for line in self._learn_review if is_selected(line)
-        ]
+        ticked = [line for line in self._learn_review
+                  if bool(by_slot.get(line["slot"], {}).get("ticked", line["ticked"]))]
         if not ticked:
             self._learn_review = []
             return self._scan_report(
                 "Keine Items ausgewählt; nichts gelernt oder geändert.", "info")
 
-        from ..item_editor.markers import _collect_markers_silent
-        from ...config import CONFIG
         self._remember("Item-Auswahl der Lernvorschau uebernommen")
-        new = []
-        variants = []
-        unchanged = set()
-        edited = []
-        metadata_set = set()
-
-        assigned = set(self.items)
+        result = _LearnResult(assigned=set(self.items))
         for line in ticked:
             user_input = by_slot.get(line["slot"], {})
+            slot = self.slots.get(line["slot"])
+            if slot is None:
+                continue
             as_other = bool(user_input.get("as_other", False))
             detected_name = str(line.get("existing") or "")
             if detected_name and not as_other:
@@ -236,172 +255,177 @@ class ScanLearningMixin:
                 base_name = detected_name
             else:
                 base_name = (str(user_input.get("name") or line["name"]).strip()
-                         or line["name"])
-            slot = self.slots.get(line["slot"])
-            if slot is None:
-                continue
-            crop = line["crop"]
+                             or line["name"])
             # Ein bereits vorhandener Name bedeutet bewusst: dieses Bild ist
             # dasselbe Item in einem anderen Slot-Typ. Seine sichtbaren Daten
             # können bearbeitet werden; bei Bedarf kommt eine Bildvariante hinzu.
             existing = self.items.get(base_name)
             if existing is not None:
-                # Bei einem regulär erkannten Treffer stammen die sichtbaren
-                # Werte aus genau diesem Profil und dürfen direkt bearbeitet
-                # werden. Bei „anderes Item“ kann ein fremder vorhandener Name
-                # gewählt werden; dessen Metadaten werden nicht mit den leeren
-                # Standardfeldern überschrieben.
-                if detected_name and not as_other and base_name not in metadata_set:
-                    before = (existing.category, existing.priority)
-                    category = self._category_normalize(
-                        user_input.get("category", line["category"]))
-                    priority, moved = self._priority_place(
-                        category,
-                        user_input.get("priority", line["priority"]),
-                        exclude=existing,
-                    )
-                    existing.category = category
-                    existing.priority = priority
-                    metadata_set.add(base_name)
-                    if before != (category, priority) or moved:
-                        edited.append(base_name)
-
-                from ..item_editor.markers import _item_has_compatible_template
-                if _item_has_compatible_template(
-                        existing, crop, self.filepath.parent / "templates"):
-                    self._sync_objects()
-                    if base_name not in edited:
-                        unchanged.add(base_name)
-                    continue
-                file = save_template(crop, base_name,
-                                      template_dir=self.filepath.parent / "templates")
-                if file:
-                    if existing.template:
-                        existing.template_variants.append(file)
-                    else:
-                        existing.template = file
-                    if base_name not in variants:
-                        variants.append(base_name)
-                    self._sync_objects()
-                continue
-
-            name = unique_name(base_name, assigned)
-            assigned.add(name)
-            marker = _collect_markers_silent(crop, slot.slot_color)
-            category = self._category_normalize(user_input.get("category"))
-            priority, _ = self._priority_place(
-                category, user_input.get("priority", line["priority"]))
-            self.items[name] = ItemProfile(
-                name=name, marker_colors=[tuple(c) for c in marker],
-                category=category, priority=priority,
-                template=save_template(crop, name,
-                                       template_dir=self.filepath.parent / "templates"),
-                min_confidence=CONFIG.scan_min_confidence,
-            )
-            self._add_to_scan(KIND_ITEM, name)
-            new.append(name)
+                own = bool(detected_name) and not as_other
+                self._learn_into_existing(existing, base_name, line, user_input, own, result)
+            else:
+                self._learn_new_item(base_name, slot, line, user_input, result)
         self._learn_review = []
-        selected = new + variants + edited
+        selected = result.new + result.variants + result.edited
         if selected:
             self.scan_kind, self.scan_name = KIND_ITEM, selected[0]
-        parts = []
-        if new:
-            parts.append(f"{len(new)} neue Item(s)")
-        if variants:
-            parts.append(f"{len(variants)} Grössenvariante(n) ergänzt")
-        if edited:
-            parts.append(f"{len(edited)} bestehende Item(s) bearbeitet")
-        if unchanged:
-            parts.append(f"{len(unchanged)} bereits vollständig eingerichtet")
-        text = ", ".join(parts) + "." if parts else "Keine Änderungen."
-        return self._scan_changed(text)
+        return self._scan_changed(result.text())
+
+    def _learn_into_existing(self, existing: ItemProfile, base_name: str, line: dict,
+                             user_input: dict, own: bool, result: "_LearnResult") -> None:
+        """Ein Vorlagenbild für ein vorhandenes Item: Daten bearbeiten, Variante anhängen.
+
+        Bei einem regulär erkannten Treffer (`own`) stammen die sichtbaren Werte
+        aus genau diesem Profil und dürfen direkt bearbeitet werden. Bei „anderes
+        Item“ kann ein fremder vorhandener Name gewählt werden; dessen Metadaten
+        werden nicht mit den leeren Standardfeldern überschrieben.
+        """
+        from ..item_editor.markers import _item_has_compatible_template
+        if own and base_name not in result.metadata_set:
+            before = (existing.category, existing.priority)
+            category = self._category_normalize(user_input.get("category", line["category"]))
+            priority, moved = self._priority_place(
+                category, user_input.get("priority", line["priority"]), exclude=existing)
+            existing.category = category
+            existing.priority = priority
+            result.metadata_set.add(base_name)
+            if before != (category, priority) or moved:
+                result.edited.append(base_name)
+
+        templates = self.filepath.parent / "templates"
+        if _item_has_compatible_template(existing, line["crop"], templates):
+            self._sync_objects()
+            if base_name not in result.edited:
+                result.unchanged.add(base_name)
+            return
+        file = save_template(line["crop"], base_name, template_dir=templates)
+        if not file:
+            return
+        if existing.template:
+            existing.template_variants.append(file)
+        else:
+            existing.template = file
+        if base_name not in result.variants:
+            result.variants.append(base_name)
+        self._sync_objects()
+
+    def _learn_new_item(self, base_name: str, slot, line: dict, user_input: dict,
+                        result: "_LearnResult") -> None:
+        """Ein neues Item aus dem Vorlagenbild, unter einem freien Namen."""
+        from ..item_editor.markers import _collect_markers_silent
+        from ...config import CONFIG
+        name = unique_name(base_name, result.assigned)
+        result.assigned.add(name)
+        marker = _collect_markers_silent(line["crop"], slot.slot_color)
+        category = self._category_normalize(user_input.get("category"))
+        priority, _ = self._priority_place(category, user_input.get("priority", line["priority"]))
+        self.items[name] = ItemProfile(
+            name=name, marker_colors=[tuple(c) for c in marker],
+            category=category, priority=priority,
+            template=save_template(line["crop"], name,
+                                   template_dir=self.filepath.parent / "templates"),
+            min_confidence=CONFIG.scan_min_confidence,
+        )
+        self._add_to_scan(KIND_ITEM, name)
+        result.new.append(name)
 
     def scan_item_set(self, data: dict) -> dict:
-        """Ein Feld eines Items — Aktiv, Name, Kategorie, Priorität, Konfidenz."""
+        """Ein Feld eines Items — Aktiv, Name, Kategorie, Priorität, Konfidenz.
+
+        Je Feld eine Methode (`_ITEM_SETTERS`); jede legt ihren Rückgängig-Stand
+        selbst ab, und zwar erst, wenn sich wirklich etwas ändert.
+        """
         name = str((data or {}).get("name") or "")
         field = str((data or {}).get("field") or "")
         value = (data or {}).get("value")
         item = self.items.get(name)
         if item is None:
             return self._scan_report(f"Item '{name}' gibt es nicht.", "err")
+        setter = _ITEM_SETTERS.get(field)
+        if setter is None:
+            return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
+        return getattr(self, setter)(item, name, value)
 
-        if field == "name":
-            return self._item_rename(item, str(value or "").strip())
-        if field == "active":
-            new = bool(value)
-            if item.enabled == new:
-                return self.scan_data()
-            self._remember(f"'{name}': {'ein' if new else 'aus'}")
-            item.enabled = new
-            return self._scan_changed(
-                f"{item.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
-        if field == "category":
-            self._remember(f"'{name}': Kategorie")
-            item.category = self._category_normalize(value)
-            # **Ein Rang, den es schon gibt, ist kein Rang.** Items derselben
-            # Kategorie konkurrieren miteinander; bei gleicher Zahl entscheidet
-            # die Scan-Reihenfolge, also der Zufall. Wer ein Item in eine
-            # Kategorie schiebt, hat über seine Priorität nichts gesagt — dann
-            # ist der nächste freie Platz die einzige Antwort, die nicht rät.
-            # Eine ausdrücklich getippte Zahl bleibt dagegen stehen (der Zweig
-            # 'prioritaet' unten fasst sie nicht an).
-            free = self._free_priority(item)
-            if free is None:
-                return self._scan_changed()
-            old = item.priority
-            item.priority = free
-            return self._scan_changed(
-                f"{name}: P{old} war in '{item.category}' vergeben — jetzt P{free}.")
-        if field == "priority":
-            self._remember(f"'{name}': Priorität")
-            item.priority, moved = self._priority_place(
-                item.category, value, exclude=item)
-            try:
-                to_front = int(value) == 0
-            except (TypeError, ValueError):
-                to_front = False
-            if to_front and not item.category:
-                return self._scan_changed(
-                    f"{name}: Priorität 1. Für 'ganz nach vorn' erst eine Kategorie wählen.",
-                    "warn")
-            extra = (f"; {moved} andere Item(s) in '{item.category}' nach hinten gerückt"
-                      if moved else "")
-            return self._scan_changed(f"{name}: Priorität {item.priority}{extra}.")
-        if field == "confidence":
-            self._remember(f"'{name}': Konfidenz")
-            item.min_confidence = max(0.0, min(1.0, float(value or 0)))
+    def _item_set_name(self, item, name: str, value) -> dict:
+        return self._item_rename(item, str(value or "").strip())
+
+    def _item_set_active(self, item, name: str, value) -> dict:
+        new = bool(value)
+        if item.enabled == new:
+            return self.scan_data()
+        self._remember(f"'{name}': {'ein' if new else 'aus'}")
+        item.enabled = new
+        return self._scan_changed(
+            f"{item.name} ist {'eingeschaltet' if new else 'ausgeschaltet'}.")
+
+    def _item_set_category(self, item, name: str, value) -> dict:
+        self._remember(f"'{name}': Kategorie")
+        item.category = self._category_normalize(value)
+        # **Ein Rang, den es schon gibt, ist kein Rang.** Items derselben
+        # Kategorie konkurrieren miteinander; bei gleicher Zahl entscheidet
+        # die Scan-Reihenfolge, also der Zufall. Wer ein Item in eine
+        # Kategorie schiebt, hat über seine Priorität nichts gesagt — dann
+        # ist der nächste freie Platz die einzige Antwort, die nicht rät.
+        # Eine ausdrücklich getippte Zahl bleibt dagegen stehen
+        # (`_item_set_priority` fasst sie nicht an).
+        free = self._free_priority(item)
+        if free is None:
             return self._scan_changed()
-        if field == "confirmation":
-            # Leer heisst „keine Bestätigung" — und das ist etwas anderes als
-            # Punkt 0. Ein Punkt, den es nicht gibt, wird abgelehnt statt still
-            # gesetzt: sonst klickte der Lauf auf (0, 0).
-            if value in (None, "", "0", 0):
-                self._remember(f"'{name}': Bestätigungsklick")
-                item.confirm_point_id = None
-                item.confirm_point = None
-                return self._scan_changed(f"{name}: kein Bestätigungsklick mehr.")
-            try:
-                point_id = int(value)
-            except (TypeError, ValueError):
-                return self._scan_report("Der Bestätigungsklick braucht einen Punkt.",
-                                        "err")
-            if not any(p.id == point_id for p in self.points):
-                return self._scan_report(f"Punkt #{point_id} gibt es nicht.", "err")
+        old = item.priority
+        item.priority = free
+        return self._scan_changed(
+            f"{name}: P{old} war in '{item.category}' vergeben — jetzt P{free}.")
+
+    def _item_set_priority(self, item, name: str, value) -> dict:
+        self._remember(f"'{name}': Priorität")
+        item.priority, moved = self._priority_place(item.category, value, exclude=item)
+        try:
+            to_front = int(value) == 0
+        except (TypeError, ValueError):
+            to_front = False
+        if to_front and not item.category:
+            return self._scan_changed(
+                f"{name}: Priorität 1. Für 'ganz nach vorn' erst eine Kategorie wählen.",
+                "warn")
+        extra = (f"; {moved} andere Item(s) in '{item.category}' nach hinten gerückt"
+                  if moved else "")
+        return self._scan_changed(f"{name}: Priorität {item.priority}{extra}.")
+
+    def _item_set_confidence(self, item, name: str, value) -> dict:
+        self._remember(f"'{name}': Konfidenz")
+        item.min_confidence = max(0.0, min(1.0, float(value or 0)))
+        return self._scan_changed()
+
+    def _item_set_confirmation(self, item, name: str, value) -> dict:
+        # Leer heisst „keine Bestätigung" — und das ist etwas anderes als
+        # Punkt 0. Ein Punkt, den es nicht gibt, wird abgelehnt statt still
+        # gesetzt: sonst klickte der Lauf auf (0, 0).
+        if value in (None, "", "0", 0):
             self._remember(f"'{name}': Bestätigungsklick")
-            item.confirm_point_id = point_id
-            self._confirmation_apply(item)
-            return self._scan_changed(f"{name}: bestätigt über Punkt #{point_id}.")
-        if field == "confirmation_delay":
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                return self._scan_report("Die Wartezeit muss eine Zahl sein.", "err")
-            if number < 0:
-                return self._scan_report("Die Wartezeit kann nicht negativ sein.", "err")
-            self._remember(f"'{name}': Wartezeit vor der Bestätigung")
-            item.confirm_delay = number
-            return self._scan_changed()
-        return self._scan_report(f"Unbekanntes Feld '{field}'.", "err")
+            item.confirm_point_id = None
+            item.confirm_point = None
+            return self._scan_changed(f"{name}: kein Bestätigungsklick mehr.")
+        try:
+            point_id = int(value)
+        except (TypeError, ValueError):
+            return self._scan_report("Der Bestätigungsklick braucht einen Punkt.", "err")
+        if not any(p.id == point_id for p in self.points):
+            return self._scan_report(f"Punkt #{point_id} gibt es nicht.", "err")
+        self._remember(f"'{name}': Bestätigungsklick")
+        item.confirm_point_id = point_id
+        self._confirmation_apply(item)
+        return self._scan_changed(f"{name}: bestätigt über Punkt #{point_id}.")
+
+    def _item_set_confirmation_delay(self, item, name: str, value) -> dict:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return self._scan_report("Die Wartezeit muss eine Zahl sein.", "err")
+        if number < 0:
+            return self._scan_report("Die Wartezeit kann nicht negativ sein.", "err")
+        self._remember(f"'{name}': Wartezeit vor der Bestätigung")
+        item.confirm_delay = number
+        return self._scan_changed()
 
     def _confirmation_apply(self, item) -> None:
         """Zieht `confirm_point` an der Referenz nach — abgeleiteter Arbeitswert.
@@ -450,9 +474,61 @@ class ScanLearningMixin:
         old = item.name
         self.items = {(new if k == old else k): v for k, v in self.items.items()}
         item.name = new
+        failed = self._templates_follow_name(item, old, new)
         self._sync_objects()
         self.scan_name = new
+        if failed:
+            return self._scan_changed(
+                f"'{old}' heisst jetzt '{new}' — {failed} Vorlage(n) konnten nicht "
+                "umbenannt werden und behalten ihren alten Dateinamen.", "warn")
         return self._scan_changed(f"'{old}' heisst jetzt '{new}'")
+
+    def _templates_follow_name(self, item: ItemProfile, old: str, new: str) -> int:
+        """Die Vorlagen eines umbenannten Items bekommen seinen neuen Namen.
+
+        **Sonst gehört ein Dateiname danach zu einem fremden Namen.** Aus
+        „Auto Slot 19 2" wurde „Überlegener Edelstein", die Vorlage hiess weiter
+        `auto_slot_19_2.png` — und das nächste Auto-Lernen in Slot 19 nahm den
+        wieder freien Namen und schrieb eine Truhe in genau diese Datei. Das
+        Überschreiben verhindert inzwischen `free_template_file()`; hier geht es
+        darum, dass Name und Datei gar nicht erst auseinanderlaufen.
+
+        **Kopiert, nicht verschoben.** Rückgängig (`_remember`) und „Verwerfen &
+        neu laden" drehen nur den Speicher bzw. die JSON zurück, nie die Platte:
+        nach einem Verschieben zeigte das zurückgeholte Item auf eine Datei, die
+        es nicht mehr gibt. Die alte Datei bleibt deshalb liegen — dieselbe
+        Haltung wie beim Löschen einer Vorlage („bleibt als Sicherung").
+        Ein Grössen-Anhang (`_62x57`) wandert mit. Gibt `Anzahl Fehlschläge`
+        zurück; eine Vorlage, die sich nicht kopieren lässt, behält ihren Namen.
+        """
+        import shutil
+        from pathlib import Path
+        from ...persistence import free_template_file
+        from ...utils import sanitize_filename
+        folder = Path(self.filepath).parent / "templates"
+        old_stem, new_stem = sanitize_filename(old), sanitize_filename(new)
+        renamed: dict[str, str] = {}
+        failed = 0
+        for file_name in item.template_names():
+            stem = Path(file_name).stem
+            target = (new_stem + stem[len(old_stem):] if stem.startswith(old_stem)
+                      else new_stem)
+            if target == stem or not (folder / file_name).is_file():
+                continue
+            new_file = free_template_file(folder, target)
+            try:
+                shutil.copy2(folder / file_name, folder / new_file)
+            except OSError:
+                failed += 1
+                continue
+            renamed[file_name] = new_file
+            if file_name in self._preview:
+                self._preview[new_file] = self._preview[file_name]
+        if renamed:
+            if item.template in renamed:
+                item.template = renamed[item.template]
+            item.template_variants = [renamed.get(v, v) for v in item.template_variants]
+        return failed
 
     def scan_item_delete(self, data: Optional[dict] = None) -> dict:
         name = self.scan_name if self.scan_kind == KIND_ITEM else ""
@@ -627,7 +703,10 @@ class ScanLearningMixin:
             return self._scan_report(
                 f"Keine Items in '{old or 'ohne Kategorie'}'.", "warn")
 
-        self._remember(f"Kategorie '{old or 'without'}' → '{new or 'without'}'")
+        # Das ist der Tooltip von „↶ Zurück", also Sprache, kein Schlüssel:
+        # hier stand 'without' — ein Rest des Englisch-Umbaus.
+        self._remember(f"Kategorie '{old or 'ohne Kategorie'}' → "
+                       f"'{new or 'ohne Kategorie'}'")
         for item in affected:
             item.category = new
         # **Zusammengelegt heisst doppelte Ränge.** Zwei Items mit P1 in
@@ -838,60 +917,30 @@ class ScanLearningMixin:
 
     def scan_autoname_step(self, data: Optional[dict] = None) -> dict:
         """Ein Item des laufenden Durchgangs — fragt das Modell, benennt um."""
+        from ...llm_vision import TIMEOUT
+        from ...utils import clean_item_name
+
         run = getattr(self, "_autoname", None)
         if not run:
             return self._scan_report("Es läuft kein Benenn-Durchgang.", "warn")
         if not run["open"]:
             return self.scan_data()
 
-        from PIL import Image
-        from ...llm_vision import TIMEOUT, suggest_item_name_with_reason
-        from ...utils import clean_item_name
-
-        config = run["config"]
         item = self.items.get(run["open"].pop(0))
-        if item is None or not item.template_names():
-            # Zwischen Start und Schritt kann gelöscht worden sein.
+        template_value = self._autoname_template(item)
+        if template_value is None:
+            # Zwischen Start und Schritt kann gelöscht worden sein — oder die
+            # Vorlage ist nicht lesbar.
             run["without"] += 1
             return self.scan_data()
 
-        path = self.filepath.parent / "templates" / item.template_names()[0]
-        try:
-            with Image.open(path) as image:
-                template_value = image.copy()
-        except (OSError, ValueError):
-            run["without"] += 1
-            return self.scan_data()
-
-        def ask_for(limit):
-            # `llm_reasoning` und `llm_max_tokens` galten nur fuer den
-            # Boss-Scan — wer sie einschaltete, weil die BENENNUNG besser
-            # werden soll, aenderte nichts. Ein Schalter, der an der Stelle
-            # wirkungslos ist, an der man ihn sucht, ist schlimmer als keiner.
-            return suggest_item_name_with_reason(
-                template_value, provider=config.llm_provider,
-                endpoint=config.llm_endpoint, model=config.llm_model,
-                timeout=limit, candidates=run["selection"],
-                reasoning=config.llm_reasoning,
-                max_tokens=config.llm_max_tokens)
-
-        proposal, reason = ask_for(config.llm_timeout)
-        # **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
-        # echten Bestand: die ersten vier Anfragen ueber 120 s, die folgenden
-        # 3,5 s. Der zweite Versuch trifft also ein warmes Modell und kostet
-        # fast nichts — ihn wegzulassen hiesse, den Anfang jedes Durchgangs zu
-        # verschenken. Mehr als einer waere Warten ohne Aussicht: antwortet es
-        # auch dann nicht, liegt es nicht am Aufwaermen.
-        if reason == TIMEOUT:
-            proposal, reason = ask_for(max(config.llm_timeout * 2, 120))
-
+        proposal, reason = _autoname_ask(run, template_value)
         base_name = clean_item_name(proposal) if proposal else ""
         if not base_name:
             # Ein Timeout wird getrennt gezaehlt: "ohne Vorschlag" hiesse, das
             # Modell habe hingesehen und nichts erkannt.
             run["timeouts" if reason == TIMEOUT else "without"] += 1
             return self.scan_data()
-
         if base_name == item.name:
             return self.scan_data()
 
@@ -910,7 +959,6 @@ class ScanLearningMixin:
         inventory = self.items.get(base_name)
         if inventory is not None:
             return self._autoname_variant(inventory, item, run)
-        new = base_name
 
         # **Ein Stand fuer den ganzen Durchgang, und erst beim ersten Treffer.**
         # Vorher abgelegt waere er ein STRG+Z, das nichts zurueckdreht, wenn das
@@ -920,10 +968,22 @@ class ScanLearningMixin:
         if not run["remembered"]:
             self._remember(str(run["total"]) + " Item(s) per LLM benannt")
             run["remembered"] = True
-        self._item_rename(item, new, remember=False)
+        self._item_rename(item, base_name, remember=False)
         run["renamed"] += 1
         run["named"].append(item)
         return self._scan_changed()
+
+    def _autoname_template(self, item):
+        """Die erste Vorlage des Items als Bild — None, wenn es fehlt oder unlesbar ist."""
+        from PIL import Image
+        if item is None or not item.template_names():
+            return None
+        path = self.filepath.parent / "templates" / item.template_names()[0]
+        try:
+            with Image.open(path) as image:
+                return image.copy()
+        except (OSError, ValueError):
+            return None
 
     def _autoname_variant(self, inventory, item, run: dict) -> dict:
         """Die Vorlage des Doppels an das bekannte Item haengen, das Doppel weg.
@@ -1074,6 +1134,38 @@ class ScanLearningMixin:
         return ItemScanConfig(name="").color_tolerance
 
     # -------------------------------------------------------- Scan-Konfigs
+
+
+def _autoname_ask(run: dict, template_value) -> tuple:
+    """Fragt das Modell nach einem Namen — `(Vorschlag, Grund)`.
+
+    `llm_reasoning` und `llm_max_tokens` galten nur fuer den Boss-Scan — wer
+    sie einschaltete, weil die BENENNUNG besser werden soll, aenderte nichts.
+    Ein Schalter, der an der Stelle wirkungslos ist, an der man ihn sucht, ist
+    schlimmer als keiner.
+
+    **Beim ersten Aufruf laedt der Server das Modell.** Gemessen an einem
+    echten Bestand: die ersten vier Anfragen ueber 120 s, die folgenden 3,5 s.
+    Der zweite Versuch trifft also ein warmes Modell und kostet fast nichts —
+    ihn wegzulassen hiesse, den Anfang jedes Durchgangs zu verschenken. Mehr
+    als einer waere Warten ohne Aussicht: antwortet es auch dann nicht, liegt
+    es nicht am Aufwaermen.
+    """
+    from ...llm_vision import TIMEOUT, suggest_item_name_with_reason
+    config = run["config"]
+
+    def ask_for(limit):
+        return suggest_item_name_with_reason(
+            template_value, provider=config.llm_provider,
+            endpoint=config.llm_endpoint, model=config.llm_model,
+            timeout=limit, candidates=run["selection"],
+            reasoning=config.llm_reasoning,
+            max_tokens=config.llm_max_tokens)
+
+    proposal, reason = ask_for(config.llm_timeout)
+    if reason == TIMEOUT:
+        proposal, reason = ask_for(max(config.llm_timeout * 2, 120))
+    return proposal, reason
 
 
 class _ConfigOnly:

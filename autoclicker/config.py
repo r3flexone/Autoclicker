@@ -36,6 +36,10 @@ RECORD_STATUS_FILE: str = ".recording.json"
 # bedient wird sie aber oft aus dem Studio — ohne diese Datei stuende dort nur
 # "laeuft", waehrend die Konsole jeden Schritt einzeln meldet.
 RECLICK_STATUS_FILE: str = ".reclick.json"
+# Was der letzte Item-Scan gesehen hat, als Bild — für den Live-Run. Neben
+# `.run.json` und nicht darin: ein Bild wären Kilobytes in einer Datei, die
+# fünfmal pro Sekunde geschrieben wird. Überschrieben vom nächsten Scan.
+LAST_SCAN_IMAGE_FILE: str = ".last-scan.png"
 # Zuletzt im Sequenz-Studio geöffnete oder gespeicherte Sequenz. Der Zeitstempel
 # wird mit den sequence.json-Dateien verglichen: das jüngere Ereignis gewinnt.
 STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
@@ -44,6 +48,68 @@ STUDIO_LAST_SEQUENCE_FILE: str = ".studio-sequence.json"
 # denselben Gründen hier oben wie die Statusdatei — und ist wie sie kein Bestand,
 # sondern ein Briefkasten, der beim Lesen geleert wird.
 COMMAND_FILE: str = ".command.json"
+
+# Wohin die Maus nach einem Scan-Block geht (`scan_mouse_after`). Ein Scan
+# klickt, was er findet, und der Zeiger bleibt auf dem letzten Treffer stehen —
+# dort zeigt das Spiel dessen Infotext, und der liegt womöglich über dem Ziel
+# des naechsten Blocks. OB sie geht, entscheidet der Block
+# (`SequenceStep.mouse_return`); hier steht nur WOHIN.
+SCAN_MOUSE_BACK = "back"       # an die Stelle von vor dem Scan
+SCAN_MOUSE_PARK = "park"       # auf die Parkposition (`scan_park_mouse`)
+SCAN_MOUSE_AFTER = (SCAN_MOUSE_BACK, SCAN_MOUSE_PARK)
+
+
+def _config_rules() -> tuple:
+    """Die Prüfregeln der Config: `(Feld, ungültig?, Ersatzwert)`.
+
+    Eine Funktion statt einer Konstante, weil die Aktions-Konstanten aus
+    `models.py` kommen und das zirkulär importiert (models.py importiert
+    bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
+    """
+    from .models import (
+        TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
+        CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
+    )
+    timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
+    consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
+    return (
+        ("click_per_point", lambda v: v < 1, 1),
+        ("pixel_wait_timeout", lambda v: v < 0, 0),
+        ("pixel_check_interval", lambda v: v <= 0, 0.1),
+        ("timing_pause_interval", lambda v: v <= 0, 0.1),
+        ("session_max_hours", lambda v: v < 0, 0),
+        ("pixel_max_consecutive_timeouts", lambda v: v < 0, 0),
+        ("scan_min_confidence", lambda v: v < 0 or v > 1, 0.8),
+        ("scan_marker_count", lambda v: v < 1, 1),
+        ("scan_marker_min_pixels", lambda v: v < 1, 1),
+        ("pixel_timeout_action", lambda v: v not in timeout_actions, TIMEOUT_SKIP_CYCLE),
+        ("pixel_consecutive_action", lambda v: v not in consec_actions, CONSEC_STOP),
+        # LLM
+        ("llm_provider", lambda v: v not in ("ollama", "lmstudio"), "ollama"),
+        ("llm_timeout", lambda v: v < 1, 10),
+        ("llm_watcher_interval", lambda v: v < 1, 2.0),
+        ("llm_watcher_max_scans", lambda v: v < 0, 0),
+        ("llm_watcher_timeout", lambda v: v < 0, 0),
+        ("llm_retry_count", lambda v: v < 0, 0),
+        ("llm_max_tokens", lambda v: v < 0, 0),
+        # OCR
+        ("ocr_backend", lambda v: v is not None and v not in ("easyocr", "tesseract"), None),
+        ("ocr_min_confidence", lambda v: v < 0 or v > 1, 0.3),
+        ("ocr_retry_count", lambda v: v < 0, 0),
+        ("scan_mouse_after", lambda v: v not in SCAN_MOUSE_AFTER, "back"),
+        # Window-Fokus-Check
+        ("window_focus_action", lambda v: v not in ("pause", "stop"), "pause"),
+        ("humanize_click_jitter", lambda v: v < 0, 0),
+    )
+
+
+def _shown(value) -> str:
+    """Ein Config-Wert, wie ihn die Korrektur-Meldung nennt."""
+    if value is None:
+        return "None (Auto)"
+    if isinstance(value, str):
+        return f"'{value}'"
+    return str(value)
 
 
 @dataclass
@@ -90,6 +156,7 @@ class AppConfig:
     # === SCAN-EINSTELLUNGEN ===
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
+    scan_mouse_after: str = "back"                  # nach dem Scan: "back" oder "park"
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
     scan_item_click_delay: float = 1.0              # Pause nach Item-Klick in Sekunden
     scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
@@ -174,90 +241,24 @@ class AppConfig:
     debug_save_templates: bool = False              # Speichert Scan+Template in screenshots/debug/
 
     def __post_init__(self):
-        """Validiert Config-Werte nach Erstellung."""
-        # Konstanten lokal importieren — vermeidet Zirkular-Import (models.py importiert
-        # bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
-        from .models import (
-            TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
-            CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
-        )
-        valid_timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
-        valid_consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
+        """Validiert Config-Werte nach Erstellung.
 
+        Jede Regel ist eine Zeile in `_config_rules()`: ein ungültiger Wert wird
+        auf den Ersatz gehoben und gemeldet. Die Humanize-Spannen werden danach
+        still in Ordnung gebracht (min nicht unter 0, max nicht unter min).
+        """
         warnings = []
-        if self.click_per_point < 1:
-            warnings.append(f"click_per_point={self.click_per_point} → 1")
-            self.click_per_point = 1
-        if self.pixel_wait_timeout < 0:
-            warnings.append(f"pixel_wait_timeout={self.pixel_wait_timeout} → 0")
-            self.pixel_wait_timeout = 0
-        if self.pixel_check_interval <= 0:
-            warnings.append(f"pixel_check_interval={self.pixel_check_interval} → 0.1")
-            self.pixel_check_interval = 0.1
-        if self.timing_pause_interval <= 0:
-            warnings.append(f"timing_pause_interval={self.timing_pause_interval} → 0.1")
-            self.timing_pause_interval = 0.1
-        if self.session_max_hours < 0:
-            warnings.append(f"session_max_hours={self.session_max_hours} → 0")
-            self.session_max_hours = 0
-        if self.pixel_max_consecutive_timeouts < 0:
-            warnings.append(f"pixel_max_consecutive_timeouts={self.pixel_max_consecutive_timeouts} → 0")
-            self.pixel_max_consecutive_timeouts = 0
-        if self.scan_min_confidence < 0 or self.scan_min_confidence > 1:
-            warnings.append(f"scan_min_confidence={self.scan_min_confidence} → 0.8")
-            self.scan_min_confidence = 0.8
-        if self.scan_marker_count < 1:
-            warnings.append(f"scan_marker_count={self.scan_marker_count} → 1")
-            self.scan_marker_count = 1
-        if self.scan_marker_min_pixels < 1:
-            warnings.append(f"scan_marker_min_pixels={self.scan_marker_min_pixels} → 1")
-            self.scan_marker_min_pixels = 1
-        if self.pixel_timeout_action not in valid_timeout_actions:
-            warnings.append(f"pixel_timeout_action='{self.pixel_timeout_action}' → '{TIMEOUT_SKIP_CYCLE}'")
-            self.pixel_timeout_action = TIMEOUT_SKIP_CYCLE
-        if self.pixel_consecutive_action not in valid_consec_actions:
-            warnings.append(f"pixel_consecutive_action='{self.pixel_consecutive_action}' → '{CONSEC_STOP}'")
-            self.pixel_consecutive_action = CONSEC_STOP
-        # LLM-Einstellungen validieren
-        if self.llm_provider not in ("ollama", "lmstudio"):
-            warnings.append(f"llm_provider='{self.llm_provider}' → 'ollama'")
-            self.llm_provider = "ollama"
-        if self.llm_timeout < 1:
-            warnings.append(f"llm_timeout={self.llm_timeout} → 10")
-            self.llm_timeout = 10
-        if self.llm_watcher_interval < 1:
-            warnings.append(f"llm_watcher_interval={self.llm_watcher_interval} → 2.0")
-            self.llm_watcher_interval = 2.0
-        if self.llm_watcher_max_scans < 0:
-            warnings.append(f"llm_watcher_max_scans={self.llm_watcher_max_scans} → 0")
-            self.llm_watcher_max_scans = 0
-        if self.llm_watcher_timeout < 0:
-            warnings.append(f"llm_watcher_timeout={self.llm_watcher_timeout} → 0")
-            self.llm_watcher_timeout = 0
-        if self.llm_retry_count < 0:
-            warnings.append(f"llm_retry_count={self.llm_retry_count} → 0")
-            self.llm_retry_count = 0
-        if self.llm_max_tokens < 0:
-            warnings.append(f"llm_max_tokens={self.llm_max_tokens} → 0")
-            self.llm_max_tokens = 0
-        # OCR-Einstellungen validieren
-        if self.ocr_backend is not None and self.ocr_backend not in ("easyocr", "tesseract"):
-            warnings.append(f"ocr_backend='{self.ocr_backend}' → None (Auto)")
-            self.ocr_backend = None
-        if self.ocr_min_confidence < 0 or self.ocr_min_confidence > 1:
-            warnings.append(f"ocr_min_confidence={self.ocr_min_confidence} → 0.3")
-            self.ocr_min_confidence = 0.3
-        if self.ocr_retry_count < 0:
-            warnings.append(f"ocr_retry_count={self.ocr_retry_count} → 0")
-            self.ocr_retry_count = 0
-        # Window-Fokus-Check
-        if self.window_focus_action not in ("pause", "stop"):
-            warnings.append(f"window_focus_action='{self.window_focus_action}' → 'pause'")
-            self.window_focus_action = "pause"
-        # Humanization: min darf nicht > max sein
-        if self.humanize_click_jitter < 0:
-            warnings.append(f"humanize_click_jitter={self.humanize_click_jitter} → 0")
-            self.humanize_click_jitter = 0
+        for name, invalid, fallback in _config_rules():
+            value = getattr(self, name)
+            if invalid(value):
+                warnings.append(f"{name}={_shown(value)} → {_shown(fallback)}")
+                setattr(self, name, fallback)
+        self._order_humanize_ranges()
+        for w in warnings:
+            print(warn(f"Config-Wert korrigiert: {w}"))
+
+    def _order_humanize_ranges(self) -> None:
+        """Humanization: min darf nicht < 0 und nicht > max sein (still, ohne Meldung)."""
         if self.humanize_micro_delay_min < 0:
             self.humanize_micro_delay_min = 0
         if self.humanize_micro_delay_max < self.humanize_micro_delay_min:
@@ -268,9 +269,6 @@ class AppConfig:
             self.humanize_break_duration_min = 0
         if self.humanize_break_duration_max < self.humanize_break_duration_min:
             self.humanize_break_duration_max = self.humanize_break_duration_min
-        if warnings:
-            for w in warnings:
-                print(warn(f"Config-Wert korrigiert: {w}"))
 
     def to_dict(self) -> dict:
         """Konvertiert zu JSON-serialisierbarem dict."""
@@ -355,37 +353,42 @@ def load_config() -> AppConfig:
     return AppConfig()
 
 
+# Die Titel sind Anzeige (Einstellungen-Reiter), keine Schluessel — in der
+# Datei steht zwischen den Gruppen nur eine Leerzeile. Deshalb gilt fuer sie
+# die Regel fuer alles Gelesene: deutsch, ein Stil. Hier standen einmal
+# GROSSBUCHSTABEN mit „ue" statt „ü" (NACHPRUEFUNG) neben englischen
+# (HUMANIZATION, TIMING, DEBUG) und gemischten („LLM VISION (Boss-Erkennung)").
 _CONFIG_SECTIONS = [
-    ("PROGRAMMSTART", [
+    ("Programmstart", [
         "studio_open_on_start",
     ]),
-    ("KLICK-EINSTELLUNGEN", [
+    ("Klicks", [
         "click_per_point", "click_max_total",
         "click_move_delay", "click_post_delay",
     ]),
-    ("SICHERHEIT", [
+    ("Sicherheit", [
         "failsafe_enabled", "failsafe_x", "failsafe_y",
         "session_max_hours",
     ]),
-    ("PIXEL-ERKENNUNG", [
+    ("Pixel-Erkennung", [
         "punkt_radius", "punkt_farbtoleranz",
         "pixel_wait_tolerance", "pixel_wait_timeout",
         "pixel_timeout_action", "pixel_check_interval",
         "pixel_max_consecutive_timeouts", "pixel_consecutive_action",
         "pixel_show_delay",
     ]),
-    ("NACHPRUEFUNG", [
+    ("Nachprüfung", [
         "verify_timeout", "verify_retries", "verify_interval",
     ]),
-    ("SCAN-EINSTELLUNGEN", [
-        "scan_click_immediate", "scan_park_mouse",
+    ("Scans", [
+        "scan_click_immediate", "scan_park_mouse", "scan_mouse_after",
         "scan_slot_delay", "scan_item_click_delay",
         "scan_marker_count", "scan_require_all_markers", "scan_min_markers_required",
         "scan_marker_min_pixels", "scan_market_value_file", "scan_catalog_file",
         "scan_slot_hsv_tolerance", "scan_slot_inset", "scan_slot_color_distance",
         "scan_min_confidence", "scan_confirm_delay",
     ]),
-    ("LLM VISION (Boss-Erkennung)", [
+    ("LLM (Boss-Erkennung)", [
         "llm_enabled", "llm_provider", "llm_endpoint", "llm_model",
         "llm_timeout", "llm_retry_count", "llm_async", "llm_reasoning", "llm_max_tokens", "llm_boss_prompt",
         "llm_debug",
@@ -395,25 +398,25 @@ _CONFIG_SECTIONS = [
     ("OCR (Texterkennung)", [
         "ocr_enabled", "ocr_backend", "ocr_languages", "ocr_min_confidence", "ocr_retry_count",
     ]),
-    ("WINDOW-FOKUS-CHECK", [
+    ("Fensterfokus", [
         "window_focus_check", "window_focus_title", "window_focus_action",
     ]),
-    ("HUMANIZATION", [
+    ("Menschliches Verhalten", [
         "humanize_enabled", "humanize_click_jitter",
         "humanize_micro_delay_min", "humanize_micro_delay_max",
         "humanize_break_interval_min",
         "humanize_break_duration_min", "humanize_break_duration_max",
     ]),
-    ("SESSION-LOG", [
+    ("Session-Log", [
         "session_log_enabled", "session_log_dir",
     ]),
-    ("TIMING", [
+    ("Pause", [
         "timing_pause_interval",
     ]),
-    ("DATEIEN", [
+    ("Dateien", [
         "migrate_on_start",
     ]),
-    ("DEBUG", [
+    ("Fehlersuche", [
         "debug_log", "debug_detail",
         "debug_show_pixel_position", "debug_save_templates",
     ]),
@@ -435,7 +438,7 @@ def config_sections() -> list:
                   for title, keys in _CONFIG_SECTIONS]
     remainder = [k for k in all_of if k not in assigned]
     if remainder:
-        sections.append(("SONSTIGE", remainder))
+        sections.append(("Sonstige", remainder))
     return sections
 
 

@@ -152,6 +152,10 @@ class BridgeReportMixin:
         """
         import re
         wanted = {name for name, _ in raw.get("timeouts", [])}
+        # Die Warte-Ranglisten springen genauso zum Block — dieselbe Frage
+        # („welcher ist das?"), dieselbe Antwort.
+        for key in ("color_waits", "planned_waits"):
+            wanted |= {row[0] for row in raw.get(key, [])[:RANK_ROWS]}
         if not wanted:
             return {}
         by_name, by_position = {}, {}
@@ -199,6 +203,11 @@ class BridgeReportMixin:
             "verify_miss": [[name, n, verify_ok.get(name, 0)]
                             for name, n in miss[:RANK_ROWS]],
             "disturbances": raw["disturbances"],
+            # Geplant (Wartezeit am Block) gegen „auf Farbe" (das Spiel
+            # entscheidet) — zwei Stellschrauben, also zwei Zahlen.
+            "waits": raw.get("waits"),
+            "color_waits": raw.get("color_waits", [])[:RANK_ROWS],
+            "planned_waits": raw.get("planned_waits", [])[:RANK_ROWS],
             "unknown": raw["unknown"],
             "unreadable": raw["unreadable"],
         }

@@ -35,6 +35,7 @@ class ScanStateMixin:
         self.scans: dict = {}
         self._scan_state_snapshot: dict = {}            # Scan-Name -> mtime seiner Datei
         self._scan_loaded = False
+        self._scan_configs_loaded = False
         self._photo = None                      # PIL-Bild in Originalgrösse
         self._photo_image: str = ""              # data:-URL, verkleinert
         self._photo_info: Optional[dict] = None
@@ -103,8 +104,12 @@ class ScanStateMixin:
         if self._scan_loaded:
             return
         self._scan_loaded = True
-        self.scans = self._scans_load()
-        self._detection_load()
+        # Früh geladen (Punkte-Liste) und inzwischen von aussen geändert? Dann
+        # frisch lesen — zu verlieren gibt es nichts, der Reiter war nie offen.
+        if (self._scan_configs_loaded and not self._scan_dirty
+                and self._disk_state() != self._disk):
+            self._scan_configs_loaded = False
+        self._scan_configs_load()
         # Der zuletzt bearbeitete Scan ist offen — dieselbe Regel wie bei den
         # Sequenzen (`last_edited()` in `sequence_studio.py`) und aus
         # demselben Grund: ein echtes „zuletzt geöffnet" müsste jemand
@@ -118,7 +123,45 @@ class ScanStateMixin:
             self.open_scan = newest
             self._scan_working_set(newest)
             self._photo_load(newest)
+
+    def _scan_configs_load(self) -> None:
+        """Nur die Scan-Konfigurationen — ohne das gemerkte Bild.
+
+        **Die Punkte-Liste des Editors braucht sie, bevor jemand den
+        Scans-Reiter öffnet.** Ein Bestätigungsklick eines Items und die Aktion
+        eines Boss-/Icon-Scans sind Punkte der Sequenz; ohne die Scans galt
+        ein solcher Punkt als „ungenutzt", trug das Lösch-× — und ein Klick
+        darauf liess den Scan ins Leere zeigen. Gemessen an einer echten
+        Sequenz: die Konfigurationen kosten 1 ms, das Bild 147 ms. Deshalb die
+        Trennung: `_scan_load()` bleibt verzögert, dies hier nicht.
+
+        Nach einem vollständigen Laden ist nichts mehr zu tun — Tests setzen
+        `_scan_loaded` von Hand, und deren Bestand darf nicht von Platte
+        überschrieben werden.
+        """
+        if self._scan_configs_loaded or (self._scan_loaded and self.scans):
+            return
+        self._scan_configs_loaded = True
+        self.scans = self._scans_load()
+        self._detection_load()
         self._disk = self._disk_state()
+
+    def _scan_unload(self) -> None:
+        """Beim nächsten Zugriff neu von Platte lesen — Konfigurationen UND Bild."""
+        self._scan_loaded = False
+        self._scan_configs_loaded = False
+
+    def _all_items(self):
+        """`(Scan-Name, Item)` über ALLE Item-Scans dieser Sequenz.
+
+        Für den offenen Scan zählt der Arbeitsbestand (`self.items`) — dort
+        steht, was gerade bearbeitet und noch nicht zurückgeschrieben ist.
+        `self.items` allein wäre nur der eine offene Scan.
+        """
+        for name, cfg in self.scans.items():
+            items = self.items.values() if name == self.open_scan else cfg.items
+            for item in items:
+                yield name, item
 
     def _scan_has_config(self, kind: str) -> bool:
         """Ist für die gewünschte Aufnahmeart wirklich ein Scan geöffnet?"""
@@ -211,7 +254,7 @@ class ScanStateMixin:
                 "Es gibt ungespeicherte Änderungen. Nochmal „Neu laden“ verwirft sie "
                 "— „Speichern“ behält sie.", "warn")
         remaining = self.open_scan
-        self._scan_loaded = False
+        self._scan_unload()
         self._corner = self._search_area = None
         self._selection, self._matches = [], {}
         self.scan_name, self.open_scan = "", ""
@@ -300,21 +343,19 @@ class ScanStateMixin:
             cfg.slots = list(self.slots.values())
             cfg.items = list(self.items.values())
 
-    def _add_to_scan(self, kind: str, name: str) -> bool:
+    def _add_to_scan(self, kind: str, name: str) -> None:
         """Nimmt einen frisch angelegten Slot bzw. ein Item in den offenen Scan.
 
         Wer in einem offenen Scan etwas anlegt, legt es für ihn an — sonst wäre es
         sofort wieder weg (die Listen zeigen nur die Mitglieder). Ohne offenen Scan
-        passiert nichts. Gibt zurück, ob es eine Änderung war.
+        passiert nichts.
         """
         cfg = self.scans.get(self.open_scan)
         if cfg is None:
-            return False
+            return
         inventory = self.slots if kind == KIND_SLOT else self.items
-        if name not in inventory:
-            return False
-        self._sync_objects()
-        return True
+        if name in inventory:
+            self._sync_objects()
 
     def _scan_report(self, text: str, kind: str = "ok") -> dict:
         self._scan_status = (text, kind)

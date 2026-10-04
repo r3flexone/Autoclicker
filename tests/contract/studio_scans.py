@@ -417,6 +417,18 @@ try:
                 # heraus. Das enger werdende Band faengt genau das ab.
                 check("das Panel wird nicht als ein Riesen-Slot genommen",
                       all(s["width"] < 200 for s in _z18["slots"]))
+                # Fehlt einer, kommt er wieder — und die Meldung sagt, dass die
+                # übrigen schon da waren, statt sie als neu zu zählen.
+                _b18.slots.pop(next(iter(_b18.slots)))
+                _b18._sync_objects()
+                _b18.scan_mode_set({"mode": _MF18})
+                _b18.scan_click({"x": 20, "y": 20})
+                _b18.scan_click({"x": 280, "y": 200})
+                _z18 = _b18.scan_click({"x": 42, "y": 42})
+                check("ein fehlender Slot kommt wieder, die übrigen gelten als schon dabei",
+                      len(_z18["slots"]) == 6
+                      and "1 Slot(s) angelegt" in _z18["status"]["text"]
+                      and "5 war(en) schon dabei" in _z18["status"]["text"])
                 # Gegenprobe zum Suchbereich: derselbe Klick, aber ein Bereich,
                 # der auch den Koeder umfasst - dann sind es sieben.
                 _b18.slots.clear()
@@ -1547,6 +1559,54 @@ finally:
 
 
 # ============================================================================
+section("Umbenennen im Studio: die Vorlagen bekommen den neuen Namen")
+# An einem echten Bestand: „Auto Slot 19 2" wurde „Überlegener Edelstein",
+# die Vorlage hiess weiter auto_slot_19_2.png, und das naechste Auto-Lernen
+# in Slot 19 schrieb unter dem wieder freien Namen eine Truhe hinein.
+_sandboxU = tempfile.mkdtemp(prefix="studioumbenennen_")
+_cwdU = _os.getcwd()
+_os.chdir(_sandboxU)
+try:
+    Path("sequences").mkdir()
+    _bU = _SB8(_SEQ8(name="S"), Path("sequences/s/sequence.json"), "sequences")
+    _bU.scan_data()
+    _tplU = Path("sequences/s/templates")
+    _tplU.mkdir(parents=True)
+    (_tplU / "auto_slot_19_2.png").write_bytes(b"edelstein")
+    (_tplU / "auto_slot_19_2_62x60.png").write_bytes(b"gross")
+    (_tplU / "fremd.png").write_bytes(b"fremd")
+    (_tplU / "ueberlegener_edelstein.png").write_bytes(b"belegt")
+    _bU.items["Auto Slot 19 2"] = _ITEM8(
+        name="Auto Slot 19 2", template="auto_slot_19_2.png",
+        template_variants=["auto_slot_19_2_62x60.png", "fremd.png"])
+    _zU = _bU.scan_item_set({"name": "Auto Slot 19 2", "field": "name",
+                             "value": "Ueberlegener Edelstein"})
+    _itU = _bU.items["Ueberlegener Edelstein"]
+    check("die Hauptvorlage traegt den neuen Namen (und weicht einer belegten Datei aus)",
+          _itU.template == "ueberlegener_edelstein_2.png"
+          and (_tplU / _itU.template).read_bytes() == b"edelstein")
+    check("eine Groessenvariante behaelt ihren Groessen-Anhang",
+          "ueberlegener_edelstein_62x60.png" in _itU.template_variants
+          and (_tplU / "ueberlegener_edelstein_62x60.png").read_bytes() == b"gross")
+    check("eine Variante mit fremdem Namen folgt ebenfalls dem neuen Namen",
+          len(_itU.template_variants) == 2
+          and "fremd.png" not in _itU.template_variants)
+    check("eine vorhandene fremde Datei bleibt unberuehrt",
+          (_tplU / "ueberlegener_edelstein.png").read_bytes() == b"belegt")
+    # Kopiert, nicht verschoben: Rueckgaengig dreht nur den Speicher zurueck.
+    check("die alten Dateien bleiben liegen", (_tplU / "auto_slot_19_2.png").is_file())
+    _bU.scan_undo()
+    _backU = _bU.items.get("Auto Slot 19 2")
+    check("nach Rueckgaengig zeigt das Item wieder auf eine VORHANDENE Datei",
+          _backU is not None and _backU.template == "auto_slot_19_2.png"
+          and (_tplU / _backU.template).is_file())
+    check("die Meldung ist ein normales ok", _zU["status"]["kind"] == "ok")
+finally:
+    _os.chdir(_cwdU)
+    shutil.rmtree(_sandboxU, ignore_errors=True)
+
+
+# ============================================================================
 section("Was der eigene Schreibvorgang NICHT ist: eine Fremdaenderung")
 
 _sandbox19 = tempfile.mkdtemp(prefix="studioeigen_")
@@ -1850,8 +1910,14 @@ try:
         _erg_dop = _pass_on(_bd, {"all_items": True})
         check("derselbe Name legt kein zweites Item an",
               "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
+        # Die erste Vorlage ist beim Benennen dem Namen gefolgt
+        # (`_templates_follow_name`; ein frueherer Durchgang in derselben
+        # Sandbox hat `godlike_bow.png` schon belegt, also ggf. `_2`), die
+        # zweite kommt als Variante dazu.
+        _names_dop = _bd.items["Godlike Bow"].template_names()
         check("die zweite Vorlage haengt als Variante am Item",
-              sorted(_bd.items["Godlike Bow"].template_names()) == ["a.png", "b.png"])
+              len(_names_dop) == 2 and _names_dop[0].startswith("godlike_bow")
+              and _names_dop[1] == "b.png")
         check("und die Meldung sagt es",
               "angehängt" in _erg_dop["status"]["text"])
         # Der Name IST die Referenz: ohne `_sync_objects()` kaeme das
@@ -1976,6 +2042,11 @@ try:
     _bk3.scan_category_rename({"old": "Bow", "new": ""})
     check("ein leerer Zielname nimmt die Kategorie weg",
           _bk3.items["Bogen A"].category is None)
+    # Die Beschriftung ist der Tooltip von „↶ Zurück" — Sprache, kein
+    # Schluessel. Dort stand 'without', ein Rest des Englisch-Umbaus.
+    _label_k3 = _bk3._undo[-1][0] if _bk3._undo else ""
+    check("der Rueckgaengig-Tooltip sagt 'ohne Kategorie', nicht 'without'",
+          "ohne Kategorie" in _label_k3 and "without" not in _label_k3)
     _bk4 = _build_cat()
     _bk4.scan_category_rename({"old": "", "new": "Sonstiges"})
     check("und ein leerer Quellname meint 'ohne Kategorie'",

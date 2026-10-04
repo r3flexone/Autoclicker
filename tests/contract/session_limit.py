@@ -34,7 +34,7 @@ with _cl.redirect_stdout(_io.StringIO()):
     _neg = _CFG(session_max_hours=-2)
 check("ein negativer Wert wird auf 0 gehoben", _neg.session_max_hours == 0)
 check("das Feld steht im Abschnitt SICHERHEIT",
-      "session_max_hours" in dict(_sections())["SICHERHEIT"])
+      "session_max_hours" in dict(_sections())["Sicherheit"])
 check("die Oberflaeche sagt, was 0 bedeutet",
       _META["session_max_hours"].empty == "unbegrenzt"
       and _META["session_max_hours"].unit == "h")

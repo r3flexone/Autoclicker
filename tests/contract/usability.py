@@ -109,8 +109,11 @@ try:
     check("STRG+Z und STRG+Y sind im Editor belegt",
           'e.key.toLowerCase() === "y"' in _web
           and 'call(e.shiftKey ? "redo" : "undo")' in _web)
+    # Nur neben der EIGENEN Meldung: steht unten die eines anderen Reiters,
+    # naehme der Knopf etwas zurueck, wovon dort gar nicht die Rede ist.
     check("und die Meldung traegt den Rueckweg", 'id="status-action"' in _web
-          and '$("status-action").hidden = !(u.can && u.offer)' in _web)
+          and '$("status-action").hidden = !(u.can && u.offer && statusFromEditor'
+              ' && view === "editor")' in _web)
 
     # ------------------------------------------------------------------
     section("Sprungmarken: jeder Befund traegt sein Ziel")
@@ -275,7 +278,7 @@ try:
           in _web)
     check("sie nennt beide Wege und den Import",
           'wzOpen("recording")' in _web and '"Ersten Block anlegen"' in _web
-          and 'setView("share")' in _web)
+          and 'setView("share", true)' in _web)
     check("die Tafel gibt es, mit Taste und Knopf",
           'id="shortcuts"' in _web and 'e.key === "?"' in _web and 'id="btn-help"' in _web)
     # Eine Quelle: die Buchstaben der Scan-Modi kommen aus SCAN_MODES, nicht

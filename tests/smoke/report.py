@@ -47,6 +47,9 @@ def setup():
         ("2026-01-01 00:00:04", 4, "timeout", "Bank oeffnen", "", "", ""),
         ("2026-01-01 00:00:06", 6, "item_found", "Erz", "", "", ""),
         ("2026-01-01 00:00:07", 7, "item_found", "Erz", "", "", ""),
+        ("2026-01-01 00:00:08", 8, "wait", "Bank", "", "", "s=600.00"),
+        ("2026-01-01 00:00:09", 9, "color_wait", "Bank oeffnen", 1, 2,
+         "s=1800.00,result=timeout"),
         ("2026-01-01 01:00:00", 3600, "session_end", "Farm", "", "", ""),
     ])
     _log(Path("logs/20260102_000000_farm.csv"), [
@@ -77,6 +80,14 @@ def run():
         expect("Alle zusammen" in left, f"links fehlt die Sammelzeile: {left!r}")
         expect(f.count(".rep-session") == 3,
                f"3 Zeilen erwartet (alle + 2 Sitzungen), da: {f.count('.rep-session')}")
+        # Die Zeile nennt die Sequenz, darunter das Datum — ein Zeitstempel
+        # allein sagt nicht, welcher Lauf es war.
+        titles = f.page.eval_on_selector_all(
+            ".rep-session-title", "els => els.map(e => e.textContent)")
+        expect(titles[1:] == ["Farm", "Farm"],
+               f"die Sitzungen muessen ihre Sequenz nennen: {titles!r}")
+        expect("02.01.26 00:00" in left,
+               f"das Datum fehlt unter dem Namen: {left!r}")
 
         center = f.text("#rep-middle")
         expect("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
@@ -88,6 +99,18 @@ def run():
         # Verhaeltnis da, und genau das ist der Unterschied zur Konsole.
         expect(f.count("#rep-middle .rep-rank") == f.count("#rep-middle .rep-bar"),
                "nicht jede Rangzeile hat einen Balken")
+        # Die Laufzeit aufgeteilt: 10 min geplant, 30 min auf Farbe, der Rest
+        # der Stunde bleibt Rest. Die alte Sitzung (ohne Messung) zaehlt nicht.
+        expect("WARTEZEITEN" in center, f"die Aufteilung fehlt: {center[:200]!r}")
+        expect(f.count("#rep-middle .rep-split-part") == 3,
+               f"3 Balkenteile erwartet (geplant, Farbe, Rest), da: "
+               f"{f.count('#rep-middle .rep-split-part')}")
+        expect("50 %" in center and "17 %" in center,
+               f"die Anteile stimmen nicht: {center!r}")
+        expect("AUF FARBE GEWARTET" in center and "GEPLANTE WARTEZEIT" in center,
+               "die beiden Warte-Ranglisten fehlen")
+        expect("1 von 2" in center,
+               "der Hinweis auf die ungemessene Sitzung fehlt")
 
         right = f.text("#rep-right")
         expect("ERTRAG" in right, f"rechts steht kein Ertrag: {right[:120]!r}")

@@ -10,17 +10,16 @@ ohne die Daten zu verlieren.
 """
 
 
+from typing import Optional
+
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import active_templates_dir
-from ...utils import (
-    confirm, unique_name, is_cancel, next_free_name, ok,
-    safe_input, sanitize_filename,
-)
+from ...persistence import active_templates_dir, free_template_file
+from ...utils import unique_name, is_cancel, ok, safe_input
 from .._item_fields import (
     CANCELLED, ask_confirm_click, ask_priority,
 )
-from .items import select_category
+from .items import ask_new_item_name, select_category
 from .markers import collect_marker_colors
 
 
@@ -92,8 +91,8 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
             if use_template and OPENCV_AVAILABLE:
                 template_img = take_screenshot(slot.scan_region)
                 if template_img:
-                    safe_name = sanitize_filename(item_name)
-                    template_file = f"{safe_name}.png"
+                    template_file = free_template_file(active_templates_dir(state),
+                                                       item_name)
                     template_path = active_templates_dir(state) / template_file
                     template_path.parent.mkdir(parents=True, exist_ok=True)
                     template_img.save(template_path)
@@ -120,8 +119,42 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     """Single-Variante: ein Item aus einem Slot lernen.
 
     Wichtig: Screenshot + Marker-Farben werden SOFORT aufgenommen (vor User-Eingaben),
-    damit sich das Item-Inventar während des Tippens ändern darf.
+    damit sich das Item-Inventar während des Tippens ändern darf. Die Vorlage
+    liegt bis dahin unter einem vorläufigen Namen (`_PendingTemplate`); jeder
+    Abbruch räumt sie weg.
     """
+    slot_num = _ask_slot_number(slot_list, user_input)
+    if slot_num is None:
+        return True
+    selected_slot = slot_list[slot_num - 1]
+
+    print(f"\n  Scanne Slot '{selected_slot.name}' SOFORT...")
+    marker_colors = collect_marker_colors(selected_slot.scan_region, selected_slot.slot_color)
+    if not marker_colors:
+        print("  -> Keine Farben gefunden!")
+        return True
+    pending = _PendingTemplate.capture(state, selected_slot, slot_num)
+
+    details = _ask_learning_details(state)
+    if details is None:
+        pending.discard()
+        return True
+    item_name, category, priority, (confirm_point_id, confirm_delay) = details
+
+    item = ItemProfile(item_name, marker_colors, category, priority,
+                       confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)
+    item.template = pending.adopt(state, item_name)
+    with state.lock:
+        state.global_items[item_name] = item
+
+    confirm_str = f" -> Punkt #{confirm_point_id} nach {confirm_delay}s" if confirm_point_id else ""
+    template_str = " + Template" if item.template else ""
+    print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
+    return True
+
+
+def _ask_slot_number(slot_list: list, user_input: str) -> Optional[int]:
+    """Die Slot-Nummer aus `learn <Nr>` oder erfragt — None bei Abbruch/Fehleingabe (gesagt)."""
     slot_num = None
     if user_input.startswith("learn "):
         try:
@@ -133,79 +166,75 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         print(f"\n  Verfügbare Slots (1-{len(slot_list)}):")
         for i, slot in enumerate(slot_list):
             print(f"    {i+1}. {slot.name}")
+        slot_input = safe_input("  Slot-Nr wo das Item liegt: ").strip()
+        if is_cancel(slot_input):
+            return None
         try:
-            slot_input = safe_input("  Slot-Nr wo das Item liegt: ").strip()
-            if is_cancel(slot_input):
-                return True
             slot_num = int(slot_input)
         except ValueError:
             print("  -> Ungültige Eingabe!")
-            return True
+            return None
 
-    if slot_num < 1 or slot_num > len(slot_list):
+    if not 1 <= slot_num <= len(slot_list):
         print(f"  -> Ungültiger Slot! Verfügbar: 1-{len(slot_list)}")
-        return True
+        return None
+    return slot_num
 
-    selected_slot = slot_list[slot_num - 1]
 
-    # === SOFORT: Screenshot + Farben + Template aufnehmen ===
-    print(f"\n  Scanne Slot '{selected_slot.name}' SOFORT...")
-    marker_colors = collect_marker_colors(selected_slot.scan_region, selected_slot.slot_color)
+class _PendingTemplate:
+    """Die Vorlage, die SOFORT aufgenommen wird — vorläufig benannt, bis das Item steht."""
 
-    if not marker_colors:
-        print("  -> Keine Farben gefunden!")
-        return True
+    def __init__(self, path=None) -> None:
+        self.path = path
 
-    cached_template_path = None
-    if OPENCV_AVAILABLE:
-        template_img = take_screenshot(selected_slot.scan_region)
-        if template_img:
-            # Temporär unter generischem Namen speichern, wird später umbenannt
-            temp_name = f"_learn_temp_{slot_num}.png"
-            cached_template_path = active_templates_dir(state) / temp_name
-            cached_template_path.parent.mkdir(parents=True, exist_ok=True)
-            template_img.save(cached_template_path)
-            print(ok("Screenshot + Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
-    else:
-        print(ok("Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
+    @classmethod
+    def capture(cls, state: AutoClickerState, slot, slot_num: int) -> '_PendingTemplate':
+        if not OPENCV_AVAILABLE:
+            print(ok("Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
+            return cls()
+        template_img = take_screenshot(slot.scan_region)
+        if not template_img:
+            return cls()
+        path = active_templates_dir(state) / f"_learn_temp_{slot_num}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        template_img.save(path)
+        print(ok("Screenshot + Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
+        return cls(path)
 
-    def _cleanup_cached_template() -> None:
-        """Löscht das gecachte Template bei Abbruch."""
-        if cached_template_path and cached_template_path.exists():
+    def discard(self) -> None:
+        """Bei Abbruch: die vorläufige Datei weg."""
+        if self.path and self.path.exists():
             try:
-                cached_template_path.unlink()
+                self.path.unlink()
             except OSError:
                 pass
 
-    # Item-Name abfragen. Nicht `len(...) + 1` — das schlaegt nach dem ersten Loeschen
-    # einen bereits vergebenen Namen vor, und der Name ist hier die Referenz.
-    with state.lock:
-        proposal = next_free_name("Item", state.global_items)
-    item_name = safe_input(f"  Item-Name (Enter = '{proposal}'): ").strip()
-    if is_cancel(item_name):
-        _cleanup_cached_template()
-        return True
-    if not item_name:
-        item_name = proposal
+    def adopt(self, state: AutoClickerState, item_name: str) -> Optional[str]:
+        """Unter dem Namen des Items ablegen; gibt den Dateinamen zurück oder None."""
+        if not (self.path and self.path.exists()):
+            return None
+        template_file = free_template_file(active_templates_dir(state), item_name)
+        try:
+            self.path.rename(active_templates_dir(state) / template_file)
+        except OSError as e:
+            print(f"  -> Template-Fehler: {e}")
+            self.discard()
+            return None
+        print(f"  + Template gespeichert: {template_file}")
+        return template_file
 
-    with state.lock:
-        name_exists = item_name in state.global_items
-    if name_exists:
-        if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
-            print("  -> Abgebrochen")
-            _cleanup_cached_template()
-            return True
-        print(f"  -> '{item_name}' wird überschrieben")
 
+def _ask_learning_details(state: AutoClickerState):
+    """Name, Kategorie, Priorität, Bestätigung — oder None bei Abbruch."""
+    item_name = ask_new_item_name(state)
+    if item_name is None:
+        return None
     category = select_category(state)
-
     priority = ask_priority(state, category, cancellable=True)
     if priority is CANCELLED:
         print("  -> Abgebrochen")
-        _cleanup_cached_template()
-        return True
+        return None
 
-    # Bestätigungs-Klick abfragen
     print("\n  Soll nach dem Item-Klick noch ein Bestätigungs-Klick erfolgen?")
     print("  (z.B. auf einen 'Accept' oder 'Craft' Button)")
     confirmation = ask_confirm_click(
@@ -213,30 +242,5 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
         prompt="  Punkt-ID für Bestätigung (Enter = keiner): ", cancellable=True)
     if confirmation is CANCELLED:
         print("  -> Abgebrochen")
-        _cleanup_cached_template()
-        return True
-    confirm_point_id, confirm_delay = confirmation
-
-    item = ItemProfile(item_name, marker_colors, category, priority,
-                       confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)
-
-    # Gecachtes Template dem Item zuweisen und umbenennen
-    if cached_template_path and cached_template_path.exists():
-        safe_name = sanitize_filename(item_name)
-        template_file = f"{safe_name}.png"
-        final_path = active_templates_dir(state) / template_file
-        try:
-            cached_template_path.rename(final_path)
-            item.template = template_file
-            print(f"  + Template gespeichert: {template_file}")
-        except OSError as e:
-            print(f"  -> Template-Fehler: {e}")
-            _cleanup_cached_template()
-
-    with state.lock:
-        state.global_items[item_name] = item
-
-    confirm_str = f" -> Punkt #{confirm_point_id} nach {confirm_delay}s" if confirm_point_id else ""
-    template_str = " + Template" if item.template else ""
-    print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
-    return True
+        return None
+    return item_name, category, priority, confirmation

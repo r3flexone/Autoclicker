@@ -6,12 +6,14 @@ mit dem rename-Befehl angepasst werden.
 """
 
 
+from collections import Counter
+
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import save_global_items, active_templates_dir
+from ...persistence import save_global_items, active_templates_dir, free_template_file
 from ...utils import (
-    col, confirm, err, header, hint, safe_input, sanitize_filename,
+    col, confirm, err, header, hint, safe_input, unique_name,
 )
 from .._item_fields import ask_confirm_click
 from ..scan_services import crop_screen_region
@@ -153,13 +155,6 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     Bild geschnitten (gleicher Screenshot wie die Slot-Erkennung); sonst wird pro
     Slot ein frischer Screenshot gemacht.
     """
-    use_markers = settings["use_markers"]
-    category = settings["category"]
-    auto_priority = settings["auto_priority"]
-    confirm_point_id = settings["confirm_point_id"]
-    confirm_delay = settings["confirm_delay"]
-    min_confidence = settings["min_confidence"]
-
     print(f"\n  === SCANNE {len(slot_list)} SLOTS ===\n")
 
     # Bestehende Items mit Templates sammeln (für Duplikat-Erkennung)
@@ -168,134 +163,133 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
             (name, item) for name, item in state.global_items.items()
             if item.template_names()
         ]
-
     if existing_templates:
         print(f"  ({len(existing_templates)} bestehende Items werden zum Vergleich genutzt)\n")
 
-    created_count = 0
-    skipped_count = 0
-    duplicate_count = 0
-    variant_count = 0
+    counts = Counter()
     created_names: list[str] = []  # für optionale LLM-Benennung am Schluss
-
     for idx, slot in enumerate(slot_list):
-        slot_num = idx + 1
-        priority = slot_num if auto_priority else 1
-
-        print(f"  [{slot_num}/{len(slot_list)}] {slot.name}...", end=" ", flush=True)
-
-        if source_img is not None and region_origin is not None:
-            try:
-                template_img = _crop_slot_template(slot, source_img, region_origin)
-            except (ValueError, OSError):
-                template_img = None
-        else:
-            template_img = take_screenshot(slot.scan_region)
+        print(f"  [{idx + 1}/{len(slot_list)}] {slot.name}...", end=" ", flush=True)
+        template_img = _slot_image(slot, source_img, region_origin)
         if template_img is None:
             print("FEHLER (Screenshot)")
-            skipped_count += 1
+            counts["failed"] += 1
             continue
-
-        # Gegen bestehende Item-Templates vergleichen (Duplikat-Prüfung)
-        matched_item = _find_matching_existing_item(template_img, existing_templates, min_confidence)
-        if matched_item:
-            with state.lock:
-                item = state.global_items.get(matched_item)
-            # Der Vorlagenordner MUSS mitgegeben werden: ohne ihn faellt
-            # `_template_path()` auf den globalen `items/templates/` zurueck, den
-            # es seit dem Umzug auf Besitzeinheiten nicht mehr gibt. Die Pruefung
-            # fand dann nie eine passende Vorlage und legte bei jedem Lauf eine
-            # weitere Variante an - fuer ein Item, das laengst eine hatte.
-            if item is not None and not _item_has_compatible_template(
-                    item, template_img, active_templates_dir(state)):
-                width, height = template_img.size
-                safe_name = sanitize_filename(f"{matched_item}_{width}x{height}")
-                template_file = f"{safe_name}.png"
-                number = 2
-                while (active_templates_dir(state) / template_file).exists():
-                    template_file = f"{safe_name}_{number}.png"
-                    number += 1
-                template_path = active_templates_dir(state) / template_file
-                template_path.parent.mkdir(parents=True, exist_ok=True)
-                template_img.save(template_path)
-                with state.lock:
-                    item.template_variants.append(template_file)
-                variant_count += 1
-                print(f"VARIANTE -> '{matched_item}' kann jetzt auch "
-                      f"{width}x{height}-Slots")
-            else:
-                print(f"BEREITS VORHANDEN -> '{matched_item}' (übersprungen)")
-                duplicate_count += 1
+        known = _known_slot(state, template_img, existing_templates, settings["min_confidence"])
+        if known:
+            counts[known] += 1
             continue
+        item = _new_autoscan_item(state, slot, template_img, idx + 1, settings)
+        existing_templates.append((item.name, item))
+        created_names.append(item.name)
 
-        # Neuen Item-Namen vergeben (eindeutig)
-        item_name = f"{slot.name} Item"
-        base_name = item_name
-        counter = 1
-        with state.lock:
-            while item_name in state.global_items:
-                counter += 1
-                item_name = f"{base_name} {counter}"
-
-        # Template speichern
-        safe_name = sanitize_filename(item_name)
-        template_file = f"{safe_name}.png"
-        template_path = active_templates_dir(state) / template_file
-        template_path.parent.mkdir(parents=True, exist_ok=True)
-        template_img.save(template_path)
-
-        # Marker-Farben sammeln (optional, leise)
-        marker_colors = []
-        if use_markers:
-            marker_colors = _collect_markers_silent(template_img, slot.slot_color)
-
-        item = ItemProfile(
-            name=item_name,
-            marker_colors=marker_colors,
-            category=category,
-            priority=priority,
-            confirm_point_id=confirm_point_id,
-            confirm_delay=confirm_delay,
-            template=template_file,
-            min_confidence=min_confidence
-        )
-
-        with state.lock:
-            state.global_items[item_name] = item
-        created_count += 1
-        created_names.append(item_name)
-
-        existing_templates.append((item_name, item))
-
-        marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
-        print(f"NEU -> '{item_name}' (P{priority}){marker_str}")
-
-    if created_count > 0 or variant_count > 0:
+    if created_names or counts["variant"]:
         save_global_items(state)
-
-    print(f"\n  === FERTIG: {created_count} neu erstellt", end="")
-    if duplicate_count > 0:
-        print(f", {duplicate_count} Duplikat(e) übersprungen", end="")
-    if variant_count > 0:
-        print(f", {variant_count} Grössenvariante(n) ergänzt", end="")
-    if skipped_count > 0:
-        print(f", {skipped_count} fehlgeschlagen", end="")
-    print(" ===")
-
-    # Optionale LLM-Benennung — hier (Setup, kein Zeitdruck) ist das ok, im
-    # laufenden Scan dagegen nicht (würde den Worker blockieren).
-    if created_names and state.config.llm_enabled:
-        print(f"\n  {len(created_names)} neue Item(s) könnten per LLM benannt werden "
-              f"{hint('(kann je Item ein paar Sekunden dauern)')}.")
-        if confirm("  Jetzt per LLM benennen?", default=True):
-            from .commands import llm_name_items
-            with state.lock:
-                targets = [(n, state.global_items[n].template) for n in created_names
-                           if n in state.global_items and state.global_items[n].template]
-            renamed = llm_name_items(state, targets)
-            if renamed:
-                save_global_items(state)
-            print(f"  -> {renamed} Item(s) benannt.")
+    _print_autoscan_summary(len(created_names), counts)
+    _offer_llm_names(state, created_names)
 
     print("\n  Tipp: 'rename <Nr>' zum Umbenennen, 'autoname' für LLM-Benennung, 'show' zum Anzeigen")
     print("        'save <Name>' zum Speichern als Preset")
+
+
+def _slot_image(slot, source_img, region_origin):
+    """Der Slot als Bild: aus dem gemeinsamen Screenshot geschnitten oder neu aufgenommen."""
+    if source_img is not None and region_origin is not None:
+        try:
+            return _crop_slot_template(slot, source_img, region_origin)
+        except (ValueError, OSError):
+            return None
+    return take_screenshot(slot.scan_region)
+
+
+def _store_template(state: AutoClickerState, img, base_name: str) -> str:
+    """Legt `img` unter einem freien Dateinamen im Vorlagenordner ab."""
+    template_file = free_template_file(active_templates_dir(state), base_name)
+    template_path = active_templates_dir(state) / template_file
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(template_path)
+    return template_file
+
+
+def _known_slot(state: AutoClickerState, img, existing: list, min_confidence: float):
+    """Kennt der Bestand den Slot-Inhalt schon? "duplicate", "variant" oder None.
+
+    Der Vorlagenordner MUSS mitgegeben werden — in BEIDE Prüfungen: ohne ihn
+    faellt `_template_path()` auf den globalen `items/templates/` zurueck, den
+    es seit dem Umzug auf Besitzeinheiten nicht mehr gibt. Bei der Suche selbst
+    fehlte er: sie fand nie ein Duplikat, und ein zweiter `autoscan` legte jedes
+    Item ein zweites Mal an.
+    """
+    folder = active_templates_dir(state)
+    matched = _find_matching_existing_item(img, existing, min_confidence, folder)
+    if not matched:
+        return None
+    with state.lock:
+        item = state.global_items.get(matched)
+    if item is None or _item_has_compatible_template(item, img, folder):
+        print(f"BEREITS VORHANDEN -> '{matched}' (übersprungen)")
+        return "duplicate"
+    width, height = img.size
+    template_file = _store_template(state, img, f"{matched}_{width}x{height}")
+    with state.lock:
+        item.template_variants.append(template_file)
+    print(f"VARIANTE -> '{matched}' kann jetzt auch {width}x{height}-Slots")
+    return "variant"
+
+
+def _new_autoscan_item(state: AutoClickerState, slot, img, slot_num: int,
+                       settings: dict) -> ItemProfile:
+    """Legt für einen unbekannten Slot-Inhalt ein Item samt Vorlage an."""
+    priority = slot_num if settings["auto_priority"] else 1
+    with state.lock:
+        item_name = unique_name(f"{slot.name} Item", state.global_items)
+    template_file = _store_template(state, img, item_name)
+    marker_colors = (_collect_markers_silent(img, slot.slot_color)
+                     if settings["use_markers"] else [])
+    item = ItemProfile(
+        name=item_name,
+        marker_colors=marker_colors,
+        category=settings["category"],
+        priority=priority,
+        confirm_point_id=settings["confirm_point_id"],
+        confirm_delay=settings["confirm_delay"],
+        template=template_file,
+        min_confidence=settings["min_confidence"],
+    )
+    with state.lock:
+        state.global_items[item_name] = item
+    marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
+    print(f"NEU -> '{item_name}' (P{priority}){marker_str}")
+    return item
+
+
+def _print_autoscan_summary(created: int, counts: Counter) -> None:
+    parts = [f"{created} neu erstellt"]
+    for key, label in (("duplicate", "Duplikat(e) übersprungen"),
+                       ("variant", "Grössenvariante(n) ergänzt"),
+                       ("failed", "fehlgeschlagen")):
+        if counts[key]:
+            parts.append(f"{counts[key]} {label}")
+    print(f"\n  === FERTIG: {', '.join(parts)} ===")
+
+
+def _offer_llm_names(state: AutoClickerState, created_names: list) -> None:
+    """Optionale LLM-Benennung der neuen Items.
+
+    Hier (Setup, kein Zeitdruck) ist das ok, im laufenden Scan dagegen nicht —
+    es würde den Worker je Item bis `llm_timeout` blockieren.
+    """
+    if not created_names or not state.config.llm_enabled:
+        return
+    print(f"\n  {len(created_names)} neue Item(s) könnten per LLM benannt werden "
+          f"{hint('(kann je Item ein paar Sekunden dauern)')}.")
+    if not confirm("  Jetzt per LLM benennen?", default=True):
+        return
+    from .commands import llm_name_items
+    with state.lock:
+        targets = [(n, state.global_items[n].template) for n in created_names
+                   if n in state.global_items and state.global_items[n].template]
+    renamed = llm_name_items(state, targets)
+    if renamed:
+        save_global_items(state)
+    print(f"  -> {renamed} Item(s) benannt.")

@@ -179,8 +179,11 @@ check("eine alte Datei ohne das Feld bekommt den Default",
 # nach dem Bearbeiten eines bestehenden Scans still weg — deshalb muss der
 # Schalter dort durchgereicht werden.
 _editor_src = (_repo / "autoclicker" / "editors" / "item_scan_editor.py").read_text(encoding="utf-8")
+import ast as _ast_cat
+_editor_calls = [n for n in _ast_cat.walk(_ast_cat.parse(_editor_src))
+                 if isinstance(n, _ast_cat.Call) and getattr(n.func, "id", "") == "ItemScanConfig"]
 check("der Konsolen-Editor reicht use_catalog durch",
-      "use_catalog=use_catalog," in _editor_src)
+      any("use_catalog" in {k.arg for k in call.keywords} for call in _editor_calls))
 check("und fragt danach", "_step_catalog(" in _editor_src)
 
 # Der Schalter darf NICHT in der Config landen — sonst gaelte er fuer alle Spiele

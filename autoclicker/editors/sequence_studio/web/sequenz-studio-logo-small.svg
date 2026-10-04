@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Sequenz-Studio</title>
+  <!-- Das kleine Motiv, nur fuer 16 px (Browser-Tab, kleines Fenstersymbol):
+       dort ist das grosse nicht mehr lesbar. Eine Kette wie im grossen, nur mit
+       vier Knoten, und jede Kante auf einem Vielfachen von 16 — bei 16 px faellt
+       sie damit genau auf eine Pixelgrenze, und die Linien bleiben scharf.
+       Das Dreieck endet stumpf, genau so hoch wie die Linie, die dort anschliesst:
+       mit Spitze stach die dickere Linie seitlich aus ihr heraus. -->
+  <defs>
+    <mask id="cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <rect x="0" y="0" width="256" height="256" fill="black"/>
+      <g>
+        <path d="M 32 0 L 224 0 C 241.673 0 256 14.327 256 32 L 256 224 C 256 241.673 241.673 256 224 256 L 32 256 C 14.327 256 0 241.673 0 224 L 0 32 C 0 14.327 14.327 0 32 0 Z" fill="white"/>
+        <path d="M 48 36 L 96 64 L 96 96 L 48 124 Z" fill="black"/>
+        <path d="M 88 64 L 160 64 L 160 96 L 88 96 Z" fill="black"/>
+        <path d="M 176 48 C 193.673 48 208 62.327 208 80 C 208 97.673 193.673 112 176 112 C 158.327 112 144 97.673 144 80 C 144 62.327 158.327 48 176 48 Z" fill="black"/>
+        <path d="M 160 96 L 192 96 L 192 160 L 160 160 Z" fill="black"/>
+        <path d="M 176 144 C 193.673 144 208 158.327 208 176 C 208 193.673 193.673 208 176 208 C 158.327 208 144 193.673 144 176 C 144 158.327 158.327 144 176 144 Z" fill="black"/>
+        <path d="M 96 160 L 160 160 L 160 192 L 96 192 Z" fill="black"/>
+        <path d="M 48 144 L 112 144 L 112 208 L 48 208 Z" fill="black"/>
+      </g>
+    </mask>
+    <linearGradient id="gold" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#F7DC8A"/>
+      <stop offset="0.45" stop-color="#D9A420"/>
+      <stop offset="1" stop-color="#9C6B08"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" fill="#D9A420" mask="url(#cutout)"/>
+  <rect x="0" y="0" width="256" height="256" fill="url(#gold)" mask="url(#cutout)"/>
+</svg>

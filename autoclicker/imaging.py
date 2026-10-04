@@ -3,6 +3,7 @@ Bildverarbeitung und Farberkennung für den Autoclicker.
 Screenshots, Farbanalyse, Template-Matching.
 """
 
+import io
 import logging
 import os
 from pathlib import Path
@@ -198,44 +199,45 @@ def find_color_in_image(img: 'Image.Image', target_color: tuple, tolerance: floa
         # Schnelle NumPy-Version (ca. 100x schneller)
         # asarray vermeidet Kopie wenn PIL-Daten bereits im richtigen Format
         img_array = np.asarray(img)
-        if len(img_array.shape) == 3 and img_array.shape[2] >= 3:
-            target = np.array(target_color, dtype=np.float32)
-
-            def enough(rgb) -> bool:
-                # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
-                values = rgb.astype(np.float32)
-                distances = np.sum((values - target) ** 2, axis=2)
-                return int(np.count_nonzero(
-                    distances <= tolerance * tolerance)) >= min_pixels
-
-            # In fast allen Fällen trifft schon das kleine Raster. Nur beim
-            # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
-            # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
-            if enough(img_array[::pixel_step, ::pixel_step, :3]):
-                return True
-            return pixel_step > 1 and enough(img_array[:, :, :3])
-        return False
-    else:
-        # Fallback: Langsame PIL-Version
-        pixels = img.load()
-        width, height = img.size
-
-        def enough(step: int) -> bool:
-            matches = 0
-            for x in range(0, width, step):
-                for y in range(0, height, step):
-                    pixel = pixels[x, y][:3]
-                    if color_distance(pixel, target_color) <= tolerance:
-                        matches += 1
-                        if matches >= min_pixels:
-                            return True
+        if len(img_array.shape) != 3 or img_array.shape[2] < 3:
             return False
 
-        if enough(pixel_step):
-            return True
-        if pixel_step > 1:
-            return enough(1)
-        return False
+        def enough(step: int) -> bool:
+            return _enough_color_numpy(img_array[::step, ::step, :3], target_color,
+                                       tolerance, min_pixels)
+    else:
+        # Fallback: Langsame PIL-Version
+        def enough(step: int) -> bool:
+            return _enough_color_pil(img, target_color, tolerance, min_pixels, step)
+
+    # In fast allen Fällen trifft schon das kleine Raster. Nur beim
+    # Fehlschlag folgt die vollständige Gegenprobe — genau dort lag
+    # Item 7: zwei gültige Marker standen ausschliesslich dazwischen.
+    if enough(pixel_step):
+        return True
+    return pixel_step > 1 and enough(1)
+
+
+def _enough_color_numpy(rgb, target_color: tuple, tolerance: float, min_pixels: int) -> bool:
+    # Quadrierte Distanz vergleichen (vermeidet teure sqrt-Berechnung)
+    target = np.array(target_color, dtype=np.float32)
+    values = rgb.astype(np.float32)
+    distances = np.sum((values - target) ** 2, axis=2)
+    return int(np.count_nonzero(distances <= tolerance * tolerance)) >= min_pixels
+
+
+def _enough_color_pil(img, target_color: tuple, tolerance: float, min_pixels: int,
+                      step: int) -> bool:
+    pixels = img.load()
+    width, height = img.size
+    matches = 0
+    for x in range(0, width, step):
+        for y in range(0, height, step):
+            if color_distance(pixels[x, y][:3], target_color) <= tolerance:
+                matches += 1
+                if matches >= min_pixels:
+                    return True
+    return False
 
 
 # TEMPLATE-CACHE
@@ -318,24 +320,68 @@ def with_background_mask(img: 'Image.Image', background) -> 'Image.Image':
     return result
 
 
-def _masked_confidence(image, template, mask) -> float:
+# Wie weit das Item im Ausschnitt gegen die Vorlage verrutscht sein darf.
+MASK_SHIFT = 2
+
+
+def _masked_confidence(image, template, mask, shift: int = MASK_SHIFT) -> float:
     """TM_CCOEFF_NORMED, aber nur über die Pixel, die das Item ausmachen.
 
     Von Hand statt `cv2.matchTemplate(..., mask=)`: mit Maske kann OpenCV nur
     `TM_SQDIFF`/`TM_CCORR_NORMED`, deren Zahlen etwas anderes bedeuten — jede
-    gespeicherte `min_confidence` verschöbe sich still. Template und Ausschnitt
-    sind hier immer gleich gross, also genau eine Korrelation und keine Suche.
+    gespeicherte `min_confidence` verschöbe sich still.
+
+    **Gesucht wird über ±`shift` Pixel, nicht an genau einer Stelle.** Template
+    und Ausschnitt sind gleich gross, und die erste Fassung rechnete deshalb
+    genau eine Korrelation. Gemessen an echten Doppeln eines Bestands: derselbe
+    Gegenstand in zwei Slots liegt oft 1 px versetzt im Ausschnitt (die Slots
+    eines Rasters sind nicht pixelgenau gleich weit auseinander), und dieser
+    eine Pixel drückte die Übereinstimmung von ~97 % auf ~75 % — unter die
+    Schwelle. Der Scan erkannte das Item nicht, das Auto-Lernen legte es neu an,
+    und so stand derselbe Anglerfisch zweimal im Bestand. Mit der Suche kommen
+    dieselben Paare wieder auf 88–97 %. Das Bild wird dafür am Rand fortgesetzt
+    (`BORDER_REPLICATE`); bei Versatz 0 ist es exakt die Zahl von früher.
+
+    **Gerechnet wird mit drei `cv2.matchTemplate(TM_CCORR)`-Aufrufen statt 25
+    einzelner Korrelationen.** Der Zähler ist die Kreuzkorrelation mit der
+    zentrierten, maskierten Vorlage (deren Summe ist 0, der Mittelwert des
+    Ausschnitts fällt also heraus); der Nenner braucht Summe und
+    Quadratsumme des Ausschnitts unter der Maske. In reinem numpy kostete ein
+    Vergleich 3,7 ms — bei 26 Slots × 47 Items über 4 s je Scan.
     """
     choice = mask > 127
-    if int(choice.sum()) < 16:
+    count = int(choice.sum())
+    if count < 16:
         # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
         return 0.0
-    a = template[choice].astype(np.float64).ravel()
-    b = image[choice].astype(np.float64).ravel()
-    a -= a.mean()
-    b -= b.mean()
-    denominator = float(np.sqrt(float((a * a).sum()) * float((b * b).sum())))
-    return float((a * b).sum() / denominator) if denominator > 0 else 0.0
+    channels = template.shape[2] if template.ndim == 3 else 1
+    m = choice.astype(np.float32)
+    if channels > 1:
+        m = np.repeat(m[:, :, None], channels, axis=2)
+    t = template.astype(np.float32)
+    a = (t - float(t[m > 0].mean())) * m
+    sum_a2 = float((a.astype(np.float64) ** 2).sum())
+    if sum_a2 <= 0:
+        return 0.0
+    # Mittelwert abziehen haelt die Quadratsummen klein: in float32 frisst
+    # `S2 - S1²/n` sonst die Stellen, auf die es ankommt.
+    img = image.astype(np.float32)
+    img = img - float(img.mean())
+    padded = cv2.copyMakeBorder(img, shift, shift, shift, shift, cv2.BORDER_REPLICATE)
+    if padded.ndim == 2 and channels > 1:
+        padded = padded[:, :, None]
+    n = float(count * channels)
+    numerator = cv2.matchTemplate(padded, a, cv2.TM_CCORR).astype(np.float64)
+    s1 = cv2.matchTemplate(padded, m, cv2.TM_CCORR).astype(np.float64)
+    s2 = cv2.matchTemplate(padded * padded, m, cv2.TM_CCORR).astype(np.float64)
+    variance = np.maximum(s2 - s1 * s1 / n, 0.0)
+    denominator = np.sqrt(sum_a2 * variance)
+    valid = denominator > 0
+    if not valid.any():
+        return 0.0
+    # Negativ bleibt negativ: `_size_hint` liest „unter 0" als „keine
+    # Ähnlichkeit", und das darf die Suche nicht glattbügeln.
+    return float((numerator[valid] / denominator[valid]).max())
 
 
 def _template_at_size(template_path: str, image, width: int, height: int):
@@ -408,12 +454,9 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
 
     Gibt `(gefunden, konfidenz, (x, y) relativ zum Suchbereich | None)` zurück.
     """
-    if not OPENCV_AVAILABLE:
-        logger.warning("OpenCV nicht verfügbar für Template Matching")
-        return (False, 0.0, None)
-
-    if not NUMPY_AVAILABLE:
-        logger.warning("NumPy nicht verfügbar für Template Matching")
+    missing = "OpenCV" if not OPENCV_AVAILABLE else ("NumPy" if not NUMPY_AVAILABLE else None)
+    if missing:
+        logger.warning(f"{missing} nicht verfügbar für Template Matching")
         return (False, 0.0, None)
 
     template_path = _template_path(template_name, template_root)
@@ -432,60 +475,29 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         # Grössenvergleich: Template muss zum Scan-Bild passen
         th, tw = template_cv.shape[:2]
         ih, iw = img_cv.shape[:2]
-
-        if (tw != iw or th != ih) and not resize_template:
+        size_differs = tw != iw or th != ih
+        if size_differs and not resize_template:
             return (False, 0.0, None)
-
-        if (tw != iw or th != ih) and tw > 0 and th > 0:
+        if size_differs and tw > 0 and th > 0:
             # Grössen-Diskrepanz! Template an Scan-Bildgrösse anpassen
             # Passiert wenn Slot-Regionen nach Template-Erstellung geändert wurden
             # (z.B. neue Auto-Erkennung, Monitor-Wechsel, DPI-Änderung)
             logger.debug(f"Template '{template_name}' Grösse {tw}x{th} != Scan {iw}x{ih} - resize")
             template_cv = _template_at_size(template_path, template_cv, iw, ih)
 
-        # Debug: Scan-Bild und Template speichern zum Vergleich. Unter den
-        # Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit dem
-        # Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
         if CONFIG.debug_save_templates:
-            debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
-            base_name = Path(template_path).stem
-            # Aktuelles Scan-Bild (was im Slot ist)
-            img.save(os.path.join(debug_dir, f"{base_name}_scan.png"))
-            # Template/Maske (was cv2 zum Vergleich verwendet)
-            cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
+            _save_debug_templates(img, template_path, template_cv)
 
-        # Traegt das Template eine Maske, wird nur ueber das Item verglichen -
-        # der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
-        mask = None
-        if template_cv.ndim == 3 and template_cv.shape[2] == 4:
-            mask = template_cv[:, :, 3]
-            template_cv = np.ascontiguousarray(template_cv[:, :, :3])
-
-        if mask is not None and template_cv.shape[:2] == img_cv.shape[:2]:
-            max_val = _masked_confidence(img_cv, template_cv, mask)
-            max_loc = (0, 0)
-        else:
-            # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
-            result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
+        max_val, max_loc = _template_confidence(img_cv, template_cv)
         # max_val ist die Konfidenz (0.0 - 1.0)
         if max_val >= min_confidence:
             # Position ist obere linke Ecke des Matches
             return (True, max_val, max_loc)
-        else:
-            # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
-            # melden - siehe _size_hint(), nur eine der Ursachen ist ein Fehler.
-            if (report_size_mismatch and max_val < 0.3
-                    and (tw != iw or th != ih)):
-                key_name = (tw, th, iw, ih)
-                if key_name not in _reported_sizes:
-                    _reported_sizes.add(key_name)
-                    logger.warning(_size_hint(template_name, tw, th, iw, ih,
-                                                     max_val))
-            return (False, max_val, None)
+        # Bei sehr niedrigen Werten: Groessen-Mismatch als moegliche Ursache
+        # melden - siehe _size_hint(), nur eine der Ursachen ist ein Fehler.
+        if report_size_mismatch and max_val < 0.3 and size_differs:
+            _report_size_once(template_name, (tw, th, iw, ih), max_val)
+        return (False, max_val, None)
 
     except (ValueError, TypeError, AttributeError, cv2.error) as e:
         # cv2.error explizit fangen (z.B. Grössen-Mismatch nach Resize, leere Matrix) —
@@ -496,51 +508,132 @@ def match_template_in_image(img: 'Image.Image', template_name: str,
         return (False, 0.0, None)
 
 
+def _report_size_once(template_name: str, sizes: tuple, max_val: float) -> None:
+    """Meldet eine Grössenpaarung `(tw, th, iw, ih)` genau einmal (`_reported_sizes`)."""
+    if sizes in _reported_sizes:
+        return
+    _reported_sizes.add(sizes)
+    logger.warning(_size_hint(template_name, *sizes, max_val))
+
+
+def _save_debug_templates(img, template_path, template_cv) -> None:
+    """Debug: Scan-Bild und Template speichern zum Vergleich.
+
+    Unter den Lauf-Screenshots, nicht unter `items/` — den Ordner gibt es seit
+    dem Umzug auf Besitzeinheiten nur noch als Altbestand fuer den Reset.
+    """
+    debug_dir = os.path.join(SEQUENCE_SCREENSHOTS_DIR, "debug")
+    os.makedirs(debug_dir, exist_ok=True)
+    # Nur der echte Dateistamm — niemals Verzeichnisteile aus der Config.
+    base_name = Path(template_path).stem
+    # Aktuelles Scan-Bild (was im Slot ist)
+    img.save(os.path.join(debug_dir, f"{base_name}_scan.png"))
+    # Template/Maske (was cv2 zum Vergleich verwendet)
+    cv2.imwrite(os.path.join(debug_dir, f"{base_name}_template.png"), template_cv)
+
+
+def _template_confidence(img_cv, template_cv) -> tuple:
+    """`(Konfidenz, Stelle)` — mit Maske nur über die deckenden Pixel.
+
+    Traegt das Template eine Maske, wird nur ueber das Item verglichen -
+    der Hintergrund macht sonst neun Zehntel der Uebereinstimmung aus.
+    """
+    mask = None
+    if template_cv.ndim == 3 and template_cv.shape[2] == 4:
+        mask = template_cv[:, :, 3]
+        template_cv = np.ascontiguousarray(template_cv[:, :, :3])
+    if mask is not None and template_cv.shape[:2] == img_cv.shape[:2]:
+        return _masked_confidence(img_cv, template_cv, mask), (0, 0)
+    # Template Matching mit TM_CCOEFF_NORMED (beste Methode für farbige Bilder)
+    result = cv2.matchTemplate(img_cv, template_cv, cv2.TM_CCOEFF_NORMED)
+    _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+    return max_val, max_loc
+
+
 def get_color_name(rgb: tuple) -> str:
     """Gibt einen ungefähren Farbnamen für RGB zurück."""
     r, g, b = rgb
-
     # Graustufen
     if abs(r - g) < 30 and abs(g - b) < 30 and abs(r - b) < 30:
-        if r < 50:
-            return "Schwarz"
-        elif r < 120:
-            return "Dunkelgrau"
-        elif r < 200:
-            return "Grau"
-        else:
-            return "Weiss"
+        return next((name for limit, name in ((50, "Schwarz"), (120, "Dunkelgrau"),
+                                              (200, "Grau")) if r < limit), "Weiss")
+    return _dominant_color_name(r, g, b) or _mixed_color_name(r, g, b)
 
-    # Dominante Farbe bestimmen
+
+def _dominant_color_name(r: int, g: int, b: int) -> Optional[str]:
+    """Der Name nach dem stärksten Kanal — None, wenn keiner allein vorn liegt."""
     if r > g and r > b:
         if g > b + 50:
             return "Orange" if r > 200 else "Braun"
-        elif b > g + 30:
-            return "Pink/Magenta"
-        else:
-            return "Rot"
-    elif g > r and g > b:
+        return "Pink/Magenta" if b > g + 30 else "Rot"
+    if g > r and g > b:
         if r > b + 30:
             return "Gelb/Lime"
-        elif b > r + 30:
-            return "Türkis/Cyan"
-        else:
-            return "Grün"
-    elif b > r and b > g:
+        return "Türkis/Cyan" if b > r + 30 else "Grün"
+    if b > r and b > g:
         if r > g + 30:
             return "Lila/Violett"
-        elif g > r + 30:
-            return "Türkis/Cyan"
-        else:
-            return "Blau"
-    elif r > 200 and g > 200 and b < 100:
+        return "Türkis/Cyan" if g > r + 30 else "Blau"
+    return None
+
+
+def _mixed_color_name(r: int, g: int, b: int) -> str:
+    """Zwei gleich starke Kanäle: Gelb, Magenta, Cyan oder gemischt."""
+    if r > 200 and g > 200 and b < 100:
         return "Gelb"
-    elif r > 200 and g < 100 and b > 200:
+    if r > 200 and g < 100 and b > 200:
         return "Magenta"
-    elif r < 100 and g > 200 and b > 200:
+    if r < 100 and g > 200 and b > 200:
         return "Cyan"
-    else:
-        return "Gemischt"
+    return "Gemischt"
+
+
+def compose_regions(pieces: list, max_side: int = 900) -> Optional[tuple]:
+    """Setzt Bildausschnitte an ihre Bildschirmstelle — `(PNG, links, oben, Massstab, B, H)`.
+
+    `pieces` ist eine Liste `(Region (x1, y1, x2, y2), Bild)`. Dazwischen bleibt
+    der Grund dunkel: gezeigt wird genau das, was ausgewertet wurde, nicht der
+    Bildschirm drumherum. Verkleinert wird auf `max_side` Pixel an der längeren
+    Kante — das Bild geht fünfmal pro Sekunde durch die Studio-Brücke.
+    Ohne Pillow, ohne Ausschnitte oder bei einem Bild, das keines ist: `None`.
+    """
+    if not PILLOW_AVAILABLE or not pieces:
+        return None
+    try:
+        left = min(int(r[0]) for r, _ in pieces)
+        top = min(int(r[1]) for r, _ in pieces)
+        right = max(int(r[2]) for r, _ in pieces)
+        bottom = max(int(r[3]) for r, _ in pieces)
+        width, height = right - left, bottom - top
+        if width <= 0 or height <= 0:
+            return None
+        canvas = Image.new("RGB", (width, height), (12, 15, 20))
+        for region, image in pieces:
+            canvas.paste(image.convert("RGB"), (int(region[0]) - left, int(region[1]) - top))
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
+    encoded = encode_picture(canvas, max_side)
+    return None if encoded is None else (encoded[0], left, top) + encoded[1:]
+
+
+def encode_picture(image, max_side: int = 900) -> Optional[tuple]:
+    """Ein Bild als PNG, verkleinert auf `max_side` — `(PNG, Massstab, B, H)` oder None."""
+    if not PILLOW_AVAILABLE or image is None:
+        return None
+    try:
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return None
+        image = image.convert("RGB")
+        scale = min(1.0, max_side / max(width, height))
+        if scale < 1.0:
+            image = image.resize((max(1, round(width * scale)), max(1, round(height * scale))),
+                                 Image.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue(), scale, image.size[0], image.size[1]
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
 
 
 def take_screenshot(region: tuple = None) -> Optional['Image.Image']:

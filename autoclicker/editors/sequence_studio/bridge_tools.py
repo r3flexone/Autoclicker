@@ -89,7 +89,13 @@ class BridgeToolsMixin:
         `except_step` nimmt einen Schritt heraus — der Inspektor fragt damit „wer
         benutzt diesen Punkt SONST noch", denn dass der gewählte Block ihn
         benutzt, weiss man dort schon.
+
+        **Die Scans gehören dazu, auch wenn ihr Reiter nie offen war**
+        (`_scan_configs_load()`), und zwar ALLE Item-Scans, nicht nur der
+        offene (`_all_items()`). Sonst galt der Bestätigungsklick eines Items
+        als ungenutzt, und das Lösch-× in der Punkte-Liste brach ihn still.
         """
+        self._scan_configs_load()
         out = []
         for lane in self.board.lanes:
             for nr, step in enumerate(lane.steps, 1):
@@ -104,20 +110,106 @@ class BridgeToolsMixin:
                     out.append(base_name + " · Nachprüfung")
                 if step.else_config and step.else_config.point_id == point_id:
                     out.append(base_name + " · ELSE")
-        for item in self.items.values():
+        out.extend(f"{where} · {what}" for where, what in self._scan_point_usages(point_id))
+        return out
+
+    def _scan_point_usages(self, point_id: int) -> list[tuple[str, str]]:
+        """Verwendungen in Scans als `(wo, wozu)` — Teil von `_point_usages()`."""
+        self._scan_configs_load()
+        out = []
+        for scan, item in self._all_items():
             if item.confirm_point_id == point_id:
-                out.append(f"Item '{item.name}' · Bestätigung")
+                out.append((f"Item '{item.name}' in '{scan}'", "Bestätigung"))
         for name, cfg in self.boss_scans.items():
             for boss in cfg.bosses:
                 if boss.action_point_id == point_id:
-                    out.append(f"Boss '{boss.name}' in '{name}' · Aktion")
+                    out.append((f"Boss '{boss.name}' in '{name}'", "Aktion"))
         for boss in self.global_bosses:
             if boss.action_point_id == point_id:
-                out.append(f"Boss '{boss.name}' aus Bibliothek · Aktion")
+                out.append((f"Boss '{boss.name}' aus Bibliothek", "Aktion"))
         for name, cfg in self.icon_scans.items():
             if cfg.action_point_id == point_id:
-                out.append(f"Icon-Scan '{name}' · Aktion")
+                out.append((f"Icon-Scan '{name}'", "Aktion"))
         return out
+
+    def _point_usage_groups(self, point_id: int, except_step=None) -> dict:
+        """Dieselben Verwendungen wie `_point_usages()`, zum LESEN gebündelt.
+
+        Die flache Liste nennt jede Rolle einzeln und die Phase bei jedem
+        Eintrag — an einer echten Aufnahme standen so achtzehn Zeilen für neun
+        FARBE+KLICK-Blöcke da („Block 12 · Stelle, Block 12 · Prüf-Pixel, …"),
+        ein Absatz, den niemand liest. Hier: eine Zeile je Phase, jeder Block
+        EINMAL, und eine Rolle nur dann dazu, wenn sie nicht die gewöhnliche
+        ist — Stelle und Prüf-Pixel sind bei diesem Block-Typ derselbe Punkt,
+        das sagt nichts. Nachprüfung und ELSE sagen etwas und bleiben stehen.
+
+        Gibt `{"count": Anzahl, "lines": [{"where", "what"}]}` zurück; die
+        Zahl zählt Blöcke und Scan-Einträge, nicht Rollen.
+        """
+        plain = {"Stelle", "Prüf-Pixel"}
+        lines, count = [], 0
+        for lane in self.board.lanes:
+            blocks = []
+            for nr, step in enumerate(lane.steps, 1):
+                if step is except_step:
+                    continue
+                roles = []
+                if step.point_id == point_id:
+                    roles.append("Stelle")
+                if step.wait_condition and step.wait_condition.point_id == point_id:
+                    roles.append("Prüf-Pixel")
+                if step.verify_condition and step.verify_condition.point_id == point_id:
+                    roles.append("Nachprüfung")
+                if step.else_config and step.else_config.point_id == point_id:
+                    roles.append("ELSE")
+                if not roles:
+                    continue
+                special = [r for r in roles if r not in plain]
+                blocks.append((nr, f" ({', '.join(special)})" if special else ""))
+            if blocks:
+                count += len(blocks)
+                lines.append({"where": lane.name,
+                              "what": ("Block " if len(blocks) == 1 else "Blöcke ")
+                              + self._block_ranges(blocks)})
+        # Scans stehen ohnehin je Eintrag einzeln da — dort gibt es nichts zu bündeln.
+        for where, what in self._scan_point_usages(point_id):
+            lines.append({"where": where, "what": what})
+            count += 1
+        return {"count": count, "lines": lines}
+
+    @staticmethod
+    def _block_ranges(blocks: list[tuple[int, str]]) -> str:
+        """„1–5, 7, 9 (ELSE), 10–24" — lückenlose Folgen ab drei als Bereich.
+
+        Eine Aufnahme klickt denselben Knopf oft in jedem Block einer Phase;
+        vierundzwanzig Zahlen hintereinander liest niemand. Ein Block mit Rolle
+        unterbricht den Bereich, sonst ginge die Rolle darin verloren.
+        """
+        parts, run = [], []
+
+        def flush():
+            if len(run) >= 3:
+                parts.append(f"{run[0]}–{run[-1]}")
+            else:
+                parts.extend(str(n) for n in run)
+            run.clear()
+
+        for nr, suffix in blocks:
+            if suffix:
+                flush()
+                parts.append(f"{nr}{suffix}")
+            elif run and nr != run[-1] + 1:
+                flush()
+                run.append(nr)
+            else:
+                run.append(nr)
+        flush()
+        return ", ".join(parts)
+
+    @staticmethod
+    def _usage_text(groups: dict) -> str:
+        """Die gebündelten Verwendungen als eine Zeile — für Statusmeldungen."""
+        return "; ".join(f"{g['where']}: {g['what']}" for g in groups["lines"])
 
     # --------------------------------------------------------- Punkte verwalten
 
@@ -241,34 +333,18 @@ class BridgeToolsMixin:
             return {"ok": False, "message": "Eine Sequenz läuft — Analyse ist gesperrt."}
         kind = str((data or {}).get("kind") or "point")
         if kind == "point":
-            x, y, message = self._await_position()
-            if x is None:
-                return {"ok": False, "message": message + " — nichts analysiert."}
-            color = self._color_at(x, y)
-            if not color:
-                return {"ok": False, "message": "Farbe konnte nicht gelesen werden."}
-            from ...imaging import get_color_name
-            return {"ok": True, "kind": "point", "position": [x, y],
-                    "colors": [self._color_json(tuple(color), 1, 1, get_color_name)],
-                    "message": f"Farbe bei ({x}, {y}) gelesen."}
-
-        region = None
+            return self._color_under_mouse()
         if kind == "region":
-            x1, y1, message = self._await_position()
-            if x1 is None:
-                return {"ok": False, "message": message + " — keine erste Ecke."}
-            x2, y2, message = self._await_position()
-            if x2 is None:
-                return {"ok": False, "message": message + " — keine zweite Ecke."}
-            region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
-            if region[2] - region[0] < 2 or region[3] - region[1] < 2:
-                return {"ok": False, "message": "Der gewählte Bereich ist zu klein."}
+            region = self._color_region()
+            if isinstance(region, dict):
+                return region
         elif kind == "fullscreen":
             # ENTER ist die Übergabe: Das Studio kann in den Hintergrund, bevor
             # der Screenshot entsteht.
             _, _, message = self._await_position()
             if message:
                 return {"ok": False, "message": message + " — nichts analysiert."}
+            region = None
         else:
             return {"ok": False, "message": "Unbekannte Analyseart."}
 
@@ -281,6 +357,31 @@ class BridgeToolsMixin:
         return {"ok": True, "kind": kind, "region": list(region) if region else None,
                 "colors": [self._color_json(f, n, total, get_color_name) for f, n in top],
                 "message": f"{total} Stichproben analysiert."}
+
+    def _color_under_mouse(self) -> dict:
+        x, y, message = self._await_position()
+        if x is None:
+            return {"ok": False, "message": message + " — nichts analysiert."}
+        color = self._color_at(x, y)
+        if not color:
+            return {"ok": False, "message": "Farbe konnte nicht gelesen werden."}
+        from ...imaging import get_color_name
+        return {"ok": True, "kind": "point", "position": [x, y],
+                "colors": [self._color_json(tuple(color), 1, 1, get_color_name)],
+                "message": f"Farbe bei ({x}, {y}) gelesen."}
+
+    def _color_region(self):
+        """Zwei Ecken mit der Maus — die Region, sonst die Absage."""
+        x1, y1, message = self._await_position()
+        if x1 is None:
+            return {"ok": False, "message": message + " — keine erste Ecke."}
+        x2, y2, message = self._await_position()
+        if x2 is None:
+            return {"ok": False, "message": message + " — keine zweite Ecke."}
+        region = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+        if region[2] - region[0] < 2 or region[3] - region[1] < 2:
+            return {"ok": False, "message": "Der gewählte Bereich ist zu klein."}
+        return region
 
     @staticmethod
     def _color_json(color, count: int, total: int, name_function) -> dict:

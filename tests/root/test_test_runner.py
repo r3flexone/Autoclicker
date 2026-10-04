@@ -4,7 +4,7 @@ from contextlib import redirect_stdout
 import io
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from tests import all_tests, root_tests
 
@@ -83,6 +83,58 @@ class TestRunnerTest(unittest.TestCase):
         self.assertEqual(full_value - single, {"test_regression.RegressionSuiteTest.test_logic_regressions"})
         self.assertEqual(single - full_value, set())
         self.assertTrue(single)
+
+    def test_wurzelmodule_laufen_in_eigenem_ordner_nicht_im_repo(self):
+        # Ein Item-Scan-Test ohne eigene Sandbox schrieb bei jedem Lauf
+        # `.run.json` in den Ordner, aus dem man startet — also in die echten
+        # Daten. Gemessen wird, wo die Tests WIRKLICH laufen.
+        seen = []
+
+        class Probe(unittest.TestCase):
+            def runTest(self):
+                seen.append(Path.cwd().resolve())
+
+        before = Path.cwd().resolve()
+        with patch.object(root_tests, "collect", return_value=unittest.TestSuite([Probe()])), \
+                redirect_stdout(io.StringIO()), patch("sys.stderr", io.StringIO()):
+            self.assertEqual(root_tests.main([]), 0)
+        self.assertEqual(len(seen), 1)
+        self.assertNotEqual(seen[0], before)
+        self.assertNotEqual(seen[0], root_tests.ROOT.resolve())
+        self.assertFalse(seen[0].exists(), "der Arbeitsordner wird danach geräumt")
+        self.assertEqual(Path.cwd().resolve(), before)
+
+    def test_gegenproben_laufen_nicht_im_repo(self):
+        # Sie laden ihre Testfaelle beim Namen, also ohne den Arbeitsordner
+        # von `root_tests.main()` — und schrieben dabei `.run.json` ins Repo.
+        from tests import mutation_check
+        seen = []
+
+        def run(command, cwd=None, **kwargs):
+            seen.append(Path(cwd).resolve())
+            return Mock(returncode=0, stdout="", stderr="")
+
+        with patch.object(mutation_check.subprocess, "run", side_effect=run), \
+                patch.object(mutation_check.sys, "argv",
+                             ["mutation_check", "--case", "scan-block-skip"]), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(mutation_check.main(), 0)
+        self.assertEqual(len(seen), 2, "Basis und Mutant")
+        for workdir in seen:
+            self.assertNotEqual(workdir, mutation_check.ROOT.resolve())
+            self.assertFalse(workdir.exists(), "der Ordner wird danach geräumt")
+
+    def test_rauchtests_starten_nicht_im_repo(self):
+        # Sie importieren `autoclicker` vor ihrer eigenen Sandbox und lasen
+        # dabei die echte `config.json` — lokal galten andere Werte als in der CI.
+        with patch("tests.smoke._bridge.playwright_available", return_value=(True, "")), \
+                patch.object(all_tests, "_run", return_value=(0, "OK")) as run, \
+                redirect_stdout(io.StringIO()):
+            self.assertTrue(all_tests.smoke(("items",)).ok)
+        workdir = Path(run.call_args.kwargs["cwd"]).resolve()
+        self.assertNotEqual(workdir, all_tests.ROOT.resolve())
+        self.assertIn(str(all_tests.ROOT), run.call_args.args[1]["PYTHONPATH"])
+        self.assertFalse(workdir.exists(), "der Startordner wird danach geräumt")
 
 
 if __name__ == "__main__":

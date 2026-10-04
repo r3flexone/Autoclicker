@@ -84,10 +84,38 @@ check("jede Sitzung kennt ihren Dateinamen",
 check("und den Beginn aus der ersten Zeile",
       _d["sessions"][0]["begin"] == "2026-01-01 00:00:00")
 
+# Die Liste im Reiter braucht den Namen der Sequenz — ein Datum allein sagt
+# nicht, welcher Lauf es war. Gelesen wird er aus `session_start`, denn der
+# Dateiname kennt nur die bereinigte Form.
+_spaced = _log(_sandbox / "logs4" / "2026-01-04_000000_all_dayli.csv", [
+    ("2026-01-04 00:00:00", 0, "session_start", "All Dayli", "", "", ""),
+    ("2026-01-04 00:00:01", 1, "click", "Bank", 10, 20, ""),
+])
+_headless = _log(_sandbox / "logs5" / "2026-01-05_000000_mein_lauf.csv", [
+    ("2026-01-05 00:00:01", 1, "click", "Bank", 10, 20, ""),
+])
+check("jede Sitzung nennt ihre Sequenz", _d["sessions"][0]["sequence"] == "Farm")
+check("und zwar den Namen aus der Startzeile, nicht den Dateinamen",
+      _auswerten([_spaced])["sessions"][0]["sequence"] == "All Dayli")
+check("ohne Startzeile faellt er auf den Dateinamen zurueck",
+      _auswerten([_headless])["sessions"][0]["sequence"] == "mein_lauf")
+
 # DIE Frage, fuer die es den Reiter gibt: der oberste Timeout ist der Schritt,
 # den es zu reparieren lohnt — also muss die Liste absteigend sortiert sein.
 check("die Timeouts stehen absteigend", _d["timeouts"] == [["Bank oeffnen", 2],
                                                            ["Truhe", 1]])
+# Ein Block ohne Namen hängt trotzdem — er steht als „(ohne Namen)" da, nicht
+# als leere Zeile, die man für einen Darstellungsfehler hält. Ein Item ohne
+# Namen gibt es dagegen nicht; es bleibt, wie es ist.
+_nameless = _log(_sandbox / "logs8" / "2026-01-08_000000_farm.csv", [
+    ("2026-01-08 00:00:00", 0, "timeout", "", "", "", ""),
+    ("2026-01-08 00:00:01", 1, "verify_miss", "  ", "", "", ""),
+    ("2026-01-08 00:00:02", 2, "item_found", "", "", "", ""),
+])
+_dn = _auswerten([_nameless])
+check("ein Timeout ohne Blocknamen zählt als „(ohne Namen)“",
+      _dn["timeouts"] == [["(ohne Namen)", 1]] and _dn["verify_miss"] == [["(ohne Namen)", 1]])
+check("ein Item ohne Namen bleibt ohne", _dn["items"] == [["", 1]])
 check("die Items ebenso", _d["items"] == [["Erz", 3], ["Holz", 1]])
 check("die Nachpruefung kommt von beiden Seiten",
       _d["verify_miss"] == [["Verkaufen", 1]] and _d["verify_ok"] == {"Verkaufen": 1})
@@ -117,6 +145,90 @@ with redirect_stdout(_buffer):
 _text = _buffer.getvalue()
 check("der Kommandozeilen-Bericht druckt nach wie vor", "TIMEOUTS" in _text)
 check("und nennt dieselbe Zahl wie die Auswertung", "2x  Bank oeffnen" in _text)
+
+# Der ganze Text, Zeile für Zeile — festgehalten vor dem Zerlegen von
+# `report()`. Jeder Abschnitt kommt einmal vor; was die Konsole zeigt, ist
+# die Oberfläche dieses Werkzeugs, also wird sie wörtlich geprüft.
+_waits6 = _log(_sandbox / "logs6" / "2026-01-06_000000_farm.csv", [
+    ("2026-01-06 00:00:00", 0, "session_start", "Farm", "", "", ""),
+    ("2026-01-06 00:00:01", 1, "key", "Esc", "", "", ""),
+    ("2026-01-06 00:00:02", 2, "wait", "Bank", "", "", "s=30.00"),
+    ("2026-01-06 00:00:03", 3, "color_wait", "Kampf", 1, 2, "s=120.00,result=timeout"),
+    ("2026-01-06 00:00:04", 4, "color_wait", "Kampf", 1, 2, "s=60.00,result=ok"),
+    ("2026-01-06 00:00:05", 5, "pause", "", "", "", "s=90.00"),
+    ("2026-01-06 00:00:06", 6, "detected", "Kraken", "", "", ""),
+    ("2026-01-06 00:00:07", 7, "verify_ok", "Tor", "", "", ""),
+    ("2026-01-06 00:00:08", 8, "irgendwas_neues", "", "", "", ""),
+    ("2026-01-06 00:10:00", 600, "session_end", "Farm", "", "", ""),
+])
+_quiet7 = _log(_sandbox / "logs7" / "2026-01-07_000000_ruhe.csv", [
+    ("2026-01-07 00:00:00", 0, "session_start", "Ruhe", "", "", ""),
+    ("2026-01-07 00:00:05", 5, "session_end", "Ruhe", "", "", ""),
+])
+
+
+def _printed(paths):
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        _bericht(paths)
+    lines = buffer.getvalue().split("\n")
+    # Der Grund einer unlesbaren Datei ist ein Betriebssystem-Text.
+    return ([z for z in lines if z.startswith("  ! ")],
+            "\n".join(z for z in lines if not z.startswith("  ! ")))
+
+
+_RULE = "-" * 66
+_FULL = "\n".join([
+    "=" * 66,
+    "  3 Session(s)  |  Laufzeit gesamt: 1:40:00",
+    "=" * 66,
+    "",
+    "Aktionen: 3 Klick(s), 1 Taste(n)",
+    "          2 Klicks/Stunde",
+    "", _RULE,
+    "TIMEOUTS — wo die Sequenz haengt (3 gesamt):",
+    "      2x  Bank oeffnen",
+    "      1x  Truhe",
+    "       Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt.",
+    "", _RULE,
+    "NACHPRUEFUNG:",
+    "  2x bestaetigt, 1x ohne Wirkung",
+    "      1x ohne Wirkung  Verkaufen   (bestaetigt: 1/2)",
+    "       Haeufige Fehlschlaege heissen: Klickziel sitzt falsch oder das Spiel",
+    "       braucht laenger als verify_timeout.",
+    "", _RULE,
+    "WARTEZEITEN (1 Session(s) mit Messung, 10:00):",
+    "       0:30    5.0 %  geplant",
+    "       3:00   30.0 %  auf Farbe",
+    "       1:30   15.0 %  Pause",
+    "       5:00   50.0 %  Rest (Aktionen, Scans)",
+    "       3:00  auf Farbe  Kampf  (2x, laengste 120s, 1x Timeout)",
+    "", _RULE,
+    "GEFUNDENE ITEMS (4 gesamt):",
+    "      3x  Erz",
+    "      1x  Holz",
+    "", _RULE,
+    "ERKANNT (Boss/Icon):",
+    "      1x  Kraken",
+    "", _RULE,
+    "UNTERBRECHUNGEN:",
+    "      1x  focus_lost",
+    "",
+    "  Nicht ausgewertete Ereignisarten: irgendwas_neues",
+    "",
+])
+_bad, _text = _printed([_one, _two, _waits6, _sandbox / "fehlt.csv"])
+check("der volle Bericht, Abschnitt für Abschnitt", _text == _FULL)
+check("eine unlesbare Datei steht davor, mit Namen",
+      len(_bad) == 1 and _bad[0].startswith("  ! fehlt.csv: nicht lesbar ("))
+_bad, _text = _printed([_quiet7])
+check("ein ruhiger Lauf: nur der Kopf und 'keine Timeouts'", _text == "\n".join([
+    "=" * 66, "  1 Session(s)  |  Laufzeit gesamt: 0:05", "=" * 66, "",
+    "Aktionen: 0 Klick(s), 0 Taste(n)", "",
+    "Keine Timeouts — jede Farb-Bedingung ist aufgegangen.", ""]))
+_bad, _text = _printed([_sandbox / "fehlt.csv"])
+check("nichts Lesbares: das wird gesagt", _text == "Keine lesbaren Logs gefunden.\n"
+      and len(_bad) == 1)
 
 
 section("Bericht: was der Reiter daraus macht")

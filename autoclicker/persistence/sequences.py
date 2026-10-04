@@ -12,7 +12,10 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import SEQUENCES_DIR
-from ..models import ClickPoint, LoopPhase, Sequence, AutoClickerState
+from ..models import (
+    POSITIONLESS_BLOCKS, ClickPoint, LoopPhase, Sequence, AutoClickerState,
+    block_type, drop_position,
+)
 from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
 from ..utils import compact_json, sanitize_filename, err, info, warn, hint, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict
@@ -58,6 +61,26 @@ def active_sequence_dir(state: AutoClickerState) -> Path:
 def active_templates_dir(state: AutoClickerState) -> Path:
     """Template-Ordner der aktiven Sequenz."""
     return active_sequence_dir(state) / "templates"
+
+
+def free_template_file(folder: Path, name: str) -> str:
+    """Ein Vorlagen-Dateiname aus `name`, der im Ordner noch NICHT existiert.
+
+    **Ein freier Item-Name heisst noch keine freie Datei.** Beim Umbenennen
+    behält ein Item seine Vorlage (`auto_slot_19_2.png` gehört danach
+    „Überlegener Edelstein"), der Name „Auto Slot 19 2" ist damit wieder frei
+    — und das nächste Auto-Lernen in Slot 19 schrieb seine Vorlage genau
+    dorthin: gemessen an einem echten Lauf stand danach eine Truhe als Vorlage
+    eines Edelsteins da, der eingeschaltet war. Deshalb entscheidet die Platte,
+    nicht die Namensliste: `_2`, `_3`, … bis die Datei frei ist.
+    """
+    base = sanitize_filename(name)
+    file_name = f"{base}.png"
+    number = 2
+    while (Path(folder) / file_name).exists():
+        file_name = f"{base}_{number}.png"
+        number += 1
+    return file_name
 
 
 # =============================================================================
@@ -119,18 +142,51 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             data.get("total_cycles", 1),
             data.get("description", ""),
             seq_points,
+            str(data.get("next_sequence") or "").strip(),
+            next_delay_value(data.get("next_delay", 30.0)),
         )
 
+        points = {p.id: p for p in seq.points}
+        for m in drop_position_leftovers(points, seq):
+            print(info(f"'{filepath.stem}': {m}"))
         # Arbeitswerte fuellen. `quiet=True`: dass ein Schritt seine Koordinate aus dem
         # Punkt bekommt, ist beim Laden kein Ereignis, sondern der einzige Weg. Gemeldet
         # werden nur tote Referenzen.
-        for m in resolve({p.id: p for p in seq.points}, seq, quiet=True):
+        for m in resolve(points, seq, quiet=True):
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
     except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
+
+
+def next_delay_value(value) -> float:
+    """Pause vor der Folgesequenz in Sekunden — unlesbar oder negativ wird 30.
+
+    Eine kaputte Zahl in der Datei darf den Loader nicht werfen; sie bekommt
+    den Standardwert, wie jedes andere Feld auch.
+    """
+    try:
+        delay = float(value)
+    except (TypeError, ValueError):
+        return 30.0
+    return delay if delay >= 0 else 30.0
+
+
+def find_sequence_path(name: str) -> Optional[Path]:
+    """Datei einer Sequenz zu ihrem ANGEZEIGTEN Namen — oder `None`.
+
+    Der Ordner heisst nicht wie die Sequenz (`sanitize_filename`), der Name
+    steht IN der Datei. Gesucht wird deshalb wie beim Laden.
+    """
+    wanted = str(name or "").strip()
+    if not wanted:
+        return None
+    for entry, path in list_available_sequences():
+        if entry == wanted:
+            return Path(path)
+    return None
 
 
 def locate_step(arguments: dict) -> tuple:
@@ -462,6 +518,38 @@ def _phases(sequence):
     return out
 
 
+def drop_position_leftovers(points: dict, sequence) -> list[str]:
+    """Nimmt Blöcken ohne eigene Stelle ihren Rest-Punkt ab — und sagt es.
+
+    Ein Scan, eine Taste oder ein Screenshot mit `point_id` entstand aus einem
+    Typwechsel, der den Punkt stehen liess (`set_block_type`, inzwischen
+    behoben). **Das ist die eine Ausnahme von „nie beim Laden“** (s. `resolve`),
+    und sie ist es, weil der Rest keine Einstellung ist, sondern wirkte: der
+    Punkt galt als verwendet, die Karte zeigte sein Farbfeld vor dem Scan-Namen,
+    die Live-Ansicht vor dem Scan sein Pixel, und fehlte er, übersprang der Lauf
+    den ganzen Scan. Ein wirkungsloses ELSE schadet niemandem und bleibt deshalb
+    stehen; dieser Rest schon.
+
+    Nicht still: jede Stelle wird gemeldet. Der Name des Punkts wird der des
+    Blocks — er stand bisher nur über den Punkt an der Karte. Der Punkt selbst
+    bleibt in der Liste; benutzt ihn sonst niemand, ist er danach ungenutzt.
+    """
+    messages = []
+    for phase_name, steps in _phases(sequence):
+        for i, step in enumerate(steps, 1):
+            if step.point_id is None or block_type(step) not in POSITIONLESS_BLOCKS:
+                continue
+            point = points.get(step.point_id)
+            if point is not None and not step.name:
+                step.name = point.name or ""
+            messages.append(
+                f"{phase_name}[{i}] braucht als Block ohne eigene Stelle keinen Punkt "
+                f"— Verweis auf #{step.point_id} entfernt (steht beim nächsten "
+                "Speichern nicht mehr in der Datei)")
+            drop_position(step)
+    return messages
+
+
 def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     """Fuellt die abgeleiteten Arbeitswerte aus dem Punkte-Pool. `points` ist id -> ClickPoint.
 
@@ -486,7 +574,6 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     Normalfall); verwaiste Referenzen werden IMMER gemeldet.
     """
     messages = []
-
     for phase_name, steps in _phases(sequence):
         for i, step in enumerate(steps, 1):
             location = f"{phase_name}[{i}]"
@@ -495,90 +582,109 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
             # Punkt einmal fehlte, blieb dadurch uebersprungen, auch nachdem der
             # Punkt wieder da war.
             step.unresolved = False
-
-            if step.point_id is not None:
-                point = points.get(step.point_id)
-                if point is None:
-                    # Kein Rueckfall auf alte Koordinaten - die gibt es nicht mehr.
-                    # Der Schritt wird zur Laufzeit uebersprungen (siehe step_gate).
-                    step.unresolved = True
-                    messages.append(
-                        f"{location} '{step.name or 'Klick'}' zeigt auf Punkt "
-                        f"#{step.point_id}, den es nicht mehr gibt - wird uebersprungen")
-                else:
-                    old = (step.x, step.y)
-                    step.x, step.y, step.name = point.x, point.y, point.name
-                    step.recorded_color = point.color
-                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
-                        messages.append(
-                            f"{location} '{step.name}' folgt Punkt #{point.id}: "
-                            f"{old} -> ({point.x}, {point.y})")
-
-            wc = step.wait_condition
-            if wc is not None and wc.point_id is not None:
-                point = points.get(wc.point_id)
-                if point is None:
-                    step.unresolved = True
-                    messages.append(
-                        f"{location} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
-                        f"den es nicht mehr gibt - wird uebersprungen")
-                else:
-                    old = tuple(wc.pixel)
-                    wc.pixel = (point.x, point.y)
-                    # Ohne Farbe am Punkt gaebe es nichts zu vergleichen; der Editor
-                    # laesst das nicht zu, eine von Hand gebaute Datei schon.
-                    wc.color = point.color if point.color else wc.color
-                    if old != (0, 0) and old != wc.pixel and not quiet:
-                        messages.append(
-                            f"{location} Pruef-Pixel folgt Punkt #{point.id}: "
-                            f"{old} -> {wc.pixel}")
-
-            vc = step.verify_condition
-            if vc is not None and vc.point_id is not None:
-                point = points.get(vc.point_id)
-                if point is None:
-                    # Anders als beim Pruef-Pixel wird der Schritt NICHT uebersprungen:
-                    # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
-                    # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
-                    # Nur als FLAG, nicht durch Loeschen: hier stand
-                    # `step.verify_condition = None`, und das naechste Speichern
-                    # schrieb die Sequenz ohne Nachpruefung — Daten, die beim
-                    # Laden still verschwanden.
-                    messages.append(
-                        f"{location} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
-                        f"den es nicht mehr gibt - wird nicht geprueft")
-                    vc.unresolved = True
-                else:
-                    vc.unresolved = False
-                    old = tuple(vc.pixel)
-                    vc.pixel = (point.x, point.y)
-                    vc.color = point.color if point.color else vc.color
-                    if old != (0, 0) and old != vc.pixel and not quiet:
-                        messages.append(
-                            f"{location} Nachpruefung folgt Punkt #{point.id}: "
-                            f"{old} -> {vc.pixel}")
-
-            ec = step.else_config
-            if ec is not None and ec.point_id is not None:
-                point = points.get(ec.point_id)
-                if point is None:
-                    # Die else-Aktion wirkt dann wie "skip" statt auf (0,0) zu klicken —
-                    # zur LAUFZEIT (`execute_else_action`). Das Feld bleibt: hier stand
-                    # `ec.action = ELSE_SKIP; ec.point_id = None`, und damit war der
-                    # ELSE-Klick nach dem naechsten Speichern aus der Datei verschwunden.
-                    messages.append(
-                        f"{location} Else-Klick zeigt auf Punkt #{ec.point_id}, "
-                        f"den es nicht mehr gibt - else wirkt wie 'skip'")
-                    ec.unresolved = True
-                else:
-                    ec.unresolved = False
-                    old = (ec.x, ec.y)
-                    ec.x, ec.y, ec.name = point.x, point.y, point.name
-                    if old != (0, 0) and old != (point.x, point.y) and not quiet:
-                        messages.append(
-                            f"{location} Else-Klick folgt Punkt #{point.id}: "
-                            f"{old} -> ({point.x}, {point.y})")
+            for resolve_part in (_resolve_click, _resolve_wait, _resolve_verify, _resolve_else):
+                resolve_part(points, step, location, quiet, messages)
     return messages
+
+
+def _followed(old, new, quiet: bool) -> bool:
+    """Ob ein Nachziehen gemeldet wird: nicht beim ersten Füllen (0, 0), nicht ohne Änderung."""
+    return old != (0, 0) and old != new and not quiet
+
+
+def _resolve_click(points: dict, step, location: str, quiet: bool, messages: list) -> None:
+    if step.point_id is None:
+        return
+    point = points.get(step.point_id)
+    if point is None:
+        # Kein Rueckfall auf alte Koordinaten - die gibt es nicht mehr.
+        # Der Schritt wird zur Laufzeit uebersprungen (siehe step_gate).
+        step.unresolved = True
+        messages.append(
+            f"{location} '{step.name or 'Klick'}' zeigt auf Punkt "
+            f"#{step.point_id}, den es nicht mehr gibt - wird uebersprungen")
+        return
+    old = (step.x, step.y)
+    step.x, step.y, step.name = point.x, point.y, point.name
+    step.recorded_color = point.color
+    if _followed(old, (point.x, point.y), quiet):
+        messages.append(
+            f"{location} '{step.name}' folgt Punkt #{point.id}: "
+            f"{old} -> ({point.x}, {point.y})")
+
+
+def _resolve_wait(points: dict, step, location: str, quiet: bool, messages: list) -> None:
+    wc = step.wait_condition
+    if wc is None or wc.point_id is None:
+        return
+    point = points.get(wc.point_id)
+    if point is None:
+        step.unresolved = True
+        messages.append(
+            f"{location} Pruef-Pixel zeigt auf Punkt #{wc.point_id}, "
+            f"den es nicht mehr gibt - wird uebersprungen")
+        return
+    old = tuple(wc.pixel)
+    wc.pixel = (point.x, point.y)
+    # Ohne Farbe am Punkt gaebe es nichts zu vergleichen; der Editor
+    # laesst das nicht zu, eine von Hand gebaute Datei schon.
+    wc.color = point.color if point.color else wc.color
+    if _followed(old, wc.pixel, quiet):
+        messages.append(
+            f"{location} Pruef-Pixel folgt Punkt #{point.id}: "
+            f"{old} -> {wc.pixel}")
+
+
+def _resolve_verify(points: dict, step, location: str, quiet: bool, messages: list) -> None:
+    vc = step.verify_condition
+    if vc is None or vc.point_id is None:
+        return
+    point = points.get(vc.point_id)
+    if point is None:
+        # Anders als beim Pruef-Pixel wird der Schritt NICHT uebersprungen:
+        # die Nachpruefung ist eine Zusatzsicherung, keine Vorbedingung.
+        # Sie faellt weg, der Schritt laeuft - und es wird gesagt.
+        # Nur als FLAG, nicht durch Loeschen: hier stand
+        # `step.verify_condition = None`, und das naechste Speichern
+        # schrieb die Sequenz ohne Nachpruefung — Daten, die beim
+        # Laden still verschwanden.
+        messages.append(
+            f"{location} Nachpruefung zeigt auf Punkt #{vc.point_id}, "
+            f"den es nicht mehr gibt - wird nicht geprueft")
+        vc.unresolved = True
+        return
+    vc.unresolved = False
+    old = tuple(vc.pixel)
+    vc.pixel = (point.x, point.y)
+    vc.color = point.color if point.color else vc.color
+    if _followed(old, vc.pixel, quiet):
+        messages.append(
+            f"{location} Nachpruefung folgt Punkt #{point.id}: "
+            f"{old} -> {vc.pixel}")
+
+
+def _resolve_else(points: dict, step, location: str, quiet: bool, messages: list) -> None:
+    ec = step.else_config
+    if ec is None or ec.point_id is None:
+        return
+    point = points.get(ec.point_id)
+    if point is None:
+        # Die else-Aktion wirkt dann wie "skip" statt auf (0,0) zu klicken —
+        # zur LAUFZEIT (`execute_else_action`). Das Feld bleibt: hier stand
+        # `ec.action = ELSE_SKIP; ec.point_id = None`, und damit war der
+        # ELSE-Klick nach dem naechsten Speichern aus der Datei verschwunden.
+        messages.append(
+            f"{location} Else-Klick zeigt auf Punkt #{ec.point_id}, "
+            f"den es nicht mehr gibt - else wirkt wie 'skip'")
+        ec.unresolved = True
+        return
+    ec.unresolved = False
+    old = (ec.x, ec.y)
+    ec.x, ec.y, ec.name = point.x, point.y, point.name
+    if _followed(old, (point.x, point.y), quiet):
+        messages.append(
+            f"{location} Else-Klick folgt Punkt #{point.id}: "
+            f"{old} -> ({point.x}, {point.y})")
 
 
 def resolve_point_references(state: AutoClickerState, sequence) -> list[str]:

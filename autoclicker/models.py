@@ -189,6 +189,12 @@ class WaitCondition:
     # True = NICHT warten, sondern einmal prüfen. Passt die Farbe nicht, greift sofort
     # else_config (Standard: Schritt überspringen) statt bis zum Timeout zu blockieren.
     check_only: bool = False
+    # Wie lange gewartet wird, bevor der Timeout greift — nur für die
+    # VORbedingung (`wait_condition`). None = `pixel_wait_timeout` aus der Config,
+    # 0 = ohne Grenze (dieselbe Bedeutung wie dort). Ein Block, der auf einen
+    # langsamen Kampf wartet, braucht mehr Zeit als einer, der auf einen Knopf
+    # wartet; eine Grenze für alle passte nur einem von beiden.
+    timeout: Optional[float] = None
     # Arbeitswert, nie gespeichert: der Punkt hinter `point_id` fehlt. Als
     # Vorbedingung heisst das „Schritt uebersprungen" (das setzt `resolve()` am
     # Schritt), als Nachpruefung „nicht geprueft" — ohne das Feld zu loeschen.
@@ -249,6 +255,10 @@ class SequenceStep:
     # wird er im Studio und ausgefuehrt im Hauptprozess, und der liest die Datei.
     # Ein Haltepunkt in einer Loop-Phase haelt in jedem Zyklus — das ist gewollt.
     breakpoint: bool = False
+    # Nur bei Scan-Bloecken: die Maus danach absetzen — wohin, sagt
+    # `scan_mouse_after` in den Einstellungen. Aus = sie bleibt auf dem letzten
+    # Treffer stehen.
+    mouse_return: bool = True
     # Arbeitswert, wird nie gespeichert: True = die point_id zeigt ins Leere, der Punkt
     # wurde geloescht. `step_gate()` ueberspringt den Schritt dann und meldet es. Ohne
     # dieses Flag wuerde er auf (0, 0) klicken - es gibt ja keine Rueckfall-Koordinate
@@ -262,6 +272,23 @@ class SequenceStep:
 
     def _description(self) -> str:
         else_str = self._verify_str() + self._else_str()
+        special = self._special_description(else_str)
+        if special is not None:
+            return special
+        wc = self.wait_condition
+        if self.wait_only:
+            return self._wait_only_description(wc, else_str)
+        ref = f" #{self.point_id}" if self.point_id is not None else ""
+        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
+                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
+        if wc:
+            return self._triggered_click_description(wc, pos_str, else_str)
+        if self.delay_before > 0:
+            return f"warte {self._delay_str()} → klicke {pos_str}"
+        return f"sofort → klicke {pos_str}"
+
+    def _special_description(self, else_str: str) -> Optional[str]:
+        """Watcher, Screenshot, Taste und die Scans — None für Klick und Warten."""
         if self.boss_watcher:
             return f"BOSS-WATCHER '{self.boss_watcher}' (wartet auf Boss){else_str}"
         if self.screenshot_only:
@@ -281,34 +308,25 @@ class SequenceStep:
             mode_strs = {SCAN_MODE_ALL: "bestes/Kategorie", SCAN_MODE_BEST: "1 bestes", SCAN_MODE_EVERY: "JEDES"}
             mode_str = mode_strs.get(self.item_scan_mode, self.item_scan_mode)
             return f"SCAN '{self.item_scan}' → klicke {mode_str}{else_str}"
-        wc = self.wait_condition
-        if self.wait_only:
-            if wc:
-                gone_str = "WEG ist" if wc.until_gone else "DA ist"
-                if wc.check_only:
-                    return (f"PRÜFE einmal ob Farbe {gone_str} bei "
-                            f"({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}")
-                return f"WARTE bis Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
+        return None
+
+    def _wait_only_description(self, wc, else_str: str) -> str:
+        if not wc:
             return f"WARTE {self._delay_str()} (kein Klick)"
-        ref = f" #{self.point_id}" if self.point_id is not None else ""
-        pos_str = (f"{self.name}{ref} ({self.x}, {self.y})" if self.name
-                   else f"{ref.strip()} ({self.x}, {self.y})".strip())
-        if wc:
-            if wc.check_only:
-                state_value = "WEG" if wc.until_gone else "DA"
-                lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
-                return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
-                        f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
-                        f"{else_str or ' | sonst: überspringen'}")
-            gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
-            delay_str = self._delay_str()
-            if self.delay_before > 0:
-                return f"warte {delay_str}, dann {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
-            return f"warte {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
-        elif self.delay_before > 0:
-            return f"warte {self._delay_str()} → klicke {pos_str}"
-        else:
-            return f"sofort → klicke {pos_str}"
+        gone_str = "WEG ist" if wc.until_gone else "DA ist"
+        verb = "PRÜFE einmal ob" if wc.check_only else "WARTE bis"
+        return f"{verb} Farbe {gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) (kein Klick){else_str}"
+
+    def _triggered_click_description(self, wc, pos_str: str, else_str: str) -> str:
+        if wc.check_only:
+            state_value = "WEG" if wc.until_gone else "DA"
+            lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else ""
+            return (f"{lead_in}prüfe einmal ob Farbe {state_value} bei "
+                    f"({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}"
+                    f"{else_str or ' | sonst: überspringen'}")
+        gone_str = "bis Farbe WEG" if wc.until_gone else "auf Farbe"
+        lead_in = f"warte {self._delay_str()}, dann " if self.delay_before > 0 else "warte "
+        return f"{lead_in}{gone_str} bei ({wc.pixel[0]},{wc.pixel[1]}) → klicke {pos_str}{else_str}"
 
     def _trigger_str(self) -> str:
         """Was VOR der Aktion passiert: Farb-Bedingung und/oder Wartezeit.
@@ -388,6 +406,17 @@ BLOCK_WAIT = "wait"              # wait_only ohne Klick
 BLOCK_WAIT_CLICK = "wait_click"  # wait_condition + Klick
 BLOCK_CLICK = "click"            # einfacher Klick (evtl. mit Zeit-Delay)
 
+# **Typen ohne eigene Stelle — und damit ohne `point_id`.** Ein Scan klickt,
+# was er findet (Slots, Boss-/Icon-Aktion), eine Taste und ein Screenshot
+# klicken gar nicht. Ein Punkt am Schritt ist dort kein Merkmal, sondern ein
+# Rest aus einem Typwechsel — und er wirkte: Farbfeld auf der Karte, Punkt als
+# „verwendet" gezählt, Live-Pixel vor dem Scan. Nachprüfung und ELSE-Klick
+# bleiben davon unberührt: das sind eigene Referenzen, die jeder Typ haben darf.
+POSITIONLESS_BLOCKS = frozenset({
+    BLOCK_SCREENSHOT, BLOCK_BOSS_WATCHER, BLOCK_BOSS_SCAN,
+    BLOCK_ITEM_SCAN, BLOCK_ICON_SCAN, BLOCK_KEY,
+})
+
 
 def block_type(step: "SequenceStep") -> str:
     """Bestimmt den Block-Typ eines Schritts (gleiche Priorität wie der Executor).
@@ -413,6 +442,19 @@ def block_type(step: "SequenceStep") -> str:
     if step.wait_condition is not None:
         return BLOCK_WAIT_CLICK
     return BLOCK_CLICK
+
+
+def drop_position(step: "SequenceStep") -> None:
+    """Nimmt einem Schritt ohne Stelle den Punkt und seine abgeleiteten Werte.
+
+    `x`/`y`/`recorded_color` sind Arbeitswerte des Punkts; ohne `point_id`
+    schriebe der Serializer sie als Koordinaten-Kopie in die Datei. Der Name
+    bleibt — ohne Punkt ist er der eigene des Blocks.
+    """
+    step.point_id = None
+    step.x = step.y = 0
+    step.recorded_color = None
+    step.unresolved = False
 
 
 @dataclass
@@ -446,6 +488,12 @@ class Sequence:
     # Eigener Punkt-Pool dieser Sequenz. Scans, die aus der Sequenz laufen,
     # loesen ihre Punkt-IDs ebenfalls gegen genau diesen Pool auf.
     points: list[ClickPoint] = field(default_factory=list)
+    # Folgesequenz: wird diese Sequenz regulaer fertig (alle Zyklen durch oder
+    # CTRL+ALT+F), laedt der Hauptprozess die hier genannte und startet sie
+    # nach `next_delay` Sekunden — derselbe Start wie CTRL+ALT+S. Ein Name,
+    # keine Kopie: beide bleiben eigenstaendige Sequenzen. Leer = keine.
+    next_sequence: str = ""
+    next_delay: float = 30.0
 
     def __str__(self) -> str:
         init_count = len(self.init_steps)
@@ -828,6 +876,10 @@ class AutoClickerState:
     # uebersprungen, ab dort laeuft die Sequenz normal (auch der zweite Zyklus
     # von vorn). Ein Neustart (`restart_event`) faengt wieder bei INIT an.
     start_from: Optional[tuple] = None
+    # Folgesequenz nach einem regulaeren Ende: `(Name, Pause in s, vorige
+    # Sequenz)`. Der Worker legt es beim Aufraeumen ab, der Main-Thread holt es
+    # in seinem Leerlauf ab (`start_next_if_pending`) und stellt den Countdown.
+    next_start: Optional[tuple] = None
 
     # Hier stand `sequences: dict[str, Sequence]` — ein Cache, den nur ein Teil
     # der Ladewege pflegte (Konsolen-Editor, Aufnahme, Import), und den
@@ -861,6 +913,9 @@ class AutoClickerState:
     # Laufzeit-Status
     is_running: bool = False
     total_clicks: int = 0
+    # Das Studio hat während eines Laufs gespeichert; nachgeladen wird, sobald
+    # der Lauf steht (`reload_if_pending` in handlers.py).
+    data_reload_pending: bool = False
 
     # Statistiken
     items_found: int = 0
@@ -870,6 +925,10 @@ class AutoClickerState:
     timeouts: int = 0
     consecutive_timeouts: int = 0
     start_time: Optional[float] = None
+    # Wie lange der Lauf bisher pausiert war (CTRL+ALT+H), nur steigend. Die
+    # Wartezeiten im Session-Log ziehen die Pause ab, die in sie fiel — sonst
+    # stuende eine halbe Stunde Pause als „auf Farbe gewartet" im Bericht.
+    paused_seconds: float = 0.0
 
     # Bereits geklickte Kategorien im aktuellen Zyklus mit bester Priorität
     # Dict: {kategorie: beste_priorität} - verhindert schlechtere Items derselben Kategorie

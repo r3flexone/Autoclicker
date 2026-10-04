@@ -414,18 +414,19 @@ _br_gp._points_apply()
 _br_gp.select({"phase": 1, "row": 0})
 _insp = _br_gp.snapshot()["block"]
 check("der Inspektor nennt die anderen Verwendungen des Punkts",
-      _insp["point_others"] == ["Loop 4 · Block 2 · Stelle"])
+      _insp["point_others"] == {"count": 1,
+                                "lines": [{"where": "Loop 4", "what": "Block 2"}]})
 check("den eigenen Pruef-Pixel zaehlt er dabei nicht mit",
-      all("Loop · Block 1" not in v for v in _insp["point_others"]))
+      all(g["where"] != "Loop" for g in _insp["point_others"]["lines"]))
 _br_gp.select({"phase": 2, "row": 0})
 check("ein Block mit eigenem Punkt hat keine",
-      _br_gp.snapshot()["block"]["point_others"] == [])
+      _br_gp.snapshot()["block"]["point_others"]["count"] == 0)
 
 _br_gp.select({"phase": 1, "row": 0})
 _z_gp = _br_gp.point_set({"point": 1, "field": "x", "value": 20})
 check("das Verschieben sagt, wer mitzieht",
       "zieht 1 weitere" in _z_gp["status"]["text"]
-      and "Loop 4 · Block 2" in _z_gp["status"]["text"])
+      and "Loop 4: Block 2" in _z_gp["status"]["text"])
 check("und Loop 4 ist wirklich mitgezogen - das ist die Regel, nicht der Fehler",
       _br_gp.board.lanes[2].steps[1].x == 20)
 _br_gp.select({"phase": 2, "row": 0})
@@ -452,6 +453,36 @@ check("danach verschiebt sich nur noch dieser Block",
 check("ein zweites Abtrennen tut nichts und sagt es",
       "nichts abzutrennen" in _br_gp.point_detach()["status"]["text"]
       and _br_gp.board.lanes[1].steps[0].point_id == _s1.point_id)
+# Gebuendelt, nicht aufgezaehlt: an einer echten Aufnahme standen neun
+# FARBE+KLICK-Bloecke als achtzehn Eintraege da („Block 12 · Stelle, Block 12 ·
+# Pruef-Pixel, …“), die Phase bei jedem wiederholt. Eine Zeile je Phase, jeder
+# Block einmal; eine Rolle nur, wenn sie etwas sagt.
+_seq_bd = _SEQ(name="Buendel", loop_phases=[
+    _PHASE(name="Sammeln", steps=[
+        _STEP(x=5, y=5, delay_before=0, point_id=1),
+        _STEP(x=5, y=5, delay_before=0, point_id=1, wait_condition=_WAIT(point_id=1)),
+        _STEP(x=5, y=5, delay_before=0, point_id=1, wait_condition=_WAIT(point_id=1)),
+    ]),
+    _PHASE(name="Herstellen", steps=[
+        _STEP(x=7, y=7, delay_before=0, point_id=2, verify_condition=_WAIT(point_id=1)),
+    ]),
+], points=[_CP(5, 5, "knopf", 1), _CP(7, 7, "anderer", 2)])
+_br_bd = _SB(_seq_bd, Path("sequences/buendel.json"), "sequences")
+_br_bd._points_apply()
+_br_bd.select({"phase": 1, "row": 0})
+_others_bd = _br_bd.snapshot()["block"]["point_others"]
+check("jeder Block steht einmal, auch mit Stelle UND Pruef-Pixel",
+      _others_bd["lines"][0] == {"where": "Sammeln", "what": "Blöcke 2, 3"})
+check("eine Rolle, die etwas sagt, bleibt dabei",
+      _others_bd["lines"][1] == {"where": "Herstellen", "what": "Block 1 (Nachprüfung)"})
+check("gezaehlt werden Bloecke, nicht Rollen", _others_bd["count"] == 3)
+check("lueckenlose Folgen ab drei stehen als Bereich, eine Rolle unterbricht ihn",
+      _br_bd._block_ranges([(1, ""), (2, ""), (3, ""), (5, ""), (6, ""),
+                            (7, " (ELSE)"), (8, ""), (9, ""), (10, "")])
+      == "1–3, 5, 6, 7 (ELSE), 8–10")
+check("die Punkte-Liste zaehlt weiter jede Verwendung (Loeschschutz)",
+      len(_br_bd._point_usages(1)) == 6)
+
 _web_gp = _web_src()
 check("die Ansicht zeigt die Verwendungen und den Abtrennen-Knopf",
       "b.point_others" in _web_gp and 'call("point_detach")' in _web_gp)
@@ -591,3 +622,60 @@ _call_tool_d = _app_d[_app_d.index("async function callTool"):]
 _call_tool_d = _call_tool_d[:_call_tool_d.index("\n}\n")]
 check("und zwar ueber die Momentaufnahme — samt Hinweis aufs Speichern",
       'await call("snapshot")' in _call_tool_d and "im Editor speichern" in _call_tool_d)
+
+
+# =============================================================================
+section("Punkte der Scans zählen, auch bevor der Scans-Reiter offen war")
+# =============================================================================
+# Gemeldet an einer echten Sequenz: ein Punkt, den nur Bestätigungsklicks von
+# Items benutzen, stand in der Punkte-Liste als „0× ungenutzt“ mit Lösch-× —
+# das Studio lädt die Scans erst mit ihrem Reiter, und bis dahin zählten nur
+# die Blöcke. Dazu sah es selbst danach nur die Items des OFFENEN Scans.
+import contextlib as _cl8  # noqa: E402
+import io as _io8  # noqa: E402
+import shutil as _sh8  # noqa: E402
+from autoclicker.models import ItemProfile as _IP8, ItemScanConfig as _ISC8  # noqa: E402
+from autoclicker.persistence import (  # noqa: E402
+    load_sequence_file as _load8, save_item_scan as _save_scan8,
+    save_sequence_file as _save8, sequence_file as _file8,
+)
+
+_sandbox8 = Path(tempfile.mkdtemp(prefix="punkte_scans_"))
+_os.chdir(_sandbox8)
+try:
+    _seq8 = _SEQ("Juwelen", loop_phases=[_PHASE("L", steps=[_STEP(x=1, y=1, point_id=1)])],
+                 points=[_CP(1, 1, "Knopf", 1), _CP(2, 2, "Bestätigen", 2),
+                         _CP(3, 3, "Nur im zweiten Scan", 3), _CP(4, 4, "Frei", 4)])
+    _path8 = _file8(_seq8.name)
+    _path8.parent.mkdir(parents=True, exist_ok=True)
+    with _cl8.redirect_stdout(_io8.StringIO()):
+        _save8(_seq8, _path8)
+        _save_scan8(_ISC8(name="Raid Scan", owner_sequence=_seq8.name,
+                          items=[_IP8(name="Edelstein", confirm_point_id=2)]))
+        _save_scan8(_ISC8(name="Beute", owner_sequence=_seq8.name,
+                          items=[_IP8(name="Truhe", confirm_point_id=3)]))
+        _b8 = _SB(_load8(_path8), _path8, "sequences")
+        _snap8 = _b8.snapshot()
+    _uses8 = {p["id"]: p["usages"] for p in _snap8["points"]}
+    check("vor dem Scans-Reiter: Bestätigungsklicks zählen als Verwendung",
+          _uses8 == {1: 1, 2: 1, 3: 1, 4: 0})
+    check("…ohne dafür das gemerkte Bild zu laden",
+          not _b8._scan_loaded and _b8._photo is None)
+    with _cl8.redirect_stdout(_io8.StringIO()):
+        _gone8 = _b8.point_delete({"point": 2})
+        _b8.tool_points_prune()
+    check("ein Bestätigungs-Punkt lässt sich nicht löschen — auch nicht im Sammel-Aufräumen",
+          {p.id for p in _b8.points} == {1, 2, 3}
+          and _gone8["status"]["kind"] == "warn")
+    check("die Verwendung nennt Item UND Scan",
+          _b8._point_usages(3) == ["Item 'Truhe' in 'Beute' · Bestätigung"])
+
+    # Mit offenem Scans-Reiter zählt der Arbeitsbestand des offenen Scans UND
+    # der Bestand aller anderen — vorher nur der offene.
+    with _cl8.redirect_stdout(_io8.StringIO()):
+        _b8.scan_data()
+    check("nach dem Öffnen des Reiters zählen weiter ALLE Item-Scans",
+          bool(_b8._point_usages(2)) and bool(_b8._point_usages(3)))
+finally:
+    _os.chdir(_cwd)
+    _sh8.rmtree(_sandbox8, ignore_errors=True)

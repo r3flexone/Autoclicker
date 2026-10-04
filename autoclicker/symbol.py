@@ -1,9 +1,16 @@
 """Rastert das Sequenz-Studio-Logo für Windows und Verknüpfungen.
 
-Die SVG-Datei neben der Weboberfläche ist die einzige Quelle für das Motiv. Der
-Browser lädt sie direkt; `winapi.set_window_icon` und `tools/symbol.py`
+Die SVG-Dateien neben der Weboberfläche sind die einzige Quelle für das Motiv.
+Der Browser lädt sie direkt; `winapi.set_window_icon` und `tools/symbol.py`
 holen über :func:`pixel_rows` dieselben Formen als RGBA-Pixel. Damit bleiben
 Kopfzeile, Titelleiste, Taskleiste und exportierte Symbole identisch.
+
+**Zwei Dateien, weil es zwei Grössen sind, nicht zwei Motive.** Das grosse
+Motiv hat neun Knoten und 10er-Linien — bei 16 px sind das Linien unter einem
+Pixel, und heraus kam graues Rauschen genau dort, wo man das Symbol am
+häufigsten sieht (Titelleiste, Browser-Tab). Das kleine ist dieselbe Kette mit
+vier Knoten, jede Kante auf dem 16er-Raster. Bis `SMALL_UP_TO` Pixel gilt das
+kleine, darüber das grosse — es ist das eigentliche Logo.
 
 Absichtlich gibt es keine SVG- oder Pillow-Laufzeitabhängigkeit. Das neue Logo
 braucht aus SVG nur gefüllte Pfade mit M/L/C/Z sowie eine Rotation. Diese kleine
@@ -19,8 +26,13 @@ import re
 from xml.etree import ElementTree
 
 
-LOGO_PATH = (Path(__file__).parent / "editors" / "sequence_studio" / "web"
-             / "sequenz-studio-logo.svg")
+_WEB = Path(__file__).parent / "editors" / "sequence_studio" / "web"
+LOGO_PATH = _WEB / "sequenz-studio-logo.svg"
+LOGO_SMALL_PATH = _WEB / "sequenz-studio-logo-small.svg"
+# Bis zu dieser Kantenlänge das kleine Motiv. Nur 16 px: ab 32 ist das grosse
+# lesbar genug, und es ist das eigentliche Logo — das kleine springt nur dort
+# ein, wo vom grossen nichts übrig bleibt.
+SMALL_UP_TO = 24
 SAMPLES = 4
 CURVE_STEPS = 12
 
@@ -31,66 +43,96 @@ _ROTATION = re.compile(
 
 def _path_polygons(data: str) -> tuple[tuple[tuple[float, float], ...], ...]:
     """Flacht einen SVG-Pfad aus M/L/C/Z zu geschlossenen Polygonen ab."""
-    parts = _TOKEN.findall(data)
-    polygons: list[tuple[tuple[float, float], ...]] = []
-    polygon: list[tuple[float, float]] = []
+    reader = _PathReader(data)
     command = None
-    position = (0.0, 0.0)
-    start = (0.0, 0.0)
-    i = 0
-
-    def number() -> float:
-        nonlocal i
-        if i >= len(parts) or parts[i].isalpha():
-            raise ValueError("Unvollständiger SVG-Pfad im Studio-Logo")
-        value = float(parts[i])
-        i += 1
-        return value
-
-    while i < len(parts):
-        if parts[i].isalpha():
-            command = parts[i]
-            i += 1
+    while not reader.done():
+        token = reader.peek()
+        if token.isalpha():
+            reader.skip()
+            command = token
             if command in "Zz":
-                if len(polygon) >= 3:
-                    polygons.append(tuple(polygon))
-                polygon = []
-                position = start
+                reader.close_path()
                 command = None
                 continue
-            if command not in {"M", "L", "C"}:
+            if command not in _PATH_COMMANDS:
                 raise ValueError(f"SVG-Befehl {command!r} wird im Studio-Logo nicht unterstützt")
         if command is None:
             raise ValueError("Koordinate ohne SVG-Befehl im Studio-Logo")
-
+        getattr(reader, _PATH_COMMANDS[command])()
+        # Weitere Paare nach M sind laut SVG normale Linien.
         if command == "M":
-            if len(polygon) >= 3:
-                polygons.append(tuple(polygon))
-            position = (number(), number())
-            start = position
-            polygon = [position]
-            # Weitere Paare nach M sind laut SVG normale Linien.
             command = "L"
-        elif command == "L":
-            position = (number(), number())
-            polygon.append(position)
-        else:  # C: kubische Bézier-Kurve
-            x0, y0 = position
-            x1, y1, x2, y2, x3, y3 = (number() for _ in range(6))
-            for step in range(1, CURVE_STEPS + 1):
-                t = step / CURVE_STEPS
-                u = 1.0 - t
-                polygon.append((
-                    u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3,
-                    u ** 3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t ** 3 * y3,
-                ))
-            position = (x3, y3)
 
-    if len(polygon) >= 3:
-        polygons.append(tuple(polygon))
-    if not polygons:
+    reader.finish_polygon()
+    if not reader.polygons:
         raise ValueError("Das Studio-Logo enthält einen leeren SVG-Pfad")
-    return tuple(polygons)
+    return tuple(reader.polygons)
+
+
+# Befehl → Methode von `_PathReader`. Z steht nicht darin: es liest keine Zahlen.
+_PATH_COMMANDS = {"M": "move", "L": "line", "C": "curve"}
+
+
+class _PathReader:
+    """Die Zahlen eines Pfads und das Polygon, das gerade entsteht."""
+
+    def __init__(self, data: str) -> None:
+        self._parts = _TOKEN.findall(data)
+        self._i = 0
+        self.polygons: list[tuple[tuple[float, float], ...]] = []
+        self._polygon: list[tuple[float, float]] = []
+        self._position = (0.0, 0.0)
+        self._start = (0.0, 0.0)
+
+    def done(self) -> bool:
+        return self._i >= len(self._parts)
+
+    def peek(self) -> str:
+        return self._parts[self._i]
+
+    def skip(self) -> None:
+        self._i += 1
+
+    def number(self) -> float:
+        if self.done() or self.peek().isalpha():
+            raise ValueError("Unvollständiger SVG-Pfad im Studio-Logo")
+        value = float(self.peek())
+        self.skip()
+        return value
+
+    def finish_polygon(self) -> None:
+        """Legt das laufende Polygon ab — mit weniger als drei Punkten ist es keins."""
+        if len(self._polygon) >= 3:
+            self.polygons.append(tuple(self._polygon))
+        self._polygon = []
+
+    def close_path(self) -> None:
+        """Z: Polygon ab, weiter geht es am Anfang des Teilpfads."""
+        self.finish_polygon()
+        self._position = self._start
+
+    def move(self) -> None:
+        self.finish_polygon()
+        self._position = (self.number(), self.number())
+        self._start = self._position
+        self._polygon = [self._position]
+
+    def line(self) -> None:
+        self._position = (self.number(), self.number())
+        self._polygon.append(self._position)
+
+    def curve(self) -> None:
+        """C: kubische Bézier-Kurve, in CURVE_STEPS Geradenstücke zerlegt."""
+        x0, y0 = self._position
+        x1, y1, x2, y2, x3, y3 = (self.number() for _ in range(6))
+        for step in range(1, CURVE_STEPS + 1):
+            t = step / CURVE_STEPS
+            u = 1.0 - t
+            self._polygon.append((
+                u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3,
+                u ** 3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t ** 3 * y3,
+            ))
+        self._position = (x3, y3)
 
 
 def _rotator(transform: str):
@@ -117,10 +159,15 @@ def _tag(element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
 
-@lru_cache(maxsize=1)
-def _logo_geometry():
+def logo_path(edge: int) -> Path:
+    """Welche Datei für diese Kantenlänge gilt."""
+    return LOGO_SMALL_PATH if edge <= SMALL_UP_TO else LOGO_PATH
+
+
+@lru_cache(maxsize=2)
+def _logo_geometry(path: Path = LOGO_PATH):
     """Liest Farbe, ViewBox, sichtbaren Grund und Aussparungen aus dem SVG."""
-    root_layer = ElementTree.parse(LOGO_PATH).getroot()
+    root_layer = ElementTree.parse(path).getroot()
     viewbox = tuple(float(w) for w in root_layer.attrib["viewBox"].split())
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
@@ -194,7 +241,7 @@ def pixel_rows(edge: int, samples: int = SAMPLES):
     elif edge >= 128:
         samples = min(samples, 2)
 
-    color, (left, top, width, height), reason, cutouts = _logo_geometry()
+    color, (left, top, width, height), reason, cutouts = _logo_geometry(logo_path(edge))
     sub_width = edge * samples
     x_step = width / sub_width
     y_step = height / (edge * samples)

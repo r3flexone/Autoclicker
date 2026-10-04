@@ -13,14 +13,13 @@ Hauptprozess CTRL+ALT+L. Die Oberfläche ist eine Webseite
 
 import json
 import sys
-import time
 from pathlib import Path
 
 from .config import SEQUENCES_DIR, STUDIO_LAST_SEQUENCE_FILE
 from .models import Sequence
 from .persistence import (
-    ensure_sequences_dir, list_available_sequences, load_sequence_file,
-    sequence_file,
+    ensure_sequences_dir, free_sequence_name, list_available_sequences,
+    load_sequence_file, sequence_file,
 )
 from .utils import sanitize_filename, atomic_write, compact_json, col
 
@@ -94,7 +93,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
             if seq:
                 return seq, last
 
-    base = name or f"Sequenz_{int(time.time())}"
+    base = name or free_sequence_name("Neue Sequenz")
     path = sequence_file(base)
     if path.exists():
         seq = load_sequence_file(path)
@@ -102,7 +101,7 @@ def _resolve_sequence(name: str) -> tuple[Sequence, Path]:
             return seq, path
         # Datei da, aber nicht ladbar: kaputt ist nicht leer. Draufschreiben
         # hiesse, den einzigen Rest wegzuwerfen, den man noch reparieren kann.
-        base = f"{base}_{int(time.time())}"
+        base = free_sequence_name(base)
         path = sequence_file(base)
     return Sequence(name=base), path
 
@@ -209,18 +208,6 @@ def main(argv: list[str]) -> int:
     )
     _attach_close_handler(window, bridge, quit_with_window)
 
-    def _after_start() -> None:
-        """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
-
-        Deshalb die Frist: zum Zeitpunkt dieses Aufrufs existiert das Fenster nicht,
-        und `set_window_icon()` fiele still auf `False` zurück.
-        """
-        try:
-            from .winapi import set_window_icon
-            set_window_icon(WINDOW_TITLE, waiting=15.0)
-        except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
-            pass
-
     try:
         # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).
         webview.start(_after_start)
@@ -232,6 +219,19 @@ def main(argv: list[str]) -> int:
 
     _closing_message(bridge)
     return 0
+
+
+def _after_start() -> None:
+    """Läuft, sobald die GUI-Schleife steht — das Fenster aber noch nicht.
+
+    Deshalb die Frist: zum Zeitpunkt dieses Aufrufs existiert das Fenster nicht,
+    und `set_window_icon()` fiele still auf `False` zurück.
+    """
+    try:
+        from .winapi import set_window_icon
+        set_window_icon(WINDOW_TITLE, waiting=15.0)
+    except Exception:      # noqa: BLE001 - ein Symbol ist kein Startgrund
+        pass
 
 
 def _closing_message(bridge) -> None:

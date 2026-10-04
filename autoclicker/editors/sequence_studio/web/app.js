@@ -66,6 +66,10 @@ const ICONS = {
   detach: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>',
   crosshair: '<path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/>',
   spark: '<path d="M8 2l1.6 4.4L14 8l-4.4 1.6L8 14l-1.6-4.4L2 8l4.4-1.6z" fill="currentColor" stroke="none"/>',
+  sidebar: '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M6.5 3v10"/>',
+  left: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+  right: '<path d="M6 3.5L10.5 8 6 12.5"/>',
+  trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5"/><path d="M4.5 4.5l.7 9h5.6l.7-9"/>',
 };
 
 function icon(name, size) {
@@ -316,9 +320,11 @@ const PRIO_MAX_SHOW = 24;
 function priorityAllocation(category) {
   const items = itemsOfCategory(category);
   const taken = new Map();
+  const active = new Map();          // eingeschaltete je Rang — nur die konkurrieren
   for (const i of items) {
     if (!taken.has(i.priority)) taken.set(i.priority, []);
     taken.get(i.priority).push(i.name);
+    if (i.active) active.set(i.priority, (active.get(i.priority) || 0) + 1);
   }
   const highestRank = items.length ? Math.max(...items.map((i) => i.priority)) : 0;
   if (highestRank + 1 > PRIO_MAX_SHOW) {
@@ -329,10 +335,13 @@ function priorityAllocation(category) {
     while (taken.has(free)) free += 1;
     if (!ranks.includes(free)) ranks.push(free);
     ranks.sort((a, b) => a - b);
-    return ranks.map((p) => ({rank: p, names: taken.get(p) || []}));
+    return ranks.map((p) => ({rank: p, names: taken.get(p) || [],
+                              duplicate: (active.get(p) || 0) > 1}));
   }
   const all = [];
-  for (let p = 1; p <= highestRank + 1; p += 1) all.push({rank: p, names: taken.get(p) || []});
+  for (let p = 1; p <= highestRank + 1; p += 1) {
+    all.push({rank: p, names: taken.get(p) || [], duplicate: (active.get(p) || 0) > 1});
+  }
   return all;
 }
 
@@ -346,11 +355,17 @@ function nextFreePriority(category, exceptName) {
   return p;
 }
 
-/** Teilt sich dieses Item seinen Rang mit einem anderen seiner Kategorie? */
+/** Teilt sich dieses Item seinen Rang mit einem anderen seiner Kategorie?
+ *
+ * **Nur eingeschaltete zählen.** Ein ausgeschaltetes Item nimmt am Scan gar
+ * nicht teil (`execute_item_scan` vergleicht nur die eingeschalteten), also
+ * konkurriert es mit niemandem. Vorher stand an jedem geparkten Auto-Item
+ * „P99 doppelt" — alle tragen P99, und die Warnung war an der Stelle, an der
+ * sie nichts bedeutet, am lautesten. */
 function priorityDuplicate(item) {
-  if (!item.category) return [];
+  if (!item.category || !item.active) return [];
   return itemsOfCategory(item.category)
-    .filter((i) => i.name !== item.name && i.priority === item.priority)
+    .filter((i) => i.active && i.name !== item.name && i.priority === item.priority)
     .map((i) => i.name);
 }
 
@@ -371,10 +386,10 @@ function priorityOverview(category, currentName) {
         // Ein freier Rang ist kein Eintrag, sondern eine Luecke — gestrichelt
         // und ohne Namen. Sonst zaehlt man die vergebenen ab, um ihn zu finden.
         class: "priority-chip" + (thisOne ? " current" : "")
-               + (free ? " free" : "") + (r.names.length > 1 ? " duplicate" : ""),
+               + (free ? " free" : "") + (r.duplicate ? " duplicate" : ""),
         title: free ? "Priorität " + r.rank + " ist frei"
                     : r.names.join(", ") + " · Priorität " + r.rank
-                      + (r.names.length > 1 ? " — doppelt vergeben" : ""),
+                      + (r.duplicate ? " — doppelt vergeben" : ""),
       }, "P" + r.rank + " · " + (free ? "frei" : r.names.join(", ")));
     })),
     el("small", {class: "input-help"},
@@ -501,7 +516,13 @@ function rememberFocus() {
   // zu retten waere nicht nur ueberfluessig, sondern falsch: bei einem
   // abgelehnten Namen (schon vergeben) stuende danach der abgelehnte Text im
   // Feld, waehrend die Daten den alten tragen.
-  return {id: next, old: boxEl.id, i: i, start: start, end: end};
+  // Ein Zahlenfeld verraet seine Markierung nicht (`selectionStart` wirft).
+  // Ist es noch unberuehrt, stand es nach TAB ganz markiert — genau so soll es
+  // nach dem Neuaufbau wieder stehen, sonst haengt die naechste Ziffer an die
+  // alte Prioritaet an statt sie zu ersetzen.
+  const untouchedNumber = a.type === "number" && a.value === a.defaultValue;
+  return {id: next, old: boxEl.id, i: i, start: start, end: end,
+          selectAll: untouchedNumber};
 }
 
 /** Vor einem Umbenennen: unter welcher id die Maske danach steht. */
@@ -518,7 +539,9 @@ function restoreFocus(memo) {
   const target = [...boxEl.querySelectorAll("input, select, textarea")][memo.i];
   if (!target) return;
   target.focus();
-  if (memo.start !== null) {
+  if (memo.selectAll && target.type === "number") {
+    target.select();
+  } else if (memo.start !== null) {
     try { target.setSelectionRange(memo.start, memo.end); } catch (e) { /* egal */ }
   }
 }
@@ -539,7 +562,10 @@ let S = null;             // letzte Momentaufnahme
 let drag = null;        // was gerade gezogen wird
 let activeDropZone = null;  // hervorgehobene Einfügestelle
 let openQuestion = null;
-let selectedPhase = null; // Loop-Phase; Entf löscht sie wie eine Block-Auswahl
+// Die angeklickte Phase: rechts steht ihr Menü, Entf löscht eine Loop-Phase.
+// Oberflächenzustand; nach einem Phasen-Befehl sagt die Brücke, welche es ist
+// (`S.phase_focus`), denn Duplizieren und Verschieben ändern die Indizes.
+let selectedPhase = null;
 const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 // Einfüge-Aufnahme ("Ab hier aufnehmen"): reiner Oberflächenzustand wie
@@ -603,8 +629,37 @@ async function call(name, data) {
  * haengt das Ziel als `target` an jeden Befund (Pruefen, Bericht, Karte). */
 async function goTo(t) {
   if (!t || !t.view) return;
+  // Ein Feld in den Einstellungen: hinscrollen, kurz aufleuchten, Fokus hinein.
+  // Leere Zustände anderer Reiter („Marktwert-Datei eintragen") schicken
+  // hierher, statt den Config-Schlüssel zu nennen und einen suchen zu lassen.
+  if (t.view === "settings") {
+    setView("settings", true);
+    await renderSettings(true);
+    if (!C || view !== "settings") return;
+    cfgSearch = "";
+    $("cfg-search").value = "";
+    const i = C.sections.findIndex((a) => a.keys.includes(t.key));
+    if (i >= 0) cfgSection = i;
+    cfgFlashKey = t.key || null;
+    renderSettings();
+    const row = t.key && document.getElementById("cfg-row-" + t.key);
+    if (row) {
+      cfgSpyPausedUntil = Date.now() + 900;
+      // Sofort, nicht weich: ein zweiter, noch laufender Neuaufbau (setView
+      // liest ebenfalls frisch) setzte die Scrollposition mitten im Gleiten.
+      row.scrollIntoView({block: "center"});
+      const input = row.querySelector("input, select, textarea");
+      if (input) input.focus({preventScroll: true});
+    }
+    setTimeout(() => {
+      cfgFlashKey = null;
+      const again = t.key && document.getElementById("cfg-row-" + t.key);
+      if (again) again.classList.remove("flash");
+    }, 1600);
+    return;
+  }
   if (t.view === "scans") {
-    setView("scans");
+    setView("scans", true);
     if (!SC) await renderScans(true);
     if (t.kind && t.kind !== scanKind) scanSetKind(t.kind);
     const open = {item: "scan_open", boss: "boss_scan_open",
@@ -620,8 +675,9 @@ async function goTo(t) {
     await switchSequence("load", {name: t.sequence});
     if (!S || S.name !== t.sequence) return;
   }
-  setView("editor");
+  setView("editor", true);
   if (t.point !== undefined && t.point !== null) return pointFlash(t.point);
+  if (t.field && $(t.field)) return $(t.field).focus();
   if (t.phase !== undefined && t.row !== undefined) {
     selectedPhase = null;
     await call("select", {phase: t.phase, row: t.row, mode: "single"});
@@ -671,6 +727,9 @@ async function ask(name, data) {
 function adopt(next) {
   if (!next) return;
   S = next;
+  // Nach einem Phasen-Befehl sagt die Brücke, welche Phase gewählt bleibt —
+  // Duplizieren, Umstellen und Verschieben ändern die Indizes.
+  if (S.phase_focus !== null && S.phase_focus !== undefined) selectedPhase = S.phase_focus;
   render();
   if (S.question) showQuestion(S.question);
 }
@@ -685,8 +744,19 @@ let view = "editor";
  * Momentaufnahme steht er auch nicht — er ändert ja nichts an der Sequenz.
  * Der Editor bleibt dabei im Dokument stehen (nur `hidden`), damit
  * Scrollstand und ungespeicherte Eingaben den Ausflug überleben. */
-function setView(next) {
+function setView(next, navigated) {
+  const switched = next !== view;
   view = next;
+  // Die Meldung des vorigen Reiters raeumen — nur bei reiner Navigation (ein
+  // Reiter, „Zum Live-Run", ein Werkzeug öffnen, eine Sprungmarke; s.
+  // `setStatus`). Der Editor bekommt seine letzte zurueck: sie beschreibt das,
+  // was man dort gerade sieht, und kaeme mit dem naechsten Klick ohnehin.
+  if (switched && navigated) {
+    const own = next === "editor" && S ? S.status : null;
+    paintStatus(own);
+    statusFromEditor = !!own;
+    if (S) renderUndo(S.undo);
+  }
   for (const t of document.querySelectorAll(".tab"))
     t.classList.toggle("on", t.dataset.view === next);
   $("editor-body").hidden = next !== "editor";
@@ -702,6 +772,8 @@ function setView(next) {
   for (const n of document.querySelectorAll("[data-sequence]"))
     n.hidden = ["settings", "scans", "share", "tools",
                 "report"].includes(next);
+  // Versteckt hat das Board keine Masse — die Leiste rechnet erst, wenn es da ist.
+  if (next === "editor") requestAnimationFrame(updateBoardEdges);
   if (next === "scans") renderScans(!SC);
   if (next === "sequences") renderSequenceList();
   if (next === "share") renderShare();
@@ -731,7 +803,16 @@ function render() {
   // Sequenzname doppelt (er steht schon im Kopf der Seite), und das Fenster
   // findet sich in der Taskleiste besser über einen gleichbleibenden Namen.
   document.title = "Sequenz-Studio";
-  setStatus(S.status);
+  // Nur eine NEUE Meldung wird gezeigt. Die Momentaufnahme traegt die letzte
+  // bei jedem Befehl wieder mit; sie jedes Mal zu zeichnen hiesse, dass ein
+  // Klick auf eine Karte die Meldung von vor einer Stunde zurueckholt — oder
+  // die eines anderen Reiters ueberschreibt, wenn von dort aus `call()` laeuft.
+  const status = S.status || {};
+  if (status.id !== statusEditorId) {
+    statusEditorId = status.id;
+    setStatus(status);
+    statusFromEditor = true;
+  }
   // NACH setStatus: das versteckt den Rueckweg an der Meldung, renderUndo
   // schaltet ihn wieder an, wenn die Momentaufnahme ihn anbietet.
   renderUndo(S.undo);
@@ -755,7 +836,10 @@ function renderUndo(u) {
   again.disabled = !u.redo;
   again.title = u.redo ? "Wiederherstellen (STRG+Y): " + u.redo_what
                        : "Nichts zum Wiederherstellen";
-  $("status-action").hidden = !(u.can && u.offer);
+  // Nur neben der Editor-Meldung, zu der er gehoert: steht unten gerade die
+  // Meldung eines anderen Reiters, naehme der Knopf etwas zurueck, wovon dort
+  // gar nicht die Rede ist.
+  $("status-action").hidden = !(u.can && u.offer && statusFromEditor && view === "editor");
 }
 
 /* Wie oft der Status seit Programmstart geschrieben wurde. Ein verzoegerter
@@ -771,8 +855,31 @@ const STATUS_KIND = {
   ok: ["check", "OK"], warn: ["warn", "Achtung"], err: ["cross", "Fehler"],
 };
 
+/* **Eine Meldung gehoert dem Reiter, in dem sie entstand.** Die Statusleiste
+ * liegt unter allen Reitern, und vorher blieb dort stehen, was zuletzt
+ * irgendwo gemeldet wurde: „15 von 15 Slot(s) erkannt" aus den Scans stand
+ * danach unter Live-Run, Bericht und Werkzeuge und las sich wie eine Aussage
+ * ueber DIESEN Reiter. Ein Klick auf einen Reiter raeumt sie deshalb weg.
+ * Wechselt dagegen der CODE den Reiter (Starten springt in den Live-Run, ein
+ * Befund springt in den Editor), ist die Meldung das Ergebnis genau dieses
+ * Wechsels und geht mit. Eine Uhr („frisch = mitnehmen") war die falsche
+ * Regel: wer schnell durch die Reiter klickt, nahm die Meldung trotzdem mit.
+ * Die Reiter mit eigener Aufnahme (Scans, Teilen) zeichnen ihre Meldung beim
+ * Oeffnen ohnehin neu, der Editor bekommt seine in `setView()` zurueck. */
+// Die Nummer der zuletzt gezeigten Editor-Meldung (`S.status.id`) und ob das,
+// was gerade unten steht, vom Editor kommt — nur dann gehoert der
+// Rueckgaengig-Knopf daneben.
+let statusEditorId = -1;
+let statusFromEditor = false;
+
 function setStatus(status) {
   statusStamp += 1;
+  statusFromEditor = false;
+  paintStatus(status);
+}
+
+/** Zeichnet eine Meldung, ohne sie als NEUE zu zaehlen (Reiterwechsel). */
+function paintStatus(status) {
   // Eine neue Meldung ohne Momentaufnahme (ask-Kanal, Nachfassen) traegt
   // keinen Rueckweg — render() schaltet ihn danach wieder an, wenn es ihn gibt.
   $("status-action").hidden = true;
@@ -816,6 +923,33 @@ function renderSequence() {
   if (document.activeElement !== $("seq-cycles")) $("seq-cycles").value = S.cycles;
   if (document.activeElement !== $("seq-info")) $("seq-info").value = S.description;
   $("seq-blocks").textContent = S.phases.reduce((n, p) => n + p.blocks.length, 0);
+  renderNextSequence();
+}
+
+/* Folgesequenz: eine Auswahl aus den vorhandenen Sequenzen. Ein Name, den es
+ * nicht (mehr) gibt, bleibt als „(fehlt)" stehen — still auf „keine"
+ * zurueckzuspringen hiesse, eine kaputte Verkettung zu verstecken. */
+function renderNextSequence() {
+  const s = $("seq-next");
+  if (document.activeElement !== s) {
+    const names = S.sequences.includes(S.name) ? S.sequences : [...S.sequences, S.name];
+    const options = [el("option", {value: ""}, "(keine)")];
+    for (const name of names) {
+      options.push(el("option", {value: name},
+        name === S.name ? name + " (diese nochmal)" : name));
+    }
+    if (S.next_sequence && !names.includes(S.next_sequence)) {
+      options.push(el("option", {value: S.next_sequence}, S.next_sequence + " (fehlt)"));
+    }
+    s.replaceChildren(...options);
+    s.value = S.next_sequence || "";
+  }
+  const delay = $("seq-next-delay");
+  if (document.activeElement !== delay) delay.value = S.next_delay;
+  delay.disabled = !S.next_sequence;
+  s.title = "Startet nach einem regulären Ende (alle Zyklen durch oder CTRL+ALT+F) " +
+    "diese Sequenz — wie CTRL+ALT+S. Nach einem Stopp nicht. " +
+    "Während der Pause bricht CTRL+ALT+S ab.";
 }
 
 /* Der Punkt, dessen Verwendungen im Board gerade markiert sind. Ein Klick
@@ -906,9 +1040,7 @@ function renderPoints() {
 function renderPhases() {
   const target = $("phases");
   target.replaceChildren();
-  if (!S.phases.some((p) => p.index === selectedPhase && p.kind === "loop")) {
-    selectedPhase = null;
-  }
+  if (!S.phases.some((p) => p.index === selectedPhase)) selectedPhase = null;
   // **Ein leeres Board sagt, wie man anfaengt.** Vorher stand links als
   // einziger Hinweis der umstaendlichste der drei Wege (CTRL+ALT+A im
   // Hauptprozess); die Aufnahme, die das Studio selbst starten kann, kam nicht
@@ -931,15 +1063,117 @@ function renderPhases() {
     }}, title));
   }
   target.appendChild(creator);
+  renderPhaseNav(visible);
+}
+
+/* ------------------------------------------------------------ Phasenleiste */
+
+/** Die Leiste über dem Board: jede sichtbare Phase als Kachel, ein Klick
+ * scrollt hin. Dieselbe Menge wie im Board (`visible` aus `renderPhases`) —
+ * eine leere START-Phase, die das Board ausblendet, steht auch hier nicht. */
+function renderPhaseNav(visible) {
+  const nav = $("phase-nav");
+  const closed = $("editor-body").classList.contains("left-closed");
+  nav.replaceChildren(
+    el("button", {class: "btn quiet sidebar-toggle",
+      title: closed ? "Sequenzangaben und Punkte wieder einblenden"
+                    : "Seitenleiste ausblenden — mehr Platz für das Board",
+      "aria-pressed": closed ? "true" : "false",
+      onclick: () => setLeftClosed(!closed)},
+      icon("sidebar"), closed ? "Punkte zeigen" : "Punkte ausblenden"),
+    el("span", {class: "phase-nav-sep"}));
+  for (const phase of visible) {
+    const label = phase.kind === "init" ? "START"
+                : phase.kind === "end" ? "ABSCHLUSS" : phase.name;
+    nav.appendChild(el("button", {
+      class: "phase-nav-chip" + (phase.index === selectedPhase ? " selected" : ""),
+      "data-kind": phase.kind, "data-phase": String(phase.index),
+      title: label + " · " + phase.blocks.length + " Blöcke"
+             + (phase.kind === "loop" && phase.repeat > 1 ? " · ×" + phase.repeat + " je Zyklus" : "")
+             + (phase.start ? " · ab " + phase.start : "") + " — anklicken scrollt hin",
+      onclick: () => scrollToPhase(phase.index),
+    },
+      el("span", {class: "p-dot"}),
+      el("span", {class: "p-label"}, label),
+      el("span", {class: "p-count"}, String(phase.blocks.length))));
+  }
+  nav.appendChild(el("button", {class: "phase-nav-chip add",
+    title: "Neue Loop-Phase am Ende anlegen",
+    onclick: async () => {
+      await call("phase_append");
+      const last = S.phases.filter((p) => p.kind === "loop").pop();
+      if (last) scrollToPhase(last.index);
+    }}, icon("plus", 10), "Phase"));
+  updateBoardEdges();
+}
+
+/** Scrollt das Board so, dass die Phase ganz zu sehen ist, und laesst ihren
+ * Kopf kurz aufleuchten. */
+function scrollToPhase(index) {
+  const column = document.querySelector('.phase[data-phase="' + index + '"]');
+  if (!column) return;
+  const board = $("board");
+  const left = column.offsetLeft - 20;
+  board.scrollTo({left: Math.max(0, left), behavior: "smooth"});
+  column.classList.remove("flash");
+  void column.offsetWidth;   // Animation neu anstossen, auch beim zweiten Klick
+  column.classList.add("flash");
+  setTimeout(() => column.classList.remove("flash"), 1300);
+}
+
+/** Welche Phasen gerade zu sehen sind — fuer die Leiste und die Kanten. */
+function updateBoardEdges() {
+  const board = $("board");
+  if (!board || $("editor-body").hidden) return;
+  const box = board.getBoundingClientRect();
+  const columns = [...document.querySelectorAll("#phases > .phase[data-phase]")];
+  for (const column of columns) {
+    const r = column.getBoundingClientRect();
+    // „Zu sehen" heisst: mindestens ein nennenswerter Streifen, nicht ein
+    // Pixel am Rand.
+    const seen = r.right > box.left + 40 && r.left < box.right - 40;
+    const chip = document.querySelector('.phase-nav-chip[data-phase="' + column.dataset.phase + '"]');
+    if (chip) chip.classList.toggle("off", !seen);
+  }
+  const moreLeft = board.scrollLeft > 4;
+  const moreRight = board.scrollLeft + board.clientWidth < board.scrollWidth - 4;
+  $("board-edge-left").hidden = !moreLeft;
+  $("board-edge-right").hidden = !moreRight;
+}
+
+/** Eine Phase weiter nach links bzw. rechts — die erste, die nicht ganz zu sehen ist. */
+function stepBoard(direction) {
+  const board = $("board");
+  const box = board.getBoundingClientRect();
+  const columns = [...document.querySelectorAll("#phases > .phase")];
+  const target = direction > 0
+    ? columns.find((c) => c.getBoundingClientRect().right > box.right + 2)
+    : columns.slice().reverse().find((c) => c.getBoundingClientRect().left < box.left - 2);
+  if (!target) return;
+  if (target.dataset.phase !== undefined) return scrollToPhase(Number(target.dataset.phase));
+  board.scrollTo({left: target.offsetLeft - 20, behavior: "smooth"});
+}
+
+/** Seitenleiste des Editors ein- und ausblenden; gemerkt pro Rechner. */
+function setLeftClosed(closed) {
+  $("editor-body").classList.toggle("left-closed", closed);
+  try { localStorage.setItem("studio.leftClosed", closed ? "1" : ""); } catch (e) { /* egal */ }
+  if (S) renderPhases();
 }
 
 function renderPhase(phase) {
-  const phaseSelected = phase.kind === "loop" && phase.index === selectedPhase;
+  // **Jeder Phasenkopf ist anklickbar, auch START und ABSCHLUSS** — rechts
+  // steht dann das Phasen-Menü (`renderPhaseInspector`): Art umstellen,
+  // duplizieren, verschieben, löschen. Die Art stand kurz als Auswahl IM Kopf
+  // und nahm dem Namen den Platz („Sammeln Ev…"); was man selten tut, gehört
+  // in den Inspektor, nicht in jede Spalte.
+  const phaseSelected = phase.index === selectedPhase;
   const head = el("div", {
     class: "phase-header " + phase.kind + (phaseSelected ? " selected" : ""),
-    title: phase.kind === "loop" ? "Phase auswählen — Entf löscht sie" : "",
+    title: "Phase auswählen — rechts umstellen, duplizieren, verschieben"
+           + (phase.kind === "loop" ? " · Entf löscht sie" : ""),
     onclick: (e) => {
-      if (phase.kind !== "loop" || e.target.closest("input, button")) return;
+      if (e.target.closest("input, button, select")) return;
       selectedPhase = phase.index;
       call("selection_clear");
     }});
@@ -1014,19 +1248,20 @@ function renderPhase(phase) {
         onclick: (e) => call("phase_selection",
                              {phase: phase.index, add: e.ctrlKey || e.metaKey})},
         all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
-    if (phase.kind === "loop") {
-      bulk.appendChild(el("button", {
-        class: "btn quiet",
-        title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
-        onclick: () => {
-          const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-          if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
-        }}, "Zeiten skalieren …"));
-    }
+    // In JEDER Phase dieselbe Knopfzeile: auch die Zeiten von START und
+    // ABSCHLUSS lassen sich skalieren, und seit Phasen ihre Art wechseln
+    // können, wäre eine Zeile, die je nach Art anders aussieht, eine Sonderform.
+    bulk.appendChild(el("button", {
+      class: "btn quiet",
+      title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
+      onclick: () => {
+        const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+        if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
+      }}, "Zeiten skalieren …"));
     head.appendChild(bulk);
   }
 
-  const column = el("div", {class: "phase"}, head);
+  const column = el("div", {class: "phase", "data-phase": String(phase.index)}, head);
   phase.blocks.forEach((block, i) => {
     column.appendChild(dropZone(phase.index, i));
     column.appendChild(renderCard(phase, block));
@@ -1201,7 +1436,7 @@ function startCard() {
         el("button", {class: "btn", onclick: () => loop
             ? call("block_append", {phase: loop.index}) : call("phase_append")},
           icon("plus"), loop ? "Ersten Block anlegen" : "Erste Phase anlegen"))),
-    el("button", {class: "btn quiet start-import", onclick: () => setView("share")},
+    el("button", {class: "btn quiet start-import", onclick: () => setView("share", true)},
       "Oder eine Sequenz einlesen: Teilen → Importieren"));
 }
 
@@ -1695,6 +1930,7 @@ async function renderRun() {
         el("span", {class: "num"}, "startet in " +
           remainingTime((z.target_time || now) - now))));
       target.appendChild(el("p", {class: "hint"},
+        (z.after ? "Folgesequenz: '" + z.after + "' ist fertig. " : "") +
         "Geplant für " + new Date((z.target_time || now) * 1000).toLocaleString("de-CH") +
         ". Der Countdown kann hier oder mit dem Stop-Hotkey abgebrochen werden."));
       target.appendChild(controls(false, z));
@@ -1707,12 +1943,20 @@ async function renderRun() {
       el("span", {class: "lamp"}),
       el("span", {class: "run-name"},
          z && z.orphaned ? "Nicht sauber beendet" : "Es läuft gerade keine Sequenz")));
+    // EIN Satz, nicht zwei: daneben stand am Knopf noch einmal fast dasselbe
+    // („startet die gespeicherte Fassung …"), und man las beide, um den
+    // Unterschied zu finden, den es nicht gab.
     target.appendChild(el("p", {class: "hint"}, z && z.orphaned
       ? "Der letzte Lauf hat sich nicht sauber beendet — der Hauptprozess wurde " +
         "vermutlich hart abgeschossen. Ein neuer Start räumt das auf."
-      : "Startet die zuletzt gespeicherte Fassung der geöffneten Sequenz — " +
-        "danach zeigt diese Ansicht mit, wo sie gerade steht."));
+      : "Starten nimmt die gespeicherte Fassung von „" + (S ? S.name : "") +
+        "“ — ungespeicherte Änderungen werden vorher geschrieben. Danach zeigt " +
+        "diese Ansicht mit, wo der Lauf gerade steht."));
     target.appendChild(controls(false, z));
+    // **Die leere Fläche zeigt, was gleich laufen wird.** Vorher stand unter
+    // den Knöpfen nichts — genau dort, wo im Lauf die Phasenleiste steht. Die
+    // Vorschau hat dieselbe Gestalt, also erkennt man sie beim Start wieder.
+    if (S && S.phases.some((p) => p.blocks.length)) target.appendChild(runPreview());
     return;
   }
 
@@ -1739,8 +1983,11 @@ async function renderRun() {
   // Karte im Board, damit man ihn wiedererkennt statt ihn zu lesen. Ohne Typ
   // (alte Statusdatei) bleibt sie neutral statt eine Farbe zu erfinden.
   const counters = z.counters || {};
+  // Links Block und darunter der letzte Scan — die Zähler rechts sind hoch,
+  // und der Platz unter dem Block stand sonst leer, während die Karte erst
+  // unterhalb der Zähler kam.
   target.appendChild(el("div", {class: "run-middle"},
-    el("div", {class: "panel with-header"},
+    el("div", {class: "run-left"}, el("div", {class: "panel with-header"},
       el("div", {class: "card-header",
                  style: "background:" + (z.block_color || "#2A3245") +
                         ";color:" + (z.block_ink || "var(--text)")},
@@ -1754,6 +2001,7 @@ async function renderRun() {
         el("span", {class: "small mono"},
            "seit " + duration(now - (z.block_since || now))),
         waitBox(z.waiting, now))),
+      z.last_scan ? lastScanPanel(z.last_scan, now) : null),
     el("div", {class: "tile"},
       [["Klicks", "clicks"], ["Items", "items"], ["Tasten", "keys"],
        ["Timeouts", "timeouts"], ["Übersprungen", "skipped"],
@@ -1763,6 +2011,92 @@ async function renderRun() {
 
   if (z.manual) target.appendChild(manualControls(z.manual));
   target.appendChild(controls(true, z));
+}
+
+/** Die Phasen der offenen Sequenz, wie sie gleich laufen werden — dieselben
+ * Kacheln wie die Phasenleiste im Lauf, nur alle „ausstehend". Gelesen wird
+ * die Momentaufnahme des Editors: das ist die Sequenz, die „Starten" meint. */
+function runPreview() {
+  const phases = S.phases.filter((p) => p.blocks.length);
+  const cycles = S.cycles ? S.cycles + (S.cycles === 1 ? " Zyklus" : " Zyklen")
+                          : "endlos viele Zyklen";
+  return el("section", {class: "run-preview"},
+    el("div", {class: "row"},
+      el("span", {class: "heading grow"}, "SO LÄUFT „" + S.name.toUpperCase() + "“"),
+      el("span", {class: "small"}, cycles
+        + (S.next_sequence ? " · danach „" + S.next_sequence + "“" : ""))),
+    el("div", {class: "phase-strip"}, phases.map((p) => {
+      const name = p.kind === "init" ? "START" : p.kind === "end" ? "ABSCHLUSS" : p.name;
+      const when = p.kind === "init" ? "einmal davor"
+                 : p.kind === "end" ? "einmal danach"
+                 : p.start ? "ab " + p.start
+                 : p.repeat > 1 ? p.repeat + "× je Zyklus" : "einmal je Zyklus";
+      return el("div", {class: "phase-tile", "data-kind": p.kind},
+        el("div", {class: "p-name"}, name),
+        el("div", {class: "p-position"},
+           p.blocks.length + (p.blocks.length === 1 ? " Block" : " Blöcke") + " · " + when));
+    })),
+    S.dirty ? el("p", {class: "hint"},
+      "Im Editor gibt es ungespeicherte Änderungen — Starten schreibt sie vorher.") : null);
+}
+
+/** Das Bild, das der Scan ausgewertet hat, mit einem Rahmen je Slot.
+ *
+ * Dieselben Farben wie im Scans-Reiter, denn es ist dieselbe Frage auf
+ * demselben Spielbild: grün erkannt, rot nichts erkannt; geklickt ist
+ * zusätzlich gefüllt. Die Rahmen stehen in Prozent des Bildes, damit sie
+ * mitskalieren, egal wie gross das Bild gezeichnet wird. */
+function lastScanPicture(p) {
+  const w = p.width || 1, h = p.height || 1;
+  const pct = (v, total) => (v / total * 100).toFixed(3) + "%";
+  return el("div", {class: "last-scan-picture"},
+    el("img", {src: p.image, alt: "Was der Scan gesehen hat"}),
+    ...(p.boxes || []).map((b) => el("div", {
+      class: "last-scan-box " + (b.item ? "match" : "empty") + (b.clicked ? " clicked" : ""),
+      style: "left:" + pct(b.x, w) + ";top:" + pct(b.y, h)
+             + ";width:" + pct(b.w, w) + ";height:" + pct(b.h, h),
+      title: b.slot + ": " + (b.item || "nichts erkannt") + (b.clicked ? " · geklickt" : ""),
+    })));
+}
+
+/** Was der letzte Item-Scan gesehen hat — bis der nächste ihn überschreibt.
+ *
+ * Je Item eine Kachel, nicht je Slot: zwanzig Slots Erz sind „20×". Gezählt
+ * wird alles Erkannte, auch was der Modus danach wegfiltert; ob geklickt
+ * wurde, steht daneben und ist grün umrandet. Die Frage beim Hinsehen ist
+ * „erkennt er, was da liegt?" — und die beantwortet die Kachel, der Klick ist
+ * die zweite. */
+function lastScanPanel(ls, now) {
+  const missing = (ls.slots || 0) - (ls.recognized || 0);
+  const panel = el("section", {class: "panel last-scan"},
+    el("div", {class: "last-scan-head"},
+      el("span", {class: "heading"}, "LETZTER ITEM-SCAN"),
+      el("b", {}, ls.name || "(ohne Namen)"),
+      el("span", {class: "small mono", title: timestamp(ls.at)},
+         "vor " + duration(Math.max(0, now - (ls.at || now))))),
+    el("p", {class: "hint"},
+      (ls.slots || 0) + " Slots gescannt · " + (ls.recognized || 0) + " erkannt"
+      + (missing > 0 ? " · " + missing + " ohne Treffer" : "")
+      + " · " + (ls.clicked || 0) + " geklickt"));
+  const items = ls.items || [];
+  const body = el("div", {class: "last-scan-body"});
+  panel.appendChild(body);
+  if (ls.picture && ls.picture.image) body.appendChild(lastScanPicture(ls.picture));
+  if (!items.length) {
+    body.appendChild(el("p", {class: "hint"},
+      "Nichts erkannt — leer, oder die Items dort sind nicht gelernt."));
+    return panel;
+  }
+  body.appendChild(el("div", {class: "last-scan-grid"}, items.map((e) =>
+    el("div", {class: "last-scan-item" + (e.clicked ? " clicked" : ""),
+               title: "Slots: " + (e.slots || []).join(", ")},
+      e.image ? el("img", {src: e.image, alt: ""}) : el("span", {class: "last-scan-noimg"}),
+      el("span", {class: "last-scan-name"}, e.item),
+      el("span", {class: "small"},
+        (e.slots || []).length + "×"
+        + (e.clicked ? " · " + e.clicked + " geklickt" : "")
+        + (e.category ? " · " + e.category : "") + " · P" + e.priority)))));
+  return panel;
 }
 
 /** Der letzte Lauf, nachdem er fertig ist.
@@ -1790,6 +2124,7 @@ function renderSummary(target, z) {
     (z.cycles ? z.cycles : "∞") + " Zyklen"));
 
   if (z.phases && z.phases.length) target.appendChild(phaseStrip(z, true));
+  if (z.last_scan) target.appendChild(lastScanPanel(z.last_scan, Date.now() / 1000));
 
   target.appendChild(el("div", {class: "tile"},
     [["Klicks", "clicks"], ["Items", "items"], ["Tasten", "keys"],
@@ -1833,24 +2168,42 @@ function manualControls(m) {
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
-  const button = (text, command, cls, sym) => el("button", {
+  const button = (text, command, cls, sym, title) => el("button", {
     class: "btn" + (cls ? " " + cls : ""),
+    title: title || null,
     onclick: () => sendRun(command),
   }, sym ? icon(sym) : null, text);
+  // Das sanfte Ende ist ein Zustand, kein einmaliger Befehl: bis der Zyklus
+  // durch ist, läuft der Lauf scheinbar unverändert weiter. Der Knopf rastet
+  // deshalb ein (`on`, derselbe Ring wie überall) — gesetzt aus dem
+  // Laufstatus, also auch nach CTRL+ALT+F. Nicht gesperrt: `disabled` blasst
+  // ihn auf 40 % ab, und genau dann sähe man den Zustand nicht.
+  const finishing = !!(running && stamp && stamp.finishing);
+  // **Starten sieht hier aus wie oben im Kopf** — gruen umrandet (`launch`).
+  // Es stand hier amber gefuellt und oben gruen: zwei Gestalten fuer denselben
+  // Befehl, und man fragt sich, ob sie Verschiedenes tun.
+  const idle = !running && !(stamp && stamp.countdown);
   const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
-    !running && !(stamp && stamp.countdown) ? button("Starten", "start", "primary", "play") : null,
-    !running && !(stamp && stamp.countdown) ? button("Schrittweise", "start_manual", "", "play") : null,
+    idle ? button("Starten", "start", "launch", "play",
+                  "Startet die gespeicherte Fassung — ungespeicherte Änderungen "
+                  + "werden vorher geschrieben") : null,
+    idle ? button("Schrittweise", "start_manual", "", "play",
+                  "Startet und hält vor jedem Block an — du bestätigst jeden einzeln") : null,
     running ? button("Pause", "pause", "", "pause") : null,
     running ? button("Warten überspringen", "skip") : null,
     running ? button("Block überspringen", "skip_step") : null,
-    running ? button("Zyklus abschliessen", "finish", "", "check") : null,
+    running ? (finishing
+      ? button("Wird abgeschlossen …", "finish", "on", "check",
+               "Sanftes Ende angefordert: der laufende Zyklus läuft zu Ende, "
+               + "dann die Abschluss-Phase, dann Stopp. Stoppen bricht sofort ab.")
+      : button("Zyklus abschliessen", "finish", "", "check",
+               "Sanftes Ende (CTRL+ALT+F): den laufenden Zyklus zu Ende führen, "
+               + "dann Abschluss-Phase und Stopp")) : null,
     running ? button("Stoppen", "stop", "danger", "stop") : null,
     !running && stamp && stamp.countdown ? button("Zeitplan abbrechen", "stop", "danger", "stop") : null,
-    el("span", {class: "small"},
-       running ? "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess"
-               : "startet die gespeicherte Fassung — ungespeicherte Änderungen " +
-                 "werden vorher geschrieben"));
-  if (!running && !(stamp && stamp.countdown)) {
+    running ? el("span", {class: "small"}, "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess")
+            : null);
+  if (idle) {
     const time = el("input", {placeholder: "14:30 oder +30m", autocomplete: "off",
       style: "width:150px"});
     const plan = el("button", {class: "btn", onclick: () => {
@@ -1876,6 +2229,163 @@ function pointList(current, withEmpty) {
   return values;
 }
 
+/* Entf bzw. „löschen" auf der gewählten Phase. Bei START und ABSCHLUSS leert
+ * die Brücke die Phase — und leer ist sie unsichtbar, also fällt sie hier auch
+ * aus `openSpecialPhases`, sonst stünde eine leere Hülle da, die sich nicht
+ * mehr wegbekommen lässt. */
+function deleteSelectedPhase() {
+  const phase = selectedPhase;
+  const kind = S && S.phases[phase] ? S.phases[phase].kind : null;
+  if (kind && kind !== "loop") openSpecialPhases.delete(kind);
+  selectedPhase = null;
+  return call("phase_delete", {phase: phase});
+}
+
+/* Steht rechts das Menü einer Phase? Nur, solange kein Block gewählt ist — ein
+ * Klick auf einen Block ist die jüngere Absicht. */
+function phaseInInspector() {
+  return selectedPhase !== null && !!S && !S.block && !(S.selection && S.selection.count)
+    && !!S.phases[selectedPhase];
+}
+
+/* Das Phasen-Menü: was man mit einer GANZEN Phase tut — selten genug, dass es
+ * nicht in jeden Kopf gehört. Dort stand die Art kurz als Auswahl und nahm dem
+ * Namen den Platz. Oben duplizieren und löschen: dieselben Knöpfe wie beim
+ * Block, weil es dieselbe Frage ist, nur mit einem grösseren Gegenstand. */
+function renderPhaseInspector(target, phase) {
+  const kinds = S.phase_kinds || [];
+  const own = kinds.find((k) => k.key === phase.kind) || {label: "", when: ""};
+  const loop = phase.kind === "loop";
+  $("insp-point").style.background = "var(--" + phase.kind + ")";
+  $("insp-title").textContent = "PHASE · " + (loop ? phase.name.toUpperCase() : own.label);
+  const copyBtn = $("btn-block-copy"), deleteBtn = $("btn-block-delete");
+  copyBtn.disabled = !loop && !phase.blocks.length;
+  copyBtn.title = "Phase duplizieren (STRG+D) — die Kopie ist eine Loop-Phase "
+                  + "mit eigenen Punkten";
+  deleteBtn.disabled = false;
+  deleteBtn.title = loop ? "Phase löschen (Entf)"
+    : own.label + " löschen (Entf) — die Blöcke gehen weg, die leere Phase "
+      + "verschwindet; neu anlegen über „+ " + (phase.kind === "init"
+        ? "Startphase" : "Abschlussphase") + "“";
+
+  target.appendChild(el("p", {class: "hint"},
+    phase.blocks.length + " Blöcke · läuft " + own.when
+    + (loop && phase.repeat > 1 ? ", " + phase.repeat + "× je Zyklus" : "")
+    + (loop && phase.start ? ", ab " + phase.start : "")));
+
+  // Feste kurze Auswahl als Kacheln — dieselbe Regel wie beim Block-Typ. Die
+  // markierte ist die eigene Art; ein belegtes START/ABSCHLUSS ist gesperrt.
+  target.appendChild(heading("ART",
+    "START läuft einmal vor allen Zyklen, ABSCHLUSS einmal nach dem letzten — beide " +
+    "gibt es genau einmal. Umstellen nimmt alle Blöcke mit. Ist START bzw. " +
+    "ABSCHLUSS schon belegt, ist die Kachel gesperrt: zwei Blockfolgen " +
+    "zusammenzulegen hiesse zu raten, welche zuerst läuft.", "phasekind"));
+  target.appendChild(el("div", {class: "grid3"}, kinds.map((kind) => {
+    const current = kind.key === phase.kind;
+    const other = S.phases.find((p) => p.kind === kind.key);
+    const busy = !current && kind.key !== "loop" && !!other && other.blocks.length > 0;
+    return el("button", {
+      class: "type-chip",
+      style: "border-color:var(--" + kind.key + ")" + (current
+        ? ";background:var(--" + kind.key + ");color:#0C0F14;font-weight:600" : ""),
+      disabled: busy || (!current && !phase.blocks.length),
+      title: current ? "läuft " + kind.when
+        : busy ? kind.label + " hat schon Blöcke — erst dort umstellen oder leeren"
+        : "Umstellen — läuft danach " + kind.when,
+      onclick: () => { if (!current) call("phase_convert", {phase: phase.index, to: kind.key}); },
+    }, kind.label);
+  })));
+
+  if (loop) {
+    const loops = S.phases.filter((p) => p.kind === "loop");
+    const at = loops.findIndex((p) => p.index === phase.index);
+    target.appendChild(heading("REIHENFOLGE",
+      "Die Loop-Phasen laufen von links nach rechts — das ist der Ablauf eines " +
+      "Zyklus. START läuft immer davor, ABSCHLUSS immer danach; an ihnen vorbei " +
+      "geht es nicht.", "phase-order"));
+    target.appendChild(el("div", {class: "button-pair"},
+      el("button", {class: "btn", disabled: at <= 0, title: "läuft danach früher im Zyklus",
+                    onclick: () => call("phase_move", {phase: phase.index, delta: -1})},
+         "← nach links"),
+      el("button", {class: "btn", disabled: at >= loops.length - 1,
+                    title: "läuft danach später im Zyklus",
+                    onclick: () => call("phase_move", {phase: phase.index, delta: 1})},
+         "nach rechts →")));
+  }
+  applyHelps(target);
+}
+
+/* **Ohne gewählten Block zeigt die rechte Spalte, was die Sequenz ausmacht.**
+ * Vorher stand dort „Block anklicken, um ihn zu bearbeiten" über 700 px leerer
+ * Fläche, daneben zwei gesperrte Knöpfe. Jetzt: die Blocktypen der Sequenz
+ * (zugleich die Legende zu den Farben im Board), was Aufmerksamkeit braucht —
+ * jeder Eintrag springt zum Block —, und die drei Gesten, die man kennen muss. */
+function renderOverview(target) {
+  const blocks = S.phases.flatMap((p) => p.blocks.map((b) => ({phase: p, block: b})));
+  if (!blocks.length) {
+    target.appendChild(el("div", {class: "empty"},
+      el("span", {}, "Noch keine Blöcke. Links im Board steht, wie man anfängt.")));
+    return;
+  }
+  const counts = new Map();
+  for (const {block} of blocks) counts.set(block.type, (counts.get(block.type) || 0) + 1);
+  target.appendChild(heading("BLOCKTYPEN",
+    "Dieselben Farben wie die Kopfzeilen der Karten im Board.", "overview-types"));
+  target.appendChild(el("div", {class: "overview-types"},
+    S.types.filter((t) => counts.has(t.key)).map((t) => el("div", {class: "overview-type"},
+      el("span", {class: "overview-swatch", style: "background:" + t.color}),
+      el("span", {class: "grow"}, t.label),
+      el("span", {class: "mono small"}, String(counts.get(t.key)))))));
+
+  // Was sich beim Speichern oder im Lauf rächen würde — mit Sprung dorthin.
+  const issues = [];
+  for (const {phase, block} of blocks) {
+    const where = (phase.kind === "init" ? "START" : phase.kind === "end" ? "ABSCHLUSS"
+                   : phase.name) + " · Block " + (block.row + 1);
+    if (block.warning) issues.push([where, block.warning, phase, block]);
+    else if (block.else_text && !block.else_applies)
+      issues.push([where, "ELSE greift nie", phase, block]);
+  }
+  const unused = S.points.filter((p) => !p.usages).length;
+  target.appendChild(heading("BRAUCHT AUFMERKSAMKEIT",
+    "Blöcke, die beim Speichern abgelehnt würden oder etwas versprechen, was "
+    + "nie passiert — und Punkte, die keiner mehr benutzt.", "overview-issues"));
+  if (!issues.length && !unused) {
+    target.appendChild(el("p", {class: "hint overview-ok"}, icon("check"),
+      " Nichts offen — alle Blöcke sind vollständig."));
+  }
+  for (const [where, what, phase, block] of issues) {
+    target.appendChild(el("button", {class: "overview-issue",
+      title: "Zum Block springen",
+      onclick: () => goTo({view: "editor", phase: phase.index, row: block.row})},
+      icon("warn"), el("span", {class: "grow"}, el("b", {}, where), " — " + what),
+      icon("arrow")));
+  }
+  if (unused) {
+    target.appendChild(el("button", {class: "overview-issue",
+      title: "In der Punkteliste nur die ungenutzten zeigen",
+      onclick: () => {
+        if ($("editor-body").classList.contains("left-closed")) setLeftClosed(false);
+        $("point-filter").value = "ungenutzt";
+        renderPoints();
+        $("point-filter").focus();
+      }},
+      icon("warn"), el("span", {class: "grow"},
+        el("b", {}, unused + (unused === 1 ? " Punkt" : " Punkte")), " ohne Verwendung"),
+      icon("arrow")));
+  }
+
+  target.appendChild(heading("SO GEHT'S", "", "overview-how"));
+  target.appendChild(el("div", {class: "overview-how"},
+    el("div", {}, el("b", {}, "Klick"), " auf eine Karte — rechts bearbeiten"),
+    el("div", {}, el("b", {}, "Ziehen"), " — umsortieren, auch in eine andere Phase"),
+    el("div", {}, el("b", {}, "Punkt aus der Liste ins Board ziehen"), " — neuer Klick-Block"),
+    el("div", {}, el("b", {}, "STRG+Klick"), " — mehrere wählen, dann alle auf einmal ändern"),
+    el("button", {class: "btn quiet", onclick: () => toggleShortcuts(true)},
+       "Alle Tastenkürzel (?)")));
+  applyHelps(target);
+}
+
 function renderInspector() {
   const target = $("inspector");
   target.replaceChildren();
@@ -1886,13 +2396,23 @@ function renderInspector() {
 
   $("btn-block-delete").disabled = selected === 0;
   $("btn-block-copy").disabled = selected === 0;
+  // Im Überblick (nichts gewählt) gibt es nichts zu duplizieren oder zu
+  // löschen — zwei gesperrte Knöpfe dort sind nur Rauschen.
+  const nothing = selected === 0 && !phaseInInspector();
+  $("btn-block-delete").hidden = nothing;
+  $("btn-block-copy").hidden = nothing;
+  $("btn-block-copy").title = "Auswahl duplizieren (STRG+D)";
+  $("btn-block-delete").title = "Auswahl löschen (Entf)";
+  if (phaseInInspector()) return renderPhaseInspector(target, S.phases[selectedPhase]);
   if (!b) {
     $("insp-point").style.background = "#2A3245";
-    $("insp-title").textContent = selected > 1 ? selected + " BLÖCKE GEWÄHLT" : "KEIN BLOCK";
-    target.appendChild(el("div", {class: selected > 1 ? "bulk-editor" : "empty"}, selected > 1
-      ? renderBulkEditor(selected)
-      : el("span", {}, "Block anklicken, um ihn zu bearbeiten.", el("br"),
-           "Ziehen sortiert um — auch über Phasengrenzen.")));
+    $("insp-title").textContent = selected > 1 ? selected + " BLÖCKE GEWÄHLT" : "ÜBERBLICK";
+    if (selected > 1) {
+      target.appendChild(el("div", {class: "bulk-editor"}, renderBulkEditor(selected)));
+      applyHelps(target);
+      return;
+    }
+    renderOverview(target);
     return;
   }
 
@@ -2136,6 +2656,8 @@ async function selectInsertedBlocks() {
  * an — die erste Fassung sah beim ersten Blick nach 500 ms oft noch nichts,
  * erklärte die Aufnahme für beendet und liess sie unsichtbar weiterlaufen.
  * Kommt gar kein Lebenszeichen, wird das gesagt statt still aufgegeben.
+ * Und „nicht aktiv" allein heisst noch nicht „geschrieben": solange `busy`
+ * steht, baut der Hauptprozess die Blöcke noch zusammen.
  * `quick` (nach „Stoppen") weiss schon, dass sie lief. */
 function watchInsertRecording(quick) {
   const number = ++insertRecordingPoll;
@@ -2150,6 +2672,13 @@ function watchInsertRecording(quick) {
       insertRecordingLive = status;
       wzFillRecordingOutput($("insert-recording-output"), insertRecordingLive, true);
       return void setTimeout(poll, quick ? 300 : 500);
+    }
+    // Gestoppt, aber noch nicht geschrieben: jetzt neu zu laden hiesse, die
+    // Datei VOR dem Einfügen zu lesen — die Konsole meldete die Blöcke, das
+    // Board zeigte sie nicht (s. `busy` in `stop_recording()`).
+    if (status && status.busy) {
+      seen = true;
+      return void setTimeout(poll, 200);
     }
     if (!seen) {
       if (++attempts < INSERT_RECORDING_START_ATTEMPTS) return void setTimeout(poll, 500);
@@ -2268,9 +2797,15 @@ function buildPosition(target, b) {
     // Zustand, kein ⓘ: WER den Punkt sonst noch benutzt, sieht man sonst erst,
     // wenn ein anderer Block woanders hinklickt. Und der Rueckweg steht dabei:
     // ein eigener Punkt fuer diesen Block, die anderen bleiben, wo sie sind.
-    if (b.point_others && b.point_others.length) {
-      target.appendChild(el("p", {class: "hint"},
-        "Punkt #" + b.point_id + " wird auch benutzt von: " + b.point_others.join(", ")));
+    // Eine Zeile je Phase, jeder Block einmal (`_point_usage_groups`): als
+    // Fliesstext standen neun Bloecke als achtzehn Eintraege da.
+    const others = b.point_others || {count: 0, lines: []};
+    if (others.count) {
+      target.appendChild(el("div", {class: "hint point-others"},
+        el("div", {}, "Punkt #" + b.point_id + " benutzen auch " +
+          (others.count === 1 ? "1 weiterer Block:" : others.count + " weitere:")),
+        others.lines.map((g) => el("div", {class: "point-others-line"},
+          el("span", {class: "point-others-where"}, g.where), g.what))));
       target.appendChild(el("button", {
         class: "btn wide",
         title: "Dieser Block bekommt eine Kopie des Punkts; die anderen Blöcke behalten #"
@@ -2346,6 +2881,16 @@ function buildScan(target, b) {
     target.appendChild(selection("Modus", S.scan_modes.map((m) => ({value: m, text: m})),
       b.item_scan_mode, (v) => call("block_set", {field: "item_scan_mode", value: v})));
   }
+  // Der Schalter sagt OB, die Einstellung WOHIN — und das Wohin steht dabei,
+  // damit „an" nicht erst nachgesehen werden muss.
+  target.appendChild(toggle("Maus danach absetzen: "
+      + (b.mouse_return_target || "zurück an die Stelle davor"),
+    b.mouse_return, (on) => call("block_set", {field: "mouse_return", value: on}),
+    "Ein Scan klickt, was er findet, und der Zeiger bliebe auf dem letzten "
+    + "Treffer stehen — dort zeigt das Spiel dessen Infotext, und der kann das "
+    + "Ziel des nächsten Blocks verdecken. Wohin die Maus geht, steht in den "
+    + "Einstellungen (Maus nach dem Scan). Aus = sie bleibt stehen.",
+    "mouse-return"));
 }
 
 function buildScreenshot(target, b) {
@@ -2414,6 +2959,20 @@ function buildTrigger(target, b, withTrigger) {
       "andere Farbe geprüft werden, ist das ein eigener Punkt.", "trigger"));
     target.appendChild(toggle("nur prüfen, nicht warten", b.trigger_check,
       (on) => call("block_trigger", {choice: b.trigger, check_only: on})));
+    // Die Zeitgrenze DIESES Blocks. Leer = die Einstellung; der Platzhalter
+    // nennt ihren Wert, damit man nicht nachsehen muss, was „leer" gerade heisst.
+    // Beim „nur prüfen" wird nicht gewartet — dort gäbe es nichts zu begrenzen.
+    if (!b.trigger_check) {
+      const standard = (S.without_else || {}).seconds;
+      target.appendChild(field("Timeout (s)", b.trigger_timeout,
+        (v) => call("block_trigger", {choice: b.trigger, timeout: v === "" ? null : v}),
+        {type: "number", min: "0", step: "1",
+         placeholder: standard > 0 ? "Einstellung: " + standard + " s"
+                    : standard === 0 ? "Einstellung: ohne Timeout" : "Einstellung"},
+        "Wie lange dieser Block auf die Farbe wartet, bevor der Timeout greift " +
+        "(dann ELSE bzw. pixel_timeout_action). Leer = die Einstellung " +
+        "pixel_wait_timeout für alle Blöcke, 0 = ohne Grenze.", "trigger-timeout"));
+    }
   } else if (b.point_id === null || b.point_id === undefined) {
     target.appendChild(el("p", {class: "hint"},
       "Ohne Punkt gibt es nichts zu prüfen — erst eine Stelle wählen."));
@@ -2442,11 +3001,13 @@ function buildVerification(target, b) {
  * ab. Der Unterschied entscheidet, ob man ELSE ueberhaupt braucht — also gehoert
  * die echte Einstellung hierher und nicht ein allgemeiner Satz.
  */
-function withoutElseText() {
+function withoutElseText(ownTimeout) {
   const o = S.without_else || {};
   if (!o.consequence) return "Ohne ELSE entscheidet nach dem Timeout die Einstellung " +
                        "pixel_timeout_action in der config.json.";
-  const time = o.seconds > 0 ? o.seconds + " s" : "ohne Timeout";
+  // Hat der Block eine EIGENE Zeitgrenze, gilt die — sonst die Einstellung.
+  const seconds = ownTimeout !== null && ownTimeout !== undefined ? ownTimeout : o.seconds;
+  const time = seconds > 0 ? seconds + " s" : "ohne Timeout";
   return "Ohne ELSE wartet der Schritt bis zum Timeout (" + time + "), danach: " +
          o.consequence + " (config.json: pixel_timeout_action)." +
          (o.emergency_stop > 0 ? " Nach " + o.emergency_stop + " Timeouts in Folge greift " +
@@ -2476,7 +3037,7 @@ function buildElse(target, b) {
   // nicht sieht, steht es im Hinweis darunter und im Tooltip der Kachel.
   const effect = b.else_action
     ? ELSE_DESCRIPTIONS[b.else_action]
-    : withoutElseText();
+    : withoutElseText(b.trigger_timeout);
   target.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
     "eigene Aktion des Schritts. " + effect +
@@ -2537,7 +3098,7 @@ function shortcutTable() {
       ["Auswahl duplizieren", "STRG D"],
       ["Auswahl verschieben", "ALT ↑ · ALT ↓"],
       ["Dazu wählen · bis hierher wählen", "STRG+Klick · SHIFT+Klick"],
-      ["Phase löschen (bei gewähltem Phasenkopf)", "ENTF"],
+      ["Phase löschen · duplizieren (bei gewähltem Phasenkopf)", "ENTF · STRG D"],
     ]],
     ["Scans · Items", [
       ["Modus: " + modes, SCAN_MODES.map((m) => m.shortcut).join(" · ")],
@@ -2762,15 +3323,63 @@ async function callScan(name, data) {
 function scanScheduleAutosave(cause) {
   clearTimeout(scanAutoSaveTimer);
   if (!SC || !SC.dirty || cause === "scan_save") return;
-  const stamp = $("scan-save-state");
-  if (stamp) { stamp.textContent = "Entwurf wird gespeichert …"; stamp.classList.add("open"); }
   scanAutoSaveTimer = setTimeout(async () => {
     const answer = await ask("scan_save");
     if (!answer) return;
     SC = answer;
+    // Speichern aendert nichts, was dasteht — nur den Knopf und die Kopfzeile.
+    if (scanEditing()) {
+      scanRefreshSaveState();
+      setStatus(SC.status);
+      scanRenderOwed = true;
+      return;
+    }
     await renderScans();
   }, 900);
 }
+
+/* **Kein Neuaufbau unter dem Cursor, wenn ihn niemand bestellt hat.**
+ *
+ * Gemeldet als „ich markiere den Namen bzw. die Priorität, und es wird immer
+ * wieder zurückgesetzt". Zwei Anlässe bauten die rechte Spalte neu, ohne dass
+ * sich für den Nutzer etwas geändert hätte: das Auto-Speichern (900 ms nach
+ * jeder Änderung, also genau dann, wenn man im nächsten Feld steht) und das
+ * Nachladen der Vorschaubilder. Das ersetzte Feld verlor seine Markierung — bei
+ * Zahlenfeldern lässt sie sich gar nicht wiederherstellen —, und ein Feld, in
+ * dem gerade getippt wurde, meldete beim Entfernen sein `change`: ein halber
+ * Name wurde übernommen und umbenannt.
+ *
+ * Beide Anlässe warten deshalb, solange ein Feld der Spalte den Fokus hat, und
+ * holen den Neuaufbau beim Verlassen nach. Der Neuaufbau nach dem EIGENEN
+ * Feldwechsel bleibt — er zeigt das Ergebnis dessen, was man gerade getippt
+ * hat, und `restoreFocus()` bringt den Cursor hinüber. */
+let scanRenderOwed = false;
+
+function scanEditing() {
+  const a = document.activeElement;
+  return !!(a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)
+            && a.closest("#scan-insp"));
+}
+
+/** Nur Knopf und Kopfzeile nachziehen — die Felder bleiben unberührt. */
+function scanRefreshSaveState() {
+  const old = $("scan-save");
+  if (old) old.replaceWith(scanSaveButton());
+  const title = $("scan-column-title");
+  if (title) title.textContent = SC.dirty ? "NICHT GESPEICHERT" : scanColumnTitle();
+  const dot = $("scan-dirty-dot");
+  if (dot) dot.hidden = !SC.dirty;
+}
+
+document.addEventListener("focusout", () => {
+  // Erst nach dem Fokuswechsel nachsehen: springt der Fokus nur ins naechste
+  // Feld derselben Spalte, wartet der Neuaufbau weiter.
+  setTimeout(() => {
+    if (!scanRenderOwed || scanEditing() || view !== "scans") return;
+    scanRenderOwed = false;
+    renderScans();
+  }, 0);
+});
 
 function scanCanvasTools() {
   const ready = scanConfigOpen();
@@ -2801,10 +3410,6 @@ function scanCanvasTools() {
   $("scan-pin").setAttribute("aria-pressed", String(!!SC.tool_pinned));
   $("scan-pin-long").textContent = SC.tool_pinned ? "Angeheftet" : "Anheften";
   $("scan-pin-short").textContent = "Pin";
-  const stamp = $("scan-save-state");
-  stamp.replaceChildren(SC.dirty ? "Wird gespeichert …" : icon("check"),
-                        SC.dirty ? null : "Gespeichert");
-  stamp.classList.toggle("open", !!SC.dirty);
 }
 
 function scanRenderResult() {
@@ -3245,25 +3850,35 @@ function scanListBlock(tabs, filter, target) {
   }
   if (filter) scanFilterRow(filter, open);
   if (!target) return undefined;
-  if (open === "slots") return scanListSlots(target);
-  if (open === "items") return scanListItems(target);
-  return scanListScans(target);
+  if (open === "scans") return scanListScans(target);
+  if (open === "slots") scanListSlots(target);
+  else scanListItems(target);
+  scanDeleteAll(target, open);
+  return undefined;
+}
+
+/* **Alles löschen steht am Ende der Liste, nicht im Kopf.** Dort stand es
+ * zwischen den Reitern und „Sortieren", genauso gestaltet wie Sortieren
+ * (rot wurde es erst beim Zeigen) — der gefährlichste Knopf der Spalte lag
+ * also da, wo man am häufigsten klickt, und sah aus wie der harmloseste. Man
+ * braucht ihn selten, und wer ihn braucht, hat die Liste davor gesehen. */
+function scanDeleteAll(target, open) {
+  if (!SC.open) return;
+  const kind = open === "slots" ? "slot" : "item";
+  const total = open === "slots" ? SC.slots : SC.items;
+  if (!total.length) return;
+  target.appendChild(el("div", {class: "scan-delete-all"},
+    el("button", {class: "btn danger", disabled: !total.length,
+      title: "Löscht alle " + total.length + " " + (kind === "slot" ? "Slots" : "Items")
+        + " aus „" + SC.open + "“ — nicht nur aus der Mitgliedschaft. "
+        + "STRG+Z nimmt es zurück.",
+      onclick: () => callScan("scan_delete_all", {kind: kind})},
+      icon("trash"), "Alle " + total.length + " " + (kind === "slot" ? "Slots" : "Items")
+        + " löschen")));
 }
 
 /** Was die Liste einschraenkt: Kategorie; Bestand gehoert immer zum Scan. */
 function scanFilterRow(filter, open) {
-  if (SC.open && open !== "scans") {
-    const kind = open === "slots" ? "slot" : "item";
-    const total = open === "slots" ? SC.slots : SC.items;
-    filter.appendChild(el("button", {class: "btn danger", disabled: !total.length,
-      title: total.length
-        ? "Löscht alle " + total.length + " " + (kind === "slot" ? "Slots" : "Items")
-          + " aus „" + SC.open + "“ — nicht nur aus der Mitgliedschaft. "
-          + "STRG+Z nimmt es zurück."
-        : "Nichts zu löschen.",
-      onclick: () => callScan("scan_delete_all", {kind: kind})},
-      total.length + " " + (kind === "slot" ? "Slots" : "Items") + " löschen"));
-  }
   if (open === "items" && SC.categories.length) {
     filter.appendChild(selection("", [{value: "", text: "alle Kategorien"}].concat(
       SC.categories.map((k) => ({value: k, text: k}))), scanCategory,
@@ -3755,7 +4370,11 @@ async function scanFetchPreviews(names) {
   for (const [name, url] of Object.entries(answer)) {
     if (url) { scanPreviews.set(name, url); next = true; }
   }
-  if (next && view === "scans") scanInspector();
+  if (!next || view !== "scans") return;
+  // Ein Vorschaubild ist kein Grund, das Feld unter dem Cursor zu ersetzen
+  // (s. `scanEditing`) — es kommt beim Verlassen des Felds.
+  if (scanEditing()) { scanRenderOwed = true; return; }
+  scanInspector();
 }
 
 /* ------------------------------------------------------------------ Overlay */
@@ -3800,23 +4419,32 @@ function scanOverlay() {
       class: "scan-fill" + state + off + (selected ? " selected" : "")}));
     svg.appendChild(svgEl("rect", {x: x1, y: y1, width: x2 - x1, height: y2 - y1,
       class: "scan-slot" + state + off + (selected ? " selected" : "")}));
-    // Name ueber dem Rechteck, Erkennungsergebnis darunter — so ueberdeckt
-    // keins von beiden das Bild im Slot.
+    // **Ein Name je Slot, und er steht IN seinem Rechteck.** Vorher stand der
+    // Slot-Name darueber und das erkannte Item darunter — bei einem Raster
+    // lagen damit „Item 1" (unter Reihe 1) und „Slot 6" (ueber Reihe 2) direkt
+    // aufeinander, und welcher Name zu welchem Rechteck gehoert, musste man
+    // raten. Jetzt: das erkannte Item unten im Slot (das ist die Auskunft, um
+    // die es beim Hinsehen geht), der Slot-Name nur beim gewaehlten und beim
+    // Slot unter dem Zeiger — er steht ohnehin in der Liste rechts.
     //
     // Nur, wenn er hineinpasst: die Schrift steht in SCHIRM-Pixeln (gegen den
-    // Zoom gerechnet), der Slot in Bild-Pixeln, und bei 45 Slots waeren es 45
-    // Namen uebereinander. Der gewaehlte behaelt seinen immer.
+    // Zoom gerechnet), der Slot in Bild-Pixeln. Der gewaehlte behaelt seinen immer.
     const wideMode = (x2 - x1) * scanZoom;      // Breite auf dem Schirm
-    if (wideMode >= 34 || selected) {
+    const pointedAt = s.name === scanHover;
+    if (selected || pointedAt) {
       svg.appendChild(svgEl("text", {x: x1, y: y1 - 3 * px, class: "scan-badge" + off,
         "font-size": 11 * px, "stroke-width": 3 * px}, s.name));
     }
-    if (s.match && s.match.name && (wideMode >= 34 || selected)) {
+    if (s.match && s.match.name && (wideMode >= 34 || selected || pointedAt)) {
       // Dieselbe Quelle wie der Umriss — sonst laeuft die Marke von ihrem
-      // eigenen Rechteck farblich weg.
-      svg.appendChild(svgEl("text", {x: x1, y: y2 + 12 * px, class: "scan-badge",
+      // eigenen Rechteck farblich weg. Gekuerzt auf die Slotbreite: ein
+      // langer Name liefe sonst in den Nachbarn hinein.
+      const fits = Math.max(3, Math.floor(wideMode / 6.2) - 1);
+      const text = s.match.name.length > fits && !(selected || pointedAt)
+        ? s.match.name.slice(0, fits - 1) + "…" : s.match.name;
+      svg.appendChild(svgEl("text", {x: x1 + 3 * px, y: y2 - 4 * px, class: "scan-badge",
         "font-size": 10 * px, "stroke-width": 3 * px,
-        fill: SLOT_COLOR.match}, s.match.name));
+        fill: SLOT_COLOR.match}, text));
     }
     const [kx, ky] = scanToImage(s.click_pos[0] + v[0], s.click_pos[1] + v[1]);
     const arm = 4 * px;
@@ -3851,6 +4479,24 @@ function scanOverlay() {
         width: Math.abs(zx - ex), height: Math.abs(zy - ey)}));
     }
   }
+}
+
+/* Der Slot unter dem Zeiger — nur fuer seine Beschriftung. Welcher Slot bei
+ * einem KLICK gemeint ist, entscheidet weiterhin `_slot_under()` in Python;
+ * das hier zeichnet nur einen Namen und darf deshalb einfach sein. */
+let scanHover = null;
+
+function scanSlotAt(position) {
+  if (!position || !SC || scanKind !== "item") return null;
+  const [x, y] = position;
+  let best = null, area = Infinity;
+  for (const s of SC.slots) {
+    const [a, b, c, d] = s.region;
+    if (x < a || x > c || y < b || y > d) continue;
+    const size = (c - a) * (d - b);
+    if (size < area) { best = s.name; area = size; }
+  }
+  return best;
 }
 
 /** Wie el(), aber im SVG-Namensraum — sonst zeichnet der Browser nichts. */
@@ -3950,15 +4596,39 @@ function scanInspector() {
   restoreFocus(memo);
 }
 
+/* **Der Knopf zeigt, ob es etwas zu speichern GIBT.** Der Reiter speichert
+ * 900 ms nach jeder Änderung von selbst (`scanScheduleAutosave`) und meldet
+ * dabei unten „… gespeichert." — ein Klick danach schrieb dieselbe Meldung
+ * noch einmal, und der Knopf blieb, wie er war: amber, „Speichern". Vorher
+ * und nachher sahen gleich aus, also sah das Speichern aus, als täte es
+ * nichts. Den Zustand trug nur ein Stempel in der Bildleiste, und der war ab
+ * 900 px Bühnenbreite ausgeblendet — also bei jeder gewöhnlichen Fenstergröße.
+ *
+ * Jetzt steht der Zustand AM Knopf: amber „Speichern", solange etwas offen
+ * ist (auch nach einem gescheiterten Schreiben — dann ist er der Weg zum
+ * erneuten Versuch), sonst ruhig „✓ Gespeichert". Klickbar bleibt er in
+ * beiden Fällen: ein zweites Schreiben schadet nicht, und ein gesperrter
+ * Knopf liest sich wie ein kaputter. */
+function scanSaveButton() {
+  const dirty = !!SC.dirty;
+  return el("button", {
+    class: dirty ? "btn primary" : "btn", id: "scan-save",
+    title: dirty
+      ? "Jetzt schreiben (STRG+S) — sonst speichert der Reiter kurz nach der letzten Änderung von selbst"
+      : "Alles ist auf Platte. Ein Klick schreibt trotzdem noch einmal (STRG+S).",
+    onclick: () => callScan("scan_save")},
+    icon(dirty ? "save" : "check"), dirty ? "Speichern" : "Gespeichert");
+}
+
 function scanBuildInspector() {
   const target = $("scan-insp");
   target.replaceChildren();
   if (SC.review) return scanReview(target);
   const head = el("div", {class: "section scan-header"},
     el("div", {class: "row"},
-      el("span", {class: "heading grow"},
+      el("span", {class: "heading grow", id: "scan-column-title"},
          SC.dirty ? "NICHT GESPEICHERT" : scanColumnTitle()),
-      SC.dirty ? el("span", {class: "dirty-dot"}) : null),
+      el("span", {class: "dirty-dot", id: "scan-dirty-dot", hidden: !SC.dirty})),
     // **Der Hauptprozess schreibt dieselben Dateien.** Ein Lauf mit
     // Auto-Lernen legt Items an und speichert sie; ohne diesen Hinweis sucht
     // man sie hier vergeblich und haelt es fuer einen Fehler beim Lernen.
@@ -3975,22 +4645,14 @@ function scanBuildInspector() {
         el("button", {class: "btn", onclick: () => callScan("scan_reload",
                                                            {discard: true})},
            SC.dirty ? "Änderungen verwerfen & neu laden" : "Neu laden"))) : null,
-    el("button", {class: "btn primary", onclick: () => callScan("scan_save")},
-       "Speichern"),
+    // **Speichern und Zurück teilen sich eine Zeile.** Vorher nahm Speichern
+    // eine ganze Zeile, darunter „Items erkennen | Zurück", darunter je eine
+    // Zeile für Katalog und LLM, dann Reiter, dann „löschen", „Sortieren" und
+    // „Alle aus" untereinander: sieben Zeilen Bedienung, rund 330 von 830 px,
+    // bevor die erste Maske kam — und der Kopf klebt oben, also blieb der
+    // Liste nur der Rest. Jetzt sind es drei Knopfzeilen plus Reiter.
     el("div", {class: "button-pair"},
-      scanKind === "item"
-        // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
-        // erkennen" und im Assistenten als „Erkennung testen" — zwei Namen fuer
-        // einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
-        // Verschiedenes.
-        ? el("button", {class: "btn", disabled: !photoPresent() || !SC.slots.length,
-                        title: "Hält jeden Slot gegen die Item-Profile und schreibt "
-                               + "das Ergebnis an Bild und Item-Liste",
-                        onclick: () => callScan("scan_recognize")}, "Items erkennen")
-        : el("button", {class: "btn", disabled: !photoPresent() || !detScan(),
-                        title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
-                        onclick: () => detTest()},
-             scanKind === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"),
+      scanSaveButton(),
       // **Der Knopf heisst „Zurück", die Beschreibung steht im Tooltip.** Er
       // trug den letzten Schritt im Namen („↶ 'Bogen Zeus': Priorität") — das
       // ist die genauere Auskunft und die schlechtere Beschriftung: sie wurde
@@ -4003,28 +4665,31 @@ function scanBuildInspector() {
                         + " (" + SC.undo.depth + " Schritte gemerkt)"
                       : "Nichts zum Rückgängigmachen",
                     onclick: () => callScan("scan_undo")}, icon("undo"), "Zurück")));
-  // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
-  // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
-  // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
-  // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen.
-  if (scanKind === "item" && SC.catalog_on) {
-    head.appendChild(el("button", {class: "btn wide",
-      title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
-             + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
-             + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
-             + "vergeben (teuerstes Item einer Kategorie bekommt P1).",
-      onclick: () => callScan("scan_catalog_apply")},
-      "⊞ Aus Katalog einordnen"));
-  }
+  const work = el("div", {class: "button-pair"},
+    scanKind === "item"
+      // **Derselbe Befehl heisst ueberall gleich.** Er stand hier als „Items
+      // erkennen" und im Assistenten als „Erkennung testen" — zwei Namen fuer
+      // einen Knopf, und man probiert beide aus, weil man annimmt, sie taeten
+      // Verschiedenes.
+      ? el("button", {class: "btn", disabled: !photoPresent() || !SC.slots.length,
+                      title: "Hält jeden Slot gegen die Item-Profile und schreibt "
+                             + "das Ergebnis an Bild und Item-Liste",
+                      onclick: () => callScan("scan_recognize")}, "Items erkennen")
+      : el("button", {class: "btn", disabled: !photoPresent() || !detScan(),
+                      title: "Erkennen, anzeigen — die Aktion wird NICHT ausgeführt",
+                      onclick: () => detTest()},
+           scanKind === "boss" ? "Boss-Scan testen" : "Icon-Scan testen"));
+  head.appendChild(work);
   // **Sechsundfuenfzig Masken aufzuklappen ist kein Bedienweg.** Den Knopf gab
   // es nur AM einzelnen Item — richtig fuer die Korrektur eines Namens, falsch
   // fuer den Normalfall: nach dem Lernen heissen sie alle „Item 1“ … „Item 56“,
-  // und genau dann will man einmal ueber alle. Er steht deshalb hier oben,
-  // neben dem Katalog-Knopf, mit derselben Bezugsregel (der offene Scan).
+  // und genau dann will man einmal ueber alle. Er steht deshalb neben „Items
+  // erkennen", mit derselben Bezugsregel (der offene Scan). Kurz beschriftet,
+  // damit er in die halbe Zeile passt; woher die Namen kommen, sagt der Tooltip.
   if (scanKind === "item" && SC.llm_on) {
     const withTemplate = (SC.items || []).filter((i) => (i.templates || []).length).length;
     if (withTemplate) {
-      head.appendChild(el("button", {class: "btn wide",
+      work.appendChild(el("button", {class: "btn",
         title: withTemplate + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
                + (SC.catalog_on
                   ? "Jeder Name wird aus dem Katalog gewählt, danach werden "
@@ -4033,8 +4698,24 @@ function scanBuildInspector() {
                     + "Vorschläge, keine echten Item-Namen.")
                + " Das dauert; STRG+Z nimmt den ganzen Durchgang zurück.",
         onclick: () => scanAutonameRun({all_items: true})},
-        icon("spark"), SC.catalog_on ? "Alle aus Katalog benennen" : "Alle mit LLM benennen"));
+        icon("spark"), "Alle benennen"));
     }
+  }
+  // **Der Katalog-Knopf braucht KEIN eingeschaltetes LLM.** Die Kategorie haengt
+  // am Namen: heisst ein Item „Citadel Helmet", steht im Katalog „Helm" — ob den
+  // Namen ein Mensch getippt oder ein Modell vorgeschlagen hat, ist gleichgueltig.
+  // Er steht deshalb neben „Items erkennen" und nicht bei den LLM-Sachen — und
+  // bekommt eine eigene Zeile, wenn dort schon „Alle benennen" steht.
+  if (scanKind === "item" && SC.catalog_on) {
+    const catalog = el("button", {class: work.childNodes.length > 1 ? "btn wide" : "btn",
+      title: "Setzt Kategorie und Priorität für jedes Item dieses Scans, dessen "
+             + "Name im Katalog steht. Namen, die er nicht kennt, bleiben "
+             + "unangetastet. Die Priorität wird innerhalb dieses Scans dicht "
+             + "vergeben (teuerstes Item einer Kategorie bekommt P1).",
+      onclick: () => callScan("scan_catalog_apply")},
+      "Aus Katalog einordnen");
+    if (work.childNodes.length > 1) head.appendChild(catalog);
+    else work.appendChild(catalog);
   }
   // **Reiter und Filter gehoeren zum Kopf, nicht zur Liste.** Der Kopf bleibt
   // beim Scrollen stehen (`.scan-header` ist `sticky`) — bei sechzig Masken war
@@ -4048,19 +4729,23 @@ function scanBuildInspector() {
     // **Sortieren ist ein Knopf, kein Nebeneffekt des Tippens.** Sortierte sich
     // die Liste nach jeder Aenderung neu, springt genau die Zeile weg, an der
     // man gerade arbeitet.
-    filter.appendChild(el("button", {class: "btn quiet",
-      title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
-             + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
-      onclick: () => { scanOrderForget(); renderScans(); }}, icon("sort"), "Sortieren"));
     const kind = scanList === "slots" ? "slot" : "item";
     const entries = scanList === "slots" ? SC.slots : SC.items;
     const anyOn = entries.some((e) => !!e.active);
-    filter.appendChild(el("button", {class: "btn quiet", disabled: !entries.length,
-      title: "Schaltet alle " + (kind === "slot" ? "Slots" : "Items")
-             + (anyOn ? " aus." : " ein."),
-      onclick: () => callScan("scan_toggle_all",
-                             {kind: kind, active: !anyOn})},
-      anyOn ? "Alle aus" : "Alle ein"));
+    // Zwei Knoepfe, eine Zeile: beide ordnen die Liste, keiner veraendert
+    // etwas Unwiederbringliches — sie gehoeren nebeneinander, nicht
+    // untereinander mit je einer eigenen Zeile.
+    filter.appendChild(el("div", {class: "button-pair"},
+      el("button", {class: "btn quiet",
+        title: "Ordnet die Liste neu nach Kategorie, Priorität und Name. Sonst "
+               + "bleibt die Reihenfolge stehen, damit beim Tippen nichts springt.",
+        onclick: () => { scanOrderForget(); renderScans(); }}, icon("sort"), "Sortieren"),
+      el("button", {class: "btn quiet", disabled: !entries.length,
+        title: "Schaltet alle " + (kind === "slot" ? "Slots" : "Items")
+               + (anyOn ? " aus." : " ein."),
+        onclick: () => callScan("scan_toggle_all",
+                               {kind: kind, active: !anyOn})},
+        anyOn ? "Alle aus" : "Alle ein")));
   }
   if (filter.childNodes.length) head.appendChild(filter);
   target.appendChild(head);
@@ -5421,10 +6106,16 @@ function shareRenderExport() {
   const head = el("div", {class: "section"},
     heading("EXPORTIEREN",
       "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
+  // **Die Warnung trägt ihren Ausweg.** Sie sagte „erst speichern" — in einem
+  // Reiter, in dem es keinen Speichern-Knopf gibt (der steht im Editor bzw.
+  // rechts im Scans-Reiter). Man musste den Reiter verlassen, speichern und
+  // zurückkommen, um einen Satz zu befolgen, den dieser Reiter selbst sagt.
   if (T.open) {
     head.appendChild(el("div", {class: "foreign-hint"},
-      "Im Fenster gibt es ungespeicherte Änderungen — die kommen nicht mit. "
-      + "Erst speichern, dann exportieren."));
+      el("span", {}, "Im Fenster gibt es ungespeicherte Änderungen — die kommen "
+        + "nicht mit, solange sie nicht gespeichert sind."),
+      el("button", {class: "btn primary", onclick: saveEverythingForShare},
+        icon("save"), "Jetzt speichern")));
   }
   target.replaceChildren(head);
 
@@ -5447,6 +6138,20 @@ function shareRenderExport() {
       {parts: shareExport, name: ($("share-name") || {}).value || ""})},
     "Bündel schreiben"));
   target.appendChild(bodyEl);
+}
+
+/** Sequenz und Scans schreiben — was der Export gleich lesen soll. Dieselben
+ * Befehle wie die beiden Speichern-Knöpfe im Editor bzw. Scans-Reiter. */
+async function saveEverythingForShare() {
+  // Erst die Sequenz über `call()`, damit der Editor seinen Stand mitbekommt
+  // (und eine Rückfrage „ausserhalb geändert" dort erscheint, wo sie hingehört).
+  if (S && S.dirty) await call("save");
+  if (SC && SC.dirty) {
+    const answer = await ask("scan_save");
+    if (answer) SC = answer;
+  }
+  await renderShare();
+  if (T && !T.open) setStatus({text: "Gespeichert — der Export nimmt jetzt alles mit.", kind: "ok"});
 }
 
 function shareRenderMiddle() {
@@ -5560,6 +6265,14 @@ function repDuration(sec) {
   return h ? h + ":" + two(m) + ":" + two(s) : m + ":" + two(s);
 }
 
+/** Beginn einer Sitzung kurz: „20.09.26 20:15“ statt des vollen Stempels
+ *  mit Millisekunden. Unlesbares bleibt, wie es kam. */
+function repBegin(stamp) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(stamp || "");
+  return m ? m[3] + "." + m[2] + "." + m[1].slice(2) + " " + m[4] + ":" + m[5]
+           : (stamp || "");
+}
+
 /** Grosse Zahlen mit Tausenderpunkten. Gold geht in die Millionen, und
  *  „143920771" liest niemand. */
 function repNumber(n, positions) {
@@ -5587,12 +6300,99 @@ function repList(title, help, key, entries) {
     heading(title, help, key));
   const highest = entries.reduce((m, e) => Math.max(m, e.value), 0) || 1;
   for (const e of entries)
-    boxEl.appendChild(repRank(e.name, repNumber(e.value), e.value / highest,
+    boxEl.appendChild(repRank(e.name, e.text || repNumber(e.value), e.value / highest,
       e.extra, e.kind, e.target));
   return boxEl;
 }
 
+/* Die Laufzeit aufgeteilt: was eingestellt war (Wartezeit am Block), worauf
+ * das Spiel warten liess (Farb-Trigger), Pause und der Rest. Ein Balken statt
+ * vier Kacheln, weil die Frage das Verhaeltnis ist — „20 min auf Farbe" sagt
+ * erst neben „34 min Laufzeit" etwas. */
+const WAIT_PARTS = [
+  ["planned", "geplant", "Wartezeit am Block"],
+  ["color", "auf Farbe", "bis der Farb-Trigger aufging"],
+  ["pause", "Pause", "CTRL+ALT+H"],
+  ["rest", "Rest", "Klicks, Scans, Erkennung"],
+];
+
+function repWaitSplit(w, sessions) {
+  const boxEl = el("div", {class: "share-card"},
+    heading("WARTEZEITEN",
+      "Geplant ist die Wartezeit, die am Block eingestellt ist — die hat man "
+      + "selbst in der Hand. Auf Farbe ist die Zeit, bis ein Farb-Trigger "
+      + "aufging: die bestimmt das Spiel, und ein grosser Anteil heisst meist, "
+      + "dass ein Block auf etwas wartet, das lange nicht kommt. Pausen sind aus "
+      + "beiden herausgerechnet.", "ber-warten"));
+  if (!w || !w.measured_sessions) {
+    boxEl.appendChild(el("p", {class: "hint"},
+      "Keine Messung: diese Logs stammen von vor der Wartezeit-Erfassung. Der "
+      + "naechste Lauf schreibt sie mit."));
+    return boxEl;
+  }
+  const span = w.measured_duration || 0;
+  const seconds = {planned: w.planned, color: w.color, pause: w.pause,
+                   rest: Math.max(0, span - w.planned - w.color - w.pause)};
+  const bar = el("div", {class: "rep-split"});
+  const legend = el("div", {class: "rep-split-legend"});
+  for (const [key, label, what] of WAIT_PARTS) {
+    const share = span ? seconds[key] / span : 0;
+    if (share > 0)
+      bar.appendChild(el("div", {class: "rep-split-part wait-" + key,
+        style: "width:" + (share * 100).toFixed(2) + "%",
+        title: label + ": " + repDuration(seconds[key])}));
+    legend.appendChild(el("div", {class: "rep-split-row"},
+      el("span", {class: "rep-split-swatch wait-" + key}),
+      el("span", {class: "rep-split-label", title: what}, label),
+      el("span", {class: "mono"}, repDuration(seconds[key])),
+      el("span", {class: "mono rep-split-share"},
+        span ? Math.round(share * 100) + " %" : "—")));
+  }
+  boxEl.appendChild(bar);
+  boxEl.appendChild(legend);
+  if (w.measured_sessions < sessions) {
+    boxEl.appendChild(el("p", {class: "hint"},
+      "Gemessen in " + w.measured_sessions + " von " + sessions
+      + " Sitzungen — die übrigen Logs sind älter als die Erfassung."));
+  }
+  return boxEl;
+}
+
+/** Eine Warte-Rangliste: Block, Summe, darunter wie oft und wie lang. */
+function repWaitList(title, help, key, rows, kind) {
+  return repList(title, help, key, rows.map(([name, sec, n, longest, timeouts]) => ({
+    name: name, value: sec, text: repDuration(sec), kind: kind,
+    target: (B.targets || {})[name],
+    extra: n + "× · längste " + repDuration(longest)
+      + (timeouts ? " · " + timeouts + "× Timeout" : ""),
+  })));
+}
+
 /* ------------------------------------------------------------------- links */
+
+/** Ein leerer Zustand, der sagt, was hier einmal steht — und den Handgriff
+ * dorthin anbietet. Ein grauer Satz oben links in einer leeren Fläche las
+ * sich wie ein Rest, nicht wie eine Auskunft. */
+function emptyState(title, text, ...actions) {
+  const buttons = actions.filter(Boolean);
+  return el("div", {class: "empty-state"},
+    el("b", {}, title),
+    el("p", {class: "hint"}, text),
+    buttons.length ? el("div", {class: "row empty-state-actions"}, ...buttons) : null);
+}
+
+/** Schaltet das Session-Log ein — derselbe Weg wie „In config.json schreiben"
+ * in den Einstellungen, nur für genau diesen einen Wert. */
+async function enableSessionLog() {
+  const answer = await ask("config_write", {values: {session_log_enabled: true}});
+  if (!answer) return;
+  if (!answer.ok) return setStatus({text: answer.message || "Nicht gespeichert.", kind: "err"});
+  // Die Einstellungen lesen beim nächsten Öffnen ohnehin frisch von Platte.
+  C = null;
+  setStatus({text: "Session-Log ist an — der nächste Lauf schreibt ein Protokoll, "
+                   + "das hier erscheint.", kind: "ok"});
+  renderReport();
+}
 
 function reportRenderLeft() {
   const target = $("rep-left");
@@ -5601,9 +6401,15 @@ function reportRenderLeft() {
       "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
       + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
       + "nicht ueber eine einzelne Datei.", "ber-sitzungen"));
+  // **Ein Leerzustand nennt den Handgriff, nicht den Config-Schlüssel.** Hier
+  // stand „session_log_enabled ist aus" — richtig, aber ein Satz, mit dem man
+  // erst in den Einstellungen suchen geht. Der Knopf schaltet es direkt ein.
   if (!B.active) {
-    head.appendChild(el("p", {class: "hint warning"},
-      "session_log_enabled ist aus — neue Laeufe schreiben nichts mit."));
+    head.appendChild(el("div", {class: "foreign-hint"},
+      el("span", {}, "Das Session-Log ist aus — neue Läufe schreiben nichts mit, "
+        + "und dieser Reiter bleibt leer."),
+      el("button", {class: "btn primary", onclick: enableSessionLog},
+        "Session-Log einschalten")));
   }
   target.replaceChildren(head);
 
@@ -5615,9 +6421,9 @@ function reportRenderLeft() {
   }
   if (!B.sessions.length) {
     bodyEl.appendChild(el("p", {class: "hint"}, B.folder
-      ? "Keine Logs in " + B.folder + "."
-      : "Noch kein Log-Ordner. Er entsteht beim ersten Lauf mit "
-        + "session_log_enabled."));
+      ? "Keine Protokolle in " + B.folder + "."
+      : "Noch keine Protokolle. Sie entstehen beim ersten Lauf mit "
+        + "eingeschaltetem Session-Log."));
     target.appendChild(bodyEl);
     return;
   }
@@ -5627,10 +6433,14 @@ function reportRenderLeft() {
     bottom: B.sessions.length + " Sitzung(en)",
   }));
   for (const s of B.sessions) {
+    // Die Sequenz ist der Titel, das Datum steht darunter: beim Suchen fragt
+    // man zuerst „welcher Lauf“, und eine Liste aus lauter Zeitstempeln
+    // beantwortet das erst nach dem Anklicken.
     bodyEl.appendChild(repSession({
       file: s.file,
-      title: s.begin || s.file,
-      bottom: repDuration(s.duration) + " · " + repNumber(s.clicks) + " Klicks",
+      title: s.sequence || s.file,
+      bottom: [repBegin(s.begin), repDuration(s.duration),
+               repNumber(s.clicks) + " Klicks"].filter(Boolean).join(" · "),
       warning: s.timeouts ? s.timeouts + "× Timeout" : "",
     }));
   }
@@ -5662,9 +6472,15 @@ function reportRenderMiddle() {
   target.replaceChildren();
   const b = B.brief;
   if (!b || !b.sessions) {
-    target.appendChild(el("p", {class: "hint"},
-      "Nichts auszuwerten. Der Bericht liest die CSV-Dateien, die ein Lauf mit "
-      + "eingeschaltetem Session-Log hinterlaesst."));
+    target.appendChild(emptyState("Noch nichts auszuwerten",
+      "Der Bericht zeigt, was vergangene Läufe hinterlassen haben: welcher "
+      + "Schritt am häufigsten hängt, wie lange auf Farben gewartet wurde, was "
+      + "gefunden wurde. Er liest dafür die Protokolle, die ein Lauf mit "
+      + "eingeschaltetem Session-Log schreibt.",
+      B.active ? null : el("button", {class: "btn primary", onclick: enableSessionLog},
+                           "Session-Log einschalten"),
+      el("button", {class: "btn", onclick: () => setView("run", true)},
+         icon("play"), "Zum Live-Run")));
     return;
   }
 
@@ -5691,6 +6507,19 @@ function reportRenderMiddle() {
     target.appendChild(el("div", {class: "wz-success"}, wzIcon("ok"),
       el("div", {}, el("b", {}, "Keine Timeouts"),
         el("span", {}, "Jede Farb-Bedingung ist aufgegangen."))));
+  }
+
+  target.appendChild(repWaitSplit(b.waits, b.sessions));
+  if (b.color_waits && b.color_waits.length) {
+    target.appendChild(repWaitList("AUF FARBE GEWARTET — NACH BLOCK",
+      "Summe je Block, laengste zuerst. Ein Timeout zaehlt mit seiner vollen "
+      + "Wartezeit.", "ber-farbe", b.color_waits, "color-wait"));
+  }
+  if (b.planned_waits && b.planned_waits.length) {
+    target.appendChild(repWaitList("GEPLANTE WARTEZEIT — NACH BLOCK",
+      "Was die eingestellten Wartezeiten zusammen gekostet haben. Hier "
+      + "verkuerzen heisst: der Lauf wird schneller, ohne dass das Spiel "
+      + "mitreden muss.", "ber-geplant", b.planned_waits, "planned-wait"));
   }
 
   if (b.verify_miss.length) {
@@ -5745,9 +6574,13 @@ function reportRenderRight() {
   const e = B.yield_value;
   if (!e) {
     bodyEl.appendChild(el("p", {class: "hint"},
-      "Keine Bewertung: scan_market_value_file ist leer oder es wurden keine "
-      + "Items gefunden. Mit eingetragener marktwert.json steht hier, was der "
-      + "Lauf eingebracht hat."));
+      "Noch keine Bewertung: dafür braucht es eine Marktwert-Datei "
+      + "(marktwert.json aus der Marktanalyse) und Läufe, die Items gefunden "
+      + "haben. Dann steht hier, was ein Lauf eingebracht hat."));
+    bodyEl.appendChild(el("button", {class: "btn wide",
+      title: "Öffnet die Einstellung „scan_market_value_file“",
+      onclick: () => goTo({view: "settings", key: "scan_market_value_file"})},
+      "Marktwert-Datei eintragen", icon("arrow")));
     target.appendChild(bodyEl);
     return;
   }
@@ -6027,18 +6860,21 @@ async function withWait(kind, name, data) {
   }
 }
 
+/* `command` steht nur, wo es in der Konsole wirklich einen gleichnamigen
+ * Befehl gibt (Punkte-Menü: check, fix, reclick). Hier standen auch „rec",
+ * „points" und „color" — Wörter, die die Konsole gar nicht kennt. */
 const WZ_TOOLS = [
-  {key: "recording", name: "Sequenz aufnehmen", command: "rec", scopeKind: "new",
+  {key: "recording", name: "Sequenz aufnehmen", scopeKind: "new",
    short: "Echtes Spielen als neue Sequenz aufzeichnen"},
   {key: "check", name: "Bestand prüfen", command: "check", scopeKind: "inventory",
    short: "Fehler und unvollständige Verknüpfungen finden"},
-  {key: "points", name: "Punkte verwalten", command: "points", scopeKind: "sequence",
+  {key: "points", name: "Punkte verwalten", scopeKind: "sequence",
    short: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
   // `nichts` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
   // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
   // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
   // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
-  {key: "colors", name: "Farben analysieren", command: "color", scopeKind: "none",
+  {key: "colors", name: "Farben analysieren", scopeKind: "none",
    short: "Pixel und häufigste Bildschirmfarben sichtbar machen"},
   {key: "calibrate", name: "Kalibrieren", command: "fix", scopeKind: "inventory",
    short: "Koordinaten an ein neues Bildschirm-Layout anpassen"},
@@ -6069,12 +6905,18 @@ function wzIcon(kind) {
   return svg;
 }
 
-function wzHeader(key, title, text) {
+/* **Ein Werkzeug hat EINEN Namen.** Der Kopf trug seinen eigenen: links in der
+ * Liste stand „Bestand prüfen", rechts darüber „Setup prüfen" — und
+ * „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Man fragt sich dann,
+ * ob man im richtigen Werkzeug gelandet ist. Der Name kommt deshalb aus
+ * `WZ_TOOLS`, derselben Zeile, aus der die Liste ihn liest. */
+function wzHeader(key, text) {
+  const tool = WZ_TOOLS.find((w) => w.key === key) || {name: key};
   return el("section", {class: "wz-hero " + key},
     el("div", {class: "wz-hero-icon"}, wzIcon(key)),
     el("div", {class: "wz-hero-copy"},
       el("div", {class: "wz-kicker"}, "WERKZEUG"),
-      el("h2", {}, title),
+      el("h2", {}, tool.name),
       el("p", {}, text)));
 }
 
@@ -6197,13 +7039,15 @@ function wzRenderLeft() {
     const button = el("button", {
       class: "wz-nav " + w.key + (wzOpenTool === w.key ? " on" : ""),
       onclick: () => wzOpen(w.key),
-      // Der Konsolen-Befehl steht mit — dieselbe Regel wie bei den Config-
-      // Schluesseln: wer das Werkzeug hier kennenlernt, erkennt es im
-      // Punkte-Menue wieder, und wer es von dort kennt, findet es hier.
+      // Der Konsolen-Befehl steht im Tooltip — wer das Werkzeug aus dem
+      // Punkte-Menue kennt, findet es so wieder. Als Marke neben dem Titel
+      // drueckte er jeden Namen auf zwei Zeilen („Sequenz / aufnehmen"), und
+      // wer nur das Fenster benutzt, las ein Wort, das ihm nichts sagt.
+      title: w.short + (w.command ? " · in der Konsole: Punkte-Menü (CTRL+ALT+P) → "
+                                    + w.command : ""),
     }, el("span", {class: "wz-nav-icon"}, wzIcon(w.key)),
        el("span", {class: "wz-nav-copy"},
-         el("span", {class: "wz-nav-title"}, w.name,
-           el("span", {class: "wz-command"}, w.command)),
+         el("span", {class: "wz-nav-title"}, w.name),
          el("span", {class: "wz-nav-short"}, w.short)),
        el("span", {class: "wz-nav-arrow"}, "›"));
     listEl.appendChild(button);
@@ -6219,7 +7063,7 @@ function wzOpen(key) {
   if (!WZ_TOOLS.some(w => w.key === key)) return;
   wzOpenTool = key;
   if (view !== "tools") {
-    setView("tools");
+    setView("tools", true);
     return;
   }
   wzRenderMiddle();
@@ -6242,7 +7086,7 @@ function wzRenderMiddle() {
 /* ------------------------------------------------------------------ Prüfen */
 
 function wzBuildCheck() {
-  const out = [wzHeader("check", "Setup prüfen",
+  const out = [wzHeader("check",
     "Ein vollständiger Gesundheitscheck für die gespeicherten Sequenzen und Scans.")];
   out.push(wzScope("check"));
   out.push(wzInfo("Was wird geprüft?",
@@ -6282,7 +7126,7 @@ function wzBuildCheck() {
 /* ------------------------------------------------------ Punkte verwalten */
 
 function wzBuildPoints() {
-  const out = [wzHeader("points", "Punkte verwalten",
+  const out = [wzHeader("points",
     "Klickstellen sind eigenständige Objekte — jede Änderung zieht alle verwendenden Blöcke mit.")];
   out.push(wzScope("points"));
   const points = (W && W.points) || [];
@@ -6341,7 +7185,7 @@ function wzBuildPoints() {
 /* ------------------------------------------------------ Farben analysieren */
 
 function wzBuildColors() {
-  const out = [wzHeader("colors", "Farben analysieren",
+  const out = [wzHeader("colors",
     "Liest einen Pixel oder gruppiert die häufigsten Farben eines Bildschirmbereichs.")];
   // Fuenf Werkzeuge trugen ihre Bezugszeile, dieses nicht — obwohl „jedes
   // Werkzeug sagt, WORAUF es wirkt" die Regel des Reiters ist. Gerade hier ist
@@ -6378,12 +7222,13 @@ function wzBuildColors() {
 
 function wzNewRecordingName() {
   const d = new Date(), z = (n) => String(n).padStart(2, "0");
-  return "aufnahme_" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+  // Ein Name, den man stehen lassen kann; der Ordner wird daraus abgeleitet.
+  return "Aufnahme " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
 }
 
 function wzBuildRecording() {
   if (!wzRecordingName) wzRecordingName = wzNewRecordingName();
-  const out = [wzHeader("recording", "Sequenz aufnehmen",
+  const out = [wzHeader("recording",
     "Spiele den Ablauf einmal vor — jeder Klick, Tastendruck und Marker wird direkt zu Blöcken.")];
   out.push(wzScope("recording"));
 
@@ -6630,7 +7475,7 @@ async function wzCheck() {
 
 function wzBuildCalib() {
   const K = (W && W.calibration) || {};
-  const out = [wzHeader("calibrate", "Koordinaten kalibrieren",
+  const out = [wzHeader("calibrate",
     "Einen bekannten Punkt neu messen und alle gespeicherten Stellen präzise mitziehen.")];
   out.push(wzScope("calibrate"));
   out.push(wzInfo("Wann brauche ich das?",
@@ -6978,7 +7823,7 @@ function wzStartReclickLive() {
 }
 
 function wzBuildReclick() {
-  const out = [wzHeader("reclick", "Punkte nachklicken",
+  const out = [wzHeader("reclick",
     "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
   out.push(wzScope("reclick"));
 
@@ -7199,8 +8044,13 @@ function renderCfgList() {
     const match = cfgSearch ? a.keys.filter(cfgMatches).length : 0;
     target.appendChild(el("button", {
       class: "cfg-nav" + (!cfgSearch && i === cfgSection ? " on" : ""),
-      onclick: () => { cfgSearch = ""; $("cfg-search").value = ""; cfgSection = i;
-                       renderSettings(); },
+      "data-section": String(i),
+      onclick: () => {
+        const searching = !!cfgSearch;
+        cfgSearch = ""; $("cfg-search").value = ""; cfgSection = i;
+        if (searching) renderSettings(); else cfgMarkSection();
+        cfgScrollTo(i);
+      },
     },
       el("span", {class: "grow"}, a.title),
       cfgSearch ? el("span", {class: "small mono"}, match ? match + "×" : "") : null,
@@ -7210,25 +8060,69 @@ function renderCfgList() {
 
 function renderCfgFields() {
   const target = $("cfg-fields");
+  // VOR dem Leeren lesen: danach ist die Mitte kurz leer, und wer dann nach
+  // `scrollTop` fragt, bekommt 0.
+  const scrolled = target.scrollTop;
   target.replaceChildren();
   if (C.error) {
     target.appendChild(el("p", {class: "empty", style: "color:var(--err)"}, C.error));
     return;
   }
-  // Bei einer Suche werden ALLE Abschnitte mit Treffern gezeigt, nicht nur der
-  // gewaehlte: wer sucht, weiss ja gerade nicht, wo der Wert steht.
-  const groups = cfgSearch
-    ? C.sections.filter((a) => a.keys.some(cfgMatches))
-    : [C.sections[cfgSection]].filter(Boolean);
+  // **Alle Abschnitte stehen auf EINER Seite, die Liste links springt nur.**
+  // Vorher zeigte die Mitte genau einen Abschnitt — bei „Programmstart" also
+  // ein einziges Feld über einer leeren Fläche, und wer einen Wert suchte,
+  // klickte sich durch vierzehn Seiten. Jetzt scrollt man durch, und die
+  // Liste zeigt mit, wo man steht (`cfgSpy`). Bei einer Suche bleiben nur die
+  // Abschnitte mit Treffern — wer sucht, weiss ja gerade nicht, wo der Wert steht.
+  const groups = C.sections.map((a, i) => [a, i])
+    .filter(([a]) => !cfgSearch || a.keys.some(cfgMatches));
   if (!groups.length) {
     target.appendChild(el("p", {class: "empty"}, "Kein Feld passt zu „" + cfgSearch + "“."));
     return;
   }
-  for (const a of groups) {
-    target.appendChild(el("div", {class: "cfg-group"}, a.title));
+  for (const [a, i] of groups) {
+    target.appendChild(el("div", {class: "cfg-group", id: "cfg-sec-" + i}, a.title));
     for (const key of a.keys) if (cfgMatches(key)) target.appendChild(cfgRow(key));
   }
+  // Ein Neuaufbau nach einer Änderung darf die Stelle nicht verlieren, an der
+  // man gerade liest.
+  target.scrollTop = scrolled;
 }
+
+/** Scrollt die Mitte zum Abschnitt `i`. */
+function cfgScrollTo(i) {
+  const head = document.getElementById("cfg-sec-" + i);
+  if (!head) return;
+  cfgSpyPausedUntil = Date.now() + 700;
+  $("cfg-fields").scrollTo({top: head.offsetTop - 8, behavior: "smooth"});
+}
+
+/** Welcher Abschnitt oben steht — die Liste links folgt dem Scrollen. */
+let cfgSpyPausedUntil = 0;
+function cfgSpy() {
+  if (!C || cfgSearch || Date.now() < cfgSpyPausedUntil) return;
+  const box = $("cfg-fields");
+  // Ganz unten bleibt der gewählte stehen: die letzten, kurzen Abschnitte
+  // erreichen den oberen Rand nie, und ein Klick darauf soll nicht sofort vom
+  // vorletzten überschrieben werden.
+  if (box.scrollTop + box.clientHeight >= box.scrollHeight - 2) return;
+  let current = 0;
+  for (const head of box.querySelectorAll(".cfg-group[id^='cfg-sec-']")) {
+    if (head.offsetTop - box.scrollTop <= 40) current = Number(head.id.slice(8));
+  }
+  if (current !== cfgSection) { cfgSection = current; cfgMarkSection(); }
+}
+
+/** Markiert den aktuellen Abschnitt in der Liste, ohne sie neu zu bauen. */
+function cfgMarkSection() {
+  for (const n of document.querySelectorAll(".cfg-nav"))
+    n.classList.toggle("on", !cfgSearch && Number(n.dataset.section) === cfgSection);
+}
+
+/* Welches Feld gerade angesprungen wurde (Sprungmarke aus einem anderen
+ * Reiter). Als Schlüssel, nicht als Element: die Zeilen werden bei jeder
+ * Antwort neu gebaut. */
+let cfgFlashKey = null;
 
 function cfgRow(key) {
   const m = C.meta[key] || {label: key, kind: "text"};
@@ -7243,7 +8137,8 @@ function cfgRow(key) {
     cfgControl(key, m), cfgEmpty(key, m), cfgDefault(key, m),
     cfgAction(key, m));
   return el("div", {class: "cfg-row" + (key in cfgChanged ? " changed" : "") +
-                           (active ? "" : " blass")}, left, right);
+                           (active ? "" : " faded") + (key === cfgFlashKey ? " flash" : ""),
+                    id: "cfg-row-" + key}, left, right);
 }
 
 /** Der Knopf UNTER einem Feld, wenn die Meta-Tabelle einen anmeldet.
@@ -7437,7 +8332,10 @@ function renderCfgRight() {
     const m = C.meta[key] || {};
     listEl.appendChild(el("div", {class: "cfg-card"},
       el("div", {class: "row"},
-        el("span", {class: "grow", style: "font-size:12px"}, m.label || key),
+        // Ein Klick auf den Namen springt zum Feld — bei vierzehn Abschnitten
+        // auf einer Seite sucht man es sonst.
+        el("button", {class: "grow cfg-jump", title: "Zum Feld springen",
+                      onclick: () => goTo({view: "settings", key: key})}, m.label || key),
         el("button", {class: "btn quiet", title: "diese Änderung zurücknehmen",
                       onclick: () => cfgSet(key, C.values[key])}, "zurück")),
       el("div", {class: "cfg-key"}, key),
@@ -7463,7 +8361,21 @@ function renderCfgRight() {
     el("p", {class: "hint"},
       "Ein laufender Lauf zieht sofort mit — der Hauptprozess lädt die Datei " +
       "neu, sobald hier geschrieben wurde."),
-    el("p", {class: "cfg-key", style: "word-break:break-all"}, C.path || "")));
+    el("p", {class: "cfg-key path-text"}, ...pathWithBreaks(C.path || ""))));
+}
+
+/** Ein Pfad, der an seinen Trennern umbricht statt mitten im Wort.
+ *
+ * `word-break:break-all` brach „config.json" in „c" und „onfig.json" — ein
+ * Pfad liest sich in Stücken zwischen den Schrägstrichen, also darf er genau
+ * dort umbrechen. */
+function pathWithBreaks(text) {
+  const out = [];
+  for (const piece of String(text).split(/(?<=[\\/])/)) {
+    out.push(piece);
+    out.push(el("wbr"));
+  }
+  return out;
 }
 
 async function cfgSave() {
@@ -7518,7 +8430,7 @@ async function switchSequence(command, data) {
 
 function wire() {
   for (const t of document.querySelectorAll(".tab"))
-    t.addEventListener("click", () => setView(t.dataset.view));
+    t.addEventListener("click", () => setView(t.dataset.view, true));
 
   // Die Auswahl laedt — es gibt keinen Laden-Knopf mehr, der nur bestaetigt,
   // was die Auswahl schon gesagt hat. Die Rueckfrage bei ungespeicherten
@@ -7545,8 +8457,32 @@ function wire() {
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
   // niemand raten muss, was ein Druck jetzt tut.
   $("btn-run").addEventListener("click", () => sendRun(runWasRunning ? "stop" : "start"));
-  $("btn-block-delete").addEventListener("click", () => call("selection_delete"));
-  $("btn-block-copy").addEventListener("click", () => call("selection_duplicate"));
+  // Dieselben zwei Knöpfe für Blöcke und Phasen: was sie meinen, sagt das,
+  // was rechts gerade steht.
+  $("btn-block-delete").addEventListener("click", () =>
+    phaseInInspector() ? deleteSelectedPhase() : call("selection_delete"));
+  $("btn-block-copy").addEventListener("click", () =>
+    phaseInInspector() ? call("phase_duplicate", {phase: selectedPhase})
+                       : call("selection_duplicate"));
+
+  // Phasenleiste und Kanten folgen dem Scrollen und der Fenstergroesse. Ein
+  // Frame reicht als Takt — die Rechnung liest nur ein paar Rechtecke.
+  let edgeFrame = 0;
+  const edgesSoon = () => {
+    if (edgeFrame) return;
+    edgeFrame = requestAnimationFrame(() => { edgeFrame = 0; updateBoardEdges(); });
+  };
+  $("board").addEventListener("scroll", edgesSoon, {passive: true});
+  $("cfg-fields").addEventListener("scroll", cfgSpy, {passive: true});
+  window.addEventListener("resize", edgesSoon);
+  $("board-step-left").appendChild(icon("left", 14));
+  $("board-step-right").appendChild(icon("right", 14));
+  $("board-step-left").addEventListener("click", () => stepBoard(-1));
+  $("board-step-right").addEventListener("click", () => stepBoard(1));
+  try {
+    if (localStorage.getItem("studio.leftClosed") === "1")
+      $("editor-body").classList.add("left-closed");
+  } catch (e) { /* ohne Speicher bleibt sie offen */ }
 
   $("seq-name").addEventListener("change", (e) =>
     call("sequence_set", {field: "name", value: e.target.value}));
@@ -7554,6 +8490,10 @@ function wire() {
     call("sequence_set", {field: "cycles", value: Number(e.target.value) || 0}));
   $("seq-info").addEventListener("change", (e) =>
     call("sequence_set", {field: "description", value: e.target.value}));
+  $("seq-next").addEventListener("change", (e) =>
+    call("sequence_set", {field: "next_sequence", value: e.target.value}));
+  $("seq-next-delay").addEventListener("change", (e) =>
+    call("sequence_set", {field: "next_delay", value: Number(e.target.value) || 0}));
   $("point-filter").addEventListener("input", renderPoints);
   // Das Feld selbst wird beim Neuaufbau nicht ersetzt (es steht fest im
   // Dokument), deshalb darf es bei jedem Tastendruck melden.
@@ -7694,11 +8634,18 @@ function wire() {
       scanOverlay();
       return;
     }
-    // Nur waehrend des Aufziehens gebraucht — sonst waere es ein Neuaufbau des
-    // Overlays bei jeder Mausbewegung.
-    if (!SC || !SC.corner) return;
+    // Ausserhalb des Aufziehens nur der Slot unter dem Zeiger — und gezeichnet
+    // wird nur, wenn er wechselt, nicht bei jeder Mausbewegung.
+    if (!SC || !SC.corner) {
+      const hovered = scanSlotAt(scanPositionFromEvent(e));
+      if (hovered !== scanHover) { scanHover = hovered; scanOverlay(); }
+      return;
+    }
     scanPointer = scanPositionFromEvent(e);
     scanOverlay();
+  });
+  surface.addEventListener("mouseleave", () => {
+    if (scanHover !== null) { scanHover = null; scanOverlay(); }
   });
   stage.addEventListener("mousemove", (e) => {
     if (!SC || !SC.corner || SC.mode !== "find") return;
@@ -7870,13 +8817,12 @@ function keyboard(e) {
   }
   if (e.key === "Delete" && selectedPhase !== null) {
     e.preventDefault();
-    const phase = selectedPhase;
-    selectedPhase = null;
-    return call("phase_delete", {phase: phase});
+    return deleteSelectedPhase();
   }
   if (e.key === "Delete") { e.preventDefault(); return call("selection_delete"); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();          // sonst legt der Browser ein Lesezeichen an
+    if (phaseInInspector()) return call("phase_duplicate", {phase: selectedPhase});
     return call("selection_duplicate");
   }
   if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); return call("selection_move", {delta: -1}); }

@@ -79,6 +79,7 @@ _FIELDS = {
     "boss_watcher": lambda v: str(v or ""),
     "wait_only": lambda v: bool(v),
     "breakpoint": lambda v: bool(v),
+    "mouse_return": lambda v: bool(v),
 }
 
 

@@ -439,6 +439,48 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertEqual(config.items[0].name, "Auto Slot")
         self.assertEqual(config.items[0].template, "auto_slot.png")
 
+    def test_auto_lernen_ueberschreibt_keine_vorlage_eines_umbenannten_items(self):
+        """Ein freier NAME ist noch keine freie DATEI.
+
+        An einem echten Lauf gemessen: „Auto Slot 19 2" wurde im Studio zu
+        „Überlegener Edelstein" umbenannt und behielt seine Vorlage
+        `auto_slot_19_2.png`. Der Name „Auto Slot 19 2" war damit wieder frei,
+        das nächste Auto-Lernen in Slot 19 nahm ihn — und schrieb seine Vorlage
+        (eine Truhe) über die des eingeschalteten Edelsteins. Danach zeigten
+        beide Items auf dieselbe Datei, und der Edelstein stand als Truhe da.
+        """
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        gem = ItemProfile(name="Überlegener Edelstein", template="auto_slot_19_2.png")
+        scan = ItemScanConfig(name="Raid", owner_sequence="farm", items=[
+            ItemProfile(name="Auto Slot 19", template="auto_slot_19.png", enabled=False),
+            gem,
+        ])
+        slot = ItemSlot("Slot 19", (0, 0, 62, 57), (31, 28))
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "auto_slot_19.png").write_bytes(b"alt")
+            (folder / "auto_slot_19_2.png").write_bytes(b"edelstein")
+            image = Mock(size=(62, 57))
+            image.save.side_effect = lambda path: Path(path).write_bytes(b"truhe")
+            with patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                    patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                          return_value=(image, [], False)), \
+                    patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                          return_value=None), \
+                    patch("autoclicker.persistence.active_templates_dir",
+                          return_value=folder), \
+                    patch("autoclicker.persistence.save_item_scan"):
+                item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
+
+            learned = scan.items[-1]
+            self.assertEqual(learned.name, "Auto Slot 19 2")
+            self.assertNotEqual(learned.template, "auto_slot_19_2.png",
+                                "die Datei gehört schon dem umbenannten Item")
+            self.assertEqual((folder / "auto_slot_19_2.png").read_bytes(), b"edelstein")
+            self.assertEqual((folder / learned.template).read_bytes(), b"truhe")
+            self.assertEqual(gem.template, "auto_slot_19_2.png")
+
     def test_auto_lernen_schreibt_in_den_laufenden_scan_nicht_in_die_arbeitsansicht(self):
         """Zwei Item-Scans in einer Sequenz: gelernt wird in dem, der LAEUFT.
 
@@ -508,6 +550,51 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertIn("Auto Slot 1", state.global_items)
         flush_item_scan_context(state)
         self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
+
+    def _learn_size_variant(self, known_item):
+        """Ein Slot in neuer Groesse, den die Dedup-Pruefung nur skaliert erkennt."""
+        state = AutoClickerState()
+        state.active_sequence = Sequence("farm")
+        scan = ItemScanConfig(name="Beutel", items=[known_item], owner_sequence="farm")
+        slot = ItemSlot("Slot 7", (0, 0, 62, 57), (31, 28))
+        image = Mock(size=(62, 57))
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(imaging, "OPENCV_AVAILABLE", True), \
+                patch("autoclicker.editors.item_editor.markers._prepare_learning_image",
+                      return_value=(image, [(1, 2, 3)], False)), \
+                patch("autoclicker.editors.item_editor.markers._find_matching_existing_item",
+                      return_value=known_item.name), \
+                patch("autoclicker.editors.item_editor.markers._item_has_compatible_template",
+                      return_value=False), \
+                patch("autoclicker.persistence.active_templates_dir",
+                      return_value=Path(directory)), \
+                patch("autoclicker.persistence.save_item_scan"):
+            item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
+        return scan
+
+    def test_auto_lernen_haengt_keine_variante_an_ein_eingeschaltetes_item(self):
+        """Nur skaliert erkannt = ungeprueft. An ein Item, das geklickt wird, darf
+        das nicht — sonst klickt der naechste Zyklus eine Vorlage, die niemand
+        angesehen hat. Sie wird ein eigenes, geparktes Item."""
+        bow = ItemProfile(name="Bogen", template="bogen_62x60.png")
+        scan = self._learn_size_variant(bow)
+        self.assertEqual(bow.template_variants, [], "das eingeschaltete Item bleibt, wie es war")
+        self.assertTrue(bow.enabled)
+        self.assertEqual([it.name for it in scan.items], ["Bogen", "Auto Slot 7"])
+        learned = scan.items[1]
+        self.assertFalse(learned.enabled, "gelernt heisst geparkt, auch als Variante")
+        self.assertEqual(learned.category, "Auto")
+        self.assertEqual([it.name for it in scan.items if it.enabled], ["Bogen"],
+                         "Auto-Lernen aendert nie, was geklickt wird")
+
+    def test_auto_lernen_haengt_die_variante_an_ein_geparktes_item(self):
+        """Ein geparktes Item wird ohnehin erst nach dem Hinsehen eingeschaltet —
+        dort darf die neue Groesse direkt dazu, statt ein Doppel anzulegen."""
+        parked = ItemProfile(name="Auto Slot 1", template="auto_slot_1.png", enabled=False)
+        scan = self._learn_size_variant(parked)
+        self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
+        self.assertEqual(parked.template_variants, ["auto_slot_1_62x57.png"])
+        self.assertFalse(parked.enabled)
 
     def test_geparkte_items_werden_im_scan_nicht_geklickt_aber_dedupliziert(self):
         """Der Scan sieht nur eingeschaltete Items; die Dedup-Liste alle."""

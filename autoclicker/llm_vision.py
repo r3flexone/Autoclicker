@@ -341,80 +341,73 @@ def analyze_image(
 
     if endpoint is None:
         endpoint = chat_endpoint(provider)
-
     if model is None:
-        if provider == PROVIDER_OLLAMA:
-            model = "gemma3n:e4b"
-        else:
-            model = "google/gemma-4-12b-qat"
-
+        model = _DEFAULT_MODELS[provider]
     if prompt is None:
         # Knappe Aufgaben-Frage; die Formatregeln stehen im System-Prompt
         # (nicht erneut wiederholen).
         prompt = "Welcher Boss ist auf diesem Bild zu sehen?"
 
-    # Bild zu Base64 konvertieren
-    image_b64 = _image_to_base64(img)
-
-    # Request erstellen
-    if provider == PROVIDER_OLLAMA:
-        request_body = _build_ollama_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
-    else:
-        request_body = _build_lmstudio_request(model, image_b64, prompt, boss_names, reasoning, max_tokens, system_prompt)
+    build = _build_ollama_request if provider == PROVIDER_OLLAMA else _build_lmstudio_request
+    request_body = build(model, _image_to_base64(img), prompt, boss_names, reasoning,
+                         max_tokens, system_prompt)
 
     transcript = _debug_on()
     if transcript:
         _debug_request(provider, model, endpoint, prompt, system_prompt, img)
 
-    # API-Anfrage
     start_time = time.time()
     try:
-        json_data = json.dumps(request_body).encode("utf-8")
-        req = urllib.request.Request(
-            endpoint,
-            data=json_data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            duration_ms = (time.time() - start_time) * 1000
-
-            # Antwort extrahieren
-            text = _extract_response_text(result, provider)
-            if transcript:
-                _debug_response(result, text, duration_ms)
-            return True, text.strip(), duration_ms
-
-    except socket.timeout:
+        result = _post_json(endpoint, request_body, timeout)
         duration_ms = (time.time() - start_time) * 1000
-        logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
+        text = _extract_response_text(result, provider)
         if transcript:
-            _debug_error(f"Timeout nach {timeout}s", duration_ms)
-        return False, f"Timeout nach {timeout}s", duration_ms
-
-    except urllib.error.URLError as e:
-        duration_ms = (time.time() - start_time) * 1000
-        reason = str(getattr(e, 'reason', e))
-        logger.error(f"LLM API-Fehler ({provider}): {reason}")
-        if transcript:
-            _debug_error(f"Verbindungsfehler: {reason}", duration_ms)
-        return False, f"Verbindungsfehler: {reason}", duration_ms
-
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
-        duration_ms = (time.time() - start_time) * 1000
-        logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
-        if transcript:
-            _debug_error(f"Antwort-Fehler: {e}", duration_ms)
-        return False, f"Antwort-Fehler: {e}", duration_ms
-
+            _debug_response(result, text, duration_ms)
+        return True, text.strip(), duration_ms
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
-        logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
+        message = _failure_message(e, provider, timeout)
         if transcript:
-            _debug_error(f"Fehler: {e}", duration_ms)
-        return False, f"Fehler: {e}", duration_ms
+            _debug_error(message, duration_ms)
+        return False, message, duration_ms
+
+
+_DEFAULT_MODELS = {
+    PROVIDER_OLLAMA: "gemma3n:e4b",
+    PROVIDER_LMSTUDIO: "google/gemma-4-12b-qat",
+}
+
+
+def _post_json(endpoint: str, body: dict, timeout) -> dict:
+    """Schickt `body` als JSON und gibt die JSON-Antwort zurück."""
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _failure_message(e: Exception, provider: str, timeout) -> str:
+    """Was ein gescheiterter Aufruf meldet — geloggt und als Antworttext.
+
+    Der Text ist mehr als Anzeige: `is_timeout()` erkennt eine
+    Zeitüberschreitung an seinem Anfang, und nur die wird wiederholt.
+    """
+    if isinstance(e, socket.timeout):
+        logger.error(f"LLM Timeout ({provider}) nach {timeout}s")
+        return f"Timeout nach {timeout}s"
+    if isinstance(e, urllib.error.URLError):
+        reason = str(getattr(e, 'reason', e))
+        logger.error(f"LLM API-Fehler ({provider}): {reason}")
+        return f"Verbindungsfehler: {reason}"
+    if isinstance(e, (json.JSONDecodeError, KeyError, TypeError)):
+        logger.error(f"LLM Antwort-Fehler ({provider}): {e}")
+        return f"Antwort-Fehler: {e}"
+    logger.error(f"LLM unerwarteter Fehler ({provider}): {e}")
+    return f"Fehler: {e}"
 
 
 # Reasoning-Tags die manche Modelle inline in den content packen (DeepSeek-R1, QwQ u.a.)
@@ -720,34 +713,43 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
         req = urllib.request.Request(endpoint, method="GET")
         with urllib.request.urlopen(req, timeout=5) as response:
             result = json.loads(response.read().decode("utf-8"))
-
-        if provider == PROVIDER_OLLAMA:
-            models = [m.get("name", "?") for m in result.get("models", [])]
-        else:
-            models = [m.get("id", "?") for m in result.get("data", [])]
-
-        if not models:
-            return True, "Verbunden! Kein Modell geladen."
-        if not _model_known(model, models):
-            return False, (f"Verbunden — aber '{model}' ist nicht geladen. "
-                           f"Verfügbar: {', '.join(models[:5])}"
-                           + (" …" if len(models) > 5 else ""))
-        if model:
-            return True, f"Verbunden! '{model}' ist geladen."
-
-        # Ohne eingestelltes Modell bleibt nur die Liste — und bei Ollama der
-        # Hinweis, ob ueberhaupt eines davon Bilder lesen kann.
-        if provider == PROVIDER_OLLAMA:
-            vision_capable = [m for m in models if any(v in m.lower() for v in
-                      ["gemma", "llava", "bakllava", "moondream", "vision", "minicpm"])]
-            if vision_capable:
-                return True, f"Verbunden! Vision-Modelle: {', '.join(vision_capable)}"
-            return True, (f"Verbunden! Modelle: {', '.join(models[:5])} "
-                          "(kein Vision-Modell erkannt)")
-        return True, f"Verbunden! Modelle: {', '.join(models[:5])}"
+        return _connection_verdict(provider, model, _listed_models(result, provider))
 
     except urllib.error.URLError as e:
         reason = str(getattr(e, 'reason', e))
         return False, f"Nicht erreichbar: {reason}"
     except Exception as e:
         return False, f"Fehler: {e}"
+
+
+# Woran man bei Ollama ein Modell erkennt, das Bilder lesen kann.
+_VISION_HINTS = ("gemma", "llava", "bakllava", "moondream", "vision", "minicpm")
+
+
+def _listed_models(result: dict, provider: str) -> list:
+    """Die Modellnamen aus der Liste des Servers (Ollama und LM Studio schreiben sie verschieden)."""
+    if provider == PROVIDER_OLLAMA:
+        return [m.get("name", "?") for m in result.get("models", [])]
+    return [m.get("id", "?") for m in result.get("data", [])]
+
+
+def _connection_verdict(provider: str, model: Optional[str], models: list) -> tuple[bool, str]:
+    """Das Urteil über einen erreichbaren Server: kann man das LLM jetzt benutzen?"""
+    if not models:
+        return True, "Verbunden! Kein Modell geladen."
+    if not _model_known(model, models):
+        return False, (f"Verbunden — aber '{model}' ist nicht geladen. "
+                       f"Verfügbar: {', '.join(models[:5])}"
+                       + (" …" if len(models) > 5 else ""))
+    if model:
+        return True, f"Verbunden! '{model}' ist geladen."
+
+    # Ohne eingestelltes Modell bleibt nur die Liste — und bei Ollama der
+    # Hinweis, ob ueberhaupt eines davon Bilder lesen kann.
+    if provider != PROVIDER_OLLAMA:
+        return True, f"Verbunden! Modelle: {', '.join(models[:5])}"
+    vision_capable = [m for m in models if any(v in m.lower() for v in _VISION_HINTS)]
+    if vision_capable:
+        return True, f"Verbunden! Vision-Modelle: {', '.join(vision_capable)}"
+    return True, (f"Verbunden! Modelle: {', '.join(models[:5])} "
+                  "(kein Vision-Modell erkannt)")

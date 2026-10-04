@@ -103,16 +103,30 @@ def load_catalog(path: str) -> Catalog:
     entry = _cache.get(path)
     if entry is not None and entry["stand"] == stand:
         return entry["catalog"]
+    raw = _read_catalog_file(path)
+    if raw is None:
+        return EMPTY
+    catalog = _catalog_from_dict(raw)
+    _cache[path] = {"stand": stand, "catalog": catalog}
+    return catalog
+
+
+def _read_catalog_file(path: str) -> Optional[dict]:
+    """Der Inhalt der Datei als Objekt — None, wenn unlesbar (gemeldet)."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except (json.JSONDecodeError, IOError, OSError, UnicodeDecodeError) as e:
         logger.error(f"Katalog-Datei nicht lesbar ({path}): {e}")
-        return EMPTY
+        return None
     if not isinstance(raw, dict):
         logger.error(f"Katalog-Datei ist kein Objekt: {path}")
-        return EMPTY
+        return None
+    return raw
 
+
+def _catalog_from_dict(raw: dict) -> Catalog:
+    """Kaputte Einträge fliegen einzeln raus, ein unlesbarer Wert zählt als 0."""
     items = {}
     for name, entries in (raw.get("items") or {}).items():
         if not isinstance(entries, dict):
@@ -125,10 +139,7 @@ def load_catalog(path: str) -> Catalog:
         items[str(name)] = {"kategorie": str(category) if category else None,
                             "wert": value}
     enemy = [str(g) for g in (raw.get("gegner") or []) if g]
-
-    catalog = Catalog(items, enemy)
-    _cache[path] = {"stand": stand, "catalog": catalog}
-    return catalog
+    return Catalog(items, enemy)
 
 
 def ranks(names_and_values: list) -> dict:

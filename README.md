@@ -44,6 +44,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 - **Statistiken**: Laufzeit, Klicks, Items gefunden
 - **Quick-Switch**: Schnell zwischen Sequenzen wechseln
 - **Zeitplan**: Sequenz zu bestimmter Zeit starten (z.B. 14:30, +30m, 2h)
+- **Folgesequenz**: nach dem Ende einer Sequenz automatisch die nächste starten, mit Pause dazwischen
 - **Factory Reset**: Kompletter Reset wie frisch von GitHub
 - **Konfigurierbar**: Toleranzen und Einstellungen via `config.json`
 - **Fail-Safe**: Maus in obere linke Ecke bewegen stoppt den Klicker
@@ -958,6 +959,23 @@ Startet eine Sequenz zu einem bestimmten Zeitpunkt. Unterstützte Formate:
 
 Der Countdown kann mit `CTRL+ALT+S` abgebrochen werden.
 
+### Folgesequenz („Danach starten“)
+
+Im Sequenz-Studio steht links unter SEQUENZ **Danach starten** und **Pause davor (s)**
+(Standard 30 s). Ist die Sequenz fertig, lädt der Hauptprozess die gewählte und startet
+sie nach der Pause, genau wie `CTRL+ALT+S`. Beide bleiben eigenständige Sequenzen; die
+Folgesequenz kann selbst wieder eine nennen (A → B → A wechselt endlos ab).
+
+| Ende des Laufs | Folgesequenz startet? |
+|---|---|
+| alle Zyklen durchgelaufen | ja |
+| `CTRL+ALT+F` (sanft beenden) | ja — bei endlosen Zyklen der Weg zur nächsten |
+| `CTRL+ALT+S` / Stopp, Notbremse, Zeitlimit (`session_max_hours`), Programmende, Fehler | nein |
+
+Während der Pause steht im Live-Run der Countdown; `CTRL+ALT+S` bzw. „Zeitplan abbrechen“
+bricht ab. Eine Folgesequenz, die es nicht mehr gibt (umbenannt, gelöscht), meldet die
+Konsole am Ende des Laufs und die Selbstdiagnose (Werkzeuge → prüfen) vorher.
+
 ## Item-Scan System
 
 Das Item-Scan System erkennt Items anhand ihrer Marker-Farben oder Templates:
@@ -1095,6 +1113,7 @@ Wird beim ersten Start automatisch erstellt:
   "pixel_show_delay": 0.3,
   "scan_click_immediate": false,
   "scan_park_mouse": false,
+  "scan_mouse_after": "back",
   "scan_slot_delay": 0.1,
   "scan_item_click_delay": 1.0,
   "scan_marker_count": 5,
@@ -1188,6 +1207,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 |--------|--------------|
 | `scan_click_immediate` | `true` = Scan→Klick pro Slot (sofort klicken), `false` = alle scannen, dann alle klicken (Standard) |
 | `scan_park_mouse` | `true` = Maus zur Bildschirmmitte parken, `[x, y]` = Maus zu bestimmter Position parken, `false` = Maus nicht bewegen (Standard) |
+| `scan_mouse_after` | Wohin die Maus nach einem Scan-Block geht, damit der Infotext des zuletzt geklickten Items nicht den nächsten Block verdeckt: `"back"` = zurück an die Stelle vor dem Scan (Standard), `"park"` = auf `scan_park_mouse` (ohne gesetzte Stelle: zurück), ob sie überhaupt geht, schaltet jeder Scan-Block selbst („Maus danach absetzen“, Standard an). Nach Stopp und in der Pause bleibt sie stehen |
 | `scan_slot_delay` | Pause zwischen Slot-Scans in Sekunden (Standard: 0.1) |
 | `scan_item_click_delay` | Pause nach Item-Klick in Sekunden (Standard: 1.0) |
 | `scan_marker_count` | Anzahl Marker-Farben pro Item (Standard: 5) |
@@ -1505,7 +1525,7 @@ python tests/all_tests.py                      # alles
 python tests/all_tests.py --only contract       # nur die Vertragssuite (schnell)
 python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
 python tests/all_tests.py --mutations         # zusätzlich gezielte Gegenproben
-python -m flake8 --select=F autoclicker/ market_analysis/ main.py tools/
+python -m flake8                                # Regeln und Ausnahmen in .flake8
 ```
 
 | Schicht | was sie prüft | braucht |

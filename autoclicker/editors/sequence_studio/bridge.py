@@ -106,7 +106,16 @@ class StudioBridge(
         # dass die Schlussmeldung ans Neuladen im Hauptprozess erinnern kann.
         self._saved = False
         self._status = ("", "info")
+        # Zaehlt jede Meldung mit. Die Momentaufnahme traegt die LETZTE Meldung
+        # bei jedem Befehl wieder mit — die Seite zeichnet sie nur neu, wenn die
+        # Nummer neu ist, sonst holte jeder Klick eine alte Meldung zurueck,
+        # die sie beim Reiterwechsel gerade weggeraeumt hat.
+        self._status_id = 0
         self._ask: Optional[dict] = None
+        # Welche Phase die Seite nach einem Phasen-Befehl gewählt halten soll
+        # (Duplikat, Umstellen, Verschieben ändern die Indizes). Einmal
+        # ausgeliefert wie `_ask`, danach wieder leer.
+        self._phase_focus: Optional[int] = None
         # Welcher Reiter beim Start offen ist. Reiner Oberflächenzustand, aber
         # er kommt von aussen: CTRL+ALT+V startet denselben Prozess wie
         # CTRL+ALT+B, nur mit "scans".

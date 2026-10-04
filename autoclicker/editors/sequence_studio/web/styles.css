@@ -17,6 +17,10 @@
      einzige Hue, die sonst nirgends im Studio vorkommt: die Phasen sind damit
      eine kühle Dreiergruppe, und keine davon ist eine Zustandsfarbe. */
   --init:#F472B6; --loop:#A78BFA; --end:#38BDF8;
+  /* Die Aufteilung der Laufzeit im Bericht (geplant · auf Farbe · Pause · Rest).
+     Teal ist die einzige der vier, die heraussticht — sie ist die Zeit, die
+     man sucht. */
+  --wait-planned:#94A3B8; --wait-color:#2DD4BF; --wait-pause:#64748B; --wait-rest:#3B4458;
   /* Die Slot-Zustaende im Scans-Reiter. Sie liegen auf einem SPIELBILD, nicht
      auf dem Panel — deshalb greller als der Rest der Palette. Jeweils Strich
      und Fuellung (Suffix -f), damit beides aus einer Quelle kommt. */
@@ -96,7 +100,17 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{
 .btn.quiet{background:none;border-color:var(--line);color:var(--muted);padding:5px 9px}
 .btn.quiet:hover{background:var(--sub);border-color:var(--dim);color:var(--text)}
 .btn:disabled{opacity:.4;cursor:default}
-.btn.danger:hover{border-color:var(--err);color:var(--err)}
+/* **Ein gefährlicher Knopf sieht auch in Ruhe gefährlich aus.** Rot wurde er
+   erst beim Zeigen — „15 Items löschen" stand damit genauso da wie
+   „Sortieren" daneben. Getönt statt voll rot: in einer Spalte mit zehn
+   Knöpfen soll er auffallen, aber nicht lauter sein als die Arbeit. Gilt auch
+   für die ruhige Fassung (`quiet danger`), die sonst die gedämpfte Schrift von
+   `.quiet` erbt. */
+.btn.danger,.btn.quiet.danger{color:#F87171;border-color:#EF444466}
+.btn.danger:hover{border-color:var(--err);color:var(--err);background:#EF44441A}
+.btn.danger:disabled{color:var(--dim);border-color:var(--line)}
+.scan-delete-all{display:flex;justify-content:center;padding:14px 0 4px;
+  margin-top:6px;border-top:1px dashed var(--line)}
 
 /* Eingaben tragen den Ton der Flaeche, auf der sie liegen, und trennen sich nur
    durch den Rahmen. Mit --bg (dunkler als die Seitenleiste) sahen sie aus wie
@@ -140,12 +154,15 @@ label.field{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:va
 .scan-review-bulk input{min-width:0}
 .scan-review-bulk .btn{width:auto;white-space:nowrap}
 /* Eine gerechnete Zahl, kein Eingabefeld: `output` sagt das semantisch, bekommt
-   aber dieselbe Kachel wie die Eingabe daneben. So haben beide Spalten exakt
-   dieselbe Hoehe, ohne einen deaktivierten oder editierbaren Zustand zu zeigen. */
+   aber dieselbe Hoehe wie die Eingabe daneben. **Gestrichelt und ohne
+   Feldgrund** — mit derselben durchgezogenen Kachel wie „Zyklen" sah sie aus wie
+   ein Feld, in das man tippen kann, und ein Klick darauf tat nichts. Gestrichelt
+   heisst im Studio ohnehin „steht da, ist aber nicht anzufassen" (ungenutzte
+   Punkte, freie Prioritaeten). */
 .field-quiet{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
 .field-quiet output{display:flex;align-items:center;width:100%;font:inherit;
-  font-family:var(--mono);line-height:1.45;color:var(--text);background:var(--panel);
-  border:1px solid var(--line);border-radius:4px;padding:5px 7px}
+  font-family:var(--mono);line-height:1.45;color:var(--text);background:none;
+  border:1px dashed var(--line);border-radius:4px;padding:5px 7px;cursor:default}
 /* display:flex gehoert dazu — ohne es greift weder gap noch align-items, und das
    Kaestchen klebte ohne Abstand am Text: sah aus wie ein Rest, nicht wie ein Schalter. */
 label.on{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--text);
@@ -321,10 +338,59 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
   border:1px dashed var(--line);border-radius:4px;font-size:11px;color:var(--dim)}
 
 /* -------------------------------------------------------------------- Board */
+.board-wrap{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.board-frame{flex:1;min-height:0;position:relative;display:flex}
 .board{
   flex:1;min-width:0;overflow:auto;background:var(--bg);
   background-image:radial-gradient(#1C2333 1px,transparent 1px);background-size:24px 24px;
 }
+/* Die Phasenleiste: eine Kachel je Phase, in der Farbe ihrer Art. Was
+   ausserhalb des sichtbaren Boards liegt, ist blass (`.off`) — so sieht man
+   auf einen Blick, dass rechts noch zwei Phasen kommen, und wo man steht.
+   Bricht nicht um, sondern scrollt selbst: zwanzig Phasen sind eine Leiste,
+   keine zweite Kopfzeile. */
+.phase-nav{flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;
+  background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto;
+  scrollbar-width:thin}
+.phase-nav::-webkit-scrollbar{height:6px}
+.phase-nav-chip{display:inline-flex;align-items:center;gap:6px;flex:none;max-width:220px;
+  padding:3px 9px 3px 7px;border-radius:5px;border:1px solid var(--line);
+  background:var(--bg);color:var(--text);font-size:12px;cursor:pointer}
+.phase-nav-chip:hover{border-color:var(--dim)}
+.phase-nav-chip .p-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--loop)}
+.phase-nav-chip[data-kind=init] .p-dot{background:var(--init)}
+.phase-nav-chip[data-kind=end] .p-dot{background:var(--end)}
+.phase-nav-chip .p-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phase-nav-chip .p-count{font-family:var(--mono);font-size:10.5px;color:var(--dim);flex:none}
+/* Ausserhalb der Sicht: blass, aber lesbar — es ist ein Wegweiser, kein
+   gesperrter Knopf. */
+.phase-nav-chip.off{opacity:.5;border-style:dashed}
+.phase-nav-chip.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.phase-nav-chip.add{color:var(--muted);border-style:dashed}
+.phase-nav-sep{width:1px;height:18px;background:var(--line);flex:none;margin:0 2px}
+.phase-nav .sidebar-toggle{flex:none;padding:3px 8px;font-size:11.5px}
+/* Kurz aufleuchten, wenn die Leiste hierher gescrollt hat — sonst sucht das
+   Auge erst, welche der drei Spalten gemeint war. */
+.phase.flash > .phase-header{animation:phase-flash 1.2s ease-out}
+@keyframes phase-flash{0%{box-shadow:0 0 0 1px var(--accent),0 0 0 6px #F59E0B55}
+  100%{box-shadow:0 0 0 1px var(--accent),0 0 0 6px #F59E0B00}}
+/* Die dunklen Kanten: da liegen noch Phasen. Sie nehmen keine Klicks an —
+   darunter liegen Karten —, nur der runde Knopf darin. */
+.board-edge{position:absolute;top:0;bottom:10px;width:44px;pointer-events:none;
+  display:flex;align-items:flex-start;padding-top:14px;z-index:2}
+.board-edge.left{left:0;justify-content:flex-start;padding-left:6px;
+  background:linear-gradient(to right,#0C0F14F0,#0C0F1400)}
+.board-edge.right{right:10px;justify-content:flex-end;padding-right:6px;
+  background:linear-gradient(to left,#0C0F14F0,#0C0F1400)}
+.board-step{pointer-events:auto;width:28px;height:28px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--sub);border:1px solid var(--line);color:var(--text);
+  box-shadow:0 2px 8px #0008}
+.board-step:hover{border-color:var(--accent);color:var(--accent)}
+/* Die Seitenleiste des Editors laesst sich wegklappen: Sequenzangaben und
+   Punkteliste belegen sonst dauerhaft 290 px, die bei einem kleinen Fenster
+   genau die Phasen kosten, an denen man arbeitet. */
+.body.left-closed > .page.left{display:none}
 .phases{display:flex;gap:18px;padding:18px 20px 40px;min-width:min-content;align-items:flex-start}
 .phase{width:286px;flex:none;display:flex;flex-direction:column;gap:8px}
 .phase-header{background:var(--panel);border:1px solid var(--line);border-radius:6px;
@@ -338,6 +404,10 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-header.init{border-color:var(--init);box-shadow:0 0 0 1px var(--init)}
 .phase-header.loop{border-color:var(--loop);box-shadow:0 0 0 1px var(--loop)}
 .phase-header.loop.selected{box-shadow:0 0 0 1px var(--loop),0 0 0 5px #F59E0B26}
+/* Gewählt werden können alle drei Arten — ihr Menü steht dann rechts. */
+.phase-header.init.selected{box-shadow:0 0 0 1px var(--init),0 0 0 5px #F59E0B26}
+.phase-header.end.selected{box-shadow:0 0 0 1px var(--end),0 0 0 5px #F59E0B26}
+.phase-header{cursor:pointer}
 .phase-header.end{border-color:var(--end);box-shadow:0 0 0 1px var(--end)}
 .phase-name{font-weight:600;font-size:13px;background:none;border:1px solid transparent;
   padding:1px 4px;border-radius:3px}
@@ -459,6 +529,12 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    wirkt. Amber wie alles, was Aufmerksamkeit will — aber ohne Rahmen, damit es
    nicht wie ein Fehler aussieht. Es ist keiner, es ist nur wirkungslos. */
 .hint.warning{color:var(--accent)}
+/* Wer einen Punkt sonst noch benutzt: eine Zeile je Phase, der Phasenname
+   hervorgehoben — so findet das Auge die Phase, nicht die fünfte Wiederholung
+   ihres Namens in einem Fliesstext. */
+.point-others{display:flex;flex-direction:column;gap:2px}
+.point-others-line{padding-left:8px}
+.point-others-where{color:var(--muted);margin-right:6px}
 /* Die Probe steht unten und abgesetzt: sie ändert nichts an der Sequenz, sondern
    fragt den Bildschirm. */
 .insp-footer{margin-top:6px;padding-top:10px;border-top:1px solid var(--line);
@@ -577,6 +653,36 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .run{flex:1;min-height:0;overflow-y:auto;padding:24px 28px;display:flex;
   flex-direction:column;gap:18px;align-items:stretch}
 .run-header{display:flex;align-items:center;gap:12px}
+/* Der Überblick im Inspektor, solange kein Block gewählt ist. */
+.overview-types{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-bottom:6px}
+.overview-type{display:flex;align-items:center;gap:7px;font-size:12px;min-width:0}
+.overview-type .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.overview-swatch{width:10px;height:10px;border-radius:3px;flex:none;border:1px solid #0006}
+.overview-issue{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:7px 9px;border:1px solid #F59E0B59;border-radius:5px;background:#F59E0B0F;
+  color:var(--text);font-size:12px}
+.overview-issue .icon-warn{color:var(--accent)}
+.overview-issue .icon-arrow{color:var(--dim)}
+.overview-issue:hover{border-color:var(--accent)}
+.overview-issue:hover .icon-arrow{color:var(--accent)}
+.overview-ok{display:flex;align-items:center;gap:6px;color:var(--ok)}
+.overview-how{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.overview-how b{color:var(--text);font-weight:600}
+.overview-how .btn{align-self:flex-start;margin-top:4px}
+/* Ein leerer Zustand in der Mitte einer Ansicht: Titel, ein erklärender Satz,
+   der Handgriff. Mittig und mit Luft — ein grauer Satz oben links in einer
+   leeren Fläche las sich wie ein Rest. */
+.empty-state{max-width:520px;margin:48px auto 0;padding:22px 24px;display:flex;
+  flex-direction:column;align-items:center;gap:10px;text-align:center;
+  border:1px dashed var(--line);border-radius:8px;background:var(--panel)}
+.empty-state > b{font-size:15px}
+.empty-state .hint{margin:0;line-height:1.55}
+.empty-state-actions{gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+/* Die Vorschau im Leerlauf: dieselben Kacheln wie im Lauf, damit man sie beim
+   Start wiedererkennt. Abgesetzt, weil sie eine andere Aussage macht als die
+   Knoepfe darueber: das ist, was kommt — nicht, was man tun kann. */
+.run-preview{display:flex;flex-direction:column;gap:10px;padding-top:14px;
+  border-top:1px solid var(--line)}
 .lamp{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:none}
 .lamp.on{background:var(--ok);box-shadow:0 0 0 4px #3ED07A26}
 /* Beendet ist nicht dasselbe wie "nichts da": die Lampe bleibt sichtbar, nur
@@ -685,6 +791,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .run-middle{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:12px;
   align-items:start}
 @media (max-width:1000px){.run-middle{grid-template-columns:1fr}}
+.run-left{display:grid;gap:12px;min-width:0}
 .run-middle .tile{grid-template-columns:1fr}
 @media (max-width:1000px){.run-middle .tile{
   grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}}
@@ -711,14 +818,11 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-tool:hover{border-color:var(--dim);color:var(--text)}
 .scan-tool.on{border-color:var(--accent);color:var(--text);background:#F59E0B18}
 .scan-short{display:none}
-.scan-save-state{font-size:10.5px;color:var(--muted);white-space:nowrap}
-.scan-save-state.open{color:var(--accent)}
 @container (max-width:900px){
   .scan-canvas-bar{gap:3px;padding-inline:6px}
   .scan-canvas-bar .btn,.scan-canvas-bar .scan-tool{padding-inline:7px;font-size:11.5px}
   .scan-wide{display:none}
   .scan-short{display:inline}
-  .scan-save-state{display:none}
 }
 .scan-result{position:sticky;top:42px;z-index:11;display:flex;align-items:center;
   flex-wrap:wrap;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
@@ -1028,8 +1132,11 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-window-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
 .scan-marker{display:flex;flex-wrap:wrap;gap:4px}
 .scan-marker span{width:18px;height:18px;border-radius:3px;border:1px solid #0006}
+/* Die grosse Vorlage in der aufgeklappten Maske: doppelt so gross wie die
+   Kachel daneben reicht, um Details zu sehen. Bei 180 px nahm ein 60-px-
+   Template die halbe Spalte, und die Felder darunter rutschten aus dem Blick. */
 .scan-large{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--bg);
-  image-rendering:pixelated;max-height:180px;object-fit:contain}
+  image-rendering:pixelated;height:112px;object-fit:contain}
 /* Die Vorlage eines Bosses/Icons in fester Groesse neben ihren Angaben. Fest,
    weil man zwei Vorlagen nebeneinander vergleichen koennen soll — eine, die
    mit ihrem Inhalt waechst, macht daraus zwei verschiedene Fragen. */
@@ -1081,8 +1188,12 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 /* ------------------------------------------------------------ Einstellungen */
 .cfg{flex:1;display:flex;min-height:0}
 .cfg-middle{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}
-.cfg-group{font-size:10.5px;letter-spacing:.12em;color:var(--dim);font-weight:600;
-  padding:16px 12px 6px}
+/* Seit alle Abschnitte auf einer Seite stehen, ist der Titel eine echte
+   Zwischenueberschrift: in Grundschrift und mit Linie, damit man beim
+   Durchscrollen sieht, wo ein Abschnitt anfaengt. */
+.cfg-group{font-size:13px;font-weight:650;color:var(--text);
+  padding:22px 12px 8px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.cfg-group:first-child{padding-top:6px}
 /* Zwei Spalten: links steht, WAS der Wert bedeutet, rechts wird er gesetzt. Die
    rechte Spalte hat eine feste Breite, damit die Bedienelemente aller Zeilen
    auf einer Flucht stehen — sonst wandert jeder Schalter mit der Laenge des
@@ -1108,6 +1219,15 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    dreizehn Felder gibt, ist die halbe Information. Ausgeblendete sucht man in
    der Datei. */
 .cfg-row.faded{opacity:.45}
+/* Angesprungen aus einem anderen Reiter: kurz aufleuchten, damit das Auge die
+   Zeile findet. */
+.cfg-row.flash{animation:cfg-flash 1.6s ease-out}
+@keyframes cfg-flash{0%{background:#F59E0B33;border-color:var(--accent)}
+  100%{background:transparent;border-color:transparent}}
+.cfg-jump{text-align:left;font-size:12px;color:var(--text);padding:0;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cfg-jump:hover{color:var(--accent);text-decoration:underline}
+.path-text{overflow-wrap:anywhere}
 .cfg-name{font-size:13px}
 .cfg-row.changed .cfg-name{color:var(--accent);font-weight:600}
 /* Der Schluessel steht mit, weil er in Logs, README und der Datei selbst
@@ -1203,11 +1323,6 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
 .wz-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
 .wz-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
-/* Der Befehl steht an der RECHTEN Kante, nicht hinter dem Titel: dort sass er je
- * nach Titellänge an einer anderen Stelle, und sechs Marken auf sechs Kanten
- * lesen sich wie Zufall. Rechtsbündig bilden sie eine Spalte. */
-.wz-command{font:9.5px var(--mono);font-weight:500;color:var(--dim);border:1px solid var(--line);
-  border-radius:9px;padding:1px 5px;margin-left:auto;flex:none}
 .wz-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
 .wz-nav:hover .wz-nav-arrow,.wz-nav.on .wz-nav-arrow{color:var(--accent);transform:translateX(2px)}
 /* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows
@@ -1505,6 +1620,48 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .rep-bar-fill{height:100%;background:var(--dim);border-radius:2px}
 .rep-rank.warn .rep-bar-fill{background:var(--accent)}
 .rep-rank.error .rep-bar-fill{background:var(--err)}
+/* Die Warte-Aufteilung: eigene Farben, keine geliehenen. Amber gehoert der
+   Auswahl, die Phasenfarben den Phasen — eine davon hier zu benutzen hiesse,
+   dass „auf Farbe" wie „gewaehlt" oder wie eine END-Phase aussieht. */
+.rep-rank.color-wait .rep-bar-fill{background:var(--wait-color)}
+.rep-rank.planned-wait .rep-bar-fill{background:var(--wait-planned)}
+.rep-split{display:flex;height:12px;border-radius:3px;overflow:hidden;
+  background:var(--line);margin:4px 0 8px}
+.rep-split-part{height:100%}
+.rep-split-legend{display:grid;gap:4px}
+.rep-split-row{display:grid;grid-template-columns:10px 1fr auto 44px;gap:10px;
+  align-items:center;font-size:12px}
+.rep-split-swatch{width:10px;height:10px;border-radius:2px}
+.rep-split-share{color:var(--dim);text-align:right}
+.wait-planned{background:var(--wait-planned)}
+.wait-color{background:var(--wait-color)}
+.wait-pause{background:var(--wait-pause)}
+.wait-rest{background:var(--wait-rest)}
+/* Live-Run: was der letzte Item-Scan gesehen hat. Geklickt ist ein Zustand,
+   also ringsum markiert (dieselbe Regel wie ueberall) — in --ok, denn Amber
+   heisst „gewaehlt". */
+.last-scan{display:grid;gap:8px}
+.last-scan-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+/* Bild links, Kacheln rechts; das Bild behaelt sein Mass (hoechstens 320 px
+   hoch), die Kacheln nehmen den Rest. Unter 1000 px untereinander. */
+.last-scan-body{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:12px;
+  align-items:start}
+@media (max-width:1000px){.last-scan-body{grid-template-columns:1fr}}
+.last-scan-picture{position:relative;width:fit-content;max-width:100%;line-height:0}
+.last-scan-picture img{display:block;max-width:100%;max-height:320px;border-radius:4px}
+.last-scan-box{position:absolute;box-sizing:border-box;border:1.5px solid;border-radius:2px}
+.last-scan-box.match{border-color:var(--slot-ok)}
+.last-scan-box.empty{border-color:var(--slot-empty)}
+.last-scan-box.clicked{background:var(--slot-ok-f);box-shadow:0 0 0 1px var(--slot-ok)}
+.last-scan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px}
+.last-scan-item{display:grid;grid-template-columns:40px 1fr;grid-template-rows:auto auto;
+  column-gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);
+  border-radius:6px;background:var(--sub)}
+.last-scan-item.clicked{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.last-scan-item img,.last-scan-noimg{grid-row:1/3;width:40px;height:40px;
+  object-fit:contain;border-radius:4px;background:var(--bg)}
+.last-scan-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;color:var(--text)}
 .rep-rank-extra{grid-column:1/-1;font-size:11px;color:var(--dim)}
 
 /* Die Sitzungsauswahl. Gewaehlt wird ringsum markiert (`box-shadow`), nicht an

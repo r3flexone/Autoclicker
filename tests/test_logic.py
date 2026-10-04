@@ -1407,32 +1407,22 @@ finally:
     _os.chdir(_old_cwd)
 
 
-# ------------------------------------------------- Laden veraendert nichts
-section("Sequenz laden meldet nur, schreibt nicht")
-from autoclicker.editors.sequence_editor.loader import _report_point_mismatches
+# ------------------------------------------------- Aufloesung zieht Schritte nach
+section("Ein Schritt mit point_id folgt seinem Punkt")
 from autoclicker.models import (Sequence as _Seq3, LoopPhase as _LP3,
                                 SequenceStep as _SS3, ClickPoint as _CP3)
 
-# Aufgenommene Punkte heissen per Default P<id> - eine Sequenz von einem anderen Rechner
-# bringt also "P3" mit, und der lokale P3 liegt woanders. Frueher wurde der Schritt still
-# dorthin verschoben UND die Datei ueberschrieben.
 _st3 = _ACS()
 _st3.points = [_CP3(50, 50, "P3", 3)]
-_foreign = _SS3(x=900, y=900, delay_before=0, name="P3")
-_seq3 = _Seq3("foreign", [], [_LP3("Loop", [_foreign])], [])
-_report_point_mismatches(_st3, _seq3)
-check("Schritt-Koordinaten bleiben unangetastet", (_foreign.x, _foreign.y) == (900, 900))
-check("keine Referenz wird stillschweigend gesetzt", _foreign.point_id is None)
-
-# Mit Referenz ist die Aufloesung zustaendig - dort wird der Schritt auch gemeldet
 _linked = _SS3(x=900, y=900, delay_before=0, name="P3", point_id=3)
 _seq4 = _Seq3("mit_ref", [], [_LP3("Loop", [_linked])], [], points=_st3.points)
-_report_point_mismatches(_st3, _seq4)
-check("Schritt mit point_id bleibt dem Loader egal", (_linked.x, _linked.y) == (900, 900))
 from autoclicker.persistence import resolve_point_references as _rpr2
 _report = _rpr2(_st3, _seq4)
-check("erst die Aufloesung zieht ihn nach", (_linked.x, _linked.y) == (50, 50))
+check("die Aufloesung zieht ihn nach", (_linked.x, _linked.y) == (50, 50))
 check("und meldet das im Klartext", len(_report) == 1 and "P3" in _report[0])
+import autoclicker.editors.sequence_editor.loader as _ld3
+check("die tote Namens-Diagnose des Loaders ist weg",
+      not hasattr(_ld3, "_report_point_mismatches"))
 
 
 # -------------------------------------------- Item-Scan: Namen sind die Wahrheit
@@ -1901,7 +1891,7 @@ _RS.PILLOW_AVAILABLE = True
 # Alles schlaegt fehl -> falls else ausgewertet wird, muss es feuern
 _RS.execute_boss_scan = lambda st, n: (False, None)
 _RS.execute_icon_scan = lambda st, n: False
-_RS.execute_item_scan = lambda st, n, m=None, slots_override=None: []
+_RS.execute_item_scan = lambda st, n, m=None, slots_override=None, **kw: []
 _RS.take_screenshot = lambda region=None: _Pix2((200, 200, 200))
 
 def _else_fires(**kw):
@@ -3822,7 +3812,7 @@ for _path11, _function11 in (
         ("autoclicker/handlers.py", "command_start"),
         ("autoclicker/handlers.py", "handle_switch"),
         ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
-    _tree11 = _ast11.parse(Path(_path11).read_text(encoding="utf-8"))
+    _tree11 = _ast11.parse((_H.REPO / _path11).read_text(encoding="utf-8"))
     for _k11 in _ast11.walk(_tree11):
         if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _function11:
             _names11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
@@ -3951,7 +3941,7 @@ check("und None erst recht", _img12.is_blank(None) is True)
 # Die Fensterliste liefert die Kennung mit - ohne sie liesse sich das Fenster
 # spaeter nicht ansprechen, und ueber den Titel geht es nicht: bei mehreren
 # Fassungen desselben Spiels ist er dreimal derselbe.
-_source_wf12 = Path("autoclicker/platforms/windows.py").read_text(encoding="utf-8")
+_source_wf12 = (_H.REPO / "autoclicker/platforms/windows.py").read_text(encoding="utf-8")
 _lf12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_source_wf12))
              if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "list_windows")
 _attachments12 = [_n12 for _n12 in _ast11.walk(_lf12)
@@ -3967,8 +3957,8 @@ check("die Fensterliste haengt drei Angaben an (Titel, Lage, Kennung)",
 # Der Subprozess teilt seine Ausgabe mit dem Hauptprozess. Beim Oeffnen stand
 # dort zweimal "[CONFIG] Geladen": einmal vom Import des Pakets, einmal von
 # _without_else(). Ein Leser darf weder die Datei schreiben noch die Konsole.
-_source_br12 = Path(
-    "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
+_source_br12 = (
+    _H.REPO / "autoclicker/editors/sequence_studio/bridge_services.py").read_text(
     encoding="utf-8")
 _tree_br12 = _ast11.parse(_source_br12)
 _lader12 = [_k12.lineno for _k12 in _ast11.walk(_tree_br12)
@@ -3980,40 +3970,55 @@ if _lader12:
 check("sie liest die Datei stattdessen selbst",
       "_config_file" in _source_br12)
 
-# --- EINE SVG-Datei, alle Verwendungen ---
-# Der Kopf und das Favicon laden die Datei direkt; symbol.py rastert genau diese
-# Datei fuer Windows und tools/symbol.py. Damit ist das neue Logo nicht nur im
-# grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+# --- EIN Motiv je Groesse, alle Verwendungen ---
+# Der Kopf und das Favicon laden die Dateien direkt; symbol.py rastert genau
+# diese Dateien fuer Windows und tools/symbol.py. Damit ist das Logo nicht nur
+# im grossen Fenster neu, waehrend ALT+TAB noch das alte Motiv zeigt.
+#
+# **Zwei Dateien, weil es zwei Groessen sind.** Das grosse Motiv ist bei 16 px
+# graues Rauschen (Linien unter einem Pixel); das kleine springt genau dort ein
+# und sonst nirgends — ab 32 px ist das grosse das Logo.
 _head12 = _H.studio_web_source()
-_logo12 = _sym12.LOGO_PATH.read_text(encoding="utf-8")
-check("die kanonische Logo-Datei liegt direkt bei der Weboberflaeche",
-      _sym12.LOGO_PATH.name == "sequenz-studio-logo.svg" and _sym12.LOGO_PATH.exists())
-check("Kopf und Favicon benutzen beide diese Datei",
-      _head12.count('sequenz-studio-logo.svg') == 2)
-# **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Hier stand einmal
-# 'rotate(180 128 128)' — ein Detail genau dieses Motivs, das beim naechsten
-# neu gezeichneten Logo umfaellt, ohne dass etwas kaputt waere. Tragend sind
-# zwei Dinge: die Maske (sonst gibt es keine echte Transparenz) und die
-# Befehlsmenge, die `_path_polygons` ueberhaupt lesen kann — ein 'A' aus einem
-# CAD-Export wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
-check("das Logo traegt eine Maske statt einer Ersatzfarbe",
-      'mask="url(#cutout)"' in _logo12)
-# **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py nimmt
-# `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein `url(#gold)`
-# faellt mit ValueError um. Genau darauf beruht die Plakette: Verlauf, Rand und
-# Innenschatten liegen DARUEBER und werden beim Rastern nicht gesehen, das
-# 16-px-Symbol bleibt eine lesbare flache Flaeche.
+_logos12 = {"gross": _sym12.LOGO_PATH, "klein": _sym12.LOGO_SMALL_PATH}
+check("beide Logo-Dateien liegen direkt bei der Weboberflaeche",
+      _sym12.LOGO_PATH.name == "sequenz-studio-logo.svg"
+      and _sym12.LOGO_SMALL_PATH.name == "sequenz-studio-logo-small.svg"
+      and all(_p12.exists() for _p12 in _logos12.values()))
+check("16 px nimmt das kleine Motiv, 32 px schon das grosse",
+      _sym12.logo_path(16) == _sym12.LOGO_SMALL_PATH
+      and _sym12.logo_path(32) == _sym12.LOGO_PATH)
+# Das Favicon steht im Tab bei 16 px, der Kopf bei 30 CSS-Pixeln — also mit
+# Bildschirm-Skalierung eher 40 bis 60: dort ist das grosse lesbar.
+check("das Favicon ist das kleine, der Kopf das grosse Motiv",
+      'rel="icon" type="image/svg+xml" href="sequenz-studio-logo-small.svg"' in _head12
+      and '<img src="sequenz-studio-logo.svg"' in _head12)
 import re as _re12c
-_rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
-check("der Rasterer findet zuerst eine flache Hex-Farbe",
-      bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
-import re as _re12b
-_commands12 = set(_re12b.findall(r'[A-Za-z]', " ".join(
-    _re12b.findall(r'\sd="([^"]+)"', _logo12))))
-check("und benutzt nur die SVG-Befehle, die symbol.py lesen kann",
-      _commands12 <= {"M", "L", "C", "Z"})
-if not _commands12 <= {"M", "L", "C", "Z"}:
-    print("        unlesbar: " + ", ".join(sorted(_commands12 - {"M", "L", "C", "Z"})))
+for _which12, _path12 in _logos12.items():
+    _logo12 = _path12.read_text(encoding="utf-8")
+    # **Geprueft wird die Eigenschaft, nicht die Zeichnung.** Tragend sind die
+    # Maske (sonst gibt es keine echte Transparenz) und die Befehlsmenge, die
+    # `_path_polygons` ueberhaupt lesen kann — ein 'A' aus einem CAD-Export
+    # wuerde es mit ValueError ablehnen, und zwar erst beim Rastern.
+    check(f"{_which12}: das Logo traegt eine Maske statt einer Ersatzfarbe",
+          'mask="url(#cutout)"' in _logo12)
+    # **Die flache Farbflaeche muss die ERSTE im Dokument bleiben.** symbol.py
+    # nimmt `next(rect mit mask=...)` und will dort sechs Hex-Ziffern; ein
+    # `url(#gold)` faellt mit ValueError um. Der Verlauf liegt DARUEBER und wird
+    # beim Rastern nicht gesehen, das Windows-Symbol bleibt eine flache Flaeche.
+    _rects12 = _re12c.findall(r'<rect[^>]*mask="url\(#cutout\)"[^>]*>', _logo12)
+    check(f"{_which12}: der Rasterer findet zuerst eine flache Hex-Farbe",
+          bool(_rects12) and _re12c.search(r'fill="#[0-9A-Fa-f]{6}"', _rects12[0]))
+    _commands12 = set(_re12c.findall(r'[A-Za-z]', " ".join(
+        _re12c.findall(r'\sd="([^"]+)"', _logo12))))
+    check(f"{_which12}: nur SVG-Befehle, die symbol.py lesen kann",
+          _commands12 <= {"M", "L", "C", "Z"})
+    if not _commands12 <= {"M", "L", "C", "Z"}:
+        print("        unlesbar: " + ", ".join(sorted(_commands12 - {"M", "L", "C", "Z"})))
+# Beide Motive sind dieselbe Plakette: eine Farbe, sonst liefen Taskleiste
+# (32) und Tab (16) farblich auseinander.
+check("beide Motive tragen dieselbe Farbe",
+      _sym12._logo_geometry(_sym12.LOGO_PATH)[0]
+      == _sym12._logo_geometry(_sym12.LOGO_SMALL_PATH)[0])
 check("die alte, doppelte Inline-Zeichnung ist entfernt", '<svg width="20"' not in _head12)
 
 # Auch die kleinste Windows-Fassung muss ein echtes Bild mit transparenten
@@ -4039,7 +4044,7 @@ check("Transparenz liegt auch mitten im Motiv, nicht nur an den Aussenecken",
 # eine Kopie, die niemand mitzieht.
 import importlib.util as _ilu12
 _spec12 = _ilu12.spec_from_file_location(
-    "_werkzeug_symbol", Path("tools/symbol.py"))
+    "_werkzeug_symbol", _H.REPO / "tools/symbol.py")
 _werk12 = _ilu12.module_from_spec(_spec12)
 _spec12.loader.exec_module(_werk12)
 
@@ -4083,7 +4088,7 @@ else:
 
 # Die eigentliche Regel ist die Reihenfolge: nach dem ersten Fenster hat Windows
 # die Zuordnung schon getroffen, ein spaeterer Aufruf aendert nichts mehr.
-_source12 = Path("autoclicker/sequence_studio.py").read_text(encoding="utf-8")
+_source12 = (_H.REPO / "autoclicker/sequence_studio.py").read_text(encoding="utf-8")
 _main12 = next(_k12 for _k12 in _ast11.walk(_ast11.parse(_source12))
                if isinstance(_k12, _ast11.FunctionDef) and _k12.name == "main")
 _row_id12 = [_n12.lineno for _n12 in _ast11.walk(_main12)
@@ -4564,6 +4569,12 @@ check("jeder Typ laesst sich auch einstellen", _error10b == [])
 # block_trigger schon hatte.
 _b10.select({"phase": 1, "row": 0})
 _b10.block_set_type({"type": "click"})
+# Das Durchschalten oben endete auf einem Typ OHNE Stelle, und der gibt den
+# Punkt ab (tests/contract/positionless_blocks.py) — zurück bekommt ihn der
+# Klick-Block ausdrücklich, wie im Inspektor. (Die Sequenz hat keine
+# Punktliste; `point_create` legt #1 an und hängt ihn an.)
+check("nach Scans und Taste ist der Punkt weg", _seq10.loop_phases[0].steps[0].point_id is None)
+_b10.point_create({"x": 1, "y": 2})
 _b10.block_set_type({"type": "wait_click"})
 _wc10 = _seq10.loop_phases[0].steps[0].wait_condition
 check("der Typwechsel auf FARBE+KLICK bindet die Bedingung an den Punkt",
@@ -5641,9 +5652,10 @@ try:
     # Und der Blockwechsel raeumt zusaetzlich ab: der neue Block wartet noch auf
     # nichts, der Kasten des vorherigen darf nicht darueber stehenbleiben.
     # `execute_step` ist seit dem Block-Skip-Fix nur noch die Huelle; der
-    # Rumpf mit dem Laufstatus-Schreiber heisst `_dispatch_step`.
+    # Rumpf heisst `_dispatch_step`, und der Laufstatus-Schreiber darin
+    # seit dem Zerlegen `_announce_step`.
     check("der Blockwechsel raeumt den Warte-Kasten ab",
-          '"waiting": None' in _insp16.getsource(_stp16._dispatch_step))
+          '"waiting": None' in _insp16.getsource(_stp16._announce_step))
 
     # Was nach dem Timeout kommt, gehoert neben den Countdown: dass in 8 s
     # Schluss ist, hilft nur mit der Antwort, ob dann uebersprungen oder
@@ -5887,6 +5899,32 @@ else:
         # demselben Hintergrund - sonst haette die Maske nur alles durchgelassen.
         _other = _imgm.match_template_in_image(_slot_image(_HG_M, 2), "gelernt.png", 0.8)
         check("ein anderes Symbol passt nicht", not _other[0])
+
+        # **Ein Pixel Versatz ist dasselbe Item.** An echten Doppeln gemessen:
+        # derselbe Gegenstand lag in zwei Slots 1 px versetzt im Ausschnitt,
+        # der Vergleich rechnete an genau EINER Stelle und fiel von ~97 % auf
+        # ~75 % — das Auto-Lernen legte ihn als neues Item an.
+        def _shifted(dx, dy):
+            import random
+            b = _PILm.new("RGB", (40, 40), _HG_M)
+            r = random.Random(1)
+            for x in range(14, 26):
+                for y in range(14, 26):
+                    b.putpixel((x + dx, y + dy), (r.randrange(120, 256), r.randrange(120, 256),
+                                                  r.randrange(120, 256)))
+            return b
+        _one_px = _imgm.match_template_in_image(_shifted(1, 0), "gelernt.png", 0.8)
+        _two_px = _imgm.match_template_in_image(_shifted(-2, 2), "gelernt.png", 0.8)
+        check("um 1 px verrutscht wird es trotzdem erkannt", _one_px[0] and _one_px[1] > 0.99)
+        check("um 2 px schraeg ebenso", _two_px[0] and _two_px[1] > 0.99)
+        _far = _imgm.match_template_in_image(_shifted(6, 0), "gelernt.png", 0.8)
+        check("aber nicht beliebig weit: 6 px daneben ist kein Treffer", not _far[0])
+        _other_shifted = max(_imgm._masked_confidence(
+            _imgm.cv2.cvtColor(_imgm.np.array(_slot_image(_HG_M, _s)), _imgm.cv2.COLOR_RGB2BGR),
+            _imgm.cv2.cvtColor(_imgm.np.array(_m.convert("RGB")), _imgm.cv2.COLOR_RGB2BGR),
+            _imgm.np.array(_m.getchannel("A"))) for _s in range(2, 12))
+        check(f"die Suche macht fremde Symbole nicht aehnlich (bestes {_other_shifted:.0%})",
+              _other_shifted < 0.5)
 
         # Ohne Maske (Template ohne Alpha) bleibt es beim alten Verhalten - und
         # genau dann zieht der Hintergrund die Uebereinstimmung hoch.
@@ -6212,7 +6250,7 @@ _groups17 = _abs17()
 check("die Abschnitte decken jedes Feld ab",
       sorted(k for _, keys in _groups17 for k in keys) == sorted(_names17))
 check("kein Feld faellt in den Nachzuegler-Abschnitt",
-      "SONSTIGE" not in [t for t, _ in _groups17])
+      "Sonstige" not in [t for t, _ in _groups17])
 check("und keines steht doppelt",
       len([k for _, keys in _groups17 for k in keys]) == len(_names17))
 
@@ -6405,16 +6443,32 @@ if _undok15:
 
 
 # --------------------------- Die Doku nennt nur Dateien, die es gibt
-section("CLAUDE.md zeigt auf Dateien, die es wirklich gibt")
+section("Die CLAUDE.md-Dateien zeigen auf Dateien, die es wirklich gibt")
 
 # **Eine Doku, die in die Irre fuehrt, ist schlimmer als keine** — und genau das
 # ist passiert: `tools/llm_bench.py` suchte das gemerkte Bild zuerst unter
 # `item_scans/bilder/`, weil CLAUDE.md es an zwei Stellen so schrieb. Der Code
 # legt es daneben ab (`sequences/<name>/bilder/`). Pfade mit Platzhaltern kann
 # kein Test pruefen, Dateinamen sehr wohl.
-_claude16 = (_root15 / "CLAUDE.md").read_text(encoding="utf-8")
+#
+# Gelesen werden ALLE CLAUDE.md-Dateien: die Wurzel ist nur noch der Kern, die
+# Begruendungen stehen in den Dateien der Unterordner.
+_claude_files16 = sorted(p for p in _root15.rglob("CLAUDE.md")
+                         if not {".git", ".venv", "node_modules"} & set(p.parts))
+_claude16 = "\n".join(p.read_text(encoding="utf-8") for p in _claude_files16)
 _named16 = sorted(set(_re15.findall(r"`([\w/\.]+\.py)`", _claude16)))
 check("der Test findet ueberhaupt Dateinamen", len(_named16) > 50)
+
+# Die Wurzel nennt in einer Tabelle, wo die Details stehen. Gegen die Dateien
+# gehalten, in beide Richtungen: eine Zeile ohne Datei schickt den Leser ins
+# Leere, eine Datei ohne Zeile findet niemand, der nicht zufaellig dort liest.
+_root_text16 = (_root15 / "CLAUDE.md").read_text(encoding="utf-8")
+_listed16 = set(_re15.findall(r"^\| `([\w/]+/CLAUDE\.md)` \|", _root_text16, _re15.M))
+_present16 = {p.relative_to(_root15).as_posix() for p in _claude_files16} - {"CLAUDE.md"}
+check("die Wurzel-CLAUDE.md nennt jede Unterdatei", _present16 - _listed16 == set())
+check("und jede genannte Unterdatei gibt es", _listed16 - _present16 == set())
+if _listed16 ^ _present16:
+    print("        Abweichung: " + ", ".join(sorted(_listed16 ^ _present16)))
 
 # Drei Dateien werden mit Absicht genannt, obwohl es sie nicht mehr gibt: die
 # Begruendung, WARUM etwas nicht mehr so gebaut ist, ist laut CLAUDE.md selbst
@@ -6548,6 +6602,40 @@ import tests.contract.point_surface         # noqa: F401,E402
 import tests.contract.live_wait             # noqa: F401,E402
 import tests.contract.cross_phase_selection  # noqa: F401,E402
 import tests.contract.python_floor          # noqa: F401,E402
+import tests.contract.positionless_blocks   # noqa: F401,E402
+import tests.contract.phase_convert        # noqa: F401,E402
+import tests.contract.block_timeout        # noqa: F401,E402
+import tests.contract.slot_visible         # noqa: F401,E402
+import tests.contract.data_reload          # noqa: F401,E402
+import tests.contract.report_waits         # noqa: F401,E402
+import tests.contract.scan_mouse_after     # noqa: F401,E402
+import tests.contract.live_last_scan       # noqa: F401,E402
+import tests.contract.next_sequence        # noqa: F401,E402
+import tests.contract.studio_guidance      # noqa: F401,E402
+import tests.contract.loop_phase_editor    # noqa: F401,E402
+import tests.contract.detection_editors    # noqa: F401,E402
+import tests.contract.slot_editor          # noqa: F401,E402
+import tests.contract.slot_sub_editors     # noqa: F401,E402
+import tests.contract.item_editor          # noqa: F401,E402
+import tests.contract.function_imports     # noqa: F401,E402
+import tests.contract.import_export_editor # noqa: F401,E402
+import tests.contract.phase_editor         # noqa: F401,E402
+import tests.contract.points_menu          # noqa: F401,E402
+import tests.contract.recording_build      # noqa: F401,E402
+import tests.contract.sequence_editor_flow # noqa: F401,E402
+import tests.contract.item_scan_wizard     # noqa: F401,E402
+import tests.contract.boss_detection_flow  # noqa: F401,E402
+import tests.contract.boss_steps           # noqa: F401,E402
+import tests.contract.runtime_guards       # noqa: F401,E402
+import tests.contract.core_guards          # noqa: F401,E402
+import tests.contract.time_input           # noqa: F401,E402
+import tests.contract.console_input        # noqa: F401,E402
+import tests.contract.console_texts        # noqa: F401,E402
+import tests.contract.llm_connection       # noqa: F401,E402
+import tests.contract.svg_path             # noqa: F401,E402
+import tests.contract.gdi_capture          # noqa: F401,E402
+import tests.contract.tool_cli             # noqa: F401,E402
+import tests.contract.studio_guards        # noqa: F401,E402
 
 
 import shutil as _shD
@@ -6598,6 +6686,25 @@ if PILLOW_AVAILABLE and OPENCV_AVAILABLE:
     _shD.rmtree(_sandboxD, ignore_errors=True)
 else:
     print("  ÜBERSPRUNGEN: Vorlagengrössen brauchen Pillow und OpenCV")
+
+
+# ---------------------------------------------------------------------------
+section("Die Suite hinterlässt im Repo nichts")
+
+# Bis hierher schrieb jeder Lauf `.run.json`, `.recording.json` und
+# `.reclick.json` in den Ordner, aus dem man die Suite startet — also in die
+# echten Daten —, und frueher ganze Sequenzordner („Studio", „Fokus" …).
+# Ursache und Abhilfe stehen in `_harness.py` beim Arbeitsordner.
+check("die Suite arbeitet in ihrem eigenen Ordner, nicht im Repo",
+      Path.cwd().resolve() != _H.REPO.resolve())
+_new_entries = sorted(_H.repo_entries() - _H.REPO_ENTRIES)
+check(f"und hat im Repo nichts angelegt {_new_entries or ''}".rstrip(),
+      _new_entries == [])
+# Ebenso nichts im Temp-Ordner des Systems: ein `mkdtemp()` irgendwo in einem
+# Testfall landet in der Sandbox und geht mit ihr weg (s. `_harness.py`).
+import tempfile as _tf_end                                          # noqa: E402
+check("Temp-Ordner der Testfälle entstehen in der Sandbox",
+      Path(_tf_end.mkdtemp(prefix="probe_")).resolve().parent == _H.SANDBOX.resolve())
 
 
 PASS, FAIL = _H.PASS, _H.FAIL

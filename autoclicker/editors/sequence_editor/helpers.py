@@ -116,53 +116,49 @@ def parse_else_condition(else_parts: list[str], state: AutoClickerState) -> dict
     """
     if not else_parts:
         return {}
-
     first = else_parts[0].lower()
-
-    if first == "skip":
-        return {"else_action": "skip"}
-
-    if first == "skip_cycle":
-        return {"else_action": "skip_cycle"}
-
-    if first == "restart":
-        return {"else_action": "restart"}
-
-    # else key <Taste>
+    if first in _ELSE_WORDS:
+        return {"else_action": first}
     if first == "key" and len(else_parts) >= 2:
-        key_name = else_parts[1].lower()
-        if key_name in KEY_NAMES:
-            return {"else_action": "key", "else_key": key_name}
-        print(f"  -> Unbekannte Taste: '{key_name}'")
-        return {}
-
-    # else <ID> [delay] - Punkt klicken (per ID)
-    try:
-        point_id = int(first)
-        with state.lock:
-            point = get_point_by_id(state, point_id)
-            if point:
-                # Die ID ist das Ergebnis, nicht die Koordinate: der Nutzer hat ohnehin
-                # einen Punkt genannt. x/y stehen nur als Arbeitswert daneben, damit der
-                # Editor sie sofort anzeigen kann - gespeichert wird die ID.
-                result = {
-                    "else_action": "click",
-                    "else_point_id": point_id,
-                    "else_x": point.x,
-                    "else_y": point.y,
-                    "else_name": point.name or f"Punkt #{point_id}"
-                }
-                if len(else_parts) >= 2:
-                    try:
-                        result["else_delay"] = float(else_parts[1])
-                    except ValueError:
-                        pass
-                return result
-            print(f"  -> Punkt #{point_id} nicht gefunden!")
-            return {}
-    except ValueError:
-        pass
-
+        return _else_key(else_parts[1].lower())
+    if first.isdecimal():
+        return _else_click(int(first), else_parts[1:], state)
     print(f"  -> Unbekanntes ELSE-Format: {' '.join(else_parts)}")
     print("     Formate: else skip | else skip_cycle | else restart | else <Nr> [delay] | else key <Taste>")
     return {}
+
+
+# Was ohne Ziel auskommt: das Wort ist die Aktion.
+_ELSE_WORDS = ("skip", "skip_cycle", "restart")
+
+
+def _else_key(key_name: str) -> dict:
+    if key_name in KEY_NAMES:
+        return {"else_action": "key", "else_key": key_name}
+    print(f"  -> Unbekannte Taste: '{key_name}'")
+    return {}
+
+
+def _else_click(point_id: int, rest: list[str], state: AutoClickerState) -> dict:
+    """else <Nr> [delay] — Punkt klicken (per ID)."""
+    with state.lock:
+        point = get_point_by_id(state, point_id)
+    if not point:
+        print(f"  -> Punkt #{point_id} nicht gefunden!")
+        return {}
+    # Die ID ist das Ergebnis, nicht die Koordinate: der Nutzer hat ohnehin
+    # einen Punkt genannt. x/y stehen nur als Arbeitswert daneben, damit der
+    # Editor sie sofort anzeigen kann - gespeichert wird die ID.
+    result = {
+        "else_action": "click",
+        "else_point_id": point_id,
+        "else_x": point.x,
+        "else_y": point.y,
+        "else_name": point.name or f"Punkt #{point_id}",
+    }
+    if rest:
+        try:
+            result["else_delay"] = float(rest[0])
+        except ValueError:
+            pass
+    return result
