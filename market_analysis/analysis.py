@@ -836,7 +836,7 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Verlässlichkeit": round(factor, 2),
             "Gold/h (ungünstigster Fall)": round(worst) if pd.notna(worst) else None,
             "Sek pro Stück": round(r["TimePerItem_sec"], 2),
-            "Stück/h": round(r["Stück/h"], 1),
+            "Stück/h": _display_rate(r["Stück/h"]),
             "Gold pro Stück": round(r["Gold pro Stück"], 1),
             "Verkauf an": "NPC-Vendor" if to_npc else "Spieler",
             "Erlös pro Stück": round(r.get("Verkaufspreis", 0), 2),
@@ -982,6 +982,14 @@ def _num(value) -> float:
     return 0.0 if value is None or pd.isna(value) else float(value)
 
 
+def _display_rate(value) -> float:
+    """Stück/h fuer die Anzeige: eine Nachkommastelle, unter 10 drei gueltige
+    Ziffern. Glatt auf eine Stelle gerundet stand eine Kette mit 0,034 Stk/h als
+    0,0 im Blatt - und man sah nicht, warum ihr Ertrag so aussah."""
+    rate = _num(value)
+    return round(rate, 1) if abs(rate) >= 10 else float(f"{rate:.3g}")
+
+
 def reason_candidates(df_rec: pd.DataFrame) -> pd.DataFrame:
     """Welche Items durchs Orderbuch gerechnet werden.
 
@@ -1011,6 +1019,11 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         return pd.DataFrame(columns=REASON_COLUMNS), []
 
     costs_per_h = df_chain.set_index("ItemID")["RawMaterialCost/h"].to_dict() if not df_chain.empty else {}
+    # Stück/h kommt ungerundet aus der Kette, wie die Kosten daneben. Hier stand
+    # die Spalte der Empfehlung, und die ist fuer die Anzeige gerundet: eine Kette
+    # mit 0,065 Stk/h wurde mit 0,1 verkauft (fast doppelter Ertrag, Platz 1), eine
+    # mit 0,034 mit 0,0 - sie verkaufte nichts und zahlte die vollen Zutaten.
+    units_per_h = df_chain.set_index("ItemID")["Stück/h"].to_dict() if not df_chain.empty else {}
     id_of_item = df_chain.set_index("Item")["ItemID"].to_dict() if not df_chain.empty else {}
     side_per_h = (df_chain.set_index("ItemID")["Nebenertrag/h"].to_dict()
                   if not df_chain.empty and "Nebenertrag/h" in df_chain.columns else {})
@@ -1027,7 +1040,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         item_id = id_of_item.get(r["Item"])
         to_npc = r["Verkauf an"] == "NPC-Vendor"
         npc = _num(r["NPC-Preis"])
-        units_h = _num(r["Stück/h"])
+        units_h = _num(units_per_h.get(item_id))
         material_h = _num(costs_per_h.get(item_id))
         side_yield_h = _num(side_per_h.get(item_id))
         # Bezugsgroesse ist der Preis, auf dem das ausgewiesene Gold/h beruht - sonst
@@ -1093,7 +1106,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Gold/h (Papier)": r["Gold/h"],
             "Verlässlichkeit": _num(r.get("Verlässlichkeit")) or 1.0,
             "Verkauf an": r["Verkauf an"],
-            "Stück/h": round(units_h, 1),
+            "Stück/h": _display_rate(units_h),
             "Bestes Gebot (brutto)": round(top_price, 2) if top_price else None,
             "Menge am besten Gebot": round(top_amount) if top_amount else None,
             "Deckt Stunden": round(coverage, 2) if coverage else None,

@@ -576,7 +576,8 @@ class MeasurementRankingTest(unittest.TestCase):
             for i, name in enumerate(names, start=1)] + [
             (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
         df_chain = _pd.DataFrame({"Item": names + ["nichts"], "ItemID": range(1, 14),
-                                  "RawMaterialCost/h": 0.0, "Nebenertrag/h": 0.0})
+                                  "Stück/h": 100.0, "RawMaterialCost/h": 0.0,
+                                  "Nebenertrag/h": 0.0})
         old = _analysis.fetch_orderbook_depth
         try:
             _analysis.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
@@ -625,6 +626,7 @@ class MeasurementRankingTest(unittest.TestCase):
             (2, "oak", "Woodcutting", 150, "NPC-Vendor", 1.5, 100, 1.5, None, 1.0, None),
         ])
         df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
+                                  "Stück/h": [100.0, 100.0],
                                   "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
         old = _analysis.fetch_orderbook_depth
         try:
@@ -637,6 +639,42 @@ class MeasurementRankingTest(unittest.TestCase):
         # Der WERT bleibt ungewichtet - abgewertet wird nur der Rang.
         self.assertEqual(int(df_reason.set_index("Item").loc["papaya", "Gold/h realistisch"]), 200)
         self.assertEqual(float(df_reason.set_index("Item").loc["papaya", "Verlässlichkeit"]), 0.5)
+
+    def test_messung_rechnet_mit_ungerundeter_stueckzahl(self):
+        """Die Empfehlung rundet Stück/h für die Anzeige - gemessen wurde mit
+        genau dieser gerundeten Zahl, die Kosten aber kamen ungerundet aus der
+        Kette.
+
+        Gemeldet am 04.10.2026: astronomical_platebody (0,065 Stk/h) wurde mit
+        0,1 durchs Buch verkauft und stand mit fast doppeltem Ertrag auf Platz 1;
+        otherworldly_bar (0,034 Stk/h) wurde zu 0,0 - verkaufte nichts, zahlte
+        aber die vollen Zutaten und stand bei -3,9 Mio. Gold/h."""
+        df_rec = self._recommendation([
+            (1, "langsam", "Smithing", 300_000, "Spieler", 0, 0.1,
+             4_950_000, 5_000_000, 1.0, None),
+            (2, "sehr_langsam", "Smithing", 1_000_000, "Spieler", 0, 0.0,
+             148_500_000, 150_000_000, 1.0, None),
+        ])
+        df_chain = _pd.DataFrame({"Item": ["langsam", "sehr_langsam"], "ItemID": [1, 2],
+                                  "Stück/h": [0.065, 0.034],
+                                  "RawMaterialCost/h": [0.0, 4_000_000.0],
+                                  "Nebenertrag/h": [0.0, 0.0]})
+        books = {1: {"highestBuyPricesWithVolume": [{"key": 5_000_000, "value": 10}]},
+                 2: {"highestBuyPricesWithVolume": [{"key": 150_000_000, "value": 2}]}}
+        old = _analysis.fetch_orderbook_depth
+        try:
+            _analysis.fetch_orderbook_depth = books.get
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
+        finally:
+            _analysis.fetch_orderbook_depth = old
+        real = df_reason.set_index("Item")["Gold/h realistisch"]
+        # Eine Stunde = 0,065 bzw. 0,034 Stück, alles passt ins Top-Gebot.
+        self.assertEqual(int(real["langsam"]), round(0.065 * 5_000_000 * 0.99))
+        self.assertEqual(int(real["sehr_langsam"]),
+                         round(0.034 * 150_000_000 * 0.99 - 4_000_000))
+        self.assertEqual(list(df_reason["Preisverlust"]), ["0%", "0%"])
+        # Und die Anzeige verschluckt die langsamen Ketten nicht zu 0,0 oder 0,1.
+        self.assertEqual(sorted(df_reason["Stück/h"]), [0.034, 0.065])
 
 
 if __name__ == "__main__":
