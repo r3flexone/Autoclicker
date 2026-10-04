@@ -379,6 +379,29 @@ class ChainTest(unittest.TestCase):
         self.assertAlmostEqual(k.side_yield, cooked_per_raw * cooked.price_value)
         self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
 
+    def test_nebenprodukt_steht_in_der_kette(self):
+        """Damit die Begruendung den Nebenertrag durchs Buch verkaufen kann, sagt die
+        Kette, WAS anfaellt, wie viel und was der NPC dafuer zahlt."""
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
+        raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
+        self.assertEqual(len(k.side_items), 1)
+        item, qty, npc = k.side_items[0]
+        self.assertEqual(item, 200)
+        self.assertAlmostEqual(qty, raw_per_unit)
+        self.assertAlmostEqual(npc, 30 * cfg.NPC_SELL_BOOST_MULTIPLIER)
+
+    def test_gleiche_nebenprodukte_werden_zusammengezaehlt(self):
+        """power_pizza fischt zwei Fische; dieselbe Zutat zweimal faengt denselben
+        Fisch doppelt - das ist EIN Nebenprodukt mit doppelter Menge."""
+        recipes = dict(self.recipes)
+        recipes[300] = _rezept("einmal", "Cooking", 300, 1000, costs=[{"Item": 201, "Amount": 1}])
+        recipes[301] = _rezept("zweimal", "Cooking", 301, 1000,
+                               costs=[{"Item": 201, "Amount": 1}, {"Item": 201, "Amount": 1}])
+        once = pricing.resolve_chain(300, MARKET, recipes, self.fisch, INFO).side_items
+        twice = pricing.resolve_chain(301, MARKET, recipes, self.fisch, INFO).side_items
+        self.assertEqual(len(twice), 1)
+        self.assertAlmostEqual(twice[0][1], 2 * once[0][1])
+
     def test_roh_und_gekocht_sind_derselbe_fischzug(self):
         """Gefragt von beiden Seiten: dieselben Zuege je Stunde, derselbe Ertrag."""
         def gold_h(item_id):
@@ -905,6 +928,46 @@ class MeasurementRankingTest(unittest.TestCase):
             sleep.assert_called_once_with(20.0)         # ohne Reset-Header: 20 s
         finally:
             _analysis._orderbook_cache.pop(4711, None)
+
+    def _piranha(self):
+        """cooked_piranha vom 04.10.2026: Rohrest-Gebot 134 g fuer 321 Stueck,
+        darunter 216.301 Stueck zu 16 g - die Stunde liefert 1.943 rohe."""
+        df_rec = self._recommendation([
+            (5, "cooked_piranha", "Fishing", 278964, "Spieler", 6.93, 1943.3, 10.89, 11, 1.0, None)])
+        df_chain = _pd.DataFrame({"Item": ["cooked_piranha"], "ItemID": [1], "Stück/h": [1943.3],
+                                  "RawMaterialCost/h": [0.0], "Nebenertrag/h": [257800.8],
+                                  "_side_items": [((7, 1943.3, 5.0),)]})
+        books = {1: {"highestBuyPricesWithVolume": [{"key": 11, "value": 291883}]},
+                 7: {"highestBuyPricesWithVolume": [{"key": 134, "value": 321},
+                                                    {"key": 16, "value": 216301}]}}
+        return df_rec, df_chain, books
+
+    def _measure(self, df_rec, df_chain, fetch):
+        old = _analysis.fetch_orderbook_depth
+        try:
+            _analysis.fetch_orderbook_depth = fetch
+            return _analysis.build_reason_df(df_rec, df_chain)[0]
+        finally:
+            _analysis.fetch_orderbook_depth = old
+
+    def test_nebenertrag_wird_durchs_buch_verkauft(self):
+        """Zum Papier-Wert stand cooked_piranha auf Platz 5 (278.964 Gold/h), und 92 %
+        davon war der rohe Rest zu 134 g. Durchs Buch: 68.971 statt 257.800."""
+        df_rec, df_chain, books = self._piranha()
+        df_reason = self._measure(df_rec, df_chain, books.get)
+        expected = 0.99 * (1943.3 * 11) + 0.99 * (321 * 134 + (1943.3 - 321) * 16)
+        self.assertEqual(int(df_reason.loc[0, "Gold/h realistisch"]), round(expected))
+
+    def test_fehlt_das_buch_des_nebenprodukts_gibt_es_keine_messung(self):
+        df_rec, df_chain, books = self._piranha()
+        del books[7]
+        self.assertTrue(self._measure(df_rec, df_chain, books.get).empty)
+
+    def test_gebote_unter_dem_npc_werden_nicht_bedient(self):
+        """Wer an den NPC unbegrenzt fuer 6 g verkaufen kann, verkauft nicht ins Gebot
+        zu 5 g - hier lief der Verkauf frueher in jedes Gebot hinein."""
+        revenue = _analysis._book_revenue([(10, 100), (5, 1000)], 500, 6.0)
+        self.assertAlmostEqual(revenue, 100 * 10 * 0.99 + 400 * 6.0)
 
     def test_roher_fisch_steht_nicht_doppelt_in_den_ketten(self):
         """Mit Auto-Cook sind roh und gekocht derselbe Fischzug - eine Zeile, beim

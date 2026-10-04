@@ -281,6 +281,10 @@ class Chain(NamedTuple):
     side_yield: float       # z.B. der rohe Fischrest beim Auto-Cook
     costs_known: bool
     missing_ones: tuple
+    # Je Nebenprodukt ``(item_id, Stueck je Stueck Endprodukt, NPC-Preis)`` - damit
+    # die Begruendung auch den Nebenertrag durchs Orderbuch verkaufen kann statt ihn
+    # zum Papier-Wert stehen zu lassen.
+    side_items: tuple = ()
 
 
 def _empty(costs_value: float = 0.0, liquidity: float = 0.0, self_sufficient: bool = False,
@@ -347,7 +351,7 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
 
     return _subchains(recipe["costs"], actions_needed, market_map, recipe_by_output,
                         fish_to_cooked, item_info_map, visited, depth, max_depth,
-                        time_ms, steps_list, 0.0)
+                        time_ms, steps_list, 0.0, ())
 
 
 def _bought(item_id, market_map: dict, item_info_map: dict, qty_needed: float) -> Chain:
@@ -388,7 +392,7 @@ def _fishing_with_auto_cook(item_id, fish_source_id, cooked_id, market_map, reci
                  qty_needed, time_ms)]
 
     other_amount = actions_needed * per_action * (1.0 - share)
-    side_yield = 0.0
+    side_yield, side_items = 0.0, ()
     if AUTO_COOK_SELL_REST and other_amount > 0:
         # Die Steuergrenze haengt an der Menge EINES Angebots, und angeboten wird
         # eine Stunde Fischen - nicht der Rest, der auf ein einzelnes Stueck faellt.
@@ -397,16 +401,21 @@ def _fishing_with_auto_cook(item_id, fish_source_id, cooked_id, market_map, reci
         other_per_hour = 3_600_000.0 / fish_recipe["base_time_ms"] * per_action * (1.0 - share)
         channel = effective_sell_price(other_id, market_map, item_info_map, other_per_hour)
         side_yield = channel.price_value * other_amount
+        side_items = ((other_id, other_amount, channel.npc_price),)
 
     return _subchains(fish_recipe["costs"], actions_needed, market_map, recipe_by_output,
                         fish_to_cooked, item_info_map, visited | {fish_source_id, cooked_id},
-                        depth, max_depth, time_ms, steps_list, side_yield)
+                        depth, max_depth, time_ms, steps_list, side_yield, side_items)
 
 
 def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cooked,
                  item_info_map, visited, depth, max_depth, time_ms, steps_list,
-                 side_yield) -> Chain:
-    """Die Zutaten einer Stufe aufloesen und alles zu einer Kette zusammenfuehren."""
+                 side_yield, side_items) -> Chain:
+    """Die Zutaten einer Stufe aufloesen und alles zu einer Kette zusammenfuehren.
+
+    Nebenprodukte werden je Item zusammengezaehlt: power_pizza fischt zander UND
+    pufferfish, eine Kette mit derselben Zutat zweimal faengt denselben Fisch doppelt."""
+    sides = {item: [qty, npc] for item, qty, npc in side_items}
     costs_value, max_ratio = 0.0, 0.0
     self_sufficient = True
     costs_known = True
@@ -424,6 +433,9 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
         costs_known = costs_known and part.costs_known
         missing_ones.extend(part.missing_ones)
         steps_list.extend(part.steps_list)
+        for item, qty, npc in part.side_items:
+            sides.setdefault(item, [0.0, npc])[0] += qty
 
     return Chain(time_ms, costs_value, steps_list, max_ratio, self_sufficient, side_yield,
-                 costs_known, tuple(dict.fromkeys(missing_ones)))
+                 costs_known, tuple(dict.fromkeys(missing_ones)),
+                 tuple((item, qty, npc) for item, (qty, npc) in sides.items()))

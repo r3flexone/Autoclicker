@@ -486,6 +486,13 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "Revenue/h": revenue_per_hour,
             "Revenue/h (Ø-Preis)": revenue_per_hour_avg,
             "Nebenertrag/h": side_yield_per_hour,
+            "Nebenprodukte": ", ".join(
+                f"{item_info_map.get(item, {}).get('name', item)} {qty * actions_per_hour:,.1f}/h"
+                for item, qty, _ in chain.side_items),
+            # Fuer die Begruendung: je Nebenprodukt (Item, Stueck/h, NPC-Preis). Mit "_"
+            # beginnende Spalten gehen nicht in die Excel-Datei.
+            "_side_items": tuple((item, qty * actions_per_hour, npc)
+                                 for item, qty, npc in chain.side_items),
             "RawMaterialCost/h": cost_per_hour,
             "KostenVollstaendig": chain.costs_known,
             "FehlendeZutaten": ", ".join(chain.missing_ones),
@@ -1105,6 +1112,33 @@ def reason_candidates(df_rec: pd.DataFrame) -> pd.DataFrame:
     return candidates.head(REASON_CANDIDATES) if REASON_CANDIDATES else candidates
 
 
+def _book_revenue(levels: list, units: float, npc: float) -> float:
+    """Was `units` Stueck einbringen, verkauft durchs Buch, der Rest an den NPC.
+
+    Nur Gebote, die netto mehr bringen als der NPC: darunter verkauft niemand ins
+    Buch, wenn der Vendor unbegrenzt mehr zahlt - hier lief der Verkauf frueher in
+    jedes Gebot hinein. Die Marktsteuer faellt auf den GESAMTwert der Stunde, also
+    entscheidet er selbst ueber die 100-Gold-Schwelle (deshalb Menge 1). Was nicht
+    mehr ins Buch passt, geht an den NPC (steuerfrei) statt verloren.
+    """
+    worth_it = [(price, amount) for price, amount in levels
+                if net_player_price(price, units) > npc]
+    gross, sold, _ = walk_orderbook(worth_it, units)
+    return net_player_price(gross, 1.0) + (units - sold) * npc
+
+
+def _side_revenue(side_items) -> float | None:
+    """Der Nebenertrag einer Stunde durchs Buch - None, wenn ein Buch fehlt
+    (dann gibt es keine Messung, wie beim Hauptprodukt)."""
+    total = 0.0
+    for side_id, units, npc in side_items:
+        depth = fetch_orderbook_depth(int(side_id))
+        if depth is None:
+            return None
+        total += _book_revenue(buy_levels_from_depth(depth), units, npc)
+    return total
+
+
 def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """Warum lohnt sich ein Item - mit den echten Kaufgebot-Stufen aus dem Player Shop.
 
@@ -1128,13 +1162,17 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     id_of_item = df_chain.set_index("Item")["ItemID"].to_dict() if not df_chain.empty else {}
     side_per_h = (df_chain.set_index("ItemID")["Nebenertrag/h"].to_dict()
                   if not df_chain.empty and "Nebenertrag/h" in df_chain.columns else {})
+    side_items_of = (df_chain.set_index("ItemID")["_side_items"].to_dict()
+                     if not df_chain.empty and "_side_items" in df_chain.columns else {})
     books: list = []      # fuer die Historie - abgerufen wird ohnehin schon
 
     candidates_df = reason_candidates(df_rec)
     print(f"\nHole Kaufgebot-Stufen fuer {len(candidates_df)} von {len(df_rec)} Items "
           f"({ORDERBOOK_PARALLEL} Requests parallel), sortiere danach nach 'Gold/h realistisch'...")
-    preload_orderbooks([id_of_item[n] for n in candidates_df["Item"] if n in id_of_item],
-                          "Kaufgebot-Stufen")
+    candidate_ids = [id_of_item[n] for n in candidates_df["Item"] if n in id_of_item]
+    preload_orderbooks(candidate_ids + [side for item_id in candidate_ids
+                                        for side, _, _ in side_items_of.get(item_id) or ()],
+                       "Kaufgebot-Stufen")
 
     rows = []
     unreachable: list[str] = []     # Buch nicht abrufbar - keine Messung
@@ -1163,9 +1201,16 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         # die "verkauft nichts" sagt. Gelesen wie ein leeres Buch, standen nach einem
         # API-Limit 18 von 30 Items mit 0 Gold/h da. Ohne Messung bleibt der
         # Papier-Wert stehen (sort_by_measurement). Der NPC braucht kein Buch.
-        if depth is None and not to_npc:
+        # Der Nebenertrag geht durchs Buch wie das Hauptprodukt. Zum Papier-Wert stand
+        # cooked_piranha auf Platz 5: 92 % seines Ertrags war der rohe Rest, gerechnet
+        # zu 134 g - am Gebot lagen 321 Stueck, die Stunde liefert 1.943, darunter
+        # stehen 16 g. Durchs Buch sind es 68.971 statt 257.800 Gold/h.
+        side_measured = _side_revenue(side_items_of.get(item_id) or ())
+        if (depth is None and not to_npc) or side_measured is None:
             unreachable.append(str(r["Item"]))
             continue
+        if side_items_of.get(item_id):
+            side_yield_h = side_measured
         levels = buy_levels_from_depth(depth) if depth else []
         if depth is not None and item_id is not None:
             books.append({"item": r["Item"], "item_id": int(item_id),
@@ -1177,14 +1222,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             if top_price > 0:
                 reference_gross = reference_gross or top_price
             coverage = top_amount / units_h if units_h > 0 else 0.0
-            gross, sold, _ = walk_orderbook(levels, units_h)
-            # Marktsteuer auf den Spieler-Anteil. `gross` ist bereits der GESAMTwert
-            # der Stunde, also entscheidet er selbst ueber die 100-Gold-Schwelle -
-            # deshalb Menge 1, nicht `sold`.
-            revenue_value = net_player_price(gross, 1.0)
-            # Was nicht mehr ins Buch passt, geht zum NPC (steuerfrei) statt verloren
-            remainder = units_h - sold
-            revenue_value += remainder * npc
+            revenue_value = _book_revenue(levels, units_h, npc)
             average = revenue_value / units_h if units_h > 0 else 0.0
             loss = (1 - average / reference_value) if reference_value > 0 else 0.0
         else:
@@ -1405,6 +1443,7 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
         # -> Preis_Sensitivitaet (die tatsaechlich farmbaren/relevanten Sichten zuerst,
         # Rohdaten + Chart-Daten als Referenz zuletzt).
         if not df_chain.empty:
+            df_chain = df_chain.drop(columns=[c for c in df_chain.columns if str(c).startswith("_")])
             df_chain.sort_values("Gold/h (Eigenherstellung)", ascending=False).to_excel(
                 writer, sheet_name="Ketten", index=False
             )

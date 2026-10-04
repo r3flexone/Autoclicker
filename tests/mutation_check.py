@@ -90,6 +90,10 @@ CASES = {
         "effective_sell_price(other_id, market_map, item_info_map, other_per_hour)",
         "effective_sell_price(other_id, market_map, item_info_map, other_amount)",
         "test_market_analysis.ChainTest.test_rohrest_versteuert_je_stunde_nicht_je_stueck"),
+    "auto-cook-side-items": (
+        "market_analysis.pricing", "_fishing_with_auto_cook",
+        "side_items = ((other_id, other_amount, channel.npc_price),)", "side_items = ()",
+        "test_market_analysis.ChainTest.test_nebenprodukt_steht_in_der_kette"),
     "raw-fish-auto-cook": (
         "market_analysis.pricing", "resolve_chain",
         "if cooked_id is not None and cooked_id not in visited and AUTO_COOK_CHANCE > 0:",

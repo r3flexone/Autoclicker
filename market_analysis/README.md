@@ -138,6 +138,18 @@ eine Zahl dort wäre eine Behauptung, die niemand geprüft hat": das ergab zehn 
 die Empfehlung ihre Zahl aus der gekürzten Liste zog. Jede Messung bleibt jetzt, und der
 Rest ist als Papier gekennzeichnet statt weggelassen.
 
+**Auch der Nebenertrag geht durchs Buch.** Beim Auto-Cook fällt zu jedem gekochten Fisch
+ein roher an, und der stand lange zum Papier-Wert in der Messung. Am 04.10.2026 kam
+`cooked_piranha` so auf Platz 5 (278.964 Gold/h), und 92 % davon waren der rohe Rest zu
+134 g – am Gebot lagen 321 Stück, die Stunde liefert 1.943, darunter stehen 16 g. Durchs
+Buch sind es 68.971 statt 257.800 Gold/h. Die Kette sagt dafür, welches Nebenprodukt in
+welcher Menge anfällt (Spalte `Nebenprodukte` im Ketten-Sheet); fehlt eines seiner
+Bücher, gibt es für das Item keine Messung.
+
+**Verkauft wird nur in Gebote, die mehr bringen als der NPC.** Wer an den Vendor
+unbegrenzt für 6 g verkaufen kann, verkauft nicht ins Gebot zu 5 g. Die Messung lief
+früher in jedes Gebot hinein und schickte erst den Rest an den NPC.
+
 ### Steuer
 
 Der Player Shop zieht **1 % vom Verkaufserlös** ab, aber **erst ab 100 Gold
