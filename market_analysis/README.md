@@ -332,6 +332,32 @@ Das ist **keine Prognose**, nur Kontext. Der Trend wird nur ausgesprochen, wenn 
 soll nicht wie ein Trend aussehen. Beides kommt aus derselben Antwort wie das Orderbuch
 und kostet keinen zusätzlichen Request.
 
+### Ausreißer im Buch
+
+Im Oak-Buch vom 04.10.2026 stand ein Angebot über **ein** Stück zu 464.650 g, bei einem
+gehandelten Schnitt von 95 g, und ein Gebot über ein Stück zu 1 g. Das Angebot zeichnete
+der Chart als 1,56 Mrd. Gold/h, alle anderen Linien lagen auf der Nulllinie. Auf der
+anderen Seite des Buchs wäre es schlimmer gewesen: als **Gebot** hätte dasselbe Stück als
+Verkaufspreis für eine ganze Stunde Produktion gegolten, und Oak stünde auf Platz 1.
+
+**Ein Eintrag, der um mehr als `OUTLIER_PRICE_FACTOR` (10) vom gehandelten Schnitt
+abweicht, zählt nirgends** – nicht als Bestpreis, nicht beim Verkauf durchs Buch, nicht
+beim eigenen Angebot, nicht im Chart, nicht in der Historie:
+
+- **Massstab ist der Schnitt, nicht das Buch.** Ein Eintrag, den niemand annimmt, bewegt
+  den Schnitt nicht; er kommt aus Abschlüssen. Genommen wird der 1-Tage-Schnitt, sonst 7,
+  sonst 30 Tage. Ohne jeden Abschluss gibt es keinen Massstab, dann bleibt das Buch, wie es
+  ist.
+- **Der Bestpreis wird ersetzt, nicht verworfen.** Liegt das beste Gebot oder Angebot des
+  Bulk-Endpoints daneben, holt der Lauf das Orderbuch des Items und nimmt die nächste
+  echte Stufe (`drop_outlier_listings`). Gibt es keine, fällt die Seite weg: ein Item ohne
+  echtes Gebot geht an den NPC, eine Zutat ohne echtes Angebot hat keinen bekannten Preis.
+- **Das kostet einen Request je betroffenem Item**, parallel. Am 04.10.2026 waren es 36
+  von 630. Die Konsole listet, was ersetzt wurde.
+
+Ein echtes, nur tiefes Gebot (Oak: 245.185 Stück zu 27 g) liegt innerhalb des Faktors
+und bleibt.
+
 ## Historie
 
 Excel und Chart werden bei **jedem Lauf überschrieben** – das bleibt so, sie beantworten

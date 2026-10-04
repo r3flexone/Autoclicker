@@ -31,7 +31,8 @@ try:
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTLIER_PRICE_FACTOR,
+        OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
@@ -41,7 +42,7 @@ try:
         THIN_BID_HOURS, net_player_price,
     )
     from .orderbook import (
-        buy_levels_from_depth, patience_analysis,
+        buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
         price_position, sell_levels_from_depth, walk_orderbook,
     )
     from .pricing import (
@@ -59,7 +60,8 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTLIER_PRICE_FACTOR,
+        OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
@@ -69,7 +71,7 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         THIN_BID_HOURS, net_player_price,
     )
     from orderbook import (  # type: ignore
-        buy_levels_from_depth, patience_analysis,
+        buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
         price_position, sell_levels_from_depth, walk_orderbook,
     )
     from pricing import (  # type: ignore
@@ -607,17 +609,59 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(avg_df, on="ItemID", how="left")
 
 
+def drop_outlier_listings(market_map: dict) -> list:
+    """Ersetzt Bestpreise weit weg vom gehandelten Schnitt durch die naechste echte
+    Stufe des Orderbuchs (s. `implausible_top`, `OUTLIER_PRICE_FACTOR`).
+
+    Laeuft vor jeder Rechnung und ueber den ganzen Markt, nicht nur ueber die
+    Rezepte: auch die Marktwert-Tabelle fuer den Autoclicker liest diese Preise.
+    Gemessen am 04.10.2026 betraf das 36 von 630 Items - ein Request je Item,
+    parallel. Rueckgabe: ``(item_id, vorher, nachher)`` je korrigiertem Item.
+    """
+    suspicious = [item_id for item_id, entry in market_map.items() if implausible_top(entry)]
+    if not suspicious:
+        return []
+    preload_orderbooks(suspicious, "Ausreisser im Buch")
+    changes = []
+    for item_id in suspicious:
+        before = market_map[item_id]
+        market_map[item_id] = corrected_top(before, fetch_orderbook_depth(int(item_id)))
+        changes.append((item_id, before, market_map[item_id]))
+    return changes
+
+
+def print_outlier_changes(changes: list, item_info_map: dict, limit: int = 8):
+    """Welche Bestpreise ignoriert wurden - eine Korrektur, die niemand sieht, haelt
+    man spaeter fuer einen Rechenfehler."""
+    if not changes:
+        return
+    print(f"ℹ {len(changes)} Bestpreise lagen mehr als Faktor {OUTLIER_PRICE_FACTOR:g} neben "
+          "dem gehandelten Schnitt und zaehlen nicht - stattdessen gilt die naechste echte Stufe:")
+    for item_id, before, after in changes[:limit]:
+        name = item_info_map.get(item_id, {}).get("name", f"item_{item_id}")
+        parts = [f"{label} {before[side]:,} -> {after[side]:,}" if after[side] else
+                 f"{label} {before[side]:,} -> keins"
+                 for side, label in (("buy", "Gebot"), ("sell", "Angebot"))
+                 if before[side] != after[side]]
+        print(f"    {name:<28} {', '.join(parts)}  (Schnitt {before.get('avg', 0):,.0f})")
+    if len(changes) > limit:
+        print(f"    ... und {len(changes) - limit} weitere")
+
+
 def price_points_from_depth(depth: dict) -> list:
     """5 hoechste Buy-Preise (aufsteigend, niedrigster zuerst) + 5 niedrigste Sell-Preise
-    (aufsteigend). Fehlende Tiefenstufen (dünner Markt) werden mit None aufgefuellt."""
-    buys = sorted(depth.get("highestBuyPricesWithVolume", []), key=lambda x: x["key"], reverse=True)[:5]
-    buys = sorted(buys, key=lambda x: x["key"])
+    (aufsteigend). Fehlende Tiefenstufen (dünner Markt) werden mit None aufgefuellt.
+
+    Dieselben Stufen wie ueberall, also ohne Ausreisser: das Oak-Angebot zu
+    464.650 g stand hier als 1,56 Mrd. Gold/h und drueckte jede andere Linie auf
+    die Nulllinie."""
+    buys = sorted(price for price, _ in buy_levels_from_depth(depth))[-5:]
     while len(buys) < 5:
         buys.insert(0, None)
-    sells = sorted(depth.get("lowestSellPricesWithVolume", []), key=lambda x: x["key"])[:5]
+    sells = sorted(price for price, _ in sell_levels_from_depth(depth))[:5]
     while len(sells) < 5:
         sells.append(None)
-    return [(b["key"] if b else None) for b in buys] + [(s["key"] if s else None) for s in sells]
+    return buys + sells
 
 
 PRICE_SENSITIVITY_LABELS_SHORT = ["Buy1", "Buy2", "Buy3", "Buy4", "Buy5", "Sell1", "Sell2", "Sell3", "Sell4", "Sell5"]
@@ -1627,6 +1671,10 @@ def main():
     if not tasks:
         print("⚠ Abbruch: Game-Data enthaelt keinen 'Tasks'-Block - Endpunkt/Schema pruefen.")
         return
+
+    # Vor jeder Rechnung: ein einzelner Eintrag weit weg vom gehandelten Schnitt
+    # truege sonst als Bestpreis eine ganze Stunde Produktion.
+    print_outlier_changes(drop_outlier_listings(market_map), item_info_map)
 
     # Best-/Worst-Case parallel aufbauen (Smelting-Magic-Reichweite, s. Abschnitt 2/6)
     smelting_exclusions = resolve_smelting_magic_exclusions(item_info_map)

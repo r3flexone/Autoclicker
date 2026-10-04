@@ -278,6 +278,14 @@ MAX_SPREAD_RATIO = 1.0         # Warnung ab Ask > 2x Bid
 MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung ab >50% Abweichung vom 24h-Schnitt
 LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 
+# Ein Eintrag im Buch, der um mehr als diesen Faktor vom GEHANDELTEN Schnitt
+# abweicht, ist kein Marktpreis, sondern ein Versehen oder Absicht - Anlass war
+# Oak am 04.10.2026: ein Angebot zu 464.650 g (Schnitt 95 g) und ein Gebot zu 1 g,
+# je ein Stueck. Massstab ist der Schnitt, weil ein Eintrag, den niemand annimmt,
+# ihn nicht bewegt. Solche Eintraege zaehlen nirgends: nicht im Bestpreis, nicht
+# beim Verkauf durchs Buch, nicht im Chart (s. README, "Ausreisser im Buch").
+OUTLIER_PRICE_FACTOR = 10.0
+
 
 # ------------------------------------------------------------------
 # Optionale Auswertungen (kosten zusaetzliche Live-Requests)
@@ -422,6 +430,6 @@ CONFIG_HASH_KEYS = [
     "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
     "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
     "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
-    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME",
+    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "OUTLIER_PRICE_FACTOR",
     "RANKING_BASIS",
 ]

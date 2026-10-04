@@ -72,6 +72,14 @@ CASES = {
         "Rest des Blocks lief weiter.\n        return True",
         "Rest des Blocks lief weiter.\n        state.skip_step_event.clear()\n        return True",
         RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
+    "orderbook-outlier": (
+        "market_analysis.orderbook", "_levels",
+        'and plausible_price(entry["key"], reference)]', "]",
+        "test_market_analysis.OutlierTest.test_ausreisser_im_buch_zaehlen_nicht"),
+    "outlier-top": (
+        "market_analysis.orderbook", "implausible_top",
+        "and not plausible_price(entry[side], avg)", "and False",
+        "test_market_analysis.OutlierTest.test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_against_known",
         "    if known_active:", "    if False:",

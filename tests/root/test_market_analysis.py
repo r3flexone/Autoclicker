@@ -14,7 +14,10 @@ from market_analysis import extended_json, history, pricing
 from market_analysis.config import (
     COMPREHENSIVE_AVG_FIELDS, GOLD_ITEM_ID, net_player_price, saving_factor,
 )
-from market_analysis.orderbook import patience_analysis, price_position, walk_orderbook
+from market_analysis.orderbook import (
+    buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
+    price_position, sell_levels_from_depth, walk_orderbook,
+)
 from market_analysis.recipes import cost_factor, normalize_recipe, skill_cfg
 
 
@@ -25,6 +28,20 @@ MARKET = {
     201: {"buy": 300, "sell": 340, "buyVol": 15000, "sellVol": 7000, "avg": 310},
     400: {"buy": 3, "sell": 4, "buyVol": 900, "sellVol": 900, "avg": 3},
     500: {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0},
+}
+# Das Oak-Buch vom 04.10.2026, abgeschrieben aus dem Spiel: auf jeder Seite ein
+# einzelnes Stueck weit weg vom Rest - ein Gebot zu 1 g, ein Angebot zu 464.650 g.
+OAK_BOOK = {
+    "highestBuyPricesWithVolume": [
+        {"key": 95, "value": 12934}, {"key": 91, "value": 34975}, {"key": 52, "value": 25344},
+        {"key": 27, "value": 245185}, {"key": 1, "value": 1}],
+    "lowestSellPricesWithVolume": [
+        {"key": 120, "value": 1842}, {"key": 128, "value": 149571},
+        {"key": 464650, "value": 1}],
+    COMPREHENSIVE_AVG_FIELDS["Avg1D"]: 95,
+    COMPREHENSIVE_AVG_FIELDS["Avg7D"]: 93,
+    COMPREHENSIVE_AVG_FIELDS["Avg30D"]: 81,
+    "tradeVolume1Day": 163588,
 }
 INFO = {
     100: {"name": "yew_log", "base_value": 20, "can_trade": True, "can_sell_to_npc": True},
@@ -355,6 +372,60 @@ class OrderbookTest(unittest.TestCase):
         self.assertAlmostEqual(net, -0.01)
 
 
+class OutlierTest(unittest.TestCase):
+    """Ein einzelner Eintrag weit weg vom gehandelten Schnitt ist kein Marktpreis.
+
+    Gefunden im Oak-Buch vom 04.10.2026: ein Angebot zu 464.650 g machte den Chart
+    unlesbar (1,56 Mrd. Gold/h, alle anderen Linien auf null). Auf der anderen Seite
+    des Buchs - als Gebot - haette dasselbe Stueck die ganze Rangliste getragen.
+    """
+
+    def test_ausreisser_im_buch_zaehlen_nicht(self):
+        self.assertEqual([p for p, _ in buy_levels_from_depth(OAK_BOOK)], [95, 91, 52, 27])
+        self.assertEqual([p for p, _ in sell_levels_from_depth(OAK_BOOK)], [120, 128])
+
+    def test_ohne_gehandelten_schnitt_bleibt_das_buch_wie_es_ist(self):
+        """Ohne Abschluss kein Massstab - dann wird nichts weggeraeumt."""
+        book = {k: v for k, v in OAK_BOOK.items() if k not in COMPREHENSIVE_AVG_FIELDS.values()}
+        self.assertEqual(len(buy_levels_from_depth(book)), 5)
+        self.assertEqual(len(sell_levels_from_depth(book)), 3)
+
+    def test_geduld_setzt_nicht_beim_ausreisser_an(self):
+        """Steht nur das Angebot zu 464.650 g im Buch, ist es kein Preis, den man
+        um 1 g unterbieten koennte - sonst waere Geduld 4.900-mal so viel wert."""
+        depth = dict(OAK_BOOK, lowestSellPricesWithVolume=[{"key": 464650, "value": 1}])
+        result = patience_analysis(depth, 95, 3400, 0)
+        self.assertLess(result["price_value"], 200)
+
+    def test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt(self):
+        """Ein Gebot zu 464.650 g fuer EIN Stueck stuende sonst als Preis fuer die
+        ganze Stunde da."""
+        entry = {"buy": 464650, "buyVol": 1, "sell": 120, "sellVol": 1842, "avg": 95}
+        depth = dict(OAK_BOOK, highestBuyPricesWithVolume=[
+            {"key": 464650, "value": 1}, {"key": 95, "value": 12934}])
+        self.assertTrue(implausible_top(entry))
+        fixed = corrected_top(entry, depth)
+        self.assertEqual((fixed["buy"], fixed["buyVol"]), (95, 12934))
+        self.assertEqual((fixed["sell"], fixed["sellVol"]), (120, 1842))
+
+    def test_einzelnes_billigangebot_macht_eine_zutat_nicht_kostenlos(self):
+        entry = {"buy": 90, "buyVol": 500, "sell": 1, "sellVol": 1, "avg": 100}
+        depth = {"lowestSellPricesWithVolume": [{"key": 1, "value": 1}, {"key": 105, "value": 500}]}
+        fixed = corrected_top(entry, depth)
+        self.assertEqual(pricing.ingredient_price(7, {7: fixed}), (105.0, True))
+
+    def test_ohne_buch_faellt_der_ausreisser_ersatzlos_weg(self):
+        """Lieber kein Gebot als eins, das es nur fuer ein Stueck gibt."""
+        entry = {"buy": 464650, "buyVol": 1, "sell": 120, "sellVol": 1842, "avg": 95}
+        fixed = corrected_top(entry, None)
+        self.assertFalse(pricing.valid_sell_market(fixed))
+        self.assertTrue(pricing.valid_buy_market(fixed))
+
+    def test_plausible_bestpreise_bleiben_unberuehrt(self):
+        self.assertFalse(any(implausible_top(entry) for entry in MARKET.values()))
+        self.assertFalse(implausible_top(None))
+
+
 class HistoryTest(unittest.TestCase):
     def setUp(self):
         self.conn = history.open_db(":memory:")
@@ -675,6 +746,11 @@ class MeasurementRankingTest(unittest.TestCase):
         self.assertEqual(list(df_reason["Preisverlust"]), ["0%", "0%"])
         # Und die Anzeige verschluckt die langsamen Ketten nicht zu 0,0 oder 0,1.
         self.assertEqual(sorted(df_reason["Stück/h"]), [0.034, 0.065])
+
+    def test_chart_zeichnet_keine_ausreisser(self):
+        """Das Oak-Angebot zu 464.650 g stand als 1,56 Mrd. Gold/h im Chart."""
+        self.assertEqual(_analysis.price_points_from_depth(OAK_BOOK),
+                         [None, 27, 52, 91, 95, 120, 128, None, None, None])
 
 
 if __name__ == "__main__":

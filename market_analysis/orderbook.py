@@ -2,11 +2,13 @@
 
 try:
     from .config import (
-        COMPREHENSIVE_AVG_FIELDS, COMPREHENSIVE_VOLUME_FIELD, net_player_price,
+        COMPREHENSIVE_AVG_FIELDS, COMPREHENSIVE_VOLUME_FIELD, OUTLIER_PRICE_FACTOR,
+        net_player_price,
     )
 except ImportError:
     from config import (  # type: ignore
-        COMPREHENSIVE_AVG_FIELDS, COMPREHENSIVE_VOLUME_FIELD, net_player_price,
+        COMPREHENSIVE_AVG_FIELDS, COMPREHENSIVE_VOLUME_FIELD, OUTLIER_PRICE_FACTOR,
+        net_player_price,
     )
 
 
@@ -24,18 +26,92 @@ def walk_orderbook(levels: list, qty: float) -> tuple[float, float, float]:
     return revenue, max(0.0, qty) - remaining, last_price
 
 
-def buy_levels_from_depth(depth: dict) -> list:
-    """Kaufgebote als ``(Preis, Menge)``."""
+def reference_price(depth: dict | None) -> float:
+    """Der gehandelte Schnitt: 1 Tag, sonst 7, sonst 30 Tage - 0 heisst keiner.
+
+    Massstab fuer Ausreisser, weil er aus Abschluessen kommt und nicht aus dem
+    Buch: ein Angebot zu 464.650 g, das niemand annimmt, bewegt ihn nicht.
+    """
+    if not depth:
+        return 0.0
+    for key in ("Avg1D", "Avg7D", "Avg30D"):
+        value = depth.get(COMPREHENSIVE_AVG_FIELDS[key]) or 0
+        if value > 0:
+            return float(value)
+    return 0.0
+
+
+def plausible_price(price: float, reference: float) -> bool:
+    """Liegt der Preis innerhalb `OUTLIER_PRICE_FACTOR` um den gehandelten Schnitt?
+
+    Ohne Schnitt (kein Handel) gibt es keinen Massstab - dann zaehlt jeder Preis,
+    statt ein Buch ohne Vergleich leerzuraeumen.
+    """
+    if reference <= 0:
+        return True
+    return reference / OUTLIER_PRICE_FACTOR <= price <= reference * OUTLIER_PRICE_FACTOR
+
+
+def _levels(depth: dict | None, field: str, reference: float | None) -> list:
+    """``(Preis, Menge)`` einer Buchseite, ohne Ausreisser.
+
+    Gefiltert wird HIER und nicht beim Leser: Verkauf durchs Buch, Geduld,
+    Chart und Historie bekommen dieselben Stufen. Vorher zeichnete der Chart
+    das Oak-Angebot zu 464.650 g als 1,56 Mrd. Gold/h, und alle anderen Linien
+    lagen auf der Nulllinie.
+    """
+    if not depth:
+        return []
+    if reference is None:
+        reference = reference_price(depth)
     return [(entry["key"], float(entry["value"]))
-            for entry in depth.get("highestBuyPricesWithVolume", [])
-            if entry.get("key") and entry.get("value")]
+            for entry in depth.get(field, [])
+            if entry.get("key") and entry.get("value")
+            and plausible_price(entry["key"], reference)]
 
 
-def sell_levels_from_depth(depth: dict) -> list:
+def buy_levels_from_depth(depth: dict | None, reference: float | None = None) -> list:
+    """Kaufgebote als ``(Preis, Menge)`` - Massstab ist der Schnitt des Buchs selbst."""
+    return _levels(depth, "highestBuyPricesWithVolume", reference)
+
+
+def sell_levels_from_depth(depth: dict | None, reference: float | None = None) -> list:
     """Verkaufsangebote als ``(Preis, Menge)``."""
-    return [(entry["key"], float(entry["value"]))
-            for entry in depth.get("lowestSellPricesWithVolume", [])
-            if entry.get("key") and entry.get("value")]
+    return _levels(depth, "lowestSellPricesWithVolume", reference)
+
+
+def implausible_top(entry: dict | None) -> bool:
+    """Liegt das beste Gebot oder Angebot des Bulk-Endpoints weit weg vom Schnitt?
+
+    Der Bulk-Endpoint kennt nur die oberste Stufe. Ist sie ein Ausreisser, traegt
+    ein einziges Stueck die ganze Rechnung: ein Gebot zu 464.650 g fuer EINEN
+    Oak-Stamm stuende als Verkaufspreis fuer eine ganze Stunde Produktion da
+    (1,56 Mrd. Gold/h), ein Angebot zu 1 g machte eine Zutat fast kostenlos.
+    """
+    if not entry:
+        return False
+    avg = entry.get("avg", 0) or 0
+    return any(entry.get(side, 0) > 0 and not plausible_price(entry[side], avg)
+               for side in ("buy", "sell"))
+
+
+def corrected_top(entry: dict, depth: dict | None) -> dict:
+    """Der Eintrag mit der naechsten ECHTEN Stufe statt des Ausreissers.
+
+    Massstab ist derselbe Schnitt, an dem der Ausreisser erkannt wurde. Gibt das
+    Buch keine plausible Stufe her (oder fehlt es), faellt die Seite weg (0): ein
+    Item ohne echtes Gebot geht an den NPC, eine Zutat ohne echtes Angebot hat
+    keinen bekannten Preis - beides sagt die Rechnung dann selbst.
+    """
+    out = dict(entry)
+    avg = entry.get("avg", 0) or 0
+    if entry.get("buy", 0) > 0 and not plausible_price(entry["buy"], avg):
+        bids = buy_levels_from_depth(depth, avg)
+        out["buy"], out["buyVol"] = max(bids) if bids else (0, 0)
+    if entry.get("sell", 0) > 0 and not plausible_price(entry["sell"], avg):
+        asks = sell_levels_from_depth(depth, avg)
+        out["sell"], out["sellVol"] = min(asks) if asks else (0, 0)
+    return out
 
 
 def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
