@@ -814,6 +814,87 @@ class MeasurementRankingTest(unittest.TestCase):
         # Und die Anzeige verschluckt die langsamen Ketten nicht zu 0,0 oder 0,1.
         self.assertEqual(sorted(df_reason["Stück/h"]), [0.034, 0.065])
 
+    def _two_player_items(self):
+        df_rec = self._recommendation([
+            (1, "erreichbar", "Woodcutting", 1000, "Spieler", 1.0, 10, 100, 100, 1.0, None),
+            (2, "gedrosselt", "Woodcutting", 900, "Spieler", 1.0, 10, 90, 90, 1.0, None),
+        ])
+        df_chain = _pd.DataFrame({"Item": ["erreichbar", "gedrosselt"], "ItemID": [1, 2],
+                                  "Stück/h": [10.0, 10.0], "RawMaterialCost/h": [0.0, 0.0],
+                                  "Nebenertrag/h": [0.0, 0.0]})
+        return df_rec, df_chain
+
+    def test_nicht_abrufbares_buch_ist_keine_messung(self):
+        """Gemeldet am 04.10.2026: das API-Limit (50 Abrufe je Minute) liess 18
+        Buecher ausfallen, und die Begruendung las sie wie Buecher ohne Gebot -
+        mahogany, teak, coal_ore & Co. standen mit 0 Gold/h da."""
+        df_rec, df_chain = self._two_player_items()
+        books = {1: {"highestBuyPricesWithVolume": [{"key": 100, "value": 1000}]}}
+        old = _analysis.fetch_orderbook_depth
+        try:
+            _analysis.fetch_orderbook_depth = books.get
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
+        finally:
+            _analysis.fetch_orderbook_depth = old
+        self.assertEqual(list(df_reason["Item"]), ["erreichbar"])
+        out = _analysis.sort_by_measurement(df_rec, df_reason).set_index("Item")
+        self.assertEqual(out.loc["gedrosselt", "Gold/h Quelle"], _analysis.SOURCE_PAPER)
+        self.assertEqual(int(out.loc["gedrosselt", "Gold/h realistisch"]), 900)
+
+    def test_buch_ohne_gebot_geht_an_den_npc(self):
+        """Abgerufen, aber leer: alles geht an den NPC - wie der Rest, der nicht
+        mehr ins Buch passt. Vorher standen hier 0 Gold/h."""
+        df_rec, df_chain = self._two_player_items()
+        old = _analysis.fetch_orderbook_depth
+        try:
+            _analysis.fetch_orderbook_depth = lambda item_id: {"highestBuyPricesWithVolume": []}
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
+        finally:
+            _analysis.fetch_orderbook_depth = old
+        self.assertEqual(list(df_reason["Gold/h realistisch"]), [10, 10])   # 10 Stk x 1 g NPC
+
+    def test_ausreisser_holt_nur_fuer_rezept_items_ein_buch(self):
+        """Fuer jedes Item des Markts ein Buch zu holen waren 36 Abrufe - zusammen
+        mit der Begruendung ueber dem Limit der API."""
+        market = {1: {"buy": 464650, "buyVol": 1, "sell": 120, "sellVol": 50, "avg": 95},
+                  2: {"buy": 464650, "buyVol": 1, "sell": 120, "sellVol": 50, "avg": 95},
+                  3: dict(MARKET[100])}
+        fetched = []
+
+        def fetch(item_id):
+            fetched.append(item_id)
+            return {"highestBuyPricesWithVolume": [{"key": 95, "value": 500}]}
+        old = _analysis.fetch_orderbook_depth
+        try:
+            _analysis.fetch_orderbook_depth = fetch
+            changes = _analysis.drop_outlier_listings(market, {1, 3})
+        finally:
+            _analysis.fetch_orderbook_depth = old
+        self.assertEqual(sorted(set(fetched)), [1])
+        self.assertEqual([c[0] for c in changes], [1, 2])
+        self.assertEqual(market[1]["buy"], 95)          # Ersatz aus dem Buch
+        self.assertEqual(market[2]["buy"], 0)           # ohne Abruf: faellt weg
+        self.assertEqual(market[3], MARKET[100])        # plausibel: unberuehrt
+
+    def test_api_limit_wartet_statt_eine_luecke_zu_lassen(self):
+        from unittest import mock
+
+        class Answer:
+            def __init__(self, status, data=None):
+                self.status_code, self.headers, self._data = status, {}, data
+
+            def json(self):
+                return self._data
+        answers = [Answer(429), Answer(200, {"itemId": 4711})]
+        _analysis._orderbook_cache.pop(4711, None)
+        try:
+            with mock.patch.object(_analysis.requests, "get", lambda *a, **k: answers.pop(0)), \
+                    mock.patch.object(_analysis.time, "sleep") as sleep:
+                self.assertEqual(_analysis.fetch_orderbook_depth(4711), {"itemId": 4711})
+            sleep.assert_called_once_with(20.0)         # ohne Reset-Header: 20 s
+        finally:
+            _analysis._orderbook_cache.pop(4711, None)
+
     def test_roher_fisch_steht_nicht_doppelt_in_den_ketten(self):
         """Mit Auto-Cook sind roh und gekocht derselbe Fischzug - eine Zeile, beim
         gekochten Fisch, samt rohem Rest."""

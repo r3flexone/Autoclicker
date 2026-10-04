@@ -349,6 +349,12 @@ REASON_CANDIDATES = 30
 # und irgendwann drosselt die API - 1 heisst wieder streng nacheinander.
 ORDERBOOK_PARALLEL = 8
 
+# Die API laesst 50 Abrufe je Minute zu (Header X-Rate-Limit-*) und antwortet
+# danach mit HTTP 429. Ein Lauf braucht gut 30; zwei Laeufe kurz hintereinander
+# (oder apicheck davor) reissen die Grenze. Dann wird bis zum naechsten Fenster
+# gewartet, so oft wie hier steht - ein fehlendes Buch hiesse sonst eine Luecke.
+ORDERBOOK_QUOTA_RETRIES = 3
+
 # Preis-Position: aktueller Erloes gegen den 30-Tage-Schnitt desselben Items. Ab dieser
 # Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).
 PRICE_POSITION_HINT_RATIO = 0.10

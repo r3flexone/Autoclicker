@@ -355,12 +355,20 @@ beim eigenen Angebot, nicht im Chart, nicht in der Historie:
   den Schnitt nicht; er kommt aus Abschlüssen. Genommen wird der 1-Tage-Schnitt, sonst 7,
   sonst 30 Tage. Ohne jeden Abschluss gibt es keinen Massstab, dann bleibt das Buch, wie es
   ist.
-- **Der Bestpreis wird ersetzt, nicht verworfen.** Liegt das beste Gebot oder Angebot des
-  Bulk-Endpoints daneben, holt der Lauf das Orderbuch des Items und nimmt die nächste
-  echte Stufe (`drop_outlier_listings`). Gibt es keine, fällt die Seite weg: ein Item ohne
-  echtes Gebot geht an den NPC, eine Zutat ohne echtes Angebot hat keinen bekannten Preis.
-- **Das kostet einen Request je betroffenem Item**, parallel. Am 04.10.2026 waren es 36
-  von 630. Die Konsole listet, was ersetzt wurde.
+- **Für die Rechnung wird der Bestpreis ersetzt, nicht verworfen.** Liegt das beste Gebot
+  oder Angebot des Bulk-Endpoints daneben, holt der Lauf das Orderbuch und nimmt die
+  nächste echte Stufe (`drop_outlier_listings`) – aber nur für Items, die in einem Rezept
+  vorkommen, am 04.10.2026 eines. Bei allen übrigen (35 weitere, nur für die
+  Marktwert-Tabelle von Belang) fällt die Seite ohne Abruf weg. Gibt es keine echte
+  Stufe, fällt sie ebenfalls weg: ein Item ohne echtes Gebot geht an den NPC, eine Zutat
+  ohne echtes Angebot hat keinen bekannten Preis. Die Konsole listet, was sich geändert
+  hat.
+- **Warum nicht für alle:** die API lässt 50 Abrufe je Minute zu. Der erste Wurf holte
+  für alle 36 ein Buch, zusammen mit den 30 der Begründung lief der Lauf ins Limit, und
+  18 Bücher fehlten. Bei HTTP 429 wartet der Lauf jetzt bis zum nächsten Fenster
+  (`ORDERBOOK_QUOTA_RETRIES`); ein Buch, das trotzdem nicht ankommt, ist **keine
+  Messung** – das Item behält in der Begründung seinen Papier-Wert, statt wie ein Buch
+  ohne Gebot mit 0 Gold/h dazustehen.
 
 Ein echtes, nur tiefes Gebot (Oak: 245.185 Stück zu 27 g) liegt innerhalb des Faktors
 und bleibt.

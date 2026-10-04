@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import requests
@@ -31,8 +32,8 @@ try:
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTLIER_PRICE_FACTOR,
-        OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL,
+        ORDERBOOK_QUOTA_RETRIES, OUTLIER_PRICE_FACTOR, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
@@ -60,8 +61,8 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTLIER_PRICE_FACTOR,
-        OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL,
+        ORDERBOOK_QUOTA_RETRIES, OUTLIER_PRICE_FACTOR, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
@@ -544,13 +545,55 @@ def merge_worst_case_chain(df_chain_best: pd.DataFrame, df_chain_worst: pd.DataF
 _orderbook_cache: dict[int, dict] = {}
 
 
+# Wann zuletzt "API-Limit, warte" gesagt wurde: acht Threads laufen gleichzeitig
+# ins Limit, und acht gleiche Zeilen sagen nicht mehr als eine.
+_quota_lock = threading.Lock()
+_quota_notice_until = 0.0
+
+
+def _quota_wait_seconds(response) -> float:
+    """Bis das Minutenfenster der API neu beginnt (Header X-Rate-Limit-Reset,
+    sieben Nachkommastellen, deshalb gekuerzt), ohne Header 20 s."""
+    try:
+        reset = datetime.fromisoformat(response.headers["X-Rate-Limit-Reset"][:26] + "+00:00")
+    except (KeyError, ValueError):
+        return 20.0
+    return min(65.0, max(1.0, (reset - datetime.now(timezone.utc)).total_seconds() + 1.0))
+
+
+def _wait_for_quota(response) -> None:
+    global _quota_notice_until
+    seconds = _quota_wait_seconds(response)
+    with _quota_lock:
+        if time.monotonic() >= _quota_notice_until:
+            print(f"  API-Limit erreicht (50 Abrufe je Minute) - warte {seconds:.0f} s "
+                  "auf das naechste Fenster ...")
+            _quota_notice_until = time.monotonic() + seconds
+    time.sleep(seconds)
+
+
 def fetch_orderbook_depth(item_id: int) -> dict | None:
+    """Das Orderbuch eines Items, oder None, wenn es nicht abrufbar war.
+
+    **None heisst "unbekannt", nicht "leer".** Am 04.10.2026 liefen 66 Abrufe in
+    einer Minute ins Limit der API (HTTP 429), 18 Buecher kamen nicht an, und weil
+    die Begruendung ein fehlendes Buch wie eines ohne Gebote las, standen dort
+    mahogany, teak, coal_ore & Co. mit 0 Gold/h. Bei 429 wird deshalb gewartet.
+    """
     if item_id in _orderbook_cache:
         return _orderbook_cache[item_id]
+    url = COMPREHENSIVE_URL_TEMPLATE.format(item_id=item_id)
+    for attempt in range(ORDERBOOK_QUOTA_RETRIES + 1):
+        try:
+            r = requests.get(url, timeout=15)
+        except Exception:
+            return None
+        if r.status_code != 429 or attempt == ORDERBOOK_QUOTA_RETRIES:
+            break
+        _wait_for_quota(r)
     try:
-        r = requests.get(COMPREHENSIVE_URL_TEMPLATE.format(item_id=item_id), timeout=15)
         depth = r.json() if r.status_code == 200 else None
-    except Exception:
+    except ValueError:
         return None
     if depth is not None:
         _orderbook_cache[item_id] = depth
@@ -616,23 +659,27 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(avg_df, on="ItemID", how="left")
 
 
-def drop_outlier_listings(market_map: dict) -> list:
-    """Ersetzt Bestpreise weit weg vom gehandelten Schnitt durch die naechste echte
-    Stufe des Orderbuchs (s. `implausible_top`, `OUTLIER_PRICE_FACTOR`).
+def drop_outlier_listings(market_map: dict, fetch_ids) -> list:
+    """Bestpreise weit weg vom gehandelten Schnitt zaehlen nicht (s. `implausible_top`,
+    `OUTLIER_PRICE_FACTOR`) - ueber den ganzen Markt, denn auch die Marktwert-Tabelle
+    fuer den Autoclicker liest diese Preise.
 
-    Laeuft vor jeder Rechnung und ueber den ganzen Markt, nicht nur ueber die
-    Rezepte: auch die Marktwert-Tabelle fuer den Autoclicker liest diese Preise.
-    Gemessen am 04.10.2026 betraf das 36 von 630 Items - ein Request je Item,
-    parallel. Rueckgabe: ``(item_id, vorher, nachher)`` je korrigiertem Item.
+    Die naechste echte Stufe holt das Orderbuch, aber **nur fuer `fetch_ids`** (die
+    Items der Rezepte); bei allen anderen faellt die Seite ohne Abruf weg. Hier wurde
+    einmal fuer jedes betroffene Item des Markts abgerufen - 36 Abrufe, und zusammen
+    mit der Begruendung lief der Lauf ins Limit der API (50 je Minute). Ein Ausreisser
+    ohne Ersatz kann nichts mehr aufblaehen; fuer die Rechnung zaehlt der Ersatz.
+    Rueckgabe: ``(item_id, vorher, nachher)`` je korrigiertem Item.
     """
     suspicious = [item_id for item_id, entry in market_map.items() if implausible_top(entry)]
-    if not suspicious:
-        return []
-    preload_orderbooks(suspicious, "Ausreisser im Buch")
+    wanted = set(fetch_ids)
+    preload_orderbooks([item_id for item_id in suspicious if item_id in wanted],
+                       "Ausreisser im Buch")
     changes = []
     for item_id in suspicious:
         before = market_map[item_id]
-        market_map[item_id] = corrected_top(before, fetch_orderbook_depth(int(item_id)))
+        depth = fetch_orderbook_depth(int(item_id)) if item_id in wanted else None
+        market_map[item_id] = corrected_top(before, depth)
         changes.append((item_id, before, market_map[item_id]))
     return changes
 
@@ -1087,6 +1134,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
                           "Kaufgebot-Stufen")
 
     rows = []
+    unreachable: list[str] = []     # Buch nicht abrufbar - keine Messung
     for _, r in candidates_df.iterrows():
         item_id = id_of_item.get(r["Item"])
         to_npc = r["Verkauf an"] == "NPC-Vendor"
@@ -1108,6 +1156,13 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         reference_gross = _num(r.get("Spieler-Gebot (brutto)"))
 
         depth = fetch_orderbook_depth(int(item_id)) if item_id is not None else None
+        # Ein Buch, das nicht abrufbar war, ist keine Messung - und schon gar keine,
+        # die "verkauft nichts" sagt. Gelesen wie ein leeres Buch, standen nach einem
+        # API-Limit 18 von 30 Items mit 0 Gold/h da. Ohne Messung bleibt der
+        # Papier-Wert stehen (sort_by_measurement). Der NPC braucht kein Buch.
+        if depth is None and not to_npc:
+            unreachable.append(str(r["Item"]))
+            continue
         levels = buy_levels_from_depth(depth) if depth else []
         if depth is not None and item_id is not None:
             books.append({"item": r["Item"], "item_id": int(item_id),
@@ -1130,10 +1185,12 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             average = revenue_value / units_h if units_h > 0 else 0.0
             loss = (1 - average / reference_value) if reference_value > 0 else 0.0
         else:
+            # Ein abgerufenes Buch ohne Gebot: alles geht an den NPC, wie oben der
+            # Rest, der nicht mehr ins Buch passt.
             top_price, top_amount, coverage = 0.0, 0.0, 0.0
-            average = npc if to_npc else 0.0
+            average = npc
             revenue_value = average * units_h
-            loss = 0.0
+            loss = (1 - average / reference_value) if reference_value > 0 else 0.0
 
         if to_npc:   # NPC hat unbegrenztes Volumen, das Buch ist dann egal
             average, revenue_value, loss = npc, npc * units_h, 0.0
@@ -1183,6 +1240,10 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
                                   deviation, position, trend, patience),
         })
 
+    if unreachable:
+        print(f"⚠ {len(unreachable)} Orderbuecher nicht abrufbar - diese Items stehen mit "
+              f"ihrem Papier-Wert da: {', '.join(unreachable[:8])}"
+              + (" ..." if len(unreachable) > 8 else ""))
     if not rows:
         return pd.DataFrame(columns=REASON_COLUMNS), books
 
@@ -1667,15 +1728,18 @@ def main():
         print("⚠ Abbruch: Game-Data enthaelt keinen 'Tasks'-Block - Endpunkt/Schema pruefen.")
         return
 
-    # Vor jeder Rechnung: ein einzelner Eintrag weit weg vom gehandelten Schnitt
-    # truege sonst als Bestpreis eine ganze Stunde Produktion.
-    print_outlier_changes(drop_outlier_listings(market_map), item_info_map)
-
     # Best-/Worst-Case parallel aufbauen (Smelting-Magic-Reichweite, s. Abschnitt 2/6)
     smelting_exclusions = resolve_smelting_magic_exclusions(item_info_map)
     all_recipes_best = build_all_recipes(tasks, case="best", excluded_cost_items=smelting_exclusions)
     all_recipes_worst = build_all_recipes(tasks, case="worst", excluded_cost_items=smelting_exclusions)
     check_action_time_plausibility(all_recipes_best)
+
+    # Vor jeder Rechnung: ein einzelner Eintrag weit weg vom gehandelten Schnitt
+    # truege sonst als Bestpreis eine ganze Stunde Produktion. Ein Orderbuch fuer
+    # den Ersatz holen nur die Items, mit denen gerechnet wird.
+    recipe_items = ({r["item_id"] for r in all_recipes_best}
+                    | {c["Item"] for r in all_recipes_best for c in r["costs"]})
+    print_outlier_changes(drop_outlier_listings(market_map, recipe_items), item_info_map)
 
     recipe_by_output_best = build_recipe_by_output(all_recipes_best)
     recipe_by_output_worst = build_recipe_by_output(all_recipes_worst)
