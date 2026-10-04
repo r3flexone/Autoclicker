@@ -77,9 +77,14 @@ CASES = {
         'and plausible_price(entry["key"], reference)]', "]",
         "test_market_analysis.OutlierTest.test_ausreisser_im_buch_zaehlen_nicht"),
     "outlier-top": (
-        "market_analysis.orderbook", "implausible_top",
-        "and not plausible_price(entry[side], avg)", "and False",
+        "market_analysis.orderbook", "_flattering_top",
+        'return (entry.get("buy", 0) > avg * OUTLIER_PRICE_FACTOR,', "return (False,",
         "test_market_analysis.OutlierTest.test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt"),
+    "outlier-direction": (
+        "market_analysis.orderbook", "_flattering_top",
+        'entry.get("buy", 0) > avg * OUTLIER_PRICE_FACTOR,',
+        'not plausible_price(entry.get("buy", 1), avg),',
+        "test_market_analysis.OutlierTest.test_ein_schlechter_bestpreis_ist_ein_echter_preis"),
     "auto-cook-tax-per-hour": (
         "market_analysis.pricing", "_fishing_with_auto_cook",
         "effective_sell_price(other_id, market_map, item_info_map, other_per_hour)",

@@ -671,8 +671,10 @@ def drop_outlier_listings(market_map: dict, fetch_ids) -> list:
     ohne Ersatz kann nichts mehr aufblaehen; fuer die Rechnung zaehlt der Ersatz.
     Rueckgabe: ``(item_id, vorher, nachher)`` je korrigiertem Item.
     """
-    suspicious = [item_id for item_id, entry in market_map.items() if implausible_top(entry)]
     wanted = set(fetch_ids)
+    # Was in die Rechnung eingeht, zuerst - die Konsole zeigt nur die ersten acht.
+    suspicious = sorted((item_id for item_id, entry in market_map.items()
+                         if implausible_top(entry)), key=lambda item_id: item_id not in wanted)
     preload_orderbooks([item_id for item_id in suspicious if item_id in wanted],
                        "Ausreisser im Buch")
     changes = []
@@ -689,8 +691,9 @@ def print_outlier_changes(changes: list, item_info_map: dict, limit: int = 8):
     man spaeter fuer einen Rechenfehler."""
     if not changes:
         return
-    print(f"ℹ {len(changes)} Bestpreise lagen mehr als Faktor {OUTLIER_PRICE_FACTOR:g} neben "
-          "dem gehandelten Schnitt und zaehlen nicht - stattdessen gilt die naechste echte Stufe:")
+    print(f"ℹ {len(changes)} Bestpreise haetten die Rechnung geschoent (Gebot mehr als Faktor "
+          f"{OUTLIER_PRICE_FACTOR:g} ueber dem gehandelten Schnitt, Angebot so weit darunter) "
+          "und zaehlen nicht:")
     for item_id, before, after in changes[:limit]:
         name = item_info_map.get(item_id, {}).get("name", f"item_{item_id}")
         parts = [f"{label} {before[side]:,} -> {after[side]:,}" if after[side] else

@@ -492,6 +492,17 @@ class OutlierTest(unittest.TestCase):
         self.assertFalse(any(implausible_top(entry) for entry in MARKET.values()))
         self.assertFalse(implausible_top(None))
 
+    def test_ein_schlechter_bestpreis_ist_ein_echter_preis(self):
+        """Nur was eine Zahl schoent, faellt weg. bronze_bar verlor im ersten Wurf
+        sein Gebot von 25 g (Schnitt 262 g) und stand beim NPC-Preis von 13,86 g -
+        man kann aber jetzt fuer 25 g verkaufen. Ebenso bleibt ein teures Angebot
+        der Preis, den man fuer eine Zutat zahlen muss."""
+        low_bid = {"buy": 25, "buyVol": 40, "sell": 191, "sellVol": 30, "avg": 262}
+        high_ask = {"buy": 80, "buyVol": 40, "sell": 1500, "sellVol": 3, "avg": 84}
+        for entry in (low_bid, high_ask):
+            self.assertFalse(implausible_top(entry))
+            self.assertEqual(corrected_top(entry, None), entry)
+
 
 class HistoryTest(unittest.TestCase):
     def setUp(self):

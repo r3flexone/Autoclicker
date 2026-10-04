@@ -80,19 +80,32 @@ def sell_levels_from_depth(depth: dict | None, reference: float | None = None) -
     return _levels(depth, "lowestSellPricesWithVolume", reference)
 
 
+def _flattering_top(entry: dict) -> tuple[bool, bool]:
+    """``(Gebot zu hoch, Angebot zu billig)`` gegen den gehandelten Schnitt.
+
+    Nur diese Richtung: ein Bestpreis-Ausreisser, der eine Zahl SCHOENT. Ein Gebot
+    weit unter dem Schnitt ist ein echter, schlechter Preis - man kann jetzt dazu
+    verkaufen, und schlechter als die Wahrheit macht es nichts. Beide Richtungen zu
+    verwerfen war der erste Wurf: bronze_bar verlor sein Gebot von 25 g (Schnitt
+    262 g) und stand beim NPC-Preis von 13,86 g; von 36 so verworfenen Bestpreisen
+    war kein einziger einer, der etwas haette schoenen koennen.
+    """
+    avg = entry.get("avg", 0) or 0
+    if avg <= 0:
+        return False, False
+    return (entry.get("buy", 0) > avg * OUTLIER_PRICE_FACTOR,
+            0 < entry.get("sell", 0) < avg / OUTLIER_PRICE_FACTOR)
+
+
 def implausible_top(entry: dict | None) -> bool:
-    """Liegt das beste Gebot oder Angebot des Bulk-Endpoints weit weg vom Schnitt?
+    """Schoent das beste Gebot oder Angebot des Bulk-Endpoints die Rechnung?
 
     Der Bulk-Endpoint kennt nur die oberste Stufe. Ist sie ein Ausreisser, traegt
     ein einziges Stueck die ganze Rechnung: ein Gebot zu 464.650 g fuer EINEN
     Oak-Stamm stuende als Verkaufspreis fuer eine ganze Stunde Produktion da
     (1,56 Mrd. Gold/h), ein Angebot zu 1 g machte eine Zutat fast kostenlos.
     """
-    if not entry:
-        return False
-    avg = entry.get("avg", 0) or 0
-    return any(entry.get(side, 0) > 0 and not plausible_price(entry[side], avg)
-               for side in ("buy", "sell"))
+    return bool(entry) and any(_flattering_top(entry))
 
 
 def corrected_top(entry: dict, depth: dict | None) -> dict:
@@ -105,10 +118,11 @@ def corrected_top(entry: dict, depth: dict | None) -> dict:
     """
     out = dict(entry)
     avg = entry.get("avg", 0) or 0
-    if entry.get("buy", 0) > 0 and not plausible_price(entry["buy"], avg):
+    bid_too_high, ask_too_low = _flattering_top(entry)
+    if bid_too_high:
         bids = buy_levels_from_depth(depth, avg)
         out["buy"], out["buyVol"] = max(bids) if bids else (0, 0)
-    if entry.get("sell", 0) > 0 and not plausible_price(entry["sell"], avg):
+    if ask_too_low:
         asks = sell_levels_from_depth(depth, avg)
         out["sell"], out["sellVol"] = min(asks) if asks else (0, 0)
     return out
