@@ -182,10 +182,10 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
             secs = 3600.0 / b["actions_per_hour"]
             both_of = (per_action * ma.AUTO_COOK_CHANCE * cooked_bid
                      + per_action * (1 - ma.AUTO_COOK_CHANCE) * raw_bid) / secs * 3600
-            if conf.AUTO_COOK_SELL_RAW_REST:
+            if conf.AUTO_COOK_SELL_REST:
                 print(f"        Der rohe Rest wird MITVERKAUFT - zusammen rund {both_of:,.0f} Gold/h.")
             else:
-                print("        HINWEIS: AUTO_COOK_SELL_RAW_REST steht auf False, der rohe Rest")
+                print("        HINWEIS: AUTO_COOK_SELL_REST steht auf False, der rohe Rest")
                 print(f"        faellt unter den Tisch. Mitverkauft waeren es {both_of:,.0f} Gold/h.")
 
     # --- 5. Kette ----------------------------------------------------------
@@ -204,7 +204,7 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
     print(f"     Zeit pro Stueck   {total_ms / 1000:.3f} s   ->   {per_hour:,.2f} Stueck/h")
     print(f"     Zugekauft         {cost * per_hour:,.0f} Gold/h")
     if side_h:
-        print(f"     Nebenertrag       {side_h:,.0f} Gold/h (roher Rest aus Auto-Cook)")
+        print(f"     Nebenertrag       {side_h:,.0f} Gold/h (der andere Teil des Fangs, Auto-Cook)")
     print(f"     Komplett selbst   {chain.self_sufficient}")
     if chain.costs_known:
         print(f"     -> Gold/h         {chain_gold:,.0f}")
@@ -284,10 +284,10 @@ def describe(skill_name: str, raw: dict, market_map: dict, item_info_map: dict,
         print("\n     Auto-Cook: eine Fangaktion liefert laut Annahme "
               f"{per_action * ma.AUTO_COOK_CHANCE:.2f}x {cookedname} UND "
               f"{per_action * (1 - ma.AUTO_COOK_CHANCE):.2f}x {rawname}.")
-        if conf.AUTO_COOK_SELL_RAW_REST:
+        if conf.AUTO_COOK_SELL_REST:
             print(f"     Beide Haelften werden verkauft - zusammen rund {both:,.0f} Gold/h.")
         else:
-            print("     AUTO_COOK_SELL_RAW_REST steht auf False: die Kette rechnet nur EINE")
+            print("     AUTO_COOK_SELL_REST steht auf False: die Kette rechnet nur EINE")
             print(f"     Haelfte. Mit beiden waeren es {both:,.0f} Gold/h.")
         break
 

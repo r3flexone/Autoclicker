@@ -178,12 +178,13 @@ SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
 AUTO_COOK_CHANCE = 0.5               # Anteil der Faenge, der bereits gekocht ankommt
 AUTO_COOK_SOURCE_SKILL = "Fishing"
 
-# Der Rest des Fangs ist ROHER Fisch, und der ist verkaeuflich. Die Kette hat ihn
-# lange weggeworfen und dabei rund ein Drittel des Ertrags unterschlagen (bei tuna:
-# 154.170 statt ~198.800 Gold/h ausgewiesen). Er wird als Nebenertrag gutgeschrieben,
-# ueber denselben Verkaufsweg wie jedes andere Item - also Kaufgebot oder NPC, je
-# nachdem, was mehr bringt. Auf False steht wieder die alte, pessimistische Rechnung.
-AUTO_COOK_SELL_RAW_REST = True
+# Ein Fischzug liefert gekocht UND roh, und beides ist verkaeuflich. Die Kette hat den
+# rohen Rest lange weggeworfen und dabei rund ein Drittel des Ertrags unterschlagen
+# (bei tuna: 154.170 statt ~198.800 Gold/h ausgewiesen). Der jeweils andere Teil des
+# Fangs wird als Nebenertrag gutgeschrieben - beim gekochten Fisch der rohe, beim
+# rohen (als Zutat, z. B. sea_serpent_scale) der gekochte -, ueber denselben
+# Verkaufsweg wie jedes andere Item. Auf False zaehlt nur der gefragte Teil.
+AUTO_COOK_SELL_REST = True
 
 # Smelting Magic: Chance, Erz beim Ore->Bar-Schmelzen nicht zu verbrauchen (hoechster
 # Tier = 30%, Tiers stacken nicht). Wirkt nur auf *_bar-Rezepte, nicht aufs Schmieden.
@@ -429,7 +430,7 @@ CONFIG_HASH_KEYS = [
     "ORE_STORAGE_ACTIVE", "ORE_STORAGE_SAVE",
     "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
     "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
-    "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
+    "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_REST",
     "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "OUTLIER_PRICE_FACTOR",
     "RANKING_BASIS",
 ]

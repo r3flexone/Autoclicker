@@ -475,7 +475,22 @@ war damit rund ein Drittel zu pessimistisch – bei tuna 154.170 statt ~198.800 
 
 Der rohe Rest geht jetzt als `Nebenertrag/h` in die Kette ein, über denselben
 Verkaufsweg wie jedes andere Item (Gebot oder NPC, je nachdem was mehr bringt). Auf
-`AUTO_COOK_SELL_RAW_REST = False` steht wieder die alte Rechnung da.
+`AUTO_COOK_SELL_REST = False` zählt nur der gefragte Teil des Fangs.
+
+**Die Steuergrenze gilt für eine Stunde Fischen, nicht für ein Stück.** Gerechnet wurde
+der Rest je gekochtem Stück – ein roher Fisch –, und damit lag billiger Fisch unter der
+100-Gold-Grenze: carp, trout, piranha & Co. galten als steuerfrei, obwohl eine Stunde
+Fang (über tausend Stück) ein steuerpflichtiges Angebot ist. Das waren bis zu 465
+Gold/h zu viel.
+
+**Roher Fisch ist derselbe Fischzug, nur andersherum gefragt.** Lange kannte nur der
+gekochte Fisch den Auto-Cook; roher Fisch rechnete, als käme der ganze Fang roh an.
+`raw_piranha` stand deshalb mit 61.564 Gold/h über dem, was derselbe Fischzug real
+bringt (52.256), und `sea_serpent_scale` (Crafting) bekam je Zug doppelt so viele rohe
+Seeschlangen, wie es gibt. Jetzt kommt auch roher Fisch nur zum rohen Anteil, der
+gekochte ist Nebenertrag. Im Ketten-Sheet steht der Fischzug **einmal**, beim gekochten
+Fisch: roh und gekocht hätten dasselbe Gold/h und stünden sonst doppelt in der
+Empfehlung. Rohdaten zeigt das Fischrezept weiter einzeln, ohne Auto-Cook.
 
 **Gold ist ein Item, kein Sonderfall der Rechnung.** Die API führt Gold als
 `ItemId 19`, und Carpentry-Rezepte zahlen damit (Nägel, Leim). Ein Markteintrag

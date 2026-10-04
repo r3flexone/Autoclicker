@@ -502,6 +502,13 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "SpreadWarning": wide_spread(m) if not sold_to_npc else False,
             "XP/h (letzter Schritt)": xp_per_unit_final_step * actions_per_hour,
         })
+    # Mit Auto-Cook ist roher Fisch kein eigenes Farmziel: derselbe Fischzug steht
+    # schon beim gekochten Fisch, samt rohem Rest und mit demselben Gold/h. Die Zeile
+    # stuende sonst doppelt in der Empfehlung. Fehlt die gekochte Zeile, bleibt sie.
+    if AUTO_COOK_CHANCE > 0:
+        present = {row["ItemID"] for row in chain_results}
+        chain_results = [row for row in chain_results
+                         if fish_to_cooked.get(row["ItemID"]) not in present]
     return pd.DataFrame(chain_results)
 
 

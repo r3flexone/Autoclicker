@@ -16,14 +16,14 @@ from typing import NamedTuple
 
 try:
     from .config import (
-        AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
+        AUTO_COOK_CHANCE, AUTO_COOK_SELL_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
         MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
     )
 except ImportError:  # direkter Skriptstart
     from config import (  # type: ignore
-        AUTO_COOK_CHANCE, AUTO_COOK_SELL_RAW_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
+        AUTO_COOK_CHANCE, AUTO_COOK_SELL_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
         MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
         THIN_BID_HOURS, net_player_price,
@@ -291,9 +291,19 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
 
     fish_source_id = next((raw for raw, cooked in fish_to_cooked.items() if cooked == item_id), None)
     if fish_source_id is not None and fish_source_id not in visited and AUTO_COOK_CHANCE > 0:
-        return _auto_cook_chain(item_id, fish_source_id, market_map, recipe_by_output,
-                                fish_to_cooked, item_info_map, qty_needed, visited,
-                                depth, max_depth)
+        return _fishing_with_auto_cook(item_id, fish_source_id, item_id, market_map,
+                                       recipe_by_output, fish_to_cooked, item_info_map,
+                                       qty_needed, visited, depth, max_depth)
+
+    # Roher Fisch ist derselbe Fischzug, nur andersherum gefragt.
+    cooked_id = fish_to_cooked.get(item_id)
+    if cooked_id is not None and cooked_id not in visited and AUTO_COOK_CHANCE > 0:
+        if AUTO_COOK_CHANCE < 1.0:
+            return _fishing_with_auto_cook(item_id, item_id, cooked_id, market_map,
+                                           recipe_by_output, fish_to_cooked, item_info_map,
+                                           qty_needed, visited, depth, max_depth)
+        # Kocht Auto-Cook den ganzen Fang, kommt nichts roh an - dann wird gekauft.
+        return _bought(item_id, market_map, item_info_map, qty_needed)
 
     # Gold ist eine Kostenzeile, aber kein Einkauf: es hat keinen Markt, an dem es
     # knapp werden koennte, und man "farmt" es auch nicht als Zutat. Es zaehlt voll
@@ -304,16 +314,8 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
         price_value, _ = ingredient_price(item_id, market_map)
         return _empty(price_value * qty_needed, 0.0, self_sufficient=True)
 
-    # Kein eigenes Recipe -> am Markt kaufen
     if item_id not in recipe_by_output:
-        entry = market_map.get(item_id)
-        price_value, known = ingredient_price(item_id, market_map)
-        sell_vol = entry.get("sellVol", 0) if entry else 0
-        ratio = (qty_needed / sell_vol) if sell_vol > 0 else 0.0
-        if not valid_buy_market(entry):
-            ratio = max(ratio, 999.0)   # erzwingt LiquidityWarning
-        return _empty(price_value * qty_needed, ratio, False, known,
-                     () if known else (_ingredient_name(item_id, item_info_map),))
+        return _bought(item_id, market_map, item_info_map, qty_needed)
 
     recipe = recipe_by_output[item_id]
     visited = visited | {item_id}
@@ -326,33 +328,57 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
                         time_ms, steps_list, 0.0)
 
 
-def _auto_cook_chain(item_id, fish_source_id, market_map, recipe_by_output, fish_to_cooked,
-                     item_info_map, qty_needed, visited, depth, max_depth) -> Chain:
-    """Fischen statt kochen - der Kochschritt findet beim Auto-Cook nie statt.
+def _bought(item_id, market_map: dict, item_info_map: dict, qty_needed: float) -> Chain:
+    """Am Markt gekauft statt hergestellt - zum Ask, mit Liquiditaet und Grund."""
+    entry = market_map.get(item_id)
+    price_value, known = ingredient_price(item_id, market_map)
+    sell_vol = entry.get("sellVol", 0) if entry else 0
+    ratio = (qty_needed / sell_vol) if sell_vol > 0 else 0.0
+    if not valid_buy_market(entry):
+        ratio = max(ratio, 999.0)   # erzwingt LiquidityWarning
+    return _empty(price_value * qty_needed, ratio, False, known,
+                 () if known else (_ingredient_name(item_id, item_info_map),))
 
-    Pro Fischzug kommen `item_amount` Stueck an, davon `AUTO_COOK_CHANCE` gekocht.
-    Fuer `qty_needed` gekochte braucht es entsprechend mehr Zuege, und dabei faellt
-    zwangslaeufig roher Fisch an. Der wird verkauft, nicht weggeworfen: er ist ein
-    handelbares Item wie jedes andere und geht ueber denselben Weg (Gebot oder NPC).
+
+def _fishing_with_auto_cook(item_id, fish_source_id, cooked_id, market_map, recipe_by_output,
+                            fish_to_cooked, item_info_map, qty_needed, visited, depth,
+                            max_depth) -> Chain:
+    """Ein Fischzug mit Auto-Cook liefert beides: `AUTO_COOK_CHANCE` gekocht, den Rest roh.
+
+    Gefragt ist eins davon (`item_id`), das andere faellt zwangslaeufig mit an und
+    wird verkauft (`side_yield`), nicht weggeworfen - ueber denselben Weg wie jedes
+    Item (Gebot oder NPC). Der Kochschritt findet nie statt, es wird nur gefischt.
+
+    Frueher kannte nur der GEKOCHTE Fisch diesen Weg. Roher Fisch rechnete, als kaeme
+    der ganze Fang roh an: raw_piranha stand bei 61.564 Gold/h, obwohl derselbe
+    Fischzug real 52.256 bringt, und sea_serpent_scale bekam je Zug doppelt so viele
+    rohe Seeschlangen, wie es gibt.
     """
     fish_recipe = recipe_by_output[fish_source_id]
-    visited2 = visited | {item_id, fish_source_id}
+    wants_cooked = item_id == cooked_id
+    share = AUTO_COOK_CHANCE if wants_cooked else 1.0 - AUTO_COOK_CHANCE
+    other_id = fish_source_id if wants_cooked else cooked_id
+    per_action = fish_recipe["item_amount"]
 
-    cooked_per_action = fish_recipe["item_amount"] * AUTO_COOK_CHANCE
-    actions_needed = qty_needed / cooked_per_action
+    actions_needed = qty_needed / (per_action * share)
     time_ms = actions_needed * fish_recipe["base_time_ms"]
     steps_list = [(fish_recipe["name"] + " (mit Auto-Cook)", fish_recipe["skill"],
                  qty_needed, time_ms)]
 
-    raw_amount = actions_needed * fish_recipe["item_amount"] * (1.0 - AUTO_COOK_CHANCE)
+    other_amount = actions_needed * per_action * (1.0 - share)
     side_yield = 0.0
-    if AUTO_COOK_SELL_RAW_REST and raw_amount > 0:
-        channel = effective_sell_price(fish_source_id, market_map, item_info_map, raw_amount)
-        side_yield = channel.price_value * raw_amount
+    if AUTO_COOK_SELL_REST and other_amount > 0:
+        # Die Steuergrenze haengt an der Menge EINES Angebots, und angeboten wird
+        # eine Stunde Fischen - nicht der Rest, der auf ein einzelnes Stueck faellt.
+        # Mit dem Stueck-Rest (1 roher je gekochtem) galt billiger Fisch unter 100 g
+        # als steuerfrei.
+        other_per_hour = 3_600_000.0 / fish_recipe["base_time_ms"] * per_action * (1.0 - share)
+        channel = effective_sell_price(other_id, market_map, item_info_map, other_per_hour)
+        side_yield = channel.price_value * other_amount
 
     return _subchains(fish_recipe["costs"], actions_needed, market_map, recipe_by_output,
-                        fish_to_cooked, item_info_map, visited2, depth, max_depth,
-                        time_ms, steps_list, side_yield)
+                        fish_to_cooked, item_info_map, visited | {fish_source_id, cooked_id},
+                        depth, max_depth, time_ms, steps_list, side_yield)
 
 
 def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cooked,

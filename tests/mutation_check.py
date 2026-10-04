@@ -80,6 +80,16 @@ CASES = {
         "market_analysis.orderbook", "implausible_top",
         "and not plausible_price(entry[side], avg)", "and False",
         "test_market_analysis.OutlierTest.test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt"),
+    "auto-cook-tax-per-hour": (
+        "market_analysis.pricing", "_fishing_with_auto_cook",
+        "effective_sell_price(other_id, market_map, item_info_map, other_per_hour)",
+        "effective_sell_price(other_id, market_map, item_info_map, other_amount)",
+        "test_market_analysis.ChainTest.test_rohrest_versteuert_je_stunde_nicht_je_stueck"),
+    "raw-fish-auto-cook": (
+        "market_analysis.pricing", "resolve_chain",
+        "if cooked_id is not None and cooked_id not in visited and AUTO_COOK_CHANCE > 0:",
+        "if False:",
+        "test_market_analysis.ChainTest.test_roher_fisch_kommt_mit_auto_cook_nur_teilweise_roh"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_against_known",
         "    if known_active:", "    if False:",

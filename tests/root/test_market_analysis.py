@@ -321,19 +321,59 @@ class ChainTest(unittest.TestCase):
         channel = pricing.effective_sell_price(200, MARKET, INFO, raw_per_unit)
         self.assertAlmostEqual(k.side_yield, raw_per_unit * channel.price_value)
 
+    def test_rohrest_versteuert_je_stunde_nicht_je_stueck(self):
+        """Angeboten wird eine Stunde Fischen, nicht der eine rohe Fisch, der auf
+        ein gekochtes Stueck faellt. Mit dem Stueck-Rest galt billiger Fisch unter
+        100 g als steuerfrei (carp, trout, piranha ...)."""
+        market = dict(MARKET)
+        market[210] = {"buy": 36, "sell": 40, "buyVol": 50000, "sellVol": 50000, "avg": 36}
+        info = dict(INFO)
+        info[210] = {"name": "raw_carp", "base_value": 1, "can_trade": True, "can_sell_to_npc": True}
+        info[211] = {"name": "cooked_carp", "base_value": 1, "can_trade": True, "can_sell_to_npc": True}
+        recipes = {210: _rezept("raw_carp", "Fishing", 210, 5000),
+                   211: _rezept("cooked_carp", "Cooking", 211, 3000,
+                                costs=[{"Item": 210, "Amount": 1}])}
+        k = pricing.resolve_chain(211, market, recipes, {210: 211}, info)
+        raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
+        self.assertAlmostEqual(k.side_yield, raw_per_unit * 36 * 0.99)
+
+    def test_roher_fisch_kommt_mit_auto_cook_nur_teilweise_roh(self):
+        """Ein Fischzug liefert `AUTO_COOK_CHANCE` gekocht - fuer rohen Fisch also
+        mehr Zuege, und der gekochte Teil ist Nebenertrag. Vorher rechnete roher
+        Fisch, als kaeme der ganze Fang roh an (raw_piranha 61.564 statt 52.256
+        Gold/h; sea_serpent_scale bekam doppelt so viele rohe Seeschlangen)."""
+        k = pricing.resolve_chain(200, MARKET, self.recipes, self.fisch, INFO)
+        fish = self.recipes[200]
+        raw_share = 1.0 - cfg.AUTO_COOK_CHANCE
+        self.assertAlmostEqual(k.time_ms, fish["base_time_ms"] / (fish["item_amount"] * raw_share))
+        cooked_per_raw = cfg.AUTO_COOK_CHANCE / raw_share
+        cooked_per_hour = 3_600_000.0 / fish["base_time_ms"] * fish["item_amount"] * cfg.AUTO_COOK_CHANCE
+        cooked = pricing.effective_sell_price(201, MARKET, INFO, cooked_per_hour)
+        self.assertAlmostEqual(k.side_yield, cooked_per_raw * cooked.price_value)
+        self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
+
+    def test_roh_und_gekocht_sind_derselbe_fischzug(self):
+        """Gefragt von beiden Seiten: dieselben Zuege je Stunde, derselbe Ertrag."""
+        def gold_h(item_id):
+            k = pricing.resolve_chain(item_id, MARKET, self.recipes, self.fisch, INFO)
+            per_hour = 3_600_000.0 / k.time_ms
+            price = pricing.effective_sell_price(item_id, MARKET, INFO, per_hour).price_value
+            return per_hour * (price + k.side_yield - k.costs_value)
+        self.assertAlmostEqual(gold_h(200), gold_h(201))
+
     def test_auto_cook_fischt_statt_zu_kochen(self):
         k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
         self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
 
     def test_auto_cook_abschaltbar(self):
         """Ohne den Schalter steht wieder die alte, pessimistische Rechnung da."""
-        old = pricing.AUTO_COOK_SELL_RAW_REST
+        old = pricing.AUTO_COOK_SELL_REST
         try:
-            pricing.AUTO_COOK_SELL_RAW_REST = False
+            pricing.AUTO_COOK_SELL_REST = False
             k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
             self.assertEqual(k.side_yield, 0.0)
         finally:
-            pricing.AUTO_COOK_SELL_RAW_REST = old
+            pricing.AUTO_COOK_SELL_REST = old
 
     def test_zyklus_bricht_die_rekursion(self):
         recipes = {
@@ -746,6 +786,16 @@ class MeasurementRankingTest(unittest.TestCase):
         self.assertEqual(list(df_reason["Preisverlust"]), ["0%", "0%"])
         # Und die Anzeige verschluckt die langsamen Ketten nicht zu 0,0 oder 0,1.
         self.assertEqual(sorted(df_reason["Stück/h"]), [0.034, 0.065])
+
+    def test_roher_fisch_steht_nicht_doppelt_in_den_ketten(self):
+        """Mit Auto-Cook sind roh und gekocht derselbe Fischzug - eine Zeile, beim
+        gekochten Fisch, samt rohem Rest."""
+        recipes = {100: _rezept("yew_log", "Woodcutting", 100, 8000),
+                   200: _rezept("tuna", "Fishing", 200, 9000),
+                   201: _rezept("cooked_tuna", "Cooking", 201, 3000,
+                                costs=[{"Item": 200, "Amount": 1}])}
+        df = _analysis.build_chain_df(recipes, MARKET, INFO, {200: 201})
+        self.assertEqual(sorted(df["Item"]), ["cooked_tuna", "yew_log"])
 
     def test_chart_zeichnet_keine_ausreisser(self):
         """Das Oak-Angebot zu 464.650 g stand als 1,56 Mrd. Gold/h im Chart."""
