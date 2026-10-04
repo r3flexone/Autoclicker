@@ -34,9 +34,9 @@ from collections import Counter
 import requests
 
 try:  # Paketimport (`python -m market_analysis.apicheck`)
-    from .extended_json import load as extended_json_laden
+    from .extended_json import load as load_extended_json
 except ImportError:  # Skriptstart (`python market_analysis/apicheck.py`)
-    from extended_json import load as extended_json_laden  # type: ignore
+    from extended_json import load as load_extended_json  # type: ignore
 
 MARKET_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest?includeAveragePrice=true"
 MARKET_ALL_URL = "https://query.idleclans.com/api/PlayerMarket/items/prices/latest/all"
@@ -189,7 +189,7 @@ def load_game():
     # Pruefung: kennt sie alle Konstrukte, die die API heute schickt? Ein
     # unbekanntes ist kein Abbruch, sondern ein Befund (siehe extended_json.py).
     try:
-        game, hints = extended_json_laden(resp.text)
+        game, hints = load_extended_json(resp.text)
     except json.JSONDecodeError as exc:
         bad(f"Kein gueltiges JSON nach der Extended-JSON-Uebersetzung: {exc}")
         # Kontext um die Fehlerstelle, damit man sieht, welches Konstrukt stoert
@@ -392,7 +392,7 @@ def check_speed_formula(recipes):
     head("6. SPEED-FORMEL: MULTIPLIKATIV vs. ADDITIV (Stoppuhr-Abgleich)")
     print("  Starte die genannte Aktion ingame und vergleiche die angezeigte/gestoppte")
     print("  Aktionsdauer mit den beiden Spalten. Passt 'additiv' besser, in")
-    print("  analysis.py normalize_recipe() die Formel umstellen.\n")
+    print("  recipes.py normalize_recipe() die Formel umstellen.\n")
     print(f"  (angenommen: Equipment {SPEED_CHECK_EQUIP_BOOST:.0%}, Clan-Gatherers "
           f"{SPEED_CHECK_CLAN_BOOST:.0%} wo zutreffend)\n")
     rows = []

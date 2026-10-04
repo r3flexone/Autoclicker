@@ -41,16 +41,16 @@ try:
         THIN_BID_HOURS, net_player_price,
     )
     from .orderbook import (
-        buy_levels_from_depth, patience_analysis as geduld_analyse,
-        price_position as preis_position, sell_levels_from_depth, walk_orderbook,
+        buy_levels_from_depth, patience_analysis,
+        price_position, sell_levels_from_depth, walk_orderbook,
     )
     from .pricing import (
         thin_top_bid, effective_sell_price, is_player_shop_tradeable,
         cost_per_action, price_anomaly, resolve_chain, wide_spread,
     )
     from .recipes import build_all_recipes
-    from .extended_json import load as extended_json_laden
-    from . import history as historie
+    from .extended_json import load as load_extended_json
+    from . import history
 except ImportError:  # direkter Skriptstart bleibt unterstützt
     from config import (  # type: ignore
         AUTO_COOK_CHANCE, AUTO_COOK_SOURCE_SKILL, COMPREHENSIVE_AVG_FIELDS,
@@ -69,16 +69,16 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         THIN_BID_HOURS, net_player_price,
     )
     from orderbook import (  # type: ignore
-        buy_levels_from_depth, patience_analysis as geduld_analyse,
-        price_position as preis_position, sell_levels_from_depth, walk_orderbook,
+        buy_levels_from_depth, patience_analysis,
+        price_position, sell_levels_from_depth, walk_orderbook,
     )
     from pricing import (  # type: ignore
         thin_top_bid, effective_sell_price, is_player_shop_tradeable,
         cost_per_action, price_anomaly, resolve_chain, wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
-    from extended_json import load as extended_json_laden  # type: ignore
-    import history as historie  # type: ignore
+    from extended_json import load as load_extended_json  # type: ignore
+    import history  # type: ignore
 
 
 # ---------------------------------------------------------------
@@ -131,7 +131,7 @@ def load_market_map() -> dict:
 
 def load_game_data() -> dict:
     """Game-Data-Endpoint liefert MongoDB-Shell-JSON (`ObjectId(...)`, `NumberLong(...)`)
-    - `extended_json.laden` uebersetzt es und meldet, was es nicht kannte.
+    - `extended_json.load` uebersetzt es und meldet, was es nicht kannte.
 
     **Ein Spiel-Update darf den Lauf nicht beenden.** Hier stand eine Regex, die
     genau `ObjectId` kannte; als die Achievements `NumberLong` mitbrachten, brach
@@ -139,7 +139,7 @@ def load_game_data() -> dict:
     Wert uebernommen und als Warnung ausgegeben - der Lauf geht weiter."""
     resp = _get_json(GAME_URL, timeout=60, context="Game-Data-Endpoint")
     try:
-        game, hints = extended_json_laden(resp.text)
+        game, hints = load_extended_json(resp.text)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Game-Data-Endpoint: Antwort ist auch nach der Uebersetzung "
                            f"der Extended-JSON-Konstrukte kein gueltiges JSON ({exc}). "
@@ -911,11 +911,11 @@ def _price_position_text(position: float | None, trend: str) -> str:
 
 def _patience_text(patience: dict | None) -> str:
     """Was ein eigenes Angebot brächte - nur erwähnen, wenn es sich lohnt."""
-    if not patience or patience.get("aufschlag") is None or patience["aufschlag"] < 0.02:
+    if not patience or patience.get("markup") is None or patience["markup"] < 0.02:
         return ""
     rate_value = (f"mit eigenem Angebot zu {patience['price_value']:,.0f}g waeren es "
-            f"{patience['aufschlag']:+.0%} ({patience['gold_h']:,.0f} Gold/h)")
-    wait_value = patience.get("wartezeit_h")
+            f"{patience['markup']:+.0%} ({patience['gold_h']:,.0f} Gold/h)")
+    wait_value = patience.get("waiting_h")
     if wait_value is not None:
         rate_value += (f", 1 h Produktion liegt dann ~{wait_value:,.0f} h im Buch"
                  if wait_value >= 1 else ", 1 h Produktion ist in unter 1 h weg")
@@ -1034,7 +1034,7 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         # widersprechen sich "Preisverlust" und "Gold/h realistisch".
         reference_value = _num(r["Erlös pro Stück"])
         # Und BRUTTO daneben, fuer den Vergleich mit den API-Durchschnitten: die sind
-        # Bruttopreise. Mit dem Netto-Erloes gefuettert meldete `preis_position()` bei
+        # Bruttopreise. Mit dem Netto-Erloes gefuettert meldete `price_position()` bei
         # jedem Item dieselben -1%, also einen Messfehler, der wie eine Marktlage
         # aussieht.
         #
@@ -1081,11 +1081,11 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
 
         # Aus derselben Antwort, ohne zusaetzlichen Request. BRUTTO gegen BRUTTO:
         # der 30-Tage-Schnitt kennt keine Steuer.
-        position, trend = preis_position(reference_gross, depth)
+        position, trend = price_position(reference_gross, depth)
         costs_per_unit = (material_h / units_h) if units_h > 0 else 0.0
         # Beim NPC gibt es nichts zu verhandeln — der zahlt immer denselben Preis.
-        patience = (geduld_analyse(depth, top_price, units_h, costs_per_unit)
-                  if not to_npc else geduld_analyse(None, 0.0, 0.0, 0.0))
+        patience = (patience_analysis(depth, top_price, units_h, costs_per_unit)
+                  if not to_npc else patience_analysis(None, 0.0, 0.0, 0.0))
 
         rows.append({
             "Rang": 0,   # wird nach der Neusortierung vergeben
@@ -1102,12 +1102,12 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Ansetzbarer Preis": round(patience["price_value"], 2) if patience["price_value"] else None,
             "Erlös dabei (netto)": round(patience["revenue_value"], 2) if patience["revenue_value"] else None,
             "Gold/h mit Geduld": round(patience["gold_h"]) if patience["gold_h"] is not None else None,
-            "Aufschlag vs Sofort": (f"{patience['aufschlag']:+.0%}"
-                                    if patience["aufschlag"] is not None else None),
-            "Wartezeit (h)": (round(patience["wartezeit_h"], 1)
-                              if patience["wartezeit_h"] is not None else None),
-            "Angebot im Buch": (round(patience["angebot_im_buch"])
-                                if patience["angebot_im_buch"] is not None else None),
+            "Aufschlag vs Sofort": (f"{patience['markup']:+.0%}"
+                                    if patience["markup"] is not None else None),
+            "Wartezeit (h)": (round(patience["waiting_h"], 1)
+                              if patience["waiting_h"] is not None else None),
+            "Angebot im Buch": (round(patience["offers_in_book"])
+                                if patience["offers_in_book"] is not None else None),
             "Preis vs 30-Tage-Schnitt": f"{position:+.0%}" if position is not None else None,
             "Markt-Trend": trend or None,
             "Gold/h realistisch": round(revenue_value + side_yield_h - material_h),
@@ -1415,12 +1415,12 @@ def write_history(df_chain: pd.DataFrame, df_reason: pd.DataFrame, books: list,
     lines = history_rows(df_chain, df_reason)
     if not lines:
         return ""
-    conn = historie.open_db(path)
+    conn = history.open_db(path)
     try:
-        with historie.run_ctx(conn) as run_id:
-            historie.write_items(conn, run_id, lines)
-            historie.write_orderbook(conn, run_id, books, HISTORY_ORDERBOOK_TOP_N)
-        channel = historie.tidy_up(conn)
+        with history.run_ctx(conn) as run_id:
+            history.write_items(conn, run_id, lines)
+            history.write_orderbook(conn, run_id, books, HISTORY_ORDERBOOK_TOP_N)
+        channel = history.tidy_up(conn)
     finally:
         conn.close()
     deleted_count = sum(v for k, v in channel.items() if k != "condensed")
@@ -1465,16 +1465,16 @@ def load_run_stats_history(path: str = RUN_STATS_PATH) -> list:
 
 
 def load_last_run_stats(path: str = RUN_STATS_PATH) -> dict | None:
-    history = load_run_stats_history(path)
-    return history[-1] if history else None
+    runs = load_run_stats_history(path)
+    return runs[-1] if runs else None
 
 
 def save_run_stats(stats: dict, path: str = RUN_STATS_PATH):
-    history = load_run_stats_history(path)
-    history.append(stats)
-    history = history[-RUN_STATS_HISTORY_LIMIT:]
+    runs = load_run_stats_history(path)
+    runs.append(stats)
+    runs = runs[-RUN_STATS_HISTORY_LIMIT:]
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2, ensure_ascii=False)
+        json.dump(runs, f, indent=2, ensure_ascii=False)
 
 
 def sanity_check_run_stats(current: dict, previous: dict | None) -> list[str]:

@@ -341,7 +341,7 @@ class OrderbookTest(unittest.TestCase):
         }
         result = patience_analysis(depth, 100, 20, 50)
         self.assertEqual(result["price_value"], 119)
-        self.assertAlmostEqual(result["wartezeit_h"], 2.0)
+        self.assertAlmostEqual(result["waiting_h"], 2.0)
         position, trend = price_position(120, depth)
         self.assertAlmostEqual(position, 0.2)
         self.assertEqual(trend, "steigend")

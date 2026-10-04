@@ -41,8 +41,8 @@ def sell_levels_from_depth(depth: dict) -> list:
 def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
                       cost_per_unit: float) -> dict:
     """Berechnet Preis, Ertrag und Wartezeit eines eigenen Angebots."""
-    empty = {"price_value": None, "revenue_value": None, "gold_h": None, "aufschlag": None,
-             "wartezeit_h": None, "angebot_im_buch": None}
+    empty = {"price_value": None, "revenue_value": None, "gold_h": None, "markup": None,
+             "waiting_h": None, "offers_in_book": None}
     if not depth or units_per_hour <= 0:
         return empty
 
@@ -66,9 +66,9 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
         "price_value": price,
         "revenue_value": revenue,
         "gold_h": units_per_hour * (revenue - cost_per_unit),
-        "aufschlag": revenue / net_bid - 1.0 if net_bid > 0 else None,
-        "wartezeit_h": waiting,
-        "angebot_im_buch": sum(amount for _, amount in offers),
+        "markup": revenue / net_bid - 1.0 if net_bid > 0 else None,
+        "waiting_h": waiting,
+        "offers_in_book": sum(amount for _, amount in offers),
     }
 
 
