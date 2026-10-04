@@ -222,6 +222,33 @@ class MarktwegTest(unittest.TestCase):
         self.assertFalse(channel.to_npc)                     # 75,24 > 75,075, aber knapp
 
 
+class SaleValueTest(unittest.TestCase):
+    """marktwert.json: was ein Item WERT ist, unter seinem Item-Namen.
+
+    Dort stand die Marge aus den Rohdaten unter dem Rezeptnamen: titanium_platebody
+    bei -2.430, obwohl es fuer rund 18.000 weggeht, 105 von 194 Eintraegen negativ,
+    und `oak` statt `oak_log` - der Autoclicker fand keinen einzigen davon wieder.
+    """
+
+    def test_verkaufswert_je_item_ueber_den_besseren_weg(self):
+        self.assertEqual(pricing.sale_values(MARKET, INFO), {
+            "yew_log": 76.0,          # ein Stueck unter 100 g: steuerfrei
+            "tuna": 118.8,            # ab 100 g: 1 % Marktsteuer
+            "cooked_tuna": 297.0,
+            "billig": 3.0,            # Gebot 3 g schlaegt den NPC (1,155 g)
+        })
+
+    def test_npc_zaehlt_wenn_er_mehr_zahlt(self):
+        info = dict(INFO)
+        info[100] = dict(INFO[100], base_value=200)
+        self.assertAlmostEqual(pricing.sale_values(MARKET, info)["yew_log"],
+                               200 * cfg.NPC_SELL_BOOST_MULTIPLIER)
+
+    def test_ohne_jeden_verkaufsweg_kein_eintrag(self):
+        """Lieber kein Wert als 0 - ein Item mit Wert 0 stuende vor jedem ohne."""
+        self.assertNotIn("gebunden", pricing.sale_values(MARKET, INFO))
+
+
 class IngredientPriceTest(unittest.TestCase):
     def test_gold_ist_ein_item_und_kostet_eins(self):
         """API-Item 19 ist direktes Gold – früher als 'kein Markteintrag' mit 0 gerechnet."""

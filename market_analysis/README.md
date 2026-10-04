@@ -287,8 +287,15 @@ viel zum besten Gebot los wirst:
 Vorher wurde `Gold/h realistisch` erst **nach** der Rangfolge für die schon feststehende
 Top-10 berechnet und konnte die Reihenfolge gar nicht mehr beeinflussen.
 
-Items ohne Messung behalten ihre Position hinter den gemessenen und lassen die Spalte leer
-– eine Zahl dort wäre eine Behauptung, die niemand geprüft hat.
+Items ohne Messung stehen mit ihrem Papier-Wert da, grau und in `Gold/h Quelle` als
+`Papier` gekennzeichnet (s. „Begründung lesen").
+
+**Gemessen wird mit der ungerundeten Stückzahl der Kette**, wie die Kosten daneben. Die
+Messung las einmal die Spalte `Stück/h` der Empfehlung, und die ist für die Anzeige
+gerundet: `astronomical_platebody` (0,065 Stk/h) wurde mit 0,1 verkauft und stand mit
+414.248 statt 212.645 Gold/h auf Platz 1, `otherworldly_bar` (0,034 Stk/h) mit 0,0 – er
+verkaufte nichts, zahlte die vollen Zutaten und stand bei −3,9 Mio. Die Anzeige zeigt
+unter 10 Stück/h drei gültige Ziffern statt `0,0`.
 
 ### Was du verlangen kannst, wenn du warten kannst
 
@@ -407,6 +414,23 @@ conn = history.open_db()
 history.trend_rows(conn, "yew_log")      # Preise und Gold/h über die Zeit
 history.last_runs(conn, 5)        # wann, mit welchem Code, welcher Config
 ```
+
+## Marktwert-Tabelle für den Autoclicker
+
+Neben der Excel-Datei entsteht `output/marktwert.json`: **Item-Name → was ein Stück beim
+Verkauf bringt**, netto und über den besseren Weg (Spielergebot nach Steuer oder NPC),
+für jedes Item mit Preis – nicht nur für Rezept-Ergebnisse, denn der Autoclicker findet
+auch Beute. Trägt man den Pfad in seiner `config.json` unter `scan_market_value_file`
+ein, sortiert sein Item-Scan die Klicks danach. Importiert wird in keine Richtung; die
+Datei ist die ganze Verbindung.
+
+Hier stand bis zum 04.10.2026 die Spalte `Gold pro Stück` der Rohdaten, also die Marge
+beim Herstellen aus gekauften Zutaten, und zwar unter dem **Rezept**namen. Das passte
+dreifach nicht: `titanium_platebody` stand bei −2.430, obwohl es für rund 18.000
+weggeht, 105 von 194 Einträgen waren negativ (die wertvollsten Items wären zuletzt
+geklickt worden), und `oak` ist kein Item – das Item heisst `oak_log`. Geschrieben
+werden die Namen der Spiel-API; der Autoclicker vergleicht ohne Gross-/Kleinschreibung
+und mit Unterstrich gleich Leerzeichen, findet `oak_log` also auch als `Oak Log`.
 
 ## Offene Punkte
 

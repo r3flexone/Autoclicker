@@ -47,7 +47,7 @@ try:
     )
     from .pricing import (
         thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, wide_spread,
+        cost_per_action, price_anomaly, resolve_chain, sale_values, wide_spread,
     )
     from .recipes import build_all_recipes
     from .extended_json import load as load_extended_json
@@ -76,7 +76,7 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
     )
     from pricing import (  # type: ignore
         thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, wide_spread,
+        cost_per_action, price_anomaly, resolve_chain, sale_values, wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
     from extended_json import load as load_extended_json  # type: ignore
@@ -1305,33 +1305,21 @@ SKILL_LEVEL_COLUMNS = ["Skill", "Level", "Item", "Gold/h", "Gold/h_Worst", "Gold
                         "XP/h", "SoldToNPC", "NPCPreis", "ItemID"]
 
 
-def export_market_values(df: pd.DataFrame, path: str) -> int:
-    """Schreibt eine schlanke Item-Name -> Gold-pro-Stueck-Tabelle als JSON.
+def export_market_values(market_map: dict, item_info_map: dict, path: str) -> int:
+    """Schreibt eine schlanke Item-Name -> Verkaufswert-Tabelle als JSON.
 
     Der Autoclicker kann seine Item-Klicks danach sortieren statt nach einer von
     Hand getippten Prioritaetszahl — ohne dass eine Seite die andere importiert.
+    Was darin steht und warum es nicht mehr die Marge aus den Rohdaten ist, sagt
+    `sale_values()`.
 
     Absichtlich nur Name -> Zahl: alles Weitere waere fuer die Klick-Reihenfolge
     bedeutungslos, und eine schmale Datei kann nicht veralten wie eine breite.
     Gibt die Anzahl geschriebener Eintraege zurueck.
     """
-    if df is None or df.empty or "Item" not in df.columns:
+    values = sale_values(market_map, item_info_map)
+    if not values:
         return 0
-    column_name = "Gold pro Stück" if "Gold pro Stück" in df.columns else None
-    if column_name is None:
-        return 0
-    values: dict[str, float] = {}
-    for _, line in df.iterrows():
-        name = str(line["Item"]).strip()
-        try:
-            value = float(line[column_name])
-        except (TypeError, ValueError):
-            continue
-        if not name or value != value:          # NaN faellt hier raus
-            continue
-        # Mehrere Rezepte auf dasselbe Item: der beste Wert gewinnt.
-        if name not in values or value > values[name]:
-            values[name] = round(value, 2)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(values, f, ensure_ascii=False, indent=1, sort_keys=True)
@@ -1759,7 +1747,7 @@ def main():
     # Schlanke Wertetabelle nebenher - schlaegt sie fehl, ist das kein Grund, den
     # ganzen Lauf zu verlieren: die Excel-Datei ist das eigentliche Ergebnis.
     try:
-        n_values = export_market_values(df, MARKET_VALUE_PATH)
+        n_values = export_market_values(market_map, item_info_map, MARKET_VALUE_PATH)
         if n_values:
             print(f"Marktwerte gespeichert: {MARKET_VALUE_PATH} ({n_values} Items)")
             print("  Der Autoclicker kann danach sortieren - Pfad in seiner config.json "

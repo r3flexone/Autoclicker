@@ -158,6 +158,28 @@ def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
     return SalesChannel(player_net, False, player_net, npc, "")
 
 
+def sale_values(market_map: dict, item_info_map: dict) -> dict:
+    """Item-Name -> was EIN Stueck beim Verkauf bringt: netto, ueber den besseren Weg.
+
+    Das ist die Marktwert-Tabelle fuer den Autoclicker. Der sortiert gefundene Items
+    danach, und dort zaehlt, was ein Item wert ist. Hier stand die Marge aus den
+    Rohdaten - was ein Rezept abwirft, wenn man seine Zutaten kauft: titanium_platebody
+    stand bei -2.430, obwohl es fuer rund 18.000 weggeht, und 105 von 194 Eintraegen
+    waren negativ, die wertvollsten Items waeren also zuletzt geklickt worden. Dazu
+    waren die Schluessel Rezeptnamen (`oak`) statt Item-Namen (`oak_log`).
+
+    Jedes Item mit Preis, nicht nur Rezept-Ergebnisse - gefunden wird auch Beute.
+    Ein Stueck heisst: Steuer erst ab 100 g Stueckpreis (`net_player_price`).
+    """
+    values: dict[str, float] = {}
+    for item_id, info in item_info_map.items():
+        name = str(info.get("name") or "").strip()
+        price_value = effective_sell_price(item_id, market_map, item_info_map).price_value
+        if name and price_value > values.get(name, 0.0):
+            values[name] = round(price_value, 2)
+    return values
+
+
 # ---------------------------------------------------------------
 # Zutatenpreise
 # ---------------------------------------------------------------

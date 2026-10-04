@@ -297,8 +297,8 @@ try:
           all(z[0] != "Silber" for z in _e["rows"]))
 
     Path("marktwert.json").write_text("kaputt{", encoding="utf-8")
-    from autoclicker.runtime.item_scan import _marktwert_cache
-    _marktwert_cache.clear()
+    from autoclicker.runtime.item_scan import _market_value_cache
+    _market_value_cache.clear()
     check("eine unlesbare Wertetabelle wird gemeldet, nicht verschluckt",
           _b.report_data()["yield_value"]["readable"] is False)
 

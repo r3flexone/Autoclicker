@@ -726,16 +726,35 @@ def _park_mouse_for_scan(park_pos) -> None:
 # Analyse greift damit beim naechsten Scan, ohne Neustart. Wie beim Template-Cache
 # ohne Lock: Dict-Zugriffe sind unter dem GIL atomar, und zweimal dieselbe kleine
 # JSON zu lesen kostet nichts.
-_marktwert_cache: dict = {}
+_market_value_cache: dict = {}
+
+
+def market_key(name) -> str:
+    """Wie ein Item-Name in der Marktwert-Tabelle nachgeschlagen wird.
+
+    Die Analyse schreibt die Namen der Spiel-API (`oak_log`), hier heisst dasselbe
+    Item `Oak Log` (Katalog) oder so, wie es jemand getippt hat. Verglichen wurde
+    exakt, und damit traf keine einzige Zeile. Ohne Gross-/Kleinschreibung und mit
+    Unterstrich gleich Leerzeichen meinen beide dasselbe.
+    """
+    return " ".join(str(name or "").replace("_", " ").split()).casefold()
+
+
+def market_value(values: dict, name) -> Optional[float]:
+    """Der Wert eines Items aus `load_market_values()` - None, wenn es keinen hat."""
+    return values.get(market_key(name))
 
 
 def load_market_values(path: str) -> dict:
-    """Item-Name -> Gold pro Stueck. Leeres Dict, wenn aus oder nicht lesbar.
+    """Item-Name -> Verkaufswert je Stueck. Leeres Dict, wenn aus oder nicht lesbar.
 
     Die Datei schreibt `market_analysis` (dort `export_market_values`). Sie ist die
     EINZIGE Verbindung zwischen den beiden Teilprojekten, und zwar in genau eine
     Richtung: die Analyse weiss nichts vom Autoclicker, der Autoclicker importiert
     nichts aus der Analyse. Fehlt die Datei, laeuft alles wie vorher.
+
+    Die Schluessel sind `market_key()`s - nachgeschlagen wird mit `market_value()`,
+    nie mit `.get()`.
     """
     if not path:
         return {}
@@ -744,7 +763,7 @@ def load_market_values(path: str) -> dict:
     except OSError:
         return {}
     stamp = (st.st_mtime, st.st_size)
-    entry = _marktwert_cache.get(path)
+    entry = _market_value_cache.get(path)
     if entry is not None and entry["stamp"] == stamp:
         return entry["values"]
     try:
@@ -759,10 +778,11 @@ def load_market_values(path: str) -> dict:
     values = {}
     for name, value in raw.items():
         try:
-            values[str(name)] = float(value)
+            values[market_key(name)] = float(value)
         except (TypeError, ValueError):
             continue
-    _marktwert_cache[path] = {"stamp": stamp, "values": values}
+    values.pop("", None)            # ein leerer Name ist kein Item
+    _market_value_cache[path] = {"stamp": stamp, "values": values}
     return values
 
 
@@ -781,7 +801,7 @@ def _effective_priority(item, saved: int, values: dict) -> float:
     Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: items.json
     bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
     """
-    value = values.get(item.name)
+    value = market_value(values, item.name)
     return -value if value is not None else float(saved)
 
 

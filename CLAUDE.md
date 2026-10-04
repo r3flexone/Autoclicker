@@ -319,12 +319,21 @@ Details: `autoclicker/CLAUDE.md`.
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analysis.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
-  `output/marktwert.json` (Item-Name → Gold pro Stück); trägt man den Pfad in der
+  `output/marktwert.json` (Item-Name → Verkaufswert je Stück, `sale_values()` in
+  `market_analysis/pricing.py`); trägt man den Pfad in der
   `config.json` des Autoclickers unter `scan_market_value_file` ein, sortiert der
   Item-Scan seine Klicks danach statt nach der von Hand getippten `priority`
   (`load_market_values()` in `runtime/item_scan.py`, zwischengespeichert am mtime — eine
   neu gerechnete Analyse greift ohne Neustart). Zwei Tests messen die Trennung im
   **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt).
+
+  **Nachgeschlagen wird mit `market_value()`, nie mit `.get()`.** Die Analyse schreibt
+  die Namen der Spiel-API (`oak_log`), der Autoclicker kennt dasselbe Item als
+  `Oak Log`; `market_key()` vergleicht ohne Gross-/Kleinschreibung, Unterstrich gleich
+  Leerzeichen. Bis zum 04.10.2026 stand in der Datei die Marge der Rohdaten unter dem
+  Rezeptnamen (`oak`, `titanium_platebody: -2430`) und wurde exakt verglichen — sie
+  traf kein Item, und hätte sie getroffen, wären die wertvollsten zuletzt geklickt
+  worden.
 
   Zwei Eigenschaften, die man kennen muss: die gespeicherte `item.priority` wird
   **nicht** überschrieben — die Sortierung gilt nur für den Lauf, `items.json` bleibt

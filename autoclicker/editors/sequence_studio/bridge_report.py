@@ -227,7 +227,7 @@ class BridgeReportMixin:
         path = str(self._report_config("scan_market_value_file", "") or "")
         if not path or not raw["items"]:
             return None
-        from ...runtime.item_scan import load_market_values
+        from ...runtime.item_scan import load_market_values, market_value
         values = load_market_values(path)
         if not values:
             return {"file": path, "readable": False, "rows": [],
@@ -235,7 +235,7 @@ class BridgeReportMixin:
 
         lines, without, gold = [], [], 0.0
         for name, count in raw["items"]:
-            value = values.get(name)
+            value = market_value(values, name)
             if value is None:
                 without.append([name, count])
                 continue

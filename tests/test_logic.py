@@ -4114,8 +4114,9 @@ section("Item-Klicks koennen nach Marktwert statt nach Handpriorität sortieren"
 # irgendeine Richtung - ein Test prueft genau das.
 import json as _js6, tempfile as _tf6, os as _os6
 from autoclicker.runtime.item_scan import (load_market_values as _lmw,
+                                           market_value as _mv6,
                                            _effective_priority as _eprio,
-                                           _marktwert_cache as _mwc)
+                                           _market_value_cache as _mwc)
 from autoclicker.models import ItemProfile as _IP6
 
 # Die Trennung ist die halbe Idee - sie muss gemessen werden, nicht behauptet
@@ -4157,9 +4158,13 @@ try:
     Path(_path6).write_text(_js6.dumps({"Kohle": 12.5, "Gold": 900, "Murks": "keine Zahl"}),
                             encoding="utf-8")
     _w6 = _lmw(_path6)
-    check("Werte werden gelesen", _w6.get("Kohle") == 12.5 and _w6.get("Gold") == 900.0)
+    check("Werte werden gelesen", _mv6(_w6, "Kohle") == 12.5 and _mv6(_w6, "Gold") == 900.0)
     check("unbrauchbare Eintraege fliegen einzeln raus, nicht die ganze Datei",
-          "Murks" not in _w6 and len(_w6) == 2)
+          _mv6(_w6, "Murks") is None and len(_w6) == 2)
+    # Die Analyse schreibt die Namen der Spiel-API (oak_log), der Autoclicker kennt
+    # sie aus dem Katalog als "Oak Log". Exakt verglichen traf keine einzige Zeile.
+    check("Gross-/Kleinschreibung und Unterstrich trennen keinen Namen",
+          _mv6(_w6, "kohle") == 12.5 and _mv6({"oak log": 94.0}, "Oak_Log") == 94.0)
 
     # Sortierung: kleiner gewinnt. Wertvoller muss also kleiner werden.
     _kohle = _IP6(name="Kohle", priority=5)
@@ -4181,11 +4186,24 @@ try:
     Path(_path6).write_text(_js6.dumps({"Kohle": 999.0}), encoding="utf-8")
     _os6.utime(_path6, (0, 0))            # mtime sicher veraendern
     check("eine neu geschriebene Wertetabelle greift ohne Neustart",
-          _lmw(_path6).get("Kohle") == 999.0)
+          _mv6(_lmw(_path6), "Kohle") == 999.0)
+
+    # Beide Seiten zusammen, ohne pandas: was die Analyse als Wert eines Items
+    # rechnet, findet der Item-Scan unter dem Namen wieder, den der Katalog ihm
+    # gibt - und es ist der Verkaufswert, nicht die Marge beim Herstellen.
+    from market_analysis.pricing import sale_values as _sv6
+    _info6 = {87: {"name": "titanium_platebody", "base_value": 15600,
+                   "can_trade": True, "can_sell_to_npc": True}}
+    _market6 = {87: {"buy": 18006, "sell": 18500, "buyVol": 6, "sellVol": 40, "avg": 18100}}
+    Path(_path6).write_text(_js6.dumps(_sv6(_market6, _info6)), encoding="utf-8")
+    _os6.utime(_path6, (1, 1))
+    _platte = _IP6(name="Titanium Platebody", priority=9)
+    check("der Item-Scan findet den Wert unter dem Katalognamen",
+          _eprio(_platte, 9, _lmw(_path6)) == -round(15600 * 1.10 * 1.05, 2))
 finally:
     _os6.unlink(_path6)
 
-# Die Schreibseite: market_analysis baut die Datei aus seinem DataFrame
+# Die Schreibseite: market_analysis schreibt die Datei aus Markt und Item-Liste
 try:
     import pandas as _pd6
 except ImportError:
@@ -4199,21 +4217,21 @@ if _pd6 is not None:
     try:
         _ma6 = _ilu6.module_from_spec(_spec6)
         _spec6.loader.exec_module(_ma6)
-        _df6 = _pd6.DataFrame([
-            {"Item": "Kohle", "Gold pro Stück": 12.5},
-            {"Item": "Kohle", "Gold pro Stück": 30.0},   # zweites Rezept, besserer Wert
-            {"Item": "Murks", "Gold pro Stück": float("nan")},
-        ])
+        _market7 = {6: {"buy": 95, "sell": 120, "buyVol": 12934, "sellVol": 1842, "avg": 95},
+                    9: {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}}
+        _info7 = {6: {"name": "oak_log", "base_value": 13, "can_trade": True,
+                      "can_sell_to_npc": True},
+                  9: {"name": "gebunden", "base_value": 0, "can_trade": False,
+                      "can_sell_to_npc": False}}
         _fd7, _path7 = _tf6.mkstemp(suffix=".json")
         _os6.close(_fd7)
         try:
-            _n6 = _ma6.export_market_values(_df6, _path7)
+            _n6 = _ma6.export_market_values(_market7, _info7, _path7)
             _out6 = _js6.loads(Path(_path7).read_text(encoding="utf-8"))
-            check("die Analyse schreibt Name -> Wert", _n6 == 1 and "Kohle" in _out6)
-            check("bei mehreren Rezepten gewinnt der beste Wert", _out6["Kohle"] == 30.0)
-            check("NaN landet nicht in der Datei", "Murks" not in _out6)
+            check("die Analyse schreibt Item-Name -> Verkaufswert",
+                  _n6 == 1 and _out6 == {"oak_log": 95.0})
             check("und der Autoclicker liest genau das wieder",
-                  _lmw(_path7).get("Kohle") == 30.0)
+                  _mv6(_lmw(_path7), "Oak Log") == 95.0)
         finally:
             _os6.unlink(_path7)
     except Exception as _e6:               # pandas/openpyxl fehlt o.ae. - kein Testfehler
