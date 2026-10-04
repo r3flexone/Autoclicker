@@ -1377,8 +1377,13 @@ def print_reason_highlights(df_reason: pd.DataFrame):
         print(f"\n⚠ {len(pretty)} Items halten ihren Gold/h-Wert nicht, wenn man eine ganze "
               "Stunde Produktion ins Buch verkauft:")
         for _, r in pretty.head(8).iterrows():
+            # Der Preisverlust gilt dem Hauptprodukt; steht er auf 0, kam der Abschlag
+            # vom Nebenertrag (s. _side_revenue) - "0% Preisverlust" daneben las sich
+            # wie ein Widerspruch.
+            why = (f"{r['Preisverlust']} Preisverlust" if r["Preisverlust"] != "0%"
+                   else "der Nebenertrag gibt das Buch nicht her")
             print(f"    {str(r['Item']):<26}{r['Gold/h (Papier)']:>11,} -> {r['Gold/h realistisch']:>11,}  "
-                  f"({r['Preisverlust']} Preisverlust)")
+                  f"({why})")
 
 
 # ---------------------------------------------------------------
