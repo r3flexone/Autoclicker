@@ -45,6 +45,7 @@ automatischer Item-Erkennung und Farb-Triggern.
 - **Quick-Switch**: Schnell zwischen Sequenzen wechseln
 - **Zeitplan**: Sequenz zu bestimmter Zeit starten (z.B. 14:30, +30m, 2h)
 - **Folgesequenz**: nach dem Ende einer Sequenz automatisch die nächste starten, mit Pause dazwischen
+- **Fernstart über Discord**: mehrere PCs starten dieselbe Sequenz gleichzeitig per `!start <wort>` in einem gemeinsamen Kanal — was ein Wort startet und wer es darf, legt jeder PC lokal im Studio fest (Reiter „Fernstart“)
 - **Factory Reset**: Kompletter Reset wie frisch von GitHub
 - **Konfigurierbar**: Toleranzen und Einstellungen via `config.json`
 - **Fail-Safe**: Maus in obere linke Ecke bewegen stoppt den Klicker
@@ -847,6 +848,54 @@ Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
 hilft kein Versatz: dann die **Klick-Runde** nehmen (Studio → Werkzeuge oder
 Punkte-Menü → `reclick`) und die Sequenz einmal von Hand nachklicken.
 
+## Fernstart über Discord
+
+Mehrere PCs starten dieselbe Sequenz im selben Augenblick: wer in einem
+gemeinsamen Discord-Kanal `!start raid` schreibt, startet auf jedem PC, dessen
+Besitzer das Wort `raid` und den Absender freigegeben hat, die Sequenz, die
+**dort** hinter dem Wort steht — 20 Sekunden nach der Nachricht. Die Startzeit
+kommt aus dem Zeitstempel der Nachricht, also starten alle PCs gleichzeitig,
+egal wer sie wann liest; Voraussetzung ist nur eine richtig gehende Uhr.
+
+| im Kanal | was passiert |
+|---|---|
+| `!start <wort>` | startet nach 20 s die freigegebene Sequenz (Countdown wie beim Zeitplan, `CTRL+ALT+S` bricht ab) |
+| `!stop` oder 🛑 unter dem `!start` | hält Lauf oder Countdown an — startet nie etwas |
+| `!status` | jeder PC sagt, was läuft und welche Wörter er kennt |
+
+Jeder PC antwortet mit einer Zeile, die mitwandert: „startet um …“ → „läuft“ →
+„fertig — 12 Zyklen, 3400 Klicks“.
+
+**Einrichten (einmal, von dem, der den Bot anlegt):**
+
+1. [discord.com/developers](https://discord.com/developers/applications) → *New Application* → *Bot*:
+   *Reset Token* und kopieren, **Message Content Intent** einschalten, **Public Bot** ausschalten.
+2. *OAuth2 → URL Generator*: Scope `bot`, Rechte *View Channels*, *Send Messages*,
+   *Read Message History*, *Add Reactions* — den Link öffnen und den Bot in euren Server holen.
+3. In Discord den Entwicklermodus einschalten (Einstellungen → Erweitert) und per
+   Rechtsklick auf den Kanal die **Kanal-ID** kopieren.
+
+**Auf jedem PC** im Studio-Reiter **Fernstart**: Token und Kanal-ID eintragen,
+Wörter ihren Sequenzen zuordnen, Personen freigeben (wer im Kanal geschrieben hat,
+steht dort mit einem „erlauben“-Knopf) und den Schalter einschalten. Die Liste
+„Bereit?“ zeigt, was noch fehlt.
+
+**Sicherheit:** Aus Discord kommt nur ein Wort. Was es auf diesem PC startet,
+legt allein der Besitzer im Studio fest; Discord kann nichts ändern, nichts
+herunterladen und keine Einstellung setzen. Konkret:
+
+- Freigaben und Token stehen in `remote.json` — nur auf diesem PC, nicht in
+  der `config.json`, nicht im Export-Bündel, nicht im Git.
+- Es zählt die Discord-**ID** des Absenders, nie der Name. Wer nicht freigegeben
+  ist, bekommt keine Antwort.
+- Der Hauptprozess prüft jeden Auftrag selbst noch einmal gegen `remote.json`.
+- Ohne **Fensterfokus-Prüfung** (`window_focus_check`) startet aus der Ferne
+  nichts — wer startet, sitzt nicht vor diesem Bildschirm.
+- Was beim Einschalten schon im Kanal stand, löst nichts aus; ein zu spät
+  gesehener Start startet nicht.
+- Die Verbindung geht nur von diesem PC aus (wie ein Browser); es wird kein Port
+  geöffnet. Gelesen wird alle 5 Sekunden, nur solange `main.py` läuft.
+
 ## Laufzeit-Steuerung
 
 Während eine Sequenz läuft:
@@ -1323,6 +1372,10 @@ Autoclicker-Idleclans/
 │   ├── import_export.py    # ZIP-Bundle Export/Import + Koordinaten-Remapping
 │   ├── handlers.py         # Hotkey-Handler
 │   ├── mailbox.py          # Briefkasten Studio -> Hauptprozess
+│   ├── remote/             # Fernstart über Discord
+│   │   ├── settings.py     # Freigaben in remote.json (nur dieser PC)
+│   │   ├── discord.py      # HTTPS zu Discord, nur Standardbibliothek
+│   │   └── bot.py          # liest den Kanal, antwortet, legt Aufträge ab
 │   ├── config_meta.py      # Beschriftung/Erklärung je Config-Feld (Studio)
 │   ├── diagnostics.py      # Selbstdiagnose (fehlende Templates, tote Verweise)
 │   ├── symbol.py           # Programm-Symbol als Geometrie
@@ -1364,6 +1417,7 @@ Autoclicker-Idleclans/
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py
 │       │   ├── scan_detect.py  # Boss- und Icon-Scans im Studio
 │       │   ├── bridge_share.py, bridge_tools.py, bridge_report.py, model.py
+│       │   ├── bridge_remote.py  # Reiter „Fernstart“
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
 │       ├── item_scan_editor.py
@@ -1374,6 +1428,7 @@ Autoclicker-Idleclans/
 │       ├── reclick.py                 # die Klick-Runde (läuft aus dem Maus-Hook)
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
+├── remote.json             # Fernstart: Freigaben + Bot-Token (nur dieser PC, nicht im Git)
 ├── CLAUDE.md               # Architektur-Notizen für Claude Code
 ├── AGENTS.md               # Verweis auf CLAUDE.md (für Codex)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs

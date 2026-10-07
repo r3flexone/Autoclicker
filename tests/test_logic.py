@@ -6636,6 +6636,7 @@ import tests.contract.svg_path             # noqa: F401,E402
 import tests.contract.gdi_capture          # noqa: F401,E402
 import tests.contract.tool_cli             # noqa: F401,E402
 import tests.contract.studio_guards        # noqa: F401,E402
+import tests.contract.remote               # noqa: F401,E402
 
 
 import shutil as _shD

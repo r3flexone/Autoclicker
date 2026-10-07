@@ -60,6 +60,12 @@ config.json
 # wie .run.json.
 .command.json
 
+# Fernstart ueber Discord (autoclicker/remote/): die Freigaben samt Bot-Token
+# gehoeren nur diesem PC - nie ins Repo, nie in ein Export-Buendel. Daneben
+# der Zustand des Bots fuer das Studio (transient wie .run.json).
+remote.json
+.remote-status.json
+
 # Aktueller Bestand: vollständige Sequenzordner und wiederverwendbare Presets.
 sequences/
 presets/

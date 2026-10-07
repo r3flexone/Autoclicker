@@ -24,7 +24,7 @@ Suche), liest sie vorher.
 | Datei | worum es geht |
 |---|---|
 | `tests/CLAUDE.md` | wie die Testschichten gebaut sind, CI-Matrix, Gegenproben, Rauchtest-Prüfstand |
-| `autoclicker/CLAUDE.md` | Template-Vergleich mit Lernmaske, Item-Katalog und LLM-Benennung, Session-Log, Import/Export |
+| `autoclicker/CLAUDE.md` | Template-Vergleich mit Lernmaske, Item-Katalog und LLM-Benennung, Session-Log, Import/Export, Fernstart über Discord |
 | `autoclicker/runtime/CLAUDE.md` | Aktions-Wrapper, Debug-Stufen und manueller Modus, Sequenz-Modell und ELSE, Nachprüfung, Laufstatus und Lebenszeichen, Boss-Erkennung, „Ab hier starten“, Folgesequenz |
 | `autoclicker/persistence/CLAUDE.md` | Referenzen statt Kopien, Dateiformat, Start-Durchgang, Namen als Schlüssel, Sequenzwechsel |
 | `autoclicker/editors/CLAUDE.md` | Konsolen-Editoren, Aufnahme und ihre Marker, Klick-Runde, Koordinaten nach einem Bildschirm-Umbau |
@@ -125,6 +125,7 @@ Regeln beim Erweitern:
 - **Main-Thread**: Pumpt die Hotkey-Ereignisse des gewählten Plattform-Backends
   (`main.py`), dispatcht zu Handlern und blockiert beim Editor-Input.
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus.
+- **Discord-Thread**: `RemoteBot` in `autoclicker/remote/bot.py` — liest den Kanal des Fernstarts und führt **nichts** selbst aus. Seine Aufträge holt der Main-Thread (`_check_remote` in `main.py`) und führt sie über `REMOTE_COMMANDS` aus, nie über den Briefkasten. Ohne Freigaben schläft er.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
 **Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
@@ -253,6 +254,9 @@ logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
 .recording.json                           letzte 3 Ereignisse der Aufnahme (transient)
 .reclick.json                          Stand der Klick-Runde (transient)
 .command.json                             Briefkasten Studio → Hauptprozess (transient)
+remote.json                              Fernstart: Freigaben + Bot-Token — nur dieser PC,
+                                         nie im Export, nie im Git (autoclicker/remote/)
+.remote-status.json                      was der Discord-Bot gerade tut, fürs Studio (transient)
 .studio-sequence.json                     zuletzt geoeffnete/gespeicherte Sequenz (transient)
 .last-scan.png                            was der letzte Item-Scan gesehen hat (transient)
 ```
@@ -312,6 +316,7 @@ Details: `autoclicker/CLAUDE.md`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 - `autoclicker/mailbox.py` — der Briefkasten Studio → Hauptprozess (`.command.json`); `runtime/status.py` ist der Rückweg (`.run.json`). Liegt bewusst nicht unter `runtime/`, damit das Fenster den Worker nicht nachzieht.
+- `autoclicker/remote/` — Fernstart über Discord: `settings.py` (`remote.json`, geschrieben nur vom Studio), `discord.py` (HTTPS mit `urllib`), `bot.py` (der Thread). **Über Discord lässt sich nichts auf dem PC verändern** — aus einer Nachricht wird nie ein Pfad, eine Koordinate oder eine Einstellung, der Bot erreicht keine Speicherfunktion, und der Hauptprozess prüft jeden Auftrag selbst noch einmal. Begründungen: `autoclicker/CLAUDE.md`.
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster (pywebview, eigener Prozess); seine Module stehen in seiner `CLAUDE.md`.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_click_window.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
@@ -423,6 +428,8 @@ erfindet, gilt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
 | holen | fetch | | melden | report |
 | wählen / Auswahl | select / selection | | Treffer | match |
 | Verwendung | usage | | Ertrag | yield |
+| Fernstart | remote | | Auftrag (Fernstart) | order |
+| Freigabe / freigeben | approval / allow | | Wort (Fernstart) | word |
 
 ### Altlasten werden entfernt, nicht mitgeschleppt
 

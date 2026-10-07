@@ -119,6 +119,11 @@ Ping bei wichtigen Events: Boss erkannt (LLM), Inventory voll, unerwarteter Stop
 - **Nutzen:** Kein ständiger Blick aufs Fenster nötig. Besonders stark in Kombination mit LLM-Boss-Detection.
 - **Tradeoff:** Webhook-URL als Secret verwalten (nicht ins Repo). Netzwerk-Abhängigkeit.
 - **Ansatz:** Neues Modul `autoclicker/notifications.py` mit `send_webhook(url, message, image=None)`. Hook-Points in `runtime/actions.py`.
+- **Stand:** Für Läufe, die über den Fernstart (`autoclicker/remote/`) kamen, ist das Ende schon
+  da: die Antwortzeile im Kanal wird zu „fertig — N Zyklen, N Klicks“. Für alles andere
+  (Boss erkannt, Notbremse, lokal gestartete Läufe) könnte derselbe Bot schreiben —
+  `DiscordClient.send` in den Fernstart-Kanal statt eines eigenen Webhooks, dann gibt es
+  nur EIN Geheimnis. Der Bot führt dabei weiter nichts aus; er meldet nur.
 
 ## Erkennung
 

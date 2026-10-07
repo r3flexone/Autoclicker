@@ -45,6 +45,7 @@
       <span class="tab-gap"></span>
       <button class="tab" data-view="tools">Werkzeuge</button>
       <button class="tab" data-view="share">Teilen</button>
+      <button class="tab" data-view="remote">Fernstart</button>
       <button class="tab" data-view="settings">Einstellungen</button>
     </div>
     <!-- **Welche Sequenz offen ist, gilt in JEDEM Reiter** — also steht die
@@ -423,6 +424,17 @@
     <aside class="page left" id="rep-left"></aside>
     <main class="cfg-middle" id="rep-middle"></main>
     <aside class="page right" id="rep-right"></aside>
+  </div>
+
+  <!-- Fernstart: was ein Wort im gemeinsamen Discord-Kanal auf DIESEM PC
+       startet. Links die Verbindung (Schalter, Token, Kanal), in der Mitte die
+       Freigaben (Woerter und Personen), rechts, was im Kanal passiert. Dieselbe
+       Dreiteilung wie Werkzeuge und Bericht; geschrieben wird `remote.json`,
+       nicht die Sequenz. -->
+  <div class="cfg" id="view-remote" hidden>
+    <aside class="page left" id="rem-left"></aside>
+    <main class="cfg-middle" id="rem-middle"></main>
+    <aside class="page right" id="rem-right"></aside>
   </div>
 
   <!-- Einstellungen: dieselbe Dreiteilung wie der Editor (Navigation, Inhalt,

@@ -31,6 +31,7 @@ from .bridge_contract import (
     trigger_name,
 )
 from .bridge_report import BridgeReportMixin
+from .bridge_remote import BridgeRemoteMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
 from .bridge_share import BridgeShareMixin
@@ -65,6 +66,7 @@ __all__ = [
 
 class StudioBridge(
     BridgeReportMixin,
+    BridgeRemoteMixin,
     BridgeEditingMixin,
     BridgeServicesMixin,
     BridgeShareMixin,
