@@ -50,6 +50,11 @@ body{
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
+/* Die Ecke, in der sich beide Leisten treffen, gehört zu keiner von beiden:
+   wer die Leiste selbst gestaltet, bekommt sie im Standard-Weiss — ein
+   weisses Quadrat unten rechts in jeder Fläche, die in beide Richtungen
+   scrollt. */
+::-webkit-scrollbar-corner{background:var(--bg)}
 
 /* ---------------------------------------------------------------- Grundformen */
 .app{display:flex;flex-direction:column;height:100%}
