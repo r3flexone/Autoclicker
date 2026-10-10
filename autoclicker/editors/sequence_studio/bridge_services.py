@@ -689,9 +689,9 @@ class BridgeServicesMixin:
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
             "optional": optional_fields(),
-            # Was hinter einem Feld gerade WIRKLICH liegt — heute nur der
-            # Katalog. Der Pfad allein sagt nicht, ob die Datei da ist und wie
-            # alt sie ist, und genau das ist die Frage, die man an eine
+            # Was hinter einem Feld gerade WIRKLICH liegt — Katalog und
+            # Marktwerte. Der Pfad allein sagt nicht, ob die Datei da ist und
+            # wie alt sie ist, und genau das ist die Frage, die man an eine
             # geholte Liste hat.
             "states": self._config_states(),
             "error": error,
@@ -734,11 +734,43 @@ class BridgeServicesMixin:
                 parts.append("geholt am " + when)
         return " · ".join(parts)
 
+    @staticmethod
+    def _market_state(path: str) -> str:
+        """Umfang und Alter der Marktwert-Datei — dieselbe Auskunft wie beim Katalog.
+
+        **Seit der Pfad voreingestellt ist, steht er auch da, wenn die
+        Marktanalyse nie gelaufen ist.** Ob die Item-Klicks nach Wert sortiert
+        werden, sagt deshalb erst diese Zeile, nicht das Feld. Der Zeitpunkt ist
+        der der Datei: die Analyse schreibt keinen hinein, und „von wann sind die
+        Preise" ist die Frage, die man an eine Wertetabelle hat.
+        """
+        import json
+        from datetime import datetime
+        if not path:
+            return ""
+        file = Path(path)
+        if not file.exists():
+            return "Datei fehlt — Marktanalyse noch nicht gelaufen?"
+        try:
+            raw = json.loads(file.read_text(encoding="utf-8"))
+            when = datetime.fromtimestamp(file.stat().st_mtime)
+        except (OSError, ValueError) as e:
+            return f"nicht lesbar ({e})"
+        if not isinstance(raw, dict):
+            return "nicht lesbar (kein Name→Wert-Objekt)"
+        return (f"{len(raw)} Items · gerechnet am "
+                + when.strftime("%d.%m.%Y um %H:%M"))
+
     def _config_states(self) -> dict:
         """Zusatzauskunft je Feld, wo der Wert allein zu wenig sagt."""
         from ...config import CONFIG
-        stamp = self._catalog_state(str(CONFIG.scan_catalog_file or "").strip())
-        return {"scan_catalog_file": stamp} if stamp else {}
+        states = {
+            "scan_catalog_file": self._catalog_state(
+                str(CONFIG.scan_catalog_file or "").strip()),
+            "scan_market_value_file": self._market_state(
+                str(CONFIG.scan_market_value_file or "").strip()),
+        }
+        return {key: stamp for key, stamp in states.items() if stamp}
 
     def config_write(self, data: Optional[dict] = None) -> dict:
         """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.

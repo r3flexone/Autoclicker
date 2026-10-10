@@ -278,6 +278,19 @@ try:
           _z["selected"] == "" and _z["brief"]["sessions"] == 2)
 
     check("ohne Marktwert-Datei gibt es keine Bewertung", _z["yield_value"] is None)
+    # Der voreingestellte Pfad steht auch da, wenn die Analyse nie lief. Eine
+    # fehlende Datei ist keine unlesbare — sonst stuende „nicht lesbar" im
+    # Reiter, und man suchte einen Defekt, wo nur ein Lauf fehlt.
+    CONFIG.scan_market_value_file = "market_analysis/output/marktwert.json"
+    check("und ein Pfad ins Leere ist dasselbe, nicht „nicht lesbar\"",
+          _b.report_data()["yield_value"] is None)
+
+    # Unter dem Feld steht, was dahinter liegt — dieselbe Auskunft wie beim
+    # Katalog. Seit der Pfad voreingestellt ist, sagt erst diese Zeile, ob die
+    # Klicks wirklich nach Wert sortiert werden.
+    check("die Einstellung sagt, dass die Datei fehlt",
+          "fehlt" in _SB._market_state("market_analysis/output/marktwert.json"))
+    check("ohne Pfad steht dort nichts", _SB._market_state("") == "")
 
     # --- Ertrag: Stueckzahl mal Wert, und es ist eine Obergrenze -------------
     Path("marktwert.json").write_text('{"Erz": 100, "Silber": 5}', encoding="utf-8")
@@ -296,7 +309,15 @@ try:
     check("ein ungesehenes Item taucht nicht auf",
           all(z[0] != "Silber" for z in _e["rows"]))
 
+    _stamp = _SB._market_state("marktwert.json")
+    check("und mit Datei: Umfang und wann gerechnet wurde",
+          "2 Items" in _stamp and "gerechnet am" in _stamp)
+    check("die Einstellungen liefern den Stand mit",
+          "2 Items" in _b.config_read()["states"].get("scan_market_value_file", ""))
+
     Path("marktwert.json").write_text("kaputt{", encoding="utf-8")
+    check("eine kaputte Datei heisst nicht lesbar, nicht fehlt",
+          "nicht lesbar" in _SB._market_state("marktwert.json"))
     from autoclicker.runtime.item_scan import _market_value_cache
     _market_value_cache.clear()
     check("eine unlesbare Wertetabelle wird gemeldet, nicht verschluckt",

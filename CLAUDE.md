@@ -320,12 +320,22 @@ Details: `autoclicker/CLAUDE.md`.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
   `output/marktwert.json` (Item-Name → Verkaufswert je Stück, `sale_values()` in
-  `market_analysis/pricing.py`); trägt man den Pfad in der
-  `config.json` des Autoclickers unter `scan_market_value_file` ein, sortiert der
+  `market_analysis/pricing.py`). `scan_market_value_file` in der `config.json` des
+  Autoclickers zeigt **von Haus aus** dorthin (`market_analysis/output/marktwert.json`,
+  relativ zum Arbeitsverzeichnis wie alle Pfade der App); liegt die Datei da, sortiert der
   Item-Scan seine Klicks danach statt nach der von Hand getippten `priority`
   (`load_market_values()` in `runtime/item_scan.py`, zwischengespeichert am mtime — eine
   neu gerechnete Analyse greift ohne Neustart). Zwei Tests messen die Trennung im
-  **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt).
+  **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt), ein
+  dritter, dass der Standard auf `MARKET_VALUE_PATH` der Analyse zeigt.
+
+  Bis zum 04.10.2026 war das Feld leer und der Pfad von Hand einzutragen — der einzige
+  Schritt zwischen „Analyse gelaufen" und „Scan sortiert danach", für eine Datei, die
+  im Normalfall im selben Repo liegt. **Eine `config.json` von davor trägt noch `""`**
+  (gespeichert werden alle Felder, nicht nur geänderte) und bleibt damit aus; im
+  Einstellungen-Reiter holt „Standard" den Pfad zurück. Ob die Datei wirklich da ist,
+  sagt die Zeile unter dem Feld (`_market_state()`), nicht der Pfad; der Bericht-Reiter
+  behandelt eine fehlende Datei wie gar keine, nicht als „nicht lesbar".
 
   **Nachgeschlagen wird mit `market_value()`, nie mit `.get()`.** Die Analyse schreibt
   die Namen der Spiel-API (`oak_log`), der Autoclicker kennt dasselbe Item als
@@ -340,7 +350,7 @@ Details: `autoclicker/CLAUDE.md`.
   unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
   negiert einsortiert wird. Das ist gewollt (ein gemessener Wert schlägt eine getippte
   Zahl), heisst aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
-  will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
+  will, leert `scan_market_value_file` — dann ändert sich gar nichts.
 
 ### Sequenz-Studio (Kurzfassung)
 

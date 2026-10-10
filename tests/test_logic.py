@@ -4110,7 +4110,7 @@ section("Item-Klicks koennen nach Marktwert statt nach Handpriorität sortieren"
 
 # Die einzige Verbindung zwischen den zwei Teilprojekten, und zwar in EINE Richtung:
 # market_analysis schreibt eine Name->Gold-JSON in seinen eigenen output/-Ordner, der
-# Autoclicker liest sie, falls in seiner config.json ein Pfad steht. Kein Import in
+# Autoclicker liest sie dort (der Pfad ist sein Standard, leer = aus). Kein Import in
 # irgendeine Richtung - ein Test prueft genau das.
 import json as _js6, tempfile as _tf6, os as _os6
 from autoclicker.runtime.item_scan import (load_market_values as _lmw,
@@ -4148,9 +4148,25 @@ check("der Autoclicker importiert nichts aus market_analysis",
 check("und market_analysis importiert nichts aus dem Autoclicker",
       _imported_modules(_ma_dir, "autoclicker") == [])
 
-# Leerer Pfad = aus. Das ist der Standard und muss ohne Datei funktionieren.
+# Leerer Pfad = aus, und ein Pfad ins Leere ebenso: der voreingestellte zeigt
+# genau dorthin, solange die Analyse nie gelaufen ist.
 check("ohne konfigurierten Pfad bleibt alles wie bisher", _lmw("") == {})
 check("ein Pfad ins Leere kippt nicht um", _lmw("gibt/es/nicht.json") == {})
+
+# **Der Pfad steht als Standard da.** Die Datei liegt im Normalfall im selben
+# Repo, und sie von Hand einzutragen war der einzige Schritt zwischen „Analyse
+# gelaufen" und „Scan sortiert danach". Gemessen wird gegen die Stelle, an die
+# die Analyse schreibt — verschiebt sie ihre Ausgabe, zeigt der Standard sonst
+# still ins Leere. Der Test darf beide Seiten kennen; die Programme nicht.
+from autoclicker.config import AppConfig as _AC6
+from market_analysis.config import MARKET_VALUE_PATH as _MVP6
+_default6 = _AC6().scan_market_value_file
+check("der Standard ist die Datei, die die Marktanalyse schreibt",
+      (_root6 / _default6).resolve() == Path(_MVP6).resolve())
+# Relativ wie alle Pfade der App: ein absoluter Pfad aus diesem Rechner zeigte
+# auf jedem anderen ins Leere.
+check("und relativ zum Arbeitsverzeichnis, nicht absolut",
+      not Path(_default6).is_absolute())
 
 _fd6, _path6 = _tf6.mkstemp(suffix=".json")
 _os6.close(_fd6)

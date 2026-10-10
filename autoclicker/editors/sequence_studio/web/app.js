@@ -630,7 +630,7 @@ async function call(name, data) {
 async function goTo(t) {
   if (!t || !t.view) return;
   // Ein Feld in den Einstellungen: hinscrollen, kurz aufleuchten, Fokus hinein.
-  // Leere Zustände anderer Reiter („Marktwert-Datei eintragen") schicken
+  // Leere Zustände anderer Reiter („Marktwert-Datei prüfen") schicken
   // hierher, statt den Config-Schlüssel zu nennen und einen suchen zu lassen.
   if (t.view === "settings") {
     setView("settings", true);
@@ -6574,13 +6574,15 @@ function reportRenderRight() {
   const e = B.yield_value;
   if (!e) {
     bodyEl.appendChild(el("p", {class: "hint"},
-      "Noch keine Bewertung: dafür braucht es eine Marktwert-Datei "
-      + "(marktwert.json aus der Marktanalyse) und Läufe, die Items gefunden "
-      + "haben. Dann steht hier, was ein Lauf eingebracht hat."));
+      "Noch keine Bewertung: dafür braucht es die Marktwert-Datei, die die "
+      + "Marktanalyse schreibt (python market_analysis/analysis.py), und Läufe, "
+      + "die Items gefunden haben. Dann steht hier, was ein Lauf eingebracht hat."));
+    // Der Pfad ist voreingestellt — fehlt die Bewertung, fehlt meist der Lauf
+    // der Analyse, nicht ein Eintrag. Unter dem Feld steht, was dahinter liegt.
     bodyEl.appendChild(el("button", {class: "btn wide",
-      title: "Öffnet die Einstellung „scan_market_value_file“",
+      title: "Zeigt Pfad und Stand der Marktwert-Datei („scan_market_value_file“)",
       onclick: () => goTo({view: "settings", key: "scan_market_value_file"})},
-      "Marktwert-Datei eintragen", icon("arrow")));
+      "Marktwert-Datei prüfen", icon("arrow")));
     target.appendChild(bodyEl);
     return;
   }

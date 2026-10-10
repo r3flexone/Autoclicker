@@ -164,8 +164,10 @@ class AppConfig:
     scan_min_markers_required: int = 2              # Minimum Marker (nur wenn scan_require_all_markers=False)
     scan_marker_min_pixels: int = 1                 # Min. passende (abgetastete) Pixel pro Marker-Farbe (>1 = robuster gegen Rausch-Pixel)
     # Pfad zu einer Item-Name -> Gold-pro-Stueck-JSON (schreibt market_analysis).
+    # Voreingestellt ist die Stelle, an der die Analyse sie ablegt (relativ zum
+    # Arbeitsverzeichnis wie alle Pfade hier) - fehlt die Datei, aendert sich nichts.
     # Leer = aus: dann entscheidet wie bisher die von Hand gesetzte Item-Prioritaet.
-    scan_market_value_file: str = ""
+    scan_market_value_file: str = "market_analysis/output/marktwert.json"
     # Pfad zum Item-/Gegner-Katalog aus der Spiel-API (schreibt tools/catalog.py).
     # Leer = aus: dann bleibt das Benennen frei und die Kategorie Handarbeit.
     scan_catalog_file: str = ""

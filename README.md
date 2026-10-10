@@ -1293,7 +1293,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | Option | Beschreibung |
 |--------|--------------|
 | `boss_learn_global` | Neu entdeckte Bosse in die globale Bibliothek schreiben statt in den einzelnen Scan (im Boss-Scan-Menü umschaltbar) |
-| `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority` (leer = aus) |
+| `scan_market_value_file` | Pfad zu `marktwert.json` aus `market_analysis` — sortiert Item-Klicks nach Gold statt nach getippter `priority`. Standard ist `market_analysis/output/marktwert.json`, also die Datei, die die Analyse schreibt: ist sie gelaufen, gilt die Tabelle ohne weiteres Eintragen (leer = aus) |
 | `scan_catalog_file` | Pfad zu `catalog.json` aus der Spiel-API — im Studio holt der Knopf **Katalog aus der Spiel-API holen** direkt unter diesem Feld die Datei und trägt den Pfad ein; auf der Kommandozeile `python tools/catalog.py`. Echte Item-Namen für Kategorie, Priorität und LLM-Benennung. Sagt nur, **wo** die Datei liegt; **ob** ein Scan sie benutzt, steht als `use_catalog` am Scan (leer = aus) |
 
 ### Debug-Einstellungen

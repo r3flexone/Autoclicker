@@ -235,9 +235,11 @@ META: dict = {
         unit="px"),
     "scan_market_value_file": M(
         "Marktwert-Tabelle", CONTROL_TEXT,
-        "Pfad zu einer Item→Gold-JSON aus market_analysis. Ist sie gesetzt, "
-        "sortiert der Item-Scan seine Klicks nach Wert statt nach der von Hand "
-        "getippten Priorität — und jedes Item MIT Wert gewinnt gegen jedes ohne.",
+        "Pfad zu einer Item→Gold-JSON aus market_analysis. Voreingestellt ist "
+        "die Datei, die die Marktanalyse selbst schreibt — liegt sie da, gilt "
+        "sie ohne weiteres Zutun. Dann sortiert der Item-Scan seine Klicks nach "
+        "Wert statt nach der von Hand getippten Priorität, und jedes Item MIT "
+        "Wert gewinnt gegen jedes ohne. Wer das nicht will, leert das Feld.",
         empty="nach getippter Priorität"),
     "scan_catalog_file": M(
         "Item-Katalog", CONTROL_TEXT,

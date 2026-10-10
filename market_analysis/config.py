@@ -24,9 +24,11 @@ EXPORT_PATH = os.path.join(OUTPUT_DIR, "idle_clans_farming.xlsx")
 PRICE_SENSITIVITY_CHART_PATH = os.path.join(OUTPUT_DIR, "price_sensitivity_chart.png")
 RUN_STATS_PATH = os.path.join(OUTPUT_DIR, "run_stats_history.json")
 # Schlanke Item-Name -> Gold-pro-Stueck-Tabelle. EINZIGE Beruehrung mit dem
-# Autoclicker, und zwar nur als Datei: der Autoclicker LIEST sie (falls in seiner
-# config.json ein Pfad eingetragen ist), diese Analyse weiss nichts von ihm. Kein
-# Import in beide Richtungen, keine gemeinsame Abhaengigkeit - nur eine JSON.
+# Autoclicker, und zwar nur als Datei: der Autoclicker LIEST sie (sein
+# `scan_market_value_file` zeigt von Haus aus hierher), diese Analyse weiss nichts
+# von ihm. Kein Import in beide Richtungen, keine gemeinsame Abhaengigkeit - nur
+# eine JSON. Wer diesen Pfad verlegt, zieht den Standard dort mit; die
+# Vertragssuite prueft, dass beide auf dieselbe Datei zeigen.
 MARKET_VALUE_PATH = os.path.join(OUTPUT_DIR, "marktwert.json")
 
 

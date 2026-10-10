@@ -121,7 +121,7 @@ def run():
         # ------------------------------------ Sprungmarke Bericht -> Einstellungen
         f.page.set_viewport_size({"width": 1500, "height": 900})
         f.tab("report")
-        f.click_text("#rep-right button", "Marktwert-Datei eintragen")
+        f.click_text("#rep-right button", "Marktwert-Datei prüfen")
         f.page.wait_for_function(
             "() => { const a = document.activeElement;"
             " return !!(a && a.closest && a.closest('#cfg-row-scan_market_value_file')); }",

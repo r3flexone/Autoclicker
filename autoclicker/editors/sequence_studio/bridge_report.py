@@ -221,11 +221,14 @@ class BridgeReportMixin:
         schreibt das dazu, statt eine Genauigkeit zu behaupten, die das Log
         nicht hergibt.
 
-        Ohne eingetragene Marktwert-Datei gibt es Stückzahlen und sonst nichts.
-        Das ist kein Fehlerfall, sondern der Normalfall ohne Marktanalyse.
+        Ohne Marktwert-Datei gibt es Stückzahlen und sonst nichts. Das ist kein
+        Fehlerfall, sondern der Normalfall ohne Marktanalyse — und dazu zählt
+        auch der voreingestellte Pfad, solange die Analyse dort noch nichts
+        abgelegt hat. Eine FEHLENDE Datei ist keine unlesbare: als „nicht
+        lesbar" gemeldet, sucht man einen Defekt, wo nur ein Lauf fehlt.
         """
         path = str(self._report_config("scan_market_value_file", "") or "")
-        if not path or not raw["items"]:
+        if not path or not raw["items"] or not Path(path).exists():
             return None
         from ...runtime.item_scan import load_market_values, market_value
         values = load_market_values(path)

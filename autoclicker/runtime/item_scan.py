@@ -796,7 +796,8 @@ def _effective_priority(item, saved: int, values: dict) -> float:
     weil negative Zahlen unter allen Prioritaeten liegen. Das ist gewollt - ein
     gemessener Wert ist eine staerkere Aussage als eine von Hand getippte Zahl - aber
     es heisst auch, dass ein Item ohne Eintrag in der Wertetabelle nach hinten rutscht.
-    Wer das nicht will, laesst `scan_market_value_file` leer.
+    Wer das nicht will, leert `scan_market_value_file` (der Standard zeigt auf die
+    Datei der Marktanalyse).
 
     Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: items.json
     bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.

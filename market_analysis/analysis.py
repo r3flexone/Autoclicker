@@ -1861,8 +1861,8 @@ def main():
         n_values = export_market_values(market_map, item_info_map, MARKET_VALUE_PATH)
         if n_values:
             print(f"Marktwerte gespeichert: {MARKET_VALUE_PATH} ({n_values} Items)")
-            print("  Der Autoclicker kann danach sortieren - Pfad in seiner config.json "
-                  "unter 'scan_market_value_file' eintragen.")
+            print("  Der Autoclicker liest sie von selbst (Standard von "
+                  "'scan_market_value_file') und sortiert seine Item-Klicks danach.")
     except (IOError, OSError) as e:
         print(f"⚠ Marktwerte konnten nicht geschrieben werden: {e}")
 

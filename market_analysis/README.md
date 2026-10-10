@@ -444,9 +444,11 @@ history.last_runs(conn, 5)        # wann, mit welchem Code, welcher Config
 Neben der Excel-Datei entsteht `output/marktwert.json`: **Item-Name → was ein Stück beim
 Verkauf bringt**, netto und über den besseren Weg (Spielergebot nach Steuer oder NPC),
 für jedes Item mit Preis – nicht nur für Rezept-Ergebnisse, denn der Autoclicker findet
-auch Beute. Trägt man den Pfad in seiner `config.json` unter `scan_market_value_file`
-ein, sortiert sein Item-Scan die Klicks danach. Importiert wird in keine Richtung; die
-Datei ist die ganze Verbindung.
+auch Beute. Der Autoclicker liest sie von selbst: `scan_market_value_file` in seiner
+`config.json` zeigt standardmässig genau auf diese Datei, und sein Item-Scan sortiert
+die Klicks danach. Importiert wird in keine Richtung; die Datei ist die ganze
+Verbindung — wer `output/` verlegt, zieht den Standard im Autoclicker mit (die
+Vertragssuite prüft, dass beide auf dieselbe Datei zeigen).
 
 Hier stand bis zum 04.10.2026 die Spalte `Gold pro Stück` der Rohdaten, also die Marge
 beim Herstellen aus gekauften Zutaten, und zwar unter dem **Rezept**namen. Das passte

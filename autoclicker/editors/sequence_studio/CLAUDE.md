@@ -1550,7 +1550,7 @@ Regeln für die Ansicht:
 - **Eine Einstellung ist ein Sprungziel** (`goTo({view: "settings", key})`):
   scrollt hin, lässt die Zeile aufleuchten, setzt den Fokus ins Feld. Leere
   Zustände anderer Reiter nennen deshalb keinen Config-Schlüssel mehr, sondern
-  bieten den Sprung an („Marktwert-Datei eintragen" im Bericht). Die
+  bieten den Sprung an („Marktwert-Datei prüfen" im Bericht). Die
   Änderungskarten rechts springen ebenso zu ihrem Feld.
 - **Ein abhängiges Feld heisst `.faded`** — `cfgRow()` setzte `blass`, das CSS
   kannte nur `.cfg-row.faded`, und abhängige Felder waren seit dem
