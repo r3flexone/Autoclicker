@@ -6487,8 +6487,21 @@ section("Die CLAUDE.md-Dateien zeigen auf Dateien, die es wirklich gibt")
 #
 # Gelesen werden ALLE CLAUDE.md-Dateien: die Wurzel ist nur noch der Kern, die
 # Begruendungen stehen in den Dateien der Unterordner.
-_claude_files16 = sorted(p for p in _root15.rglob("CLAUDE.md")
-                         if not {".git", ".venv", "node_modules"} & set(p.parts))
+#
+# Gesucht wird nur, was zum Repo gehoert. Unter `.claude/worktrees/<name>/` liegen
+# die Arbeitsbaeume anderer Sitzungen, also ein zweites Repo samt eigener
+# CLAUDE.md-Dateien: lokal stand die Pruefung unten damit rot (acht „ungenannte"
+# Unterdateien), und die Existenz-Pruefung haette eine Datei, die nur dort liegt,
+# als vorhanden gezaehlt. In der CI gibt es den Ordner nicht.
+_FOREIGN16 = {".git", ".venv", "node_modules", ".claude"}
+
+
+def _repo_files16(pattern):
+    return [p for p in _root15.rglob(pattern)
+            if not _FOREIGN16 & set(p.relative_to(_root15).parts)]
+
+
+_claude_files16 = sorted(_repo_files16("CLAUDE.md"))
 _claude16 = "\n".join(p.read_text(encoding="utf-8") for p in _claude_files16)
 _named16 = sorted(set(_re15.findall(r"`([\w/\.]+\.py)`", _claude16)))
 check("der Test findet ueberhaupt Dateinamen", len(_named16) > 50)
@@ -6515,7 +6528,7 @@ _DELETED16 = {
 }
 _missing16 = [d for d in _named16
             if d not in _DELETED16
-            and not list(_root15.rglob(d.split("/")[-1]))]
+            and not _repo_files16(d.split("/")[-1])]
 check("jede genannte .py-Datei existiert", _missing16 == [])
 if _missing16:
     print("        gibt es nicht: " + ", ".join(_missing16))
@@ -6524,7 +6537,7 @@ if _missing16:
 # sie da nicht mehr hin. Dieselbe Regel wie bei `PLATTFORM_MODULE` — eine Liste,
 # die niemand prueft, waechst zur Fiktion.
 _wieder16 = sorted(d for d in _DELETED16
-                   if list(_root15.rglob(d.split("/")[-1])))
+                   if _repo_files16(d.split("/")[-1]))
 check("und keine der drei Ausnahmen ist heimlich zurueck", _wieder16 == [])
 if _wieder16:
     print("        wieder da: " + ", ".join(_wieder16))
