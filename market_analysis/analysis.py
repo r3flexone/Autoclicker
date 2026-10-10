@@ -504,6 +504,12 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "SpielerMarktDuenn": thin_bid,
             "BidVolumen": m["buyVol"],
             "MarketAsk": m["sell"],
+            # Fuer die Historie: der gehandelte Tagesschnitt und die Menge am besten
+            # Angebot. Beide standen dort fest auf leer - in 17 Laeufen war `avg` nie
+            # gefuellt, und "war das letzte Woche auch so?" fragt nach dem, was
+            # gehandelt wurde, nicht nach dem Gebot, das gerade oben steht.
+            "_avg": m["avg"] or None,
+            "_ask_vol": m["sellVol"] or None,
             "LiquidityWarning": max_liquidity_ratio > LIQUIDITY_WARNING_RATIO,
             "LiquidityRatio": round(max_liquidity_ratio, 1),
             "PriceAnomaly": price_anomaly(m) if not sold_to_npc else False,
@@ -1550,9 +1556,9 @@ def history_rows(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
             "skill": r.get("FinalSkill"),
             "bid": r.get("SpielerpreisBid"),
             "ask": r.get("MarketAsk"),
-            "avg": None,
+            "avg": r.get("_avg"),
             "bid_vol": r.get("BidVolumen"),
-            "ask_vol": None,
+            "ask_vol": r.get("_ask_vol"),
             "npc_preis": r.get("NPCPreis"),
             "kosten_h": r.get("RawMaterialCost/h"),
             "gold_h": r.get("Gold/h (Eigenherstellung)"),

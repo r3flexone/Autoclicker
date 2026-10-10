@@ -403,7 +403,7 @@ Ordner beantworten keine einzige Frage, ohne dass man sie alle öffnet.
 | Tabelle | Inhalt |
 |---|---|
 | `runs` | ein Eintrag je Lauf: Zeitpunkt, Codeversion, Config-Hash, Anzahl Items |
-| `items` | je Item und Lauf: Preise, Volumen, NPC-Preis, Kosten, Gold/h, gemessenes Gold/h, Verkaufsweg, Rang, Warnungen |
+| `items` | je Item und Lauf: Gebot, Angebot, gehandelter Tagesschnitt (`avg`), Volumen an beiden Bestpreisen, NPC-Preis, Kosten, Gold/h, gemessenes Gold/h, Verkaufsweg, Rang, Warnungen |
 | `orderbook` | Gebots- und Angebotsstufen – nur für die `HISTORY_ORDERBOOK_TOP_N` besten Kandidaten |
 | `daily` | verdichtete Tageswerte, wenn die Detailzeilen zu alt geworden sind |
 
@@ -427,6 +427,12 @@ Drei Regeln tragen das:
 | Orderbuchstufen | 30 Tage | `HISTORY_ORDERBOOK_DAYS` |
 | Tageswerte | 365 Tage | `HISTORY_DAILY_DAYS` |
 | Laufprotokolle | die jüngsten 100 | `HISTORY_RUN_LIMIT` |
+
+**`avg` und `ask_vol` sind erst seit dem 11.10.2026 gefüllt.** Davor standen sie in
+`history_rows()` fest auf leer – die ersten 17 Läufe tragen keinen Handelsschnitt, nur
+Gebot und Angebot. Für „war das letzte Woche auch so?" ist der Schnitt aber die
+Zahl, die zählt: ein Gebot zeigt, was gerade oben steht, der Schnitt, was gehandelt
+wurde.
 
 Das Orderbuch kostet **keinen zusätzlichen Request**: gespeichert wird, was das Sheet
 „Begründung" ohnehin schon abgerufen hat. Abschalten mit `HISTORY_ENABLED = False`;

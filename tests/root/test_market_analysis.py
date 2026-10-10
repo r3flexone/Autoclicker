@@ -979,6 +979,28 @@ class MeasurementRankingTest(unittest.TestCase):
         df = _analysis.build_chain_df(recipes, MARKET, INFO, {200: 201})
         self.assertEqual(sorted(df["Item"]), ["cooked_tuna", "yew_log"])
 
+    def test_historie_traegt_schnitt_und_angebotsmenge(self):
+        """`avg` und `ask_vol` standen in history_rows() fest auf leer - in den
+        ersten 17 Laeufen (bis 04.10.2026) war der gehandelte Schnitt nie
+        gespeichert. Gemessen wird bis in die Datenbank: die Kette muss die Werte
+        tragen UND die Historie sie schreiben."""
+        recipes = {100: _rezept("yew_log", "Woodcutting", 100, 8000),
+                   400: _rezept("billig", "Woodcutting", 400, 8000)}
+        market = {**MARKET, 400: dict(MARKET[400], avg=0)}
+        df = _analysis.build_chain_df(recipes, market, INFO, {})
+        conn = history.open_db(":memory:")
+        try:
+            with history.run_ctx(conn) as run_id:
+                history.write_items(conn, run_id, _analysis.history_rows(df, _pd.DataFrame()))
+            stored = {z["item"]: z for z in
+                      conn.execute("SELECT item, avg, ask_vol FROM items").fetchall()}
+        finally:
+            conn.close()
+        self.assertEqual(stored["yew_log"]["avg"], 78)
+        self.assertEqual(stored["yew_log"]["ask_vol"], 5000)
+        # Ohne Handel kein Schnitt - leer, nicht 0.
+        self.assertIsNone(stored["billig"]["avg"])
+
     def test_chart_zeichnet_keine_ausreisser(self):
         """Das Oak-Angebot zu 464.650 g stand als 1,56 Mrd. Gold/h im Chart."""
         self.assertEqual(_analysis.price_points_from_depth(OAK_BOOK),
