@@ -43,8 +43,8 @@ try:
         THIN_BID_HOURS, net_player_price,
     )
     from .orderbook import (
-        buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
-        price_position, sell_levels_from_depth, walk_orderbook,
+        bids_for_measurement, buy_levels_from_depth, corrected_top, implausible_top,
+        patience_analysis, price_position, sell_levels_from_depth, walk_orderbook,
     )
     from .pricing import (
         thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
@@ -73,8 +73,8 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         THIN_BID_HOURS, net_player_price,
     )
     from orderbook import (  # type: ignore
-        buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
-        price_position, sell_levels_from_depth, walk_orderbook,
+        bids_for_measurement, buy_levels_from_depth, corrected_top, implausible_top,
+        patience_analysis, price_position, sell_levels_from_depth, walk_orderbook,
     )
     from pricing import (  # type: ignore
         thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
@@ -1037,11 +1037,13 @@ def _patience_text(patience: dict | None) -> str:
 def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
              average: float, loss: float, warning: str, deviation: float = 0.0,
              position: float | None = None, trend: str = "",
-             patience: dict | None = None, sold: str = "eine Stunde Produktion") -> str:
+             patience: dict | None = None, sold: str = "eine Stunde Produktion",
+             dropped_bid: tuple | None = None, hours_per_piece: float = 0.0) -> str:
     """Ein Satz Klartext: warum ist das Item gut oder eben nicht.
 
     `sold` ist das, was verkauft wurde - eine Stunde Produktion, bei Ketten unter
-    einem Stueck je Stunde ein Stueck (s. build_reason_df)."""
+    einem Stueck je Stunde ein Stueck (s. build_reason_df). `dropped_bid` ist das
+    beste Gebot, das bei solchen Ketten nicht mitzaehlt (s. bids_for_measurement)."""
     if to_npc:
         if top_price <= 0:
             return "Nur NPC: kein brauchbares Kaufgebot im Player Shop."
@@ -1057,6 +1059,10 @@ def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
         parts.append(f"Top-Gebot ist nach {hours_coverage * 60:,.0f} min leer")
     else:
         parts.append("kein Volumen am Top-Gebot")
+    if dropped_bid:
+        parts.append(f"gerechnet ohne das beste Gebot ({dropped_bid[0]:,.0f}g x "
+                     f"{dropped_bid[1]:,.0f}): ein Stueck dauert {hours_per_piece:,.0f} h, "
+                     "so lange steht kein einzelnes Gebot fest")
 
     if loss > 0.02:
         parts.append(f"{sold} drueckt den Schnitt auf {average:,.0f}g ({-loss:.0%})")
@@ -1230,21 +1236,25 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         # Produktion bewegt den Preis kaum" und "1 h Produktion ist in unter 1 h weg".
         # Gemessen wird am Stueck, umgerechnet auf die Stunde.
         lot = max(units_h, 1.0) if units_h > 0 else 0.0
+        # Angezeigt wird das Buch, wie es ist; verkauft wird bei langsamen Ketten
+        # ohne das beste Gebot (s. bids_for_measurement).
+        measured, dropped_bid = bids_for_measurement(levels, units_h)
         if levels:
             top_price, top_amount = max(levels, key=lambda x: x[0])
             if top_price > 0:
                 reference_gross = reference_gross or top_price
             coverage = top_amount / units_h if units_h > 0 else 0.0
-            revenue_value = _book_revenue(levels, lot, npc) * (units_h / lot) if lot else 0.0
-            average = revenue_value / units_h if units_h > 0 else 0.0
-            loss = (1 - average / reference_value) if reference_value > 0 else 0.0
         else:
-            # Ein abgerufenes Buch ohne Gebot: alles geht an den NPC, wie oben der
-            # Rest, der nicht mehr ins Buch passt.
             top_price, top_amount, coverage = 0.0, 0.0, 0.0
+        if measured:
+            revenue_value = _book_revenue(measured, lot, npc) * (units_h / lot) if lot else 0.0
+            average = revenue_value / units_h if units_h > 0 else 0.0
+        else:
+            # Ein Buch ohne Gebot: alles geht an den NPC, wie oben der Rest, der
+            # nicht mehr ins Buch passt.
             average = npc
             revenue_value = average * units_h
-            loss = (1 - average / reference_value) if reference_value > 0 else 0.0
+        loss = (1 - average / reference_value) if reference_value > 0 else 0.0
 
         if to_npc:   # NPC hat unbegrenztes Volumen, das Buch ist dann egal
             average, revenue_value, loss = npc, npc * units_h, 0.0
@@ -1292,7 +1302,8 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Bewertung": _verdict(to_npc, npc, top_price, coverage, average, loss,
                                   "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
                                   deviation, position, trend, patience,
-                                  "ein Stueck" if 0 < units_h < 1 else "eine Stunde Produktion"),
+                                  "ein Stueck" if 0 < units_h < 1 else "eine Stunde Produktion",
+                                  dropped_bid, 1.0 / units_h if units_h > 0 else 0.0),
         })
 
     if unreachable:

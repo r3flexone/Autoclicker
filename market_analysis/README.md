@@ -129,7 +129,7 @@ eine Stunde Produktion tatsächlich durchs Orderbuch.
 |---|---|
 | `Bestes Gebot` / `Menge am besten Gebot` | oberste Stufe im Player Shop |
 | `Deckt Stunden` | wie lange deine Produktion auf dieser Stufe Platz hat |
-| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst – mindestens ein ganzes Stück: eine Kette mit 0,03 Stück je Stunde bietet nie 0,03 Stück an |
+| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst – mindestens ein ganzes Stück: eine Kette mit 0,03 Stück je Stunde bietet nie 0,03 Stück an. Bei mehr als einer Stunde je Stück ohne das beste Gebot (s. u.) |
 | `Preisverlust` | wie weit das unter dem Listenpreis liegt |
 | `Gold/h realistisch` | Gold/h mit diesem Schnitt statt mit dem Top-Gebot |
 | `NPC besser` | der Vendor zahlt mehr als der Schnitt |
@@ -138,6 +138,21 @@ eine Stunde Produktion tatsächlich durchs Orderbuch.
 
 Deckt das Top-Gebot mehrere Stunden, kannst du sofort verkaufen. Ist es nach Minuten
 leer, rutschst du auf die nächste Stufe – dann steht die Wahrheit in `Gold/h realistisch`.
+
+**Braucht ein Stück länger als eine Stunde, zählt das beste Gebot nicht**
+(`bids_for_measurement` in `orderbook.py`). Bis das Stück fertig ist, ist die
+Momentaufnahme Stunden oder Tage alt, und ein einzelner Bieter kann sein Gebot längst
+zurückgezogen haben. Gerechnet wird deshalb mit dem, was bleibt, wenn er weg ist;
+`Bestes Gebot` und `Kaufgebote (Stufen)` zeigen weiter das Buch, wie es ist, und die
+Bewertung sagt, warum anders gerechnet wurde. Bleibt kein Gebot übrig, geht das Stück an
+den NPC wie bei jedem leeren Buch.
+
+> Gefunden am 11.10.2026: `otherworldly_shield` (130 h je Stück, rund 430 Mio. Zukauf)
+> stand auf Platz 2 – getragen von genau einem Gebot zu 600 Mio., das nächste lag bei
+> 111 Mio. In einem tiefen Buch ändert die Regel fast nichts (Oak: 92 g, darunter 91 g).
+> Sie hilft nicht gegen einen Preissturz bei vielen eng beieinander liegenden Geboten:
+> `otherworldly_bar` hatte am 04.10. neun davon (151/150/150 Mio.), und eine Woche später
+> lag das beste bei 20 Mio.
 Weicht das Orderbuch stark vom Listenpreis ab, sagt die Bewertung das dazu: Bulk-Endpoint
 und Orderbuch sind zwei Momentaufnahmen.
 

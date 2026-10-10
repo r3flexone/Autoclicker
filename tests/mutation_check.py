@@ -111,6 +111,10 @@ CASES = {
         "market_analysis.orderbook", "patience_analysis",
         "lot = max(units_per_hour, 1.0)", "lot = units_per_hour",
         "test_market_analysis.OrderbookTest.test_geduld_wartet_auf_ein_ganzes_stueck"),
+    "slow-chain-best-bid": (
+        "market_analysis.orderbook", "bids_for_measurement",
+        "if not levels or not 0 < units_per_hour < 1.0:", "if True:",
+        "test_market_analysis.OrderbookTest.test_langsame_kette_misst_ohne_das_beste_gebot"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_against_known",
         "    if known_active:", "    if False:",

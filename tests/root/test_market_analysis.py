@@ -15,8 +15,8 @@ from market_analysis.config import (
     COMPREHENSIVE_AVG_FIELDS, GOLD_ITEM_ID, net_player_price, saving_factor,
 )
 from market_analysis.orderbook import (
-    buy_levels_from_depth, corrected_top, implausible_top, patience_analysis,
-    price_position, sell_levels_from_depth, walk_orderbook,
+    bids_for_measurement, buy_levels_from_depth, corrected_top, implausible_top,
+    patience_analysis, price_position, sell_levels_from_depth, walk_orderbook,
 )
 from market_analysis.recipes import cost_factor, normalize_recipe, skill_cfg
 
@@ -465,6 +465,24 @@ class OrderbookTest(unittest.TestCase):
         self.assertAlmostEqual(result["gold_h"],
                                0.0335 * (net_player_price(219_999_999) - 114_000_000))
 
+    def test_langsame_kette_misst_ohne_das_beste_gebot(self):
+        """otherworldly_shield, 130 h je Stueck: ein Gebot zu 600 Mio., das naechste
+        zu 111 Mio. Bis der Schild fertig ist, kann der eine Bieter weg sein."""
+        book = [(600_000_000, 1), (111_111_112, 1)]
+        measured, dropped = bids_for_measurement(book, 0.00771)
+        self.assertEqual(measured, [(111_111_112, 1)])
+        self.assertEqual(dropped, (600_000_000, 1))
+
+    def test_schnelle_kette_misst_das_ganze_buch(self):
+        """Ab einem Stueck je Stunde ist die Momentaufnahme frisch genug."""
+        book = [(92, 51_001), (91, 93_338)]
+        self.assertEqual(bids_for_measurement(book, 3400.8), (book, None))
+        self.assertEqual(bids_for_measurement(book, 1.0), (book, None))
+        self.assertEqual(bids_for_measurement([], 0.5), ([], None))
+
+    def test_ein_einziges_gebot_laesst_ein_leeres_buch(self):
+        self.assertEqual(bids_for_measurement([(150, 9)], 0.5), ([], (150, 9)))
+
     def test_preis_position_erwartet_brutto(self):
         """Netto gegen den Brutto-Schnitt zu halten meldet bei jedem Item -1%."""
         depth = {COMPREHENSIVE_AVG_FIELDS["Avg30D"]: 100}
@@ -886,8 +904,12 @@ class MeasurementRankingTest(unittest.TestCase):
                                   "Stück/h": [0.065, 0.034],
                                   "RawMaterialCost/h": [0.0, 4_000_000.0],
                                   "Nebenertrag/h": [0.0, 0.0]})
-        books = {1: {"highestBuyPricesWithVolume": [{"key": 5_000_000, "value": 10}]},
-                 2: {"highestBuyPricesWithVolume": [{"key": 150_000_000, "value": 2}]}}
+        # Je ein Gebot einen Gold darueber: beide Ketten brauchen mehr als eine
+        # Stunde je Stueck, also zaehlt das beste Gebot nicht (bids_for_measurement).
+        books = {1: {"highestBuyPricesWithVolume": [{"key": 5_000_001, "value": 10},
+                                                    {"key": 5_000_000, "value": 10}]},
+                 2: {"highestBuyPricesWithVolume": [{"key": 150_000_001, "value": 2},
+                                                    {"key": 150_000_000, "value": 2}]}}
         old = _analysis.fetch_orderbook_depth
         try:
             _analysis.fetch_orderbook_depth = books.get
@@ -950,7 +972,8 @@ class MeasurementRankingTest(unittest.TestCase):
         df_chain = _pd.DataFrame({"Item": ["barren"], "ItemID": [1], "Stück/h": [0.0335],
                                   "RawMaterialCost/h": [3_833_413.0],
                                   "Nebenertrag/h": [0.0]})
-        book = {"highestBuyPricesWithVolume": [{"key": 151_000_000, "value": 2}],
+        book = {"highestBuyPricesWithVolume": [{"key": 151_000_000, "value": 2},
+                                               {"key": 150_000_000, "value": 2}],
                 "lowestSellPricesWithVolume": [{"key": 220_000_000, "value": 1}],
                 cfg.COMPREHENSIVE_VOLUME_FIELD: 2}
         df_reason = self._measure(df_rec, df_chain, lambda item_id: book)
@@ -958,8 +981,29 @@ class MeasurementRankingTest(unittest.TestCase):
         self.assertIn("ein Stueck bewegt den Preis kaum", verdict)
         self.assertIn("1 Stueck liegt dann ~12 h im Buch", verdict)
         self.assertNotIn("Stunde Produktion", verdict)
+        # Verkauft ins zweitbeste Gebot - das beste zaehlt bei 30 h je Stueck nicht.
         self.assertEqual(int(df_reason.loc[0, "Gold/h realistisch"]),
-                         round(0.0335 * 151_000_000 * 0.99 - 3_833_413))
+                         round(0.0335 * 150_000_000 * 0.99 - 3_833_413))
+
+    def test_ein_einzelner_bieter_traegt_keine_langsame_kette(self):
+        """otherworldly_shield vom 11.10.2026: Platz 2, getragen von einem Gebot zu
+        600 Mio. Gemessen wird ohne den einen Bieter; angezeigt bleibt das Buch,
+        wie es ist, und die Bewertung sagt, warum anders gerechnet wurde."""
+        units, cost_h = 0.00771, 0.00771 * 432_861_540
+        df_rec = self._recommendation([
+            (2, "schild", "Smithing", 1_242_037, "Spieler", 0, units,
+             594_000_000, 600_000_000, 0.271, None)])
+        df_chain = _pd.DataFrame({"Item": ["schild"], "ItemID": [1], "Stück/h": [units],
+                                  "RawMaterialCost/h": [cost_h], "Nebenertrag/h": [0.0]})
+        book = {"highestBuyPricesWithVolume": [{"key": 600_000_000, "value": 1},
+                                               {"key": 111_111_112, "value": 1}]}
+        row = self._measure(df_rec, df_chain, lambda item_id: book).iloc[0]
+        self.assertEqual(int(row["Gold/h realistisch"]),
+                         round(units * 111_111_112 * 0.99 - cost_h))
+        self.assertLess(row["Gold/h realistisch"], 0)
+        self.assertEqual(row["Bestes Gebot (brutto)"], 600_000_000)
+        self.assertIn("ohne das beste Gebot (600,000,000g x 1)", row["Bewertung"])
+        self.assertIn("130 h", row["Bewertung"])
 
     def _two_player_items(self):
         df_rec = self._recommendation([

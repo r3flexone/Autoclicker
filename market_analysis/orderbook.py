@@ -80,6 +80,26 @@ def sell_levels_from_depth(depth: dict | None, reference: float | None = None) -
     return _levels(depth, "lowestSellPricesWithVolume", reference)
 
 
+def bids_for_measurement(levels: list, units_per_hour: float) -> tuple[list, tuple | None]:
+    """Die Gebote, in die gemessen verkauft wird - und das weggelassene beste.
+
+    **Braucht ein Stueck laenger als eine Stunde, zaehlt das beste Gebot nicht.**
+    Bis das Stueck fertig ist, ist die Momentaufnahme Stunden oder Tage alt, und
+    ein einzelner Bieter kann sein Gebot laengst zurueckgezogen haben. Gemessen
+    wird deshalb, was bleibt, wenn er weg ist. Gefunden am 11.10.2026:
+    otherworldly_shield (130 h je Stueck) stand auf Platz 2, getragen von genau
+    einem Gebot zu 600 Mio. - das naechste lag bei 111 Mio. In einem tiefen Buch
+    aendert das fast nichts (Oak: 92 g, darunter 91 g).
+
+    Bleibt kein Gebot uebrig, ist das ein Buch ohne Gebot: der Rest geht an den
+    NPC, wie bei jedem anderen leeren Buch.
+    """
+    if not levels or not 0 < units_per_hour < 1.0:
+        return levels, None
+    best = max(levels, key=lambda level: level[0])
+    return [level for level in levels if level[0] != best[0]], best
+
+
 def _flattering_top(entry: dict) -> tuple[bool, bool]:
     """``(Gebot zu hoch, Angebot zu billig)`` gegen den gehandelten Schnitt.
 
