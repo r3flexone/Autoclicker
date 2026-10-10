@@ -132,7 +132,7 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
                       cost_per_unit: float) -> dict:
     """Berechnet Preis, Ertrag und Wartezeit eines eigenen Angebots."""
     empty = {"price_value": None, "revenue_value": None, "gold_h": None, "markup": None,
-             "waiting_h": None, "offers_in_book": None}
+             "waiting_h": None, "per_piece": False, "offers_in_book": None}
     if not depth or units_per_hour <= 0:
         return empty
 
@@ -147,17 +147,22 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
         return empty
 
     # Menge mitgeben: die Marktsteuer greift erst ab 100 Gold Gesamtwert, und
-    # angeboten wird eine Stunde Produktion, nicht ein Stueck.
-    revenue = net_player_price(price, units_per_hour)
+    # angeboten wird eine Stunde Produktion - mindestens aber ein ganzes Stueck.
+    # Eine Kette mit 0,03 Stueck je Stunde bietet nie 0,03 Stueck an; mit der
+    # Stundenmenge stand bei einem Barren, der 30 Stunden dauert, "1 h Produktion
+    # ist in unter 1 h weg".
+    lot = max(units_per_hour, 1.0)
+    revenue = net_player_price(price, lot)
     daily_volume = depth.get(COMPREHENSIVE_VOLUME_FIELD) or 0
-    waiting = units_per_hour / daily_volume * 24.0 if daily_volume > 0 else None
-    net_bid = net_player_price(top_bid, units_per_hour) if top_bid > 0 else 0.0
+    waiting = lot / daily_volume * 24.0 if daily_volume > 0 else None
+    net_bid = net_player_price(top_bid, lot) if top_bid > 0 else 0.0
     return {
         "price_value": price,
         "revenue_value": revenue,
         "gold_h": units_per_hour * (revenue - cost_per_unit),
         "markup": revenue / net_bid - 1.0 if net_bid > 0 else None,
         "waiting_h": waiting,
+        "per_piece": units_per_hour < 1.0,
         "offers_in_book": sum(amount for _, amount in offers),
     }
 

@@ -18,14 +18,14 @@ try:
     from .config import (
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER, SKILL_RELIABILITY,
         THIN_BID_HOURS, net_player_price,
     )
 except ImportError:  # direkter Skriptstart
     from config import (  # type: ignore
         AUTO_COOK_CHANCE, AUTO_COOK_SELL_REST, GOLD_ITEM_ID, GOLD_ITEM_PRICE,
         MAX_AVG_DEVIATION_RATIO, MAX_SPREAD_RATIO, MIN_BUY_ASK_VOLUME,
-        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER,
+        MIN_SELL_BID_VOLUME, NPC_SELL_BOOST_MULTIPLIER, SKILL_RELIABILITY,
         THIN_BID_HOURS, net_player_price,
     )
 
@@ -439,3 +439,59 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
     return Chain(time_ms, costs_value, steps_list, max_ratio, self_sufficient, side_yield,
                  costs_known, tuple(dict.fromkeys(missing_ones)),
                  tuple((item, qty, npc) for item, (qty, npc) in sides.items()))
+
+
+# ---------------------------------------------------------------
+# Verlaesslichkeit: wie sehr man sich auf ein Gold/h verlassen kann
+# ---------------------------------------------------------------
+
+def purchase_buffer(revenue_h: float, cost_h: float) -> float:
+    """Um wie viel der Erloes fallen darf, bevor die Kette nichts mehr bringt.
+
+    Dieselbe Zahl ist der Anteil des Erloeses, der nach dem Einkauf bleibt - also
+    das, was das eigene Farmen beitraegt. Eine Kette ohne Zukauf hat 1,0: ihr
+    Ertrag faellt mit dem Preis, wird aber nie negativ. Ohne Erloes 0.
+    """
+    if revenue_h <= 0:
+        return 0.0
+    return max(0.0, min(1.0, 1.0 - cost_h / revenue_h))
+
+
+def chain_reliability(chain_skills: str, self_sufficient: bool = True,
+                      revenue_h: float = 0.0, cost_h: float = 0.0) -> tuple[float, str]:
+    """Faktor fuer die Rangfolge (1,0 = verlaesslich) samt Begruendung.
+
+    Zwei Gruende, kleiner zu werden:
+
+    - **Nachschub nur zufaellig** (`SKILL_RELIABILITY`, z.B. Farming-Samen).
+    - **Zukauf.** Muss eine Zutat gekauft werden, haengt der Ertrag an zwei
+      Maerkten, und der Faktor ist der `purchase_buffer()`. Gemeldet am
+      11.10.2026: otherworldly_bar stand mit 1,17 Mio. Gold/h auf Platz 1, mehr als
+      dreimal so viel wie Platz 2 - fuer rund 114 Mio. Zukauf je Barren, 30 Stunden
+      je Stueck und neun Gebote im ganzen Buch. 77 % des Erloeses gingen an den
+      Einkauf; das Gebot war zwischen zwei Laeufen um 11 % gefallen, und eine Woche
+      spaeter lag das beste bei 20 Mio. - die Kette rechnete -2,9 Mio. Gold/h.
+
+    Es zaehlt der schwaechste Grund (min, nicht Produkt): zwei unplanbare Glieder
+    machen eine Kette nicht doppelt so unplanbar.
+    """
+    factor, reasons = 1.0, []
+    for part in str(chain_skills or "").split("->"):
+        skill = part.strip()
+        entry = SKILL_RELIABILITY.get(skill)
+        if entry and entry[0] < 1.0:
+            factor = min(factor, entry[0])
+            reasons.append(f"{skill}: {entry[1]}")
+    if not self_sufficient:
+        buffer = purchase_buffer(revenue_h, cost_h)
+        if buffer < 1.0:
+            factor = min(factor, buffer)
+            reasons.append(f"Zukauf: {1.0 - buffer:.0%} des Erlöses gehen an den Einkauf")
+    return factor, "; ".join(reasons)
+
+
+def weighted_gold(gold_h: float, factor: float) -> float:
+    """Gold/h fuer die Rangfolge. Abwerten heisst kleiner machen - ein Verlust wird
+    durch einen Faktor unter 1 nicht kleiner, sonst stuende eine verlustreiche
+    Kette mit Zukauf (Faktor 0) ueber jeder anderen verlustreichen."""
+    return gold_h * factor if gold_h > 0 else gold_h

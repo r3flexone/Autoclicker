@@ -173,6 +173,9 @@ GOLD_ITEM_PRICE = 1.0
 # Wirkt AUSSCHLIESSLICH auf die Rangfolge im Empfehlungs-Sheet (Spalte
 # "Gold/h gewichtet"). Gold/h selbst, Ketten, Rohdaten und alle anderen Sheets bleiben
 # unveraendert - dort steht weiter der echte Ertrag.
+#
+# Der zweite Grund fuer eine Abwertung, der Zukauf, steht NICHT hier: sein Faktor
+# wird je Kette gerechnet (purchase_buffer in pricing.py), nicht eingestellt.
 SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
     "Farming": (0.5, "Samen nur als Zufallsdrop"),
 }

@@ -453,6 +453,18 @@ class OrderbookTest(unittest.TestCase):
         self.assertAlmostEqual(position, 0.2)
         self.assertEqual(trend, "steigend")
 
+    def test_geduld_wartet_auf_ein_ganzes_stueck(self):
+        """otherworldly_bar: 0,0335 Stueck je Stunde. Mit der Stundenmenge stand
+        "1 h Produktion ist in unter 1 h weg" - fuer einen Barren, der 30 h dauert."""
+        depth = {"lowestSellPricesWithVolume": [{"key": 220_000_000, "value": 1}],
+                 cfg.COMPREHENSIVE_VOLUME_FIELD: 2}
+        result = patience_analysis(depth, 151_000_000, 0.0335, 114_000_000)
+        self.assertAlmostEqual(result["waiting_h"], 12.0)
+        self.assertTrue(result["per_piece"])
+        # Der Ertrag bleibt einer je Stunde.
+        self.assertAlmostEqual(result["gold_h"],
+                               0.0335 * (net_player_price(219_999_999) - 114_000_000))
+
     def test_preis_position_erwartet_brutto(self):
         """Netto gegen den Brutto-Schnitt zu halten meldet bei jedem Item -1%."""
         depth = {COMPREHENSIVE_AVG_FIELDS["Avg30D"]: 100}
@@ -460,6 +472,49 @@ class OrderbookTest(unittest.TestCase):
         self.assertAlmostEqual(gross, 0.0)
         net, _ = price_position(net_player_price(100), depth)
         self.assertAlmostEqual(net, -0.01)
+
+
+class ReliabilityTest(unittest.TestCase):
+    """Wie weit man sich auf ein Gold/h verlassen kann: Zufallsdrop oder Zukauf.
+
+    otherworldly_bar vom 04.10.2026 stand mit 1,17 Mio. Gold/h auf Platz 1 - aus
+    5,01 Mio. Erloes und 3,83 Mio. Zukauf je Stunde. Eine Woche spaeter lag das
+    beste Gebot bei 20 statt 151 Mio., und die Kette rechnete -2,9 Mio. Gold/h.
+    """
+
+    def test_ohne_zukauf_volle_verlaesslichkeit(self):
+        self.assertEqual(pricing.chain_reliability("Mining -> Smithing", True, 5e6, 0.0),
+                         (1.0, ""))
+
+    def test_zukauf_ist_der_preispuffer(self):
+        factor, reason = pricing.chain_reliability("Mining -> Smithing", False,
+                                                   5_007_481, 3_833_413)
+        self.assertAlmostEqual(factor, 0.2345, places=3)
+        self.assertIn("Zukauf: 77%", reason)
+
+    def test_gold_als_zutat_ist_kein_zukauf(self):
+        """Naegel kosten Gold, lassen die Kette aber autark (s. resolve_chain)."""
+        self.assertEqual(pricing.chain_reliability("Carpentry", True, 1000, 400)[0], 1.0)
+
+    def test_der_schwaechste_grund_zaehlt(self):
+        farming = cfg.SKILL_RELIABILITY["Farming"][0]
+        factor, reason = pricing.chain_reliability("Farming -> Cooking", False, 100, 10)
+        self.assertEqual(factor, farming)
+        self.assertIn("Farming", reason)
+        self.assertIn("Zukauf", reason)
+        self.assertAlmostEqual(
+            pricing.chain_reliability("Farming", False, 100, 90)[0], 0.1)
+
+    def test_ohne_erloes_kein_puffer(self):
+        self.assertEqual(pricing.purchase_buffer(0, 0), 0.0)
+        self.assertEqual(pricing.purchase_buffer(100, 150), 0.0)
+
+    def test_ein_verlust_wird_nicht_kleiner(self):
+        """Abwerten heisst kleiner machen. Eine verlustreiche Kette mit Zukauf hat
+        den Faktor 0 - mal genommen stuende sie mit 0 ueber jedem anderen Verlust."""
+        self.assertEqual(pricing.weighted_gold(200, 0.5), 100)
+        self.assertEqual(pricing.weighted_gold(-1000, 0.0), -1000)
+        self.assertEqual(pricing.weighted_gold(-1000, 0.5), -1000)
 
 
 class OutlierTest(unittest.TestCase):
@@ -847,6 +902,64 @@ class MeasurementRankingTest(unittest.TestCase):
         self.assertEqual(list(df_reason["Preisverlust"]), ["0%", "0%"])
         # Und die Anzeige verschluckt die langsamen Ketten nicht zu 0,0 oder 0,1.
         self.assertEqual(sorted(df_reason["Stück/h"]), [0.034, 0.065])
+
+    @staticmethod
+    def _chain(lines):
+        """Ketten-Zeilen: (Item, Gold/h, Erloes/h, Zukauf/h, autark, Stueck/h)."""
+        return _pd.DataFrame([{
+            "Item": item, "ItemID": i, "ChainSkills": "Mining -> Smithing",
+            "Gold/h (Eigenherstellung)": gold, "Revenue/h": revenue,
+            "Nebenertrag/h": 0.0, "RawMaterialCost/h": cost,
+            "FullySelfSufficient": own, "Stück/h": units,
+            "TimePerItem_sec": 3600 / units, "Gold pro Stück": gold / units,
+            "Verkaufspreis": revenue / units, "SoldToNPC": False, "NPCPreis": 0.0,
+            "SpielerpreisBid": revenue / units / 0.99, "BidVolumen": 10,
+        } for i, (item, gold, revenue, cost, own, units) in enumerate(lines, start=1)])
+
+    def test_zukauf_fuehrt_die_empfehlung_nicht_an(self):
+        """otherworldly_bar vom 04.10.2026 gegen cooked_carp: 1,17 Mio. aus 77 %
+        Zukauf stand vor 373.183 ganz ohne. Gold/h bleibt stehen, nur der Rang
+        aendert sich."""
+        df = _analysis.build_recommendation_df(self._chain([
+            ("barren", 1_174_068, 5_007_481, 3_833_413, False, 0.0335),
+            ("karpfen", 373_183, 373_183, 0.0, True, 1073.9),
+        ]))
+        self.assertEqual(list(df["Item"]), ["karpfen", "barren"])
+        bar = df.set_index("Item").loc["barren"]
+        self.assertEqual(int(bar["Gold/h"]), 1_174_068)
+        self.assertAlmostEqual(float(bar["Verlässlichkeit"]), 0.234, places=3)
+        self.assertIn("Zukauf", bar["Hinweis"])
+
+    def test_ein_verlust_mit_zukauf_rutscht_nicht_nach_oben(self):
+        """Faktor 0 mal -1000 ist 0 - und stuende ueber einem Verlust von 500."""
+        df_rec = self._recommendation([
+            (1, "zukauf", "Mining", -1000, "Spieler", 0, 1, 1, 1, 0.0, None),
+            (2, "eigen", "Mining", -500, "Spieler", 0, 1, 1, 1, 1.0, None),
+        ])
+        df_reason = _pd.DataFrame({"Rang": [1, 2], "Item": ["zukauf", "eigen"],
+                                   "Gold/h realistisch": [-1000, -500]})
+        out = _analysis.sort_by_measurement(df_rec, df_reason)
+        self.assertEqual(list(out["Item"]), ["eigen", "zukauf"])
+
+    def test_langsame_kette_wird_am_stueck_gemessen(self):
+        """Ein Barren alle 30 Stunden: die Begruendung spricht vom Stueck, nicht
+        von "einer Stunde Produktion", die es als Angebot nie gibt."""
+        df_rec = self._recommendation([
+            (1, "barren", "Smithing", 1_000_000, "Spieler", 0, 0.0335,
+             149_490_000, 151_000_000, 1.0, None)])
+        df_chain = _pd.DataFrame({"Item": ["barren"], "ItemID": [1], "Stück/h": [0.0335],
+                                  "RawMaterialCost/h": [3_833_413.0],
+                                  "Nebenertrag/h": [0.0]})
+        book = {"highestBuyPricesWithVolume": [{"key": 151_000_000, "value": 2}],
+                "lowestSellPricesWithVolume": [{"key": 220_000_000, "value": 1}],
+                cfg.COMPREHENSIVE_VOLUME_FIELD: 2}
+        df_reason = self._measure(df_rec, df_chain, lambda item_id: book)
+        verdict = df_reason.loc[0, "Bewertung"]
+        self.assertIn("ein Stueck bewegt den Preis kaum", verdict)
+        self.assertIn("1 Stueck liegt dann ~12 h im Buch", verdict)
+        self.assertNotIn("Stunde Produktion", verdict)
+        self.assertEqual(int(df_reason.loc[0, "Gold/h realistisch"]),
+                         round(0.0335 * 151_000_000 * 0.99 - 3_833_413))
 
     def _two_player_items(self):
         df_rec = self._recommendation([

@@ -17,7 +17,7 @@ python market_analysis/analysis.py
 | Datei | Zweck |
 |---|---|
 | `analysis.py` | Hauptlauf: API → Rechnung → Excel + Chart |
-| `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten – die rechnende Schicht |
+| `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten, Verlässlichkeit – die rechnende Schicht |
 | `recipes.py` | Reine, separat getestete Rezept-Normalisierung |
 | `orderbook.py` | Reine Orderbuch-, Geduld- und Trendberechnungen |
 | `history.py` | Laufhistorie in SQLite: was das Überschreiben der Excel-Datei verliert |
@@ -58,7 +58,7 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 |---|---|
 | `Gold/h gewichtet` | **Sortierspalte:** Gold/h mal Verlässlichkeit |
 | `Gold/h` | der echte Ertrag pro Stunde, alles selbst gefarmt |
-| `Verlässlichkeit` | 1,0 = planbar farmbar, kleiner = Nachschub nur zufällig |
+| `Verlässlichkeit` | 1,0 = planbar farmbar, kleiner = Nachschub nur zufällig oder ein Teil des Erlöses geht an den Zukauf |
 | `Hinweis` | warum abgewertet wurde |
 | `Sek pro Stück` | wie lange ein Stück von Grund auf dauert |
 | `Verkauf an` | Spieler oder NPC-Vendor – der bessere der beiden Wege |
@@ -82,11 +82,27 @@ SKILL_RELIABILITY = {
 }
 ```
 
+**Zukauf ist der zweite Grund**, und dafür gibt es keinen Schalter, weil der Faktor
+gerechnet wird: Muss eine Zutat gekauft werden, ist er der Anteil des Erlöses, der nach
+dem Einkauf bleibt (`purchase_buffer` in `pricing.py`). Dieselbe Zahl sagt, um wie viel
+der Verkaufspreis fallen darf, bevor die Kette nichts mehr bringt – eine Kette ohne
+Zukauf verliert mit dem Preis, wird aber nie negativ.
+
+> Gefunden am 11.10.2026: `otherworldly_bar` stand mit 1,17 Mio. Gold/h auf Platz 1,
+> mehr als dreimal so viel wie Platz 2. Dahinter: rund 114 Mio. Zukauf je Barren,
+> 30 Stunden je Stück, neun Gebote im ganzen Buch – 77 % des Erlöses gingen an den
+> Einkauf. Das Gebot fiel zwischen zwei Läufen um 11 %, eine Woche später lag das
+> beste bei 20 statt 151 Mio., und die Kette rechnete −2,9 Mio. Gold/h. Mit dem
+> Faktor 0,23 steht sie im selben Lauf auf Platz 6, die Astronomical-Teile rutschen
+> von 7–29 auf 27–56.
+
 Das wirkt **ausschliesslich auf die Rangfolge der Empfehlung**. `Gold/h` bleibt der echte
 Wert, und Ketten, Rohdaten, Begründung und der Chart bleiben unverändert – dort willst du
-ja die ungeschönte Zahl sehen. Bei mehrstufigen Ketten zählt der unverlässlichste Schritt
-(Minimum, nicht Produkt): zwei zufallsabhängige Skills machen eine Kette nicht doppelt so
-unplanbar.
+ja die ungeschönte Zahl sehen. Es zählt der schwächste Grund (Minimum, nicht Produkt):
+zwei zufallsabhängige Skills machen eine Kette nicht doppelt so unplanbar, und Farming
+mit etwas Zukauf ist so unplanbar wie das Schwächere von beiden. **Ein Verlust wird nicht
+gewichtet** – mit dem Faktor mal genommen stünde eine verlustreiche Kette mit Zukauf
+(Faktor 0) über jedem anderen Verlust.
 
 Der Lauf druckt dieselbe Top-Liste auch in die Konsole – für die schnelle Antwort
 braucht man die Excel gar nicht zu öffnen. Abgewertete Ketten zeigen dort beide Zahlen:
@@ -113,7 +129,7 @@ eine Stunde Produktion tatsächlich durchs Orderbuch.
 |---|---|
 | `Bestes Gebot` / `Menge am besten Gebot` | oberste Stufe im Player Shop |
 | `Deckt Stunden` | wie lange deine Produktion auf dieser Stufe Platz hat |
-| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst |
+| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst – mindestens ein ganzes Stück: eine Kette mit 0,03 Stück je Stunde bietet nie 0,03 Stück an |
 | `Preisverlust` | wie weit das unter dem Listenpreis liegt |
 | `Gold/h realistisch` | Gold/h mit diesem Schnitt statt mit dem Top-Gebot |
 | `NPC besser` | der Vendor zahlt mehr als der Schnitt |
@@ -283,8 +299,9 @@ Betrifft **nur die XP-Spalten, nicht Gold/h.**
 Nicht nach dem gerechneten Gold/h, sondern nach **`Gold/h realistisch`**: eine Stunde
 Produktion wird durch das echte Orderbuch verkauft, Marktsteuer abgezogen, der Rest an den
 NPC. Sortiert wird über die eine Zahl, die im Blatt steht – Messung, wo gemessen wurde,
-sonst der Papier-Wert –, jeweils mit der Abwertung aus `SKILL_RELIABILITY`: ein Papaya-Feld
-mit tiefem Buch steht trotzdem nicht über planbar farmbaren Stämmen. „Gemessene zuerst"
+sonst der Papier-Wert –, jeweils mit der `Verlässlichkeit` (Zufallsdrop, Zukauf): ein
+Papaya-Feld mit tiefem Buch steht trotzdem nicht über planbar farmbaren Stämmen, und eine
+Kette, die vor allem Zukauf weiterreicht, nicht über einer ohne. „Gemessene zuerst"
 stand hier früher, und das stellte ein Item, das die Messung auf 50k drückte, über
 ungemessene mit 200k – eine Reihenfolge, die man dem Blatt nicht ansieht.
 
@@ -321,7 +338,7 @@ Gebot und Angebot:
 | `Erlös dabei (netto)` | davon nach 1 % Marktsteuer |
 | `Gold/h mit Geduld` | Stück/h × (Erlös − Materialkosten) |
 | `Aufschlag vs Sofort` | wie viel mehr als beim Reinverkaufen ins Gebot |
-| `Wartezeit (h)` | wie lange der Markt braucht, um **eine Stunde** Produktion aufzunehmen |
+| `Wartezeit (h)` | wie lange der Markt braucht, um **eine Stunde** Produktion aufzunehmen – mindestens ein Stück |
 | `Angebot im Buch` | wie viele Stück schon auf Käufer warten |
 
 Der Unterschied kann die Rangfolge umdrehen:

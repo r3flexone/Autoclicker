@@ -99,6 +99,18 @@ CASES = {
         "if cooked_id is not None and cooked_id not in visited and AUTO_COOK_CHANCE > 0:",
         "if False:",
         "test_market_analysis.ChainTest.test_roher_fisch_kommt_mit_auto_cook_nur_teilweise_roh"),
+    "purchase-reliability": (
+        "market_analysis.pricing", "chain_reliability",
+        "    if not self_sufficient:", "    if False:",
+        "test_market_analysis.ReliabilityTest.test_zukauf_ist_der_preispuffer"),
+    "weighted-loss": (
+        "market_analysis.pricing", "weighted_gold",
+        "if gold_h > 0 else gold_h", "if True else gold_h",
+        "test_market_analysis.ReliabilityTest.test_ein_verlust_wird_nicht_kleiner"),
+    "patience-whole-piece": (
+        "market_analysis.orderbook", "patience_analysis",
+        "lot = max(units_per_hour, 1.0)", "lot = units_per_hour",
+        "test_market_analysis.OrderbookTest.test_geduld_wartet_auf_ein_ganzes_stueck"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_against_known",
         "    if known_active:", "    if False:",

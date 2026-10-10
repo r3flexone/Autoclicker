@@ -39,7 +39,7 @@ try:
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
-        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
         THIN_BID_HOURS, net_player_price,
     )
     from .orderbook import (
@@ -47,8 +47,9 @@ try:
         price_position, sell_levels_from_depth, walk_orderbook,
     )
     from .pricing import (
-        thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, sale_values, wide_spread,
+        thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
+        cost_per_action, price_anomaly, resolve_chain, sale_values, weighted_gold,
+        wide_spread,
     )
     from .recipes import build_all_recipes
     from .extended_json import load as load_extended_json
@@ -68,7 +69,7 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
-        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
         THIN_BID_HOURS, net_player_price,
     )
     from orderbook import (  # type: ignore
@@ -76,8 +77,9 @@ except ImportError:  # direkter Skriptstart bleibt unterstützt
         price_position, sell_levels_from_depth, walk_orderbook,
     )
     from pricing import (  # type: ignore
-        thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, sale_values, wide_spread,
+        thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
+        cost_per_action, price_anomaly, resolve_chain, sale_values, weighted_gold,
+        wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
     from extended_json import load as load_extended_json  # type: ignore
@@ -870,20 +872,6 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 # Empfehlung: was farmen, was bringt es, an wen verkaufen
 # ---------------------------------------------------------------
 
-def chain_reliability(chain_skills: str) -> tuple[float, str]:
-    """Wie planbar ist der Nachschub fuer diese Kette? Es zaehlt der unzuverlaessigste
-    Schritt (min, nicht Produkt) - zwei zufallsabhaengige Skills machen eine Kette nicht
-    doppelt so unplanbar, sie bleibt schlicht so unplanbar wie ihr schwaechstes Glied."""
-    factor, reasons = 1.0, []
-    for part in str(chain_skills or "").split("->"):
-        skill = part.strip()
-        entry = SKILL_RELIABILITY.get(skill)
-        if entry and entry[0] < 1.0:
-            factor = min(factor, entry[0])
-            reasons.append(f"{skill}: {entry[1]}")
-    return factor, "; ".join(reasons)
-
-
 RECOMMENDATION_COLUMNS = [
     "Rang", "Item", "Skills", "Gold/h realistisch", "Gold/h Quelle", "Gold/h gewichtet", "Gold/h",
     "Verlässlichkeit",
@@ -892,6 +880,13 @@ RECOMMENDATION_COLUMNS = [
     "Verkauf an", "Erlös pro Stück", "Spieler-Gebot (brutto)", "NPC-Preis", "Vorteil",
     "Alles selbst farmbar", "Warnung", "Hinweis",
 ]
+
+
+def _reliability(r) -> tuple[float, str]:
+    """`chain_reliability()` fuer eine Zeile des Ketten-Sheets."""
+    return chain_reliability(r["ChainSkills"], bool(r.get("FullySelfSufficient", True)),
+                             _num(r.get("Revenue/h")) + _num(r.get("Nebenertrag/h")),
+                             _num(r.get("RawMaterialCost/h")))
 
 
 def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
@@ -908,15 +903,17 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
     if src.empty:
         return pd.DataFrame(columns=RECOMMENDATION_COLUMNS)
 
-    # Nach gewichtetem Gold/h sortieren: unplanbarer Nachschub soll die Empfehlung nicht
-    # anfuehren, auch wenn die reine Rechnung dafuer spricht (s. SKILL_RELIABILITY).
-    src["_faktor"] = src["ChainSkills"].map(lambda c: chain_reliability(c)[0])
-    src["_gewichtet"] = src["Gold/h (Eigenherstellung)"] * src["_faktor"]
-    src = src.sort_values("_gewichtet", ascending=False)
+    # Nach gewichtetem Gold/h sortieren: unplanbarer Nachschub und eine Kette, die
+    # vor allem Zukauf weiterreicht, sollen die Empfehlung nicht anfuehren, auch wenn
+    # die reine Rechnung dafuer spricht (s. chain_reliability in pricing.py).
+    reliability = {idx: _reliability(r) for idx, r in src.iterrows()}
+    src["_weighted"] = [weighted_gold(g, reliability[idx][0])
+                        for idx, g in src["Gold/h (Eigenherstellung)"].items()]
+    src = src.sort_values("_weighted", ascending=False, kind="stable")
 
     rows = []
-    for rank, (_, r) in enumerate(src.iterrows(), 1):
-        factor, factor_reason = chain_reliability(r["ChainSkills"])
+    for rank, (idx, r) in enumerate(src.iterrows(), 1):
+        factor, factor_reason = reliability[idx]
         npc, player = r.get("NPCPreis", 0) or 0, r.get("SpielerpreisBid", 0) or 0
         to_npc = bool(r["SoldToNPC"])
         # Vergleich netto gegen netto: das Spielergebot verliert noch die Marktsteuer,
@@ -945,9 +942,9 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Rang": rank,
             "Item": r["Item"],
             "Skills": r["ChainSkills"],
-            "Gold/h gewichtet": round(r["Gold/h (Eigenherstellung)"] * factor),
+            "Gold/h gewichtet": round(weighted_gold(r["Gold/h (Eigenherstellung)"], factor)),
             "Gold/h": round(r["Gold/h (Eigenherstellung)"]),
-            "Verlässlichkeit": round(factor, 2),
+            "Verlässlichkeit": round(factor, 3),
             "Gold/h (ungünstigster Fall)": round(worst) if pd.notna(worst) else None,
             "Sek pro Stück": round(r["TimePerItem_sec"], 2),
             "Stück/h": _display_rate(r["Stück/h"]),
@@ -1031,16 +1028,20 @@ def _patience_text(patience: dict | None) -> str:
             f"{patience['markup']:+.0%} ({patience['gold_h']:,.0f} Gold/h)")
     wait_value = patience.get("waiting_h")
     if wait_value is not None:
-        rate_value += (f", 1 h Produktion liegt dann ~{wait_value:,.0f} h im Buch"
-                 if wait_value >= 1 else ", 1 h Produktion ist in unter 1 h weg")
+        offered = "1 Stueck" if patience.get("per_piece") else "1 h Produktion"
+        rate_value += (f", {offered} liegt dann ~{wait_value:,.0f} h im Buch"
+                       if wait_value >= 1 else f", {offered} ist in unter 1 h weg")
     return rate_value
 
 
 def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
              average: float, loss: float, warning: str, deviation: float = 0.0,
              position: float | None = None, trend: str = "",
-             patience: dict | None = None) -> str:
-    """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
+             patience: dict | None = None, sold: str = "eine Stunde Produktion") -> str:
+    """Ein Satz Klartext: warum ist das Item gut oder eben nicht.
+
+    `sold` ist das, was verkauft wurde - eine Stunde Produktion, bei Ketten unter
+    einem Stueck je Stunde ein Stueck (s. build_reason_df)."""
     if to_npc:
         if top_price <= 0:
             return "Nur NPC: kein brauchbares Kaufgebot im Player Shop."
@@ -1058,9 +1059,9 @@ def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
         parts.append("kein Volumen am Top-Gebot")
 
     if loss > 0.02:
-        parts.append(f"1 h Produktion druecken den Schnitt auf {average:,.0f}g ({-loss:.0%})")
+        parts.append(f"{sold} drueckt den Schnitt auf {average:,.0f}g ({-loss:.0%})")
     elif hours_coverage >= 1:
-        parts.append("eine Stunde Produktion bewegt den Preis kaum")
+        parts.append(f"{sold} bewegt den Preis kaum")
 
     if npc > average > 0:
         parts.append(f"NPC waere mit {npc:,.0f}g besser")
@@ -1223,12 +1224,18 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
                             "kauf": levels,
                             "verkauf": sell_levels_from_depth(depth)})
 
+        # Verkauft wird mindestens EIN ganzes Stueck. Eine Kette mit 0,03 Stueck je
+        # Stunde bietet nie 0,03 Stueck an: otherworldly_bar (30 h je Barren) verkaufte
+        # einen Bruchteil ins Top-Gebot, und die Begruendung sagte "eine Stunde
+        # Produktion bewegt den Preis kaum" und "1 h Produktion ist in unter 1 h weg".
+        # Gemessen wird am Stueck, umgerechnet auf die Stunde.
+        lot = max(units_h, 1.0) if units_h > 0 else 0.0
         if levels:
             top_price, top_amount = max(levels, key=lambda x: x[0])
             if top_price > 0:
                 reference_gross = reference_gross or top_price
             coverage = top_amount / units_h if units_h > 0 else 0.0
-            revenue_value = _book_revenue(levels, units_h, npc)
+            revenue_value = _book_revenue(levels, lot, npc) * (units_h / lot) if lot else 0.0
             average = revenue_value / units_h if units_h > 0 else 0.0
             loss = (1 - average / reference_value) if reference_value > 0 else 0.0
         else:
@@ -1284,7 +1291,8 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Kaufgebote (Stufen)": _format_levels(levels) if levels else "keine",
             "Bewertung": _verdict(to_npc, npc, top_price, coverage, average, loss,
                                   "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
-                                  deviation, position, trend, patience),
+                                  deviation, position, trend, patience,
+                                  "ein Stueck" if 0 < units_h < 1 else "eine Stunde Produktion"),
         })
 
     if unreachable:
@@ -1306,11 +1314,11 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         key_name = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
     else:
         key_name = df_reason["Gold/h realistisch"]
-    # Dieselbe Abwertung wie beim Papier-Rang (SKILL_RELIABILITY): unplanbarer
+    # Dieselbe Abwertung wie beim Papier-Rang (chain_reliability): unplanbarer
     # Nachschub soll die Empfehlung nicht anfuehren, nur weil sein Buch gerade
     # tief ist. Solange nur zehn Items gemessen wurden, fiel das Fehlen kaum auf;
     # ueber den ganzen Bestand stuende sonst ein Papaya-Feld ganz oben.
-    key_name = key_name * df_reason["Verlässlichkeit"]
+    key_name = [weighted_gold(g, f) for g, f in zip(key_name, df_reason["Verlässlichkeit"])]
     # Jede Messung bleibt im Blatt. Hier stand ein `.head(REASON_TOP_N)`, und weil
     # die Empfehlung ihre gemessene Zahl aus dieser Liste zieht, fielen die
     # uebrigen Messungen still weg - bezahlt und nie gezeigt.
@@ -1342,7 +1350,7 @@ def sort_by_measurement(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.Dat
     Rest steht mit seinem Papier-Wert da, als solcher gekennzeichnet.
 
     Sortiert wird ueber DIESELBE Zahl, gewichtet mit der Verlaesslichkeit
-    (SKILL_RELIABILITY) - bei den Gemessenen die Messung, sonst `Gold/h gewichtet`.
+    (chain_reliability) - bei den Gemessenen die Messung, sonst `Gold/h gewichtet`.
     "Gemessene zuerst" stand hier vorher, und das stellte ein Item, das die Messung
     auf 50k drueckte, ueber ungemessene mit 200k - eine Rangfolge, die man dem
     Blatt nicht mehr ansieht. Ein Papier-Wert ist eine Obergrenze (das Buch kann
@@ -1363,7 +1371,9 @@ def sort_by_measurement(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.Dat
     out["Gold/h realistisch"] = measurement.fillna(out["Gold/h"])
     out["Gold/h Quelle"] = measurement.notna().map({True: SOURCE_ORDERBOOK, False: SOURCE_PAPER})
     factor = pd.to_numeric(out["Verlässlichkeit"], errors="coerce").fillna(1.0)
-    key_name = (measurement * factor).fillna(pd.to_numeric(out["Gold/h gewichtet"], errors="coerce"))
+    weighted = pd.Series([weighted_gold(g, f) for g, f in zip(measurement, factor)],
+                         index=out.index, dtype="float64")
+    key_name = weighted.fillna(pd.to_numeric(out["Gold/h gewichtet"], errors="coerce"))
     out = out.assign(_rank_value=key_name).sort_values(
         "_rank_value", ascending=False, kind="stable").drop(columns=["_rank_value"]).reset_index(drop=True)
     out["Rang"] = range(1, len(out) + 1)
