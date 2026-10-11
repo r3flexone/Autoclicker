@@ -365,8 +365,10 @@ tiefes Buch      699.930        703.890         +1 %       2,7 h
 ```
 
 Beim ersten Item ist Geduld viermal so viel wert – aber eine Stunde Produktion liegt dann
-20 Stunden im Buch. Sortieren lässt sich nach beidem: `RANKING_BASIS = "sofort"` (Standard)
-oder `"geduld"` in `config.py`.
+20 Stunden im Buch. Sortieren lässt sich nach beidem: `RANKING_BASIS = "instant"` (Standard)
+oder `"patience"` in `config.py`. Bis zum 11.10.2026 hiessen die Werte „sofort" und
+„geduld", der Code prüfte aber auf `"patience"` – „geduld" wirkte also nie. Ein
+unbekannter Wert bricht den Lauf jetzt ab, statt still auf den Sofortverkauf zu fallen.
 
 **Was die Wartezeit nicht modelliert:** Warteschlangen. Wer unterbietet, liegt vorn – aber
 der Nächste unterbietet zurück. Übrig bleibt die belastbare Frage, ob der Tagesumsatz die

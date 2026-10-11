@@ -365,14 +365,19 @@ ORDERBOOK_QUOTA_RETRIES = 3
 PRICE_POSITION_HINT_RATIO = 0.10
 
 # Wonach die Top-Liste sortiert wird:
-#   "sofort" - alles ins beste Gebot verkauft, Geld ist sofort da
-#   "geduld" - eigenes Angebot eingestellt und gewartet
+#   "instant"  - alles ins beste Gebot verkauft, Geld ist sofort da
+#   "patience" - eigenes Angebot eingestellt und gewartet
 #
 # Der Unterschied ist gross: ein Item kann beim Sofortverkauf einbrechen (duennes Gebot)
 # und mit eigenem Angebot trotzdem das beste sein. Wer das Gold nicht sofort braucht,
-# stellt hier "geduld" ein — dann zaehlt aber die Spalte "Wartezeit (h)": eine Stunde
+# stellt hier "patience" ein — dann zaehlt aber die Spalte "Wartezeit (h)": eine Stunde
 # Produktion kann Tage im Buch liegen.
-RANKING_BASIS = "sofort"
+#
+# Hier standen bis zum 11.10.2026 "sofort" und "geduld", waehrend der Code seit der
+# Englisch-Umbenennung auf "patience" pruefte: wer "geduld" einstellte, bekam still den
+# Sofortverkauf. Ein Wert ausserhalb von RANKING_BASES bricht den Lauf deshalb ab.
+RANKING_BASES = ("instant", "patience")
+RANKING_BASIS = "instant"
 
 SHOW_LONGTERM_AVERAGES = False        # 1 Request PRO ITEM in Rohdaten -> Minuten
 LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05

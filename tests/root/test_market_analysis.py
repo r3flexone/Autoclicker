@@ -523,6 +523,12 @@ class ReliabilityTest(unittest.TestCase):
         self.assertAlmostEqual(
             pricing.chain_reliability("Farming", False, 100, 90)[0], 0.1)
 
+    def test_rangbasis_ist_ein_bekannter_wert(self):
+        """Config und README nannten "geduld", der Code pruefte auf "patience" -
+        wer umstellte, bekam still den Sofortverkauf."""
+        self.assertIn(cfg.RANKING_BASIS, cfg.RANKING_BASES)
+        self.assertEqual(cfg.RANKING_BASES, ("instant", "patience"))
+
     def test_ohne_erloes_kein_puffer(self):
         self.assertEqual(pricing.purchase_buffer(0, 0), 0.0)
         self.assertEqual(pricing.purchase_buffer(100, 150), 0.0)
@@ -984,6 +990,31 @@ class MeasurementRankingTest(unittest.TestCase):
         # Verkauft ins zweitbeste Gebot - das beste zaehlt bei 30 h je Stueck nicht.
         self.assertEqual(int(df_reason.loc[0, "Gold/h realistisch"]),
                          round(0.0335 * 150_000_000 * 0.99 - 3_833_413))
+
+    def test_geduld_als_rangbasis_dreht_die_reihenfolge(self):
+        """Der Wert aus RANKING_BASES muss im Code ankommen: "geduld" lief nach der
+        Englisch-Umbenennung ins Leere. Sofort bringt "tief" mehr, mit eigenem
+        Angebot "breit" (Gebot 100, Angebot 300)."""
+        df_rec = self._recommendation([
+            (1, "tief", "Mining", 1980, "Spieler", 0, 10, 198, 200, 1.0, None),
+            (2, "breit", "Mining", 990, "Spieler", 0, 10, 99, 100, 1.0, None)])
+        df_chain = _pd.DataFrame({"Item": ["tief", "breit"], "ItemID": [1, 2],
+                                  "Stück/h": [10.0, 10.0], "RawMaterialCost/h": [0.0, 0.0],
+                                  "Nebenertrag/h": [0.0, 0.0]})
+        books = {1: {"highestBuyPricesWithVolume": [{"key": 200, "value": 1000}],
+                     "lowestSellPricesWithVolume": [{"key": 201, "value": 1000}]},
+                 2: {"highestBuyPricesWithVolume": [{"key": 100, "value": 1000}],
+                     "lowestSellPricesWithVolume": [{"key": 300, "value": 1000}]}}
+        old = _analysis.RANKING_BASIS
+        try:
+            orders = {}
+            for basis in cfg.RANKING_BASES:
+                _analysis.RANKING_BASIS = basis
+                orders[basis] = list(self._measure(df_rec, df_chain, books.get)["Item"])
+        finally:
+            _analysis.RANKING_BASIS = old
+        self.assertEqual(orders["instant"], ["tief", "breit"])
+        self.assertEqual(orders["patience"], ["breit", "tief"])
 
     def test_ein_einzelner_bieter_traegt_keine_langsame_kette(self):
         """otherworldly_shield vom 11.10.2026: Platz 2, getragen von einem Gebot zu
