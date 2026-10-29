@@ -6649,6 +6649,7 @@ import tests.contract.point_surface         # noqa: F401,E402
 import tests.contract.live_wait             # noqa: F401,E402
 import tests.contract.cross_phase_selection  # noqa: F401,E402
 import tests.contract.python_floor          # noqa: F401,E402
+import tests.contract.start_script         # noqa: F401,E402
 import tests.contract.positionless_blocks   # noqa: F401,E402
 import tests.contract.phase_convert        # noqa: F401,E402
 import tests.contract.block_timeout        # noqa: F401,E402

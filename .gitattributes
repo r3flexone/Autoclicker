@@ -9,3 +9,8 @@
 #
 # `text=auto` lässt Git Binärdateien selbst erkennen (PNG, ICO, ZIP).
 * text=auto eol=lf
+
+# Die eine Ausnahme: cmd findet Sprungmarken (`goto`, `call :marke`) in einer
+# Batch-Datei mit reinen LF-Zeilenenden nicht zuverlässig. `start.bat` liegt
+# deshalb auch in einem Linux-Checkout auf CRLF — ein Test hält das fest.
+*.bat text eol=crlf

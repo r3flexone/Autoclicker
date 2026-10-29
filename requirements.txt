@@ -1,0 +1,24 @@
+# Was der Autoclicker im normalen Betrieb braucht. start.bat installiert genau
+# das in seine Umgebung .venv; von Hand: python -m pip install -r requirements.txt
+#
+# Ohne jedes Paket laufen unter Windows Klicks, Hotkeys und Sequenzen - ohne
+# Bilderkennung und ohne Studio. Fehlt etwas, meldet der Start, welches Paket.
+#
+# Bewusst nur ASCII: pip liest die Datei in der Codepage des Systems.
+
+# Bilderkennung: Screenshots, Farben, Vorlagen, Slots
+pillow
+numpy
+opencv-python
+
+# das Sequenz-Studio (eigenes Fenster)
+pywebview
+
+# Linux/X11: Eingabe, Hotkeys, Fenster, Screenshots - Windows nimmt das aus der
+# WinAPI. Muss zu dem passen, was platforms/linux_x11.py als fehlend meldet.
+pynput; sys_platform == "linux"
+python-xlib; sys_platform == "linux"
+mss; sys_platform == "linux"
+
+# Nicht dabei, weil von Haus aus abgeschaltet und gross: easyocr (zieht PyTorch
+# nach, mehrere GB) und pytesseract - s. README, "Optionale Extras".

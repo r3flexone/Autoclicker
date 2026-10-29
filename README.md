@@ -55,6 +55,9 @@ automatischer Item-Erkennung und Farb-Triggern.
 - Windows 10/11 **oder** Linux mit einer X11-Sitzung
 - Python 3.14+
 
+Unter Windows bringt `start.bat` beides selbst mit — Python und die Pakete —,
+s. [Installation](#installation).
+
 Wayland wird derzeit nicht unterstützt. Der Start erkennt Wayland, nennt die
 fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
 „Bereit“ zu melden. Unter Linux lässt sich der Sitzungstyp mit
@@ -65,6 +68,7 @@ fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
 | `pillow` | Screenshots, Farberkennung | Nein |
 | `numpy` | Optimierte Farberkennung | Nein |
 | `opencv-python` | Template-Matching, Slot-Erkennung | Nein |
+| `pywebview` | Sequenz-Studio (eigenes Fenster) | Nein |
 | `pynput` | Globale Eingabe und Hotkeys unter Linux/X11 | Linux |
 | `python-xlib` | Fensterliste und Fokusprüfung unter Linux/X11 | Linux |
 | `mss` | Multi-Monitor-Screenshots unter Linux/X11 | Linux |
@@ -75,6 +79,52 @@ fehlenden X11-Funktionen und beendet sich mit Status 2, statt fälschlich
 
 ## Installation
 
+### Windows: Doppelklick auf `start.bat`
+
+Ohne Vorkenntnisse und ohne Konsolenbefehle:
+
+1. Oben auf der [GitHub-Seite](https://github.com/r3flexone/Autoclicker) auf
+   **Code → Download ZIP** klicken und die ZIP-Datei entpacken, etwa nach
+   `Dokumente\Autoclicker`.
+2. Im entpackten Ordner **`start.bat`** doppelklicken. Warnt Windows vor einer
+   Datei aus dem Internet, auf *Weitere Informationen* → *Trotzdem ausführen*
+   klicken.
+3. Beim ersten Start richtet sich alles selbst ein:
+   - Fehlt Python 3.14, bietet das Fenster an, es über `winget` zu installieren —
+     mit Enter bestätigen, Administratorrechte braucht es nicht. Ohne `winget`
+     nennt es die Download-Seite.
+   - Die Pakete kommen in einen eigenen Ordner `.venv` im Autoclicker-Ordner:
+     rund 70 MB Download, auf der Platte gut 200 MB. Andere Python-Programme auf
+     dem PC bleiben davon unberührt.
+   - Auf Wunsch kommt eine Verknüpfung **Autoclicker** auf den Desktop.
+4. Danach startet der Autoclicker; beim allerersten Start zeigt er die
+   Anleitung. Ab jetzt genügt der Doppelklick — eingerichtet wird nichts mehr.
+
+Endet der Autoclicker mit einem Fehler, bleibt das Fenster offen, damit man die
+Meldung lesen kann.
+
+**Aktualisieren:** die neue ZIP herunterladen, entpacken und den Inhalt in den
+alten Ordner kopieren (vorhandene Dateien ersetzen). Sequenzen, Scans und
+Einstellungen stehen nicht in der ZIP und bleiben, wie sie sind; hat sich die
+Paketliste geändert, installiert `start.bat` beim nächsten Start nach.
+
+### Von Hand (Windows und Linux/X11)
+
+```bash
+git clone https://github.com/r3flexone/Autoclicker.git
+cd Autoclicker
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python main.py
+```
+
+Unter Linux heisst der Pfad `.venv/bin/python`. `requirements.txt` enthält, was
+der normale Betrieb braucht: Pillow, NumPy und OpenCV für die Bilderkennung,
+pywebview für das Studio-Fenster, unter Linux/X11 dazu `pynput`, `python-xlib`
+und `mss` (unter Windows kommt das aus der WinAPI). Fehlt ein Paket, meldet der
+Start konkret, welches. Ganz ohne Pakete laufen unter Windows Klicks, Hotkeys
+und Sequenzen — ohne Bilderkennung und ohne Studio.
+
 Auf Debian/Ubuntu benötigt `pynput` bei Python-Versionen ohne fertiges `evdev`-
 Wheel einmalig einen Compiler:
 
@@ -82,55 +132,24 @@ Wheel einmalig einen Compiler:
 sudo apt install build-essential python3-dev
 ```
 
-```bash
-git clone https://github.com/r3flexone/Autoclicker.git
-cd Autoclicker
-pip install pillow opencv-python numpy
-python main.py
-```
-
-Unter Linux/X11 kommen drei kleine Plattformpakete dazu — unter Windows kommt
-das aus der WinAPI:
-
-```bash
-pip install pynput python-xlib mss
-```
-
-### Minimale Installation unter Windows (nur Grundfunktionen)
-
-Klicken, Hotkeys, Sequenzen — keine Bilderkennung:
-
-```bash
-python main.py
-```
-
-Unter Windows sind dafür keine zusätzlichen Pakete nötig. Linux/X11 benötigt
-auch für die Grundfunktionen `pynput`, `python-xlib` und `mss`.
-
-### Empfohlen (Farberkennung + Template-Matching)
-
-```bash
-pip install pillow opencv-python numpy
-python main.py
-```
-
-Rund 70 MB. Das ist alles, was der normale Betrieb braucht. Der Code meldet beim
-Start konkret, welches Paket fehlt.
-
-### Optionale Extras (OCR, visuelle Editoren)
-
-Drei Extras: `easyocr`, `pytesseract` und `pywebview`. Alle drei gehören zu
-Features, die per Default **abgeschaltet** sind oder nur auf Zuruf starten —
-installiere sie nur, wenn du sie benutzt. **`easyocr` zieht PyTorch nach:
-mehrere GB Download.** `pywebview` ist dagegen klein: es öffnet das Studio-Fenster
-(Sequenzen, Scans, Einstellungen) unter Windows über WebView2, das bei Windows
-10/11 in der Regel schon vorhanden ist. Unter Linux braucht `pywebview` ein GTK-
+Das Studio-Fenster öffnet `pywebview` unter Windows über WebView2, das bei
+Windows 10/11 in der Regel schon vorhanden ist. Unter Linux braucht es ein GTK-
 oder Qt-Backend, auf Debian/Ubuntu etwa
-`sudo apt install python3-gi gir1.2-webkit2-4.1`.
+`sudo apt install python3-gi gir1.2-webkit2-4.1` — die Umgebung dann mit
+`python -m venv --system-site-packages .venv` anlegen, sonst sieht sie das
+GTK-Paket des Systems nicht.
+
+### Optionale Extras (OCR)
+
+Zwei Extras: `easyocr` und `pytesseract`. Beide gehören zur Texterkennung, die
+per Default **abgeschaltet** ist — installiere sie nur, wenn du sie benutzt.
+**`easyocr` zieht PyTorch nach: mehrere GB Download.** Installiert wird in
+dieselbe Umgebung wie oben: unter Windows statt `pip` also
+`.venv\Scripts\python -m pip`.
 
 **Ohne GPU (CPU-only):**
 ```bash
-pip install easyocr pytesseract pywebview
+pip install easyocr pytesseract
 python main.py
 ```
 
@@ -148,7 +167,7 @@ Zuerst CUDA-Version von PyTorch installieren — passend zur CUDA-Version deiner
 
 Dann den Rest installieren:
 ```bash
-pip install easyocr pytesseract pywebview
+pip install easyocr pytesseract
 python main.py
 ```
 

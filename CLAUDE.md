@@ -58,6 +58,9 @@ python tools/catalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
                                 # (--show = nur anzeigen, --target = anderer Pfad)
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
+start.bat                       # Doppelklick-Start unter Windows: richtet beim ersten Mal
+                                # Python 3.14 (winget), .venv und requirements.txt ein
+                                # requirements.txt = der normale Betrieb, ohne OCR
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
 python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
