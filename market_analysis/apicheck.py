@@ -5,15 +5,16 @@ Prueft die Annahmen, die die Gold/h-Analyse ueber die Idle-Clans-API trifft, geg
 echte API - alles, was ohne Live-Zugriff nicht verifizierbar ist:
 
   1. Markt-Endpoint: heissen die Felder noch so? Liefert /latest dasselbe wie /latest/all?
-  2. Game-Data: Struktur von Items/Tasks, unbekannte Felder, Skill-Namen ggue. SKILLS
-  3. BaseTime-Einheit: Millisekunden (Annahme des Scripts) oder Sekunden?
-  4. comprehensive-Endpoint: echte Feldnamen fuer Avg1D/7D/30D + Orderbook-Tiefe
-  5. Player-Market-Handelbarkeit: gibt es ein Item-Feld dafuer? (is_player_shop_tradeable
-     ist aktuell ein NO-OP-Stub)
-  6. *_bar-Rezepte: welche haben mehr als eine Cost-Zeile? (Smelting-Magic-Reichweite)
-  7. Speed-Formel: multiplikativ vs. additiv - druckt beide Varianten fuer ein paar
+  2. Game-Data: laden, Extended-JSON-Konstrukte melden
+  2b. Items: Struktur, unbekannte Felder und die Handelbarkeits-Flags einzelner Items
+      (CanNotBeTraded / CanNotBeSoldToGameShop, Liste in ITEM_FLAG_CHECKS)
+  3. Tasks: Struktur der Rezepte, Skill-Namen ggue. SKILLS
+  4. BaseTime-Einheit: Millisekunden (Annahme des Scripts) oder Sekunden?
+  5. *_bar-Rezepte: welche haben mehr als eine Cost-Zeile? (Smelting-Magic-Reichweite)
+  6. Speed-Formel: multiplikativ vs. additiv - druckt beide Varianten fuer ein paar
      Aktionen zum Stoppuhr-Abgleich im Spiel
-  8. NPC-Preis: BaseValue ausgewaehlter Items zum Abgleich mit dem Vendor-Preis ingame
+  7. NPC-Preis: BaseValue ausgewaehlter Items zum Abgleich mit dem Vendor-Preis ingame
+  8. comprehensive-Endpoint: echte Feldnamen fuer Avg1D/7D/30D + Orderbook-Tiefe
 
 Braucht NUR `requests` (kein pandas/openpyxl/matplotlib) und aendert nichts - reines Lesen.
 
@@ -29,7 +30,6 @@ import json
 import os
 import re
 import sys
-from collections import Counter
 
 import requests
 
@@ -52,19 +52,19 @@ EXPECTED_ITEM_FIELDS = ["ItemId", "Name", "BaseValue", "CanNotBeTraded", "CanNot
 EXPECTED_COMPREHENSIVE_AVG_FIELDS = ["averagePrice1Day", "averagePrice7Days", "averagePrice30Days"]
 EXPECTED_COMPREHENSIVE_VOLUME_FIELD = "tradeVolume1Day"
 
-# Skill-Namen wie sie config.py in SKILLS erwartet (Punkt 2 des Checks).
+# Skill-Namen wie sie config.py in SKILLS erwartet (Abschnitt 3 des Checks).
 KNOWN_SKILL_NAMES = [
     "Mining", "Fishing", "Foraging", "Woodcutting", "Cooking", "Carpentry", "Smithing",
     "Farming", "Crafting", "Agility", "Plundering", "Brewing",
     "Combat", "Enchanting", "Invocation", "ItemCreation",
 ]
 
-# Fuer Punkt 7: so rechnet analysis.py aktuell (multiplikativ).
+# Fuer Abschnitt 6: so rechnet analysis.py aktuell (multiplikativ).
 SPEED_CHECK_SKILLS = ["Mining", "Fishing", "Woodcutting", "Smithing"]
 SPEED_CHECK_EQUIP_BOOST = 0.55 + 0.06
 SPEED_CHECK_CLAN_BOOST = 0.05
 
-# Items, deren Handelbarkeits-Flags einzeln ausgewiesen werden (Punkt 2c). Praktisch,
+# Items, deren Handelbarkeits-Flags einzeln ausgewiesen werden (Abschnitt 2b). Praktisch,
 # wenn ein Item ingame handelbar ist, in der Auswertung aber nicht so erscheint.
 ITEM_FLAG_CHECKS = ["titanium_platebody", "titanium_platelegs", "titanium_shield",
                     "titanium_helmet", "titanium_bar", "oak_log"]
@@ -176,7 +176,7 @@ def check_market():
 
 
 # ------------------------------------------------------------------
-# 2./5. Game-Data: Items
+# 2./2b. Game-Data: laden, Items und Handelbarkeits-Flags
 # ------------------------------------------------------------------
 
 def load_game():
@@ -224,18 +224,6 @@ def check_items(game: dict):
     if without_id:
         bad(f"{without_id} Items ohne ItemId (werden vom Script uebersprungen)")
 
-    # Kandidaten fuer is_player_shop_tradeable() (aktuell NO-OP-Stub)
-    candidates = [k for k in keys
-                  if any(w in k.lower() for w in ("trade", "market", "sell", "shop", "vendor", "untradeable"))]
-    if candidates:
-        ok(f"Kandidaten-Felder fuer die Handelbarkeit: {candidates}")
-        for k in candidates:
-            values = Counter(repr(it.get(k)) for it in items)
-            info(f"    {k}: {dict(values.most_common(5))}")
-    else:
-        info("Kein Feld gefunden, das nach Handelbarkeit aussieht "
-             "-> is_player_shop_tradeable() bleibt zu Recht ein NO-OP")
-
     # Gezielter Abgleich fuer einzelne Items - beantwortet "warum steht das Item nicht
     # als handelbar in der Auswertung?" ohne die ganze Items-Liste durchzugehen.
     flag_rows = []
@@ -251,23 +239,21 @@ def check_items(game: dict):
                           "tradeable": tradeable, "npc_verkauf": npc})
         print(f"    {name:<24} ID {str(it.get('ItemId')):<5} BaseValue {str(it.get('BaseValue')):<8}"
               f" Player-Markt: {'ja' if tradeable else 'NEIN'}   NPC: {'ja' if npc else 'NEIN'}")
-    report_flags = flag_rows
 
     sample = next((it for it in items if it.get("ItemId") is not None), items[0])
     info(f"Beispiel-Item: {json.dumps(sample, ensure_ascii=False)[:600]}")
 
     report["items"] = {
         "count": len(items),
-        "flag_checks": report_flags,
+        "flag_checks": flag_rows,
         "fields": field_report,
         "without_item_id": without_id,
-        "tradeable_flag_candidates": candidates,
         "sample": sample,
     }
 
 
 # ------------------------------------------------------------------
-# 3./6. Tasks: Rezepte, Skill-Namen, BaseTime-Einheit
+# 3.-7. Tasks: Rezepte, Skill-Namen, BaseTime-Einheit, Bar-Rezepte, Speed-Formel, NPC-Preis
 # ------------------------------------------------------------------
 
 def collect_recipes(game: dict):

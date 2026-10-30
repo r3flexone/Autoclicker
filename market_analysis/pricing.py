@@ -7,11 +7,16 @@ sie nur pruefbar, wenn pandas installiert ist. Die CI installiert es nicht, also
 lief genau der rechnende Teil in keinem Test.
 
 Dieselbe Richtung wie beim Studio im Hauptprojekt: nicht die Ausgabe testbar
-machen, sondern die Logik aus ihr heraus.
+machen, sondern die Logik aus ihr heraus. Dazu gehoert die Marktwert-Datei fuer
+den Autoclicker (`export_market_values`): sie braucht nur `sale_values()` und die
+Standardbibliothek, lag aber lange in `analysis.py` und war deshalb nur mit pandas
+pruefbar.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from typing import NamedTuple
 
 try:
@@ -79,7 +84,7 @@ def price_anomaly(item: dict | None) -> bool:
             or abs(item["sell"] - avg) / avg > MAX_AVG_DEVIATION_RATIO)
 
 
-def thin_top_bid(item: dict | None, units_per_hour_value: float) -> bool:
+def thin_top_bid(item: dict | None, units_per_hour: float) -> bool:
     """Schluckt das beste Gebot weniger als `THIN_BID_HOURS` Stunden Produktion?
 
     Das ist die Frage, die `MIN_SELL_VOLUME` frueher mit einem Ausschluss beantwortet
@@ -90,12 +95,12 @@ def thin_top_bid(item: dict | None, units_per_hour_value: float) -> bool:
     Heute ist es eine Warnung: das Item wird trotzdem am Markt gerechnet, denn wie
     tief das Buch unter dem Top-Gebot ist, weiss der Bulk-Endpoint gar nicht.
     """
-    if not item or units_per_hour_value <= 0:
+    if not item or units_per_hour <= 0:
         return False
-    amount_value = item.get("buyVol", 0)
-    if amount_value <= 0:
+    amount = item.get("buyVol", 0)
+    if amount <= 0:
         return False
-    return amount_value / units_per_hour_value < THIN_BID_HOURS
+    return amount / units_per_hour < THIN_BID_HOURS
 
 
 def is_player_shop_tradeable(item_info: dict) -> bool:
@@ -113,18 +118,17 @@ def npc_sell_price(item_id: int, item_info_map: dict) -> float:
 
 class SalesChannel(NamedTuple):
     """Wohin das Endprodukt geht - und wie sicher das ist."""
-    price_value: float           # netto je Stueck, auf diesem Weg
+    price: float            # netto je Stueck, auf diesem Weg
     to_npc: bool
-    player_net: float   # was der Player-Markt netto braechte (0 = kein Weg)
     npc_price: float
     reason: str             # leer, solange ueberhaupt ein Weg existiert
 
 
 def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
-                         amount_value: float = 1.0) -> SalesChannel:
+                         amount: float = 1.0) -> SalesChannel:
     """Bester Verkaufsweg: Kaufgebot im Player Shop gegen NPC-Vendor, netto gegen netto.
 
-    `amount_value` ist die Stueckzahl, die in EINEM Angebot landet (typisch: Stueck pro
+    `amount` ist die Stueckzahl, die in EINEM Angebot landet (typisch: Stueck pro
     Stunde). Sie entscheidet ueber die Marktsteuer, denn die greift erst ab 100 Gold
     Gesamtwert - ohne sie verloere ein 3-Gold-Item bei jedem Vergleich 1%, das es
     im Spiel nie zahlt.
@@ -138,8 +142,8 @@ def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
     tradeable = is_player_shop_tradeable(info)
     npc_possible = bool(info.get("can_sell_to_npc", True))
 
-    player_net = (net_player_price(m["buy"], amount_value)
-                     if (tradeable and valid_sell_market(m)) else 0.0)
+    player_net = (net_player_price(m["buy"], amount)
+                  if (tradeable and valid_sell_market(m)) else 0.0)
     npc = npc_sell_price(item_id, item_info_map)
 
     if npc <= 0 and player_net <= 0:
@@ -151,11 +155,11 @@ def effective_sell_price(item_id: int, market_map: dict, item_info_map: dict,
             market_reason = f"Kaufgebot ohne Menge (BuyVol < {MIN_SELL_BID_VOLUME})"
         npc_reason = ("kein NPC-Verkauf erlaubt (CanNotBeSoldToGameShop)"
                      if not npc_possible else "kein NPC-Preis (BaseValue 0)")
-        return SalesChannel(0.0, False, 0.0, npc, f"{market_reason} + {npc_reason}")
+        return SalesChannel(0.0, False, npc, f"{market_reason} + {npc_reason}")
 
     if npc > player_net:
-        return SalesChannel(npc, True, player_net, npc, "")
-    return SalesChannel(player_net, False, player_net, npc, "")
+        return SalesChannel(npc, True, npc, "")
+    return SalesChannel(player_net, False, npc, "")
 
 
 def sale_values(market_map: dict, item_info_map: dict) -> dict:
@@ -174,10 +178,32 @@ def sale_values(market_map: dict, item_info_map: dict) -> dict:
     values: dict[str, float] = {}
     for item_id, info in item_info_map.items():
         name = str(info.get("name") or "").strip()
-        price_value = effective_sell_price(item_id, market_map, item_info_map).price_value
-        if name and price_value > values.get(name, 0.0):
-            values[name] = round(price_value, 2)
+        price = effective_sell_price(item_id, market_map, item_info_map).price
+        if name and price > values.get(name, 0.0):
+            values[name] = round(price, 2)
     return values
+
+
+def export_market_values(market_map: dict, item_info_map: dict, path: str) -> int:
+    """Schreibt eine schlanke Item-Name -> Verkaufswert-Tabelle als JSON.
+
+    Der Autoclicker kann seine Item-Klicks danach sortieren statt nach einer von
+    Hand getippten Prioritaetszahl — ohne dass eine Seite die andere importiert.
+    Was darin steht und warum es nicht mehr die Marge aus den Rohdaten ist, sagt
+    `sale_values()`.
+
+    Absichtlich nur Name -> Zahl: alles Weitere waere fuer die Klick-Reihenfolge
+    bedeutungslos, und eine schmale Datei kann nicht veralten wie eine breite.
+    Gibt die Anzahl geschriebener Eintraege zurueck; ohne einen einzigen Wert wird
+    nichts geschrieben (eine vorhandene Datei bleibt dann, wie sie ist).
+    """
+    values = sale_values(market_map, item_info_map)
+    if not values:
+        return 0
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(values, f, ensure_ascii=False, indent=1, sort_keys=True)
+    return len(values)
 
 
 # ---------------------------------------------------------------
@@ -185,7 +211,7 @@ def sale_values(market_map: dict, item_info_map: dict) -> dict:
 # ---------------------------------------------------------------
 
 class IngredientPrice(NamedTuple):
-    price_value: float
+    price: float
     known: bool
 
 
@@ -200,34 +226,34 @@ def ingredient_price(item_id, market_map: dict) -> IngredientPrice:
       fiel also unter "unbekannt" und kostete nichts. Ein Gold kostet ein Gold.
     - **Wirklich unbekannt.** Kein Markteintrag, kein Angebot, Preis 0: dann ist der
       Preis nicht null, sondern nicht bekannt. Der Aufrufer muss das Ergebnis als
-      unvollstaendig kennzeichnen, statt weiterzurechnen (`bekannt=False`).
+      unvollstaendig kennzeichnen, statt weiterzurechnen (`known=False`).
     """
     if item_id == GOLD_ITEM_ID:
         return IngredientPrice(GOLD_ITEM_PRICE, True)
     entry = market_map.get(item_id)
     if not entry:
         return IngredientPrice(0.0, False)
-    price_value = entry.get("sell", 0) or 0.0
-    if price_value <= 0:
+    price = entry.get("sell", 0) or 0.0
+    if price <= 0:
         return IngredientPrice(0.0, False)
-    return IngredientPrice(float(price_value), True)
+    return IngredientPrice(float(price), True)
 
 
 class CostPicture(NamedTuple):
     """Materialkosten EINER Aktion, plus was daran unsicher ist."""
-    costs_value: float
+    costs: float
     complete: bool
     missing_ones: tuple
     market_unhealthy: bool
     anomaly_price: bool
-    spread_warning_value: bool
+    spread_warning: bool
     max_liquidity: float
 
 
-def cost_per_action(costs: list, market_map: dict, actions_per_hour_value: float = 0.0,
+def cost_per_action(costs: list, market_map: dict, actions_per_hour: float = 0.0,
                       item_info_map: dict | None = None) -> CostPicture:
     """Summiert die Kostenzeilen eines Rezepts und meldet, was fehlt."""
-    costs_value = 0.0
+    total = 0.0
     complete = True
     missing_ones: list = []
     unhealthy = anomaly = spread = False
@@ -235,14 +261,14 @@ def cost_per_action(costs: list, market_map: dict, actions_per_hour_value: float
 
     for c in costs:
         item_id = c.get("Item")
-        amount_value = c.get("Amount", 0) or 0.0
-        price_value, known = ingredient_price(item_id, market_map)
+        amount = c.get("Amount", 0) or 0.0
+        price, known = ingredient_price(item_id, market_map)
         if not known:
             complete = False
             unhealthy = True
             missing_ones.append(_ingredient_name(item_id, item_info_map))
             continue
-        costs_value += price_value * amount_value
+        total += price * amount
         if item_id == GOLD_ITEM_ID:
             continue          # Gold hat keinen Markt, den man bewerten koennte
         cm = market_map.get(item_id)
@@ -252,10 +278,10 @@ def cost_per_action(costs: list, market_map: dict, actions_per_hour_value: float
             anomaly = True
         if wide_spread(cm):
             spread = True
-        if cm and cm.get("sellVol", 0) > 0 and actions_per_hour_value > 0:
-            max_ratio = max(max_ratio, (amount_value * actions_per_hour_value) / cm["sellVol"])
+        if cm and cm.get("sellVol", 0) > 0 and actions_per_hour > 0:
+            max_ratio = max(max_ratio, (amount * actions_per_hour) / cm["sellVol"])
 
-    return CostPicture(costs_value, complete, tuple(missing_ones), unhealthy, anomaly,
+    return CostPicture(total, complete, tuple(missing_ones), unhealthy, anomaly,
                       spread, max_ratio)
 
 
@@ -274,7 +300,7 @@ def _ingredient_name(item_id, item_info_map: dict | None) -> str:
 class Chain(NamedTuple):
     """Ergebnis einer rekursiven Kettenaufloesung."""
     time_ms: float
-    costs_value: float
+    costs: float
     steps_list: list
     liquidity: float
     self_sufficient: bool
@@ -287,9 +313,9 @@ class Chain(NamedTuple):
     side_items: tuple = ()
 
 
-def _empty(costs_value: float = 0.0, liquidity: float = 0.0, self_sufficient: bool = False,
+def _empty(costs: float = 0.0, liquidity: float = 0.0, self_sufficient: bool = False,
           costs_known: bool = True, missing_ones: tuple = ()) -> Chain:
-    return Chain(0.0, costs_value, [], liquidity, self_sufficient, 0.0, costs_known, missing_ones)
+    return Chain(0.0, costs, [], liquidity, self_sufficient, 0.0, costs_known, missing_ones)
 
 
 def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_cooked: dict,
@@ -311,8 +337,8 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
     item_info_map = item_info_map or {}
 
     if item_id in visited or depth > max_depth:
-        price_value, known = ingredient_price(item_id, market_map)
-        return _empty(price_value * qty_needed, 0.0, False, known,
+        price, known = ingredient_price(item_id, market_map)
+        return _empty(price * qty_needed, 0.0, False, known,
                      () if known else (_ingredient_name(item_id, item_info_map),))
 
     fish_source_id = next((raw for raw, cooked in fish_to_cooked.items() if cooked == item_id), None)
@@ -337,8 +363,8 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
     # Carpentry-Rezept die Warnung "Zutat muss gekauft werden" fuer die Naegel, und
     # eine Warnung, die immer ansteht, warnt nicht mehr.
     if item_id == GOLD_ITEM_ID:
-        price_value, _ = ingredient_price(item_id, market_map)
-        return _empty(price_value * qty_needed, 0.0, self_sufficient=True)
+        price, _ = ingredient_price(item_id, market_map)
+        return _empty(price * qty_needed, 0.0, self_sufficient=True)
 
     if item_id not in recipe_by_output:
         return _bought(item_id, market_map, item_info_map, qty_needed)
@@ -357,12 +383,12 @@ def resolve_chain(item_id, market_map: dict, recipe_by_output: dict, fish_to_coo
 def _bought(item_id, market_map: dict, item_info_map: dict, qty_needed: float) -> Chain:
     """Am Markt gekauft statt hergestellt - zum Ask, mit Liquiditaet und Grund."""
     entry = market_map.get(item_id)
-    price_value, known = ingredient_price(item_id, market_map)
+    price, known = ingredient_price(item_id, market_map)
     sell_vol = entry.get("sellVol", 0) if entry else 0
     ratio = (qty_needed / sell_vol) if sell_vol > 0 else 0.0
     if not valid_buy_market(entry):
         ratio = max(ratio, 999.0)   # erzwingt LiquidityWarning
-    return _empty(price_value * qty_needed, ratio, False, known,
+    return _empty(price * qty_needed, ratio, False, known,
                  () if known else (_ingredient_name(item_id, item_info_map),))
 
 
@@ -400,7 +426,7 @@ def _fishing_with_auto_cook(item_id, fish_source_id, cooked_id, market_map, reci
         # als steuerfrei.
         other_per_hour = 3_600_000.0 / fish_recipe["base_time_ms"] * per_action * (1.0 - share)
         channel = effective_sell_price(other_id, market_map, item_info_map, other_per_hour)
-        side_yield = channel.price_value * other_amount
+        side_yield = channel.price * other_amount
         side_items = ((other_id, other_amount, channel.npc_price),)
 
     return _subchains(fish_recipe["costs"], actions_needed, market_map, recipe_by_output,
@@ -416,7 +442,7 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
     Nebenprodukte werden je Item zusammengezaehlt: power_pizza fischt zander UND
     pufferfish, eine Kette mit derselben Zutat zweimal faengt denselben Fisch doppelt."""
     sides = {item: [qty, npc] for item, qty, npc in side_items}
-    costs_value, max_ratio = 0.0, 0.0
+    total, max_ratio = 0.0, 0.0
     self_sufficient = True
     costs_known = True
     missing_ones: list = []
@@ -426,7 +452,7 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
         part = resolve_chain(c.get("Item"), market_map, recipe_by_output, fish_to_cooked,
                              item_info_map, qty, visited, depth + 1, max_depth)
         time_ms += part.time_ms
-        costs_value += part.costs_value
+        total += part.costs
         side_yield += part.side_yield
         max_ratio = max(max_ratio, part.liquidity)
         self_sufficient = self_sufficient and part.self_sufficient
@@ -436,7 +462,7 @@ def _subchains(costs, actions_needed, market_map, recipe_by_output, fish_to_cook
         for item, qty, npc in part.side_items:
             sides.setdefault(item, [0.0, npc])[0] += qty
 
-    return Chain(time_ms, costs_value, steps_list, max_ratio, self_sufficient, side_yield,
+    return Chain(time_ms, total, steps_list, max_ratio, self_sufficient, side_yield,
                  costs_known, tuple(dict.fromkeys(missing_ones)),
                  tuple((item, qty, npc) for item, (qty, npc) in sides.items()))
 

@@ -148,13 +148,18 @@ def corrected_top(entry: dict, depth: dict | None) -> dict:
     return out
 
 
+# Kein eigenes Angebot moeglich: kein Buch, nichts produziert, kein Preis. Auch das
+# Ergebnis fuer Items, bei denen es nichts zu verhandeln gibt (NPC-Verkauf) - nur
+# lesen, `patience_analysis` gibt jedes Mal eine Kopie zurueck.
+NO_PATIENCE = {"price": None, "revenue": None, "gold_h": None, "markup": None,
+               "waiting_h": None, "per_piece": False, "offers_in_book": None}
+
+
 def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
                       cost_per_unit: float) -> dict:
     """Berechnet Preis, Ertrag und Wartezeit eines eigenen Angebots."""
-    empty = {"price_value": None, "revenue_value": None, "gold_h": None, "markup": None,
-             "waiting_h": None, "per_piece": False, "offers_in_book": None}
     if not depth or units_per_hour <= 0:
-        return empty
+        return dict(NO_PATIENCE)
 
     offers = sell_levels_from_depth(depth)
     if offers:
@@ -162,9 +167,9 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
     elif top_bid > 0:
         price = depth.get(COMPREHENSIVE_AVG_FIELDS["Avg30D"]) or top_bid
     else:
-        return empty
+        return dict(NO_PATIENCE)
     if price <= 0:
-        return empty
+        return dict(NO_PATIENCE)
 
     # Menge mitgeben: die Marktsteuer greift erst ab 100 Gold Gesamtwert, und
     # angeboten wird eine Stunde Produktion - mindestens aber ein ganzes Stueck.
@@ -177,8 +182,8 @@ def patience_analysis(depth: dict | None, top_bid: float, units_per_hour: float,
     waiting = lot / daily_volume * 24.0 if daily_volume > 0 else None
     net_bid = net_player_price(top_bid, lot) if top_bid > 0 else 0.0
     return {
-        "price_value": price,
-        "revenue_value": revenue,
+        "price": price,
+        "revenue": revenue,
         "gold_h": units_per_hour * (revenue - cost_per_unit),
         "markup": revenue / net_bid - 1.0 if net_bid > 0 else None,
         "waiting_h": waiting,

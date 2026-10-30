@@ -329,8 +329,9 @@ Details: `autoclicker/CLAUDE.md`.
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analysis.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
-  `output/marktwert.json` (Item-Name → Verkaufswert je Stück, `sale_values()` in
-  `market_analysis/pricing.py`). `scan_market_value_file` in der `config.json` des
+  `output/marktwert.json` (Item-Name → Verkaufswert je Stück, `sale_values()`; beide in
+  `market_analysis/pricing.py`, also ohne pandas — der Schreib-Test steht deshalb in
+  `tests/root/test_market_analysis.py`). `scan_market_value_file` in der `config.json` des
   Autoclickers zeigt **von Haus aus** dorthin (`market_analysis/output/marktwert.json`,
   relativ zum Arbeitsverzeichnis wie alle Pfade der App); liegt die Datei da, sortiert der
   Item-Scan seine Klicks danach statt nach der von Hand getippten `priority`

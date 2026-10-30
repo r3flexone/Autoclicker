@@ -39,6 +39,9 @@ except ImportError:  # direkter Skriptstart
     import config as cfg  # type: ignore
 
 
+# `runs.notiz` steht nur noch da, weil bestehende Datenbanken die Spalte haben: der
+# Code schreibt sie nicht mehr (sie bekommt ihren Standardwert), und ein INSERT ohne
+# sie geht auf alten wie auf frischen Dateien.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,14 +135,16 @@ def code_version() -> str:
     return "dat-" + hashlib.sha256("|".join(parts).encode()).hexdigest()[:8]
 
 
-def config_hash(module_name=cfg) -> str:
+def config_hash(source=cfg) -> str:
     """Fingerabdruck der rechenrelevanten Config (CONFIG_HASH_KEYS).
 
     Bewusst nicht ueber die ganze Datei: Pfade, Farben und Schwellen fuer Warnungen
     aendern keine einzige Zahl. Was drin steht, entscheidet der Anwender ueber
-    CONFIG_HASH_KEYS - so bleibt sichtbar, WAS als vergleichbar gilt.
+    CONFIG_HASH_KEYS - so bleibt sichtbar, WAS als vergleichbar gilt. `source` ist
+    das Objekt, dessen Attribute gelesen werden (Standard: `config`; ein Test gibt
+    ein eigenes mit).
     """
-    values = {name: _hashable(getattr(module_name, name, None)) for name in cfg.CONFIG_HASH_KEYS}
+    values = {name: _hashable(getattr(source, name, None)) for name in cfg.CONFIG_HASH_KEYS}
     raw = json.dumps(values, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
@@ -150,8 +155,6 @@ def _hashable(value):
         return value
     if isinstance(value, float):
         return round(value, 9)
-    if isinstance(value, (list, tuple)):
-        return [_hashable(w) for w in value]
     return value
 
 
@@ -173,7 +176,7 @@ def open_db(path: str | None = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def run_ctx(conn: sqlite3.Connection, note: str = "", timestamp: datetime | None = None):
+def run_ctx(conn: sqlite3.Connection, timestamp: datetime | None = None):
     """Ein Lauf als Transaktion: committet erst, wenn der Block sauber durchlaeuft.
 
     Genau das ist "nur erfolgreiche Laeufe uebernehmen" - keine Statusspalte, die
@@ -182,9 +185,9 @@ def run_ctx(conn: sqlite3.Connection, note: str = "", timestamp: datetime | None
     """
     now = timestamp or datetime.now()
     cur = conn.execute(
-        "INSERT INTO runs (ts, tag, code_version, config_hash, notiz) VALUES (?,?,?,?,?)",
+        "INSERT INTO runs (ts, tag, code_version, config_hash) VALUES (?,?,?,?)",
         (now.isoformat(timespec="seconds"), now.strftime("%Y-%m-%d"),
-         code_version(), config_hash(), note),
+         code_version(), config_hash()),
     )
     run_id = cur.lastrowid
     try:
@@ -234,9 +237,9 @@ def write_orderbook(conn: sqlite3.Connection, run_id: int, books: list,
     data = []
     for book in books[:max(0, limit)]:
         for side in ("kauf", "verkauf"):
-            for level, (price_value, amount_value) in enumerate(book.get(side) or [], 1):
+            for level, (price, amount) in enumerate(book.get(side) or [], 1):
                 data.append((run_id, tag, int(book["item_id"]), _text_value(book.get("item")),
-                              side, level, float(price_value), float(amount_value)))
+                              side, level, float(price), float(amount)))
     if data:
         conn.executemany(
             "INSERT INTO orderbook (run_id, tag, item_id, item, seite, stufe, preis, menge) "
@@ -300,16 +303,27 @@ def _limit_runs(conn: sqlite3.Connection, limit: int) -> int:
 # Lesen
 # ---------------------------------------------------------------
 
-def trend_rows(conn: sqlite3.Connection, item: str, days_count: int = 30) -> list:
-    """Gold/h und Preise eines Items ueber die Zeit - Details und Tageswerte zusammen."""
-    lines = conn.execute("""
-        SELECT tag, bid, ask, npc_preis, kosten_h, gold_h, gold_h_real, 'detail' AS quelle
+def trend_rows(conn: sqlite3.Connection, item: str, limit: int = 30) -> list:
+    """Gold/h und Preise eines Items ueber die Zeit - Details und Tageswerte zusammen,
+    die juengsten `limit` Zeilen (nicht Tage: ein Tag kann mehrere Laeufe haben).
+
+    Jede Detailzeile traegt alles, was `write_items` schreibt (Schnitt, Mengen an den
+    Bestpreisen, Skill, Rang, Warnungen ...). Die Tageswerte kennen davon nur Gebot,
+    Angebot, NPC-Preis, Kosten und Gold/h (`condense_until`) - der Rest steht dort als
+    NULL, damit beide Sorten Zeilen dieselben Schluessel haben."""
+    daily_columns = ("bid", "ask", "npc_preis", "kosten_h", "gold_h", "gold_h_real")
+    columns = ("skill", "bid", "ask", "avg", "bid_vol", "ask_vol", "npc_preis", "kosten_h",
+               "gold_h", "gold_h_real", "verkaufsweg", "rang", "warnungen")
+    from_items = ", ".join(columns)
+    from_daily = ", ".join(c if c in daily_columns else f"NULL AS {c}" for c in columns)
+    lines = conn.execute(f"""
+        SELECT tag, {from_items}, 'detail' AS quelle
         FROM items WHERE item = ?
         UNION ALL
-        SELECT tag, bid, ask, npc_preis, kosten_h, gold_h, gold_h_real, 'tag' AS quelle
+        SELECT tag, {from_daily}, 'tag' AS quelle
         FROM daily WHERE item = ?
         ORDER BY tag DESC LIMIT ?
-    """, (item, item, max(1, days_count))).fetchall()
+    """, (item, item, max(1, limit))).fetchall()
     return [dict(z) for z in lines]
 
 
@@ -320,8 +334,7 @@ def last_runs(conn: sqlite3.Connection, count: int = 5) -> list:
 
 
 def _day_of_run(conn: sqlite3.Connection, run_id: int) -> str:
-    line = conn.execute("SELECT tag FROM runs WHERE id = ?", (run_id,)).fetchone()
-    return line["tag"] if line else datetime.now().strftime("%Y-%m-%d")
+    return conn.execute("SELECT tag FROM runs WHERE id = ?", (run_id,)).fetchone()["tag"]
 
 
 def _number(value):

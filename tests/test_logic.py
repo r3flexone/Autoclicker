@@ -4193,57 +4193,22 @@ try:
           _mv6(_lmw(_path6), "Kohle") == 999.0)
 
     # Beide Seiten zusammen, ohne pandas: was die Analyse als Wert eines Items
-    # rechnet, findet der Item-Scan unter dem Namen wieder, den der Katalog ihm
-    # gibt - und es ist der Verkaufswert, nicht die Marge beim Herstellen.
-    from market_analysis.pricing import sale_values as _sv6
+    # rechnet UND in die Datei schreibt (`export_market_values`, Schreibseite
+    # einzeln in tests/root/test_market_analysis.py), findet der Item-Scan unter dem
+    # Namen wieder, den der Katalog ihm gibt - und es ist der Verkaufswert, nicht
+    # die Marge beim Herstellen.
+    from market_analysis.pricing import export_market_values as _emv6
     _info6 = {87: {"name": "titanium_platebody", "base_value": 15600,
                    "can_trade": True, "can_sell_to_npc": True}}
     _market6 = {87: {"buy": 18006, "sell": 18500, "buyVol": 6, "sellVol": 40, "avg": 18100}}
-    Path(_path6).write_text(_js6.dumps(_sv6(_market6, _info6)), encoding="utf-8")
+    check("die Analyse schreibt die Datei, die der Item-Scan liest",
+          _emv6(_market6, _info6, _path6) == 1)
     _os6.utime(_path6, (1, 1))
     _plate = _IP6(name="Titanium Platebody", priority=9)
     check("der Item-Scan findet den Wert unter dem Katalognamen",
           _eprio(_plate, 9, _lmw(_path6)) == -round(15600 * 1.10 * 1.05, 2))
 finally:
     _os6.unlink(_path6)
-
-# Die Schreibseite: market_analysis schreibt die Datei aus Markt und Item-Liste
-try:
-    import pandas as _pd6
-except ImportError:
-    _pd6 = None
-if _pd6 is not None:
-    import importlib.util as _ilu6
-    _spec6 = _ilu6.spec_from_file_location("_ma_analyse", _ma_dir / "analysis.py")
-    # Der direkte Skriptmodus lädt seine Nachbarmodule ohne Paketpräfix; dafür
-    # muss der Ordner wie beim echten Aufruf im Suchpfad stehen.
-    sys.path.insert(0, str(_ma_dir))
-    try:
-        _ma6 = _ilu6.module_from_spec(_spec6)
-        _spec6.loader.exec_module(_ma6)
-        _market7 = {6: {"buy": 95, "sell": 120, "buyVol": 12934, "sellVol": 1842, "avg": 95},
-                    9: {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}}
-        _info7 = {6: {"name": "oak_log", "base_value": 13, "can_trade": True,
-                      "can_sell_to_npc": True},
-                  9: {"name": "gebunden", "base_value": 0, "can_trade": False,
-                      "can_sell_to_npc": False}}
-        _fd7, _path7 = _tf6.mkstemp(suffix=".json")
-        _os6.close(_fd7)
-        try:
-            _n6 = _ma6.export_market_values(_market7, _info7, _path7)
-            _out6 = _js6.loads(Path(_path7).read_text(encoding="utf-8"))
-            check("die Analyse schreibt Item-Name -> Verkaufswert",
-                  _n6 == 1 and _out6 == {"oak_log": 95.0})
-            check("und der Autoclicker liest genau das wieder",
-                  _mv6(_lmw(_path7), "Oak Log") == 95.0)
-        finally:
-            _os6.unlink(_path7)
-    except Exception as _e6:               # pandas/openpyxl fehlt o.ae. - kein Testfehler
-        print(f"  {'-':>4}  Schreibseite uebersprungen ({type(_e6).__name__})")
-    finally:
-        sys.path.remove(str(_ma_dir))
-else:
-    print("  ----  Schreibseite uebersprungen (pandas nicht installiert)")
 
 
 

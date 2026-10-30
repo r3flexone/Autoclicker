@@ -144,7 +144,7 @@ PLAYER_MARKET_TAX = 0.01
 PLAYER_MARKET_TAX_MIN_TOTAL = 100.0
 
 
-def net_player_price(price_value: float, amount_value: float = 1.0) -> float:
+def net_player_price(price: float, amount: float = 1.0) -> float:
     """Was je Stueck nach Marktsteuer beim Verkaeufer ankommt.
 
     Die Steuer greift erst ab `PLAYER_MARKET_TAX_MIN_TOTAL` Gold GESAMTWERT eines
@@ -153,9 +153,9 @@ def net_player_price(price_value: float, amount_value: float = 1.0) -> float:
     weglaesst, fragt nach genau einem Stueck - und bekommt bei billigen Items dann
     auch den steuerfreien Preis, statt stillschweigend 1% zu verlieren.
     """
-    if price_value <= 0 or price_value * max(amount_value, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
-        return price_value
-    return price_value * (1.0 - PLAYER_MARKET_TAX)
+    if price <= 0 or price * max(amount, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
+        return price
+    return price * (1.0 - PLAYER_MARKET_TAX)
 
 
 # Gold ist in der API ein Item wie jedes andere und taucht als Kostenzeile auf

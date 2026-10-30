@@ -17,7 +17,7 @@ python market_analysis/analysis.py
 | Datei | Zweck |
 |---|---|
 | `analysis.py` | Hauptlauf: API → Rechnung → Excel + Chart |
-| `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten, Verlässlichkeit – die rechnende Schicht |
+| `pricing.py` | Verkaufsweg, Zutatenpreise, Ketten, Verlässlichkeit – die rechnende Schicht – und die Marktwert-Datei für den Autoclicker (`export_market_values`) |
 | `recipes.py` | Reine, separat getestete Rezept-Normalisierung |
 | `orderbook.py` | Reine Orderbuch-, Geduld- und Trendberechnungen |
 | `history.py` | Laufhistorie in SQLite: was das Überschreiben der Excel-Datei verliert |
@@ -34,6 +34,9 @@ Zutat, was kostet eine Kette. Solange sie in `analysis.py` zwischen DataFrames u
 Excel-Formatierung lagen, waren sie nur prüfbar, wenn pandas installiert ist; die CI
 installiert es nicht, also lief genau der rechnende Teil in keinem Test. Beide Module
 kommen ohne pandas, Excel und Netz aus und stehen deshalb in `test_market_analysis.py`.
+Dasselbe gilt für das Schreiben von `marktwert.json`: `export_market_values` lag in
+`analysis.py`, brauchte pandas aber nie – und sein Test hing deshalb an pandas und lief
+in der CI nicht.
 
 ```bash
 python market_analysis/verify.py oak titanium_bar tuna   # beliebige Rezeptnamen
@@ -44,23 +47,29 @@ python market_analysis/apicheck.py                       # nach Game-Updates
 
 | Sheet | Bedeutung |
 |---|---|
-| **Empfehlung** | **Die Antwort:** was bringt am meisten Gold pro Zeit, und geht es an Spieler oder NPC. Eine Zeile pro Item, nach Gold/h sortiert |
-| **Begründung** | **Warum** ist ein Item gut oder nicht: eine Stunde Produktion durch die echten Kaufgebot-Stufen im Player Shop gerechnet – für die besten `REASON_CANDIDATES` (30) der Papier-Liste |
+| **Empfehlung** | **Die Antwort:** was bringt am meisten Gold pro Zeit, und geht es an Spieler oder NPC. Eine Zeile pro Item, nach `Gold/h realistisch` sortiert (s. „Wonach die Empfehlung sortiert ist") |
+| **Begruendung** | **Warum** ist ein Item gut oder nicht: eine Stunde Produktion durch die echten Kaufgebot-Stufen im Player Shop gerechnet – für die besten `REASON_CANDIDATES` (30) der Papier-Liste |
 | **Ketten** | Alles selbst gefarmt, nichts zugekauft. **Das ist die Zahl, die zählt.** |
 | **Realistisch_Farmbar** | Nur Ketten mit `FullySelfSufficient` – keine Zutat muss gekauft werden |
 | **Nach_Skill_Level** | Verkaufbare Items sortiert nach Skill und Level |
 | **Rohdaten** | Jedes Rezept einzeln, Zutaten zum Ask-Preis gekauft. Ungefiltert |
-| **Preis_Sensitivität** | Gold/h über die 10 aktuellen Orderbook-Preispunkte je Item, plus NPC-Vergleichswert |
+| **Preis_Sensitivitaet** | Gold/h über die 10 aktuellen Orderbook-Preispunkte je Item, plus NPC-Vergleichswert |
 
 ### Empfehlung lesen
 
 | Spalte | Bedeutung |
 |---|---|
-| `Gold/h gewichtet` | **Sortierspalte:** Gold/h mal Verlässlichkeit |
+| `Rang` | Platz in der Reihenfolge; die Begründung trägt dieselbe Nummer |
+| `Item`, `Skills` | das Endprodukt und die Skills seiner Kette |
+| `Gold/h realistisch` | **Sortierspalte:** eine Stunde Produktion durchs echte Orderbuch verkauft; bei Items ohne Messung der Papier-Wert |
+| `Gold/h Quelle` | `Orderbuch` (gemessen, gelb) oder `Papier` (nicht gemessen, grau und kursiv) |
+| `Gold/h gewichtet` | `Gold/h` mal Verlässlichkeit – der Sortierwert für Items **ohne** Messung |
 | `Gold/h` | der echte Ertrag pro Stunde, alles selbst gefarmt |
 | `Verlässlichkeit` | 1,0 = planbar farmbar, kleiner = Nachschub nur zufällig oder ein Teil des Erlöses geht an den Zukauf |
+| `Gold/h (ungünstigster Fall)` | wie `Gold/h`, aber mit dem schlechteren Fall der Smelting-Magic-Reichweite (s. „Offene Punkte") |
 | `Hinweis` | warum abgewertet wurde |
-| `Sek pro Stück` | wie lange ein Stück von Grund auf dauert |
+| `Sek pro Stück`, `Stück/h` | wie lange ein Stück von Grund auf dauert, und wie viele daraus pro Stunde werden |
+| `Gold pro Stück` | Gewinn je Stück nach Materialkosten |
 | `Verkauf an` | Spieler oder NPC-Vendor – der bessere der beiden Wege |
 | `Erlös pro Stück` | was wirklich ankommt, beim Player Shop **nach** 1 % Marktsteuer |
 | `Spieler-Gebot (brutto)` / `NPC-Preis` | beide Wege nebeneinander, leer wenn nicht möglich |
@@ -127,9 +136,9 @@ eine Stunde Produktion tatsächlich durchs Orderbuch.
 
 | Spalte | Bedeutung |
 |---|---|
-| `Bestes Gebot` / `Menge am besten Gebot` | oberste Stufe im Player Shop |
+| `Bestes Gebot (brutto)` / `Menge am besten Gebot` | oberste Stufe im Player Shop |
 | `Deckt Stunden` | wie lange deine Produktion auf dieser Stufe Platz hat |
-| `Schnitt bei 1h Produktion` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst – mindestens ein ganzes Stück: eine Kette mit 0,03 Stück je Stunde bietet nie 0,03 Stück an. Bei mehr als einer Stunde je Stück ohne das beste Gebot (s. u.) |
+| `Schnitt bei 1h Produktion (netto)` | Durchschnittspreis, wenn du eine Stunde Ertrag ins Buch verkaufst – mindestens ein ganzes Stück: eine Kette mit 0,03 Stück je Stunde bietet nie 0,03 Stück an. Bei mehr als einer Stunde je Stück ohne das beste Gebot (s. u.) |
 | `Preisverlust` | wie weit das unter dem Listenpreis liegt |
 | `Gold/h realistisch` | Gold/h mit diesem Schnitt statt mit dem Top-Gebot |
 | `NPC besser` | der Vendor zahlt mehr als der Schnitt |
@@ -143,7 +152,7 @@ leer, rutschst du auf die nächste Stufe – dann steht die Wahrheit in `Gold/h 
 (`bids_for_measurement` in `orderbook.py`). Bis das Stück fertig ist, ist die
 Momentaufnahme Stunden oder Tage alt, und ein einzelner Bieter kann sein Gebot längst
 zurückgezogen haben. Gerechnet wird deshalb mit dem, was bleibt, wenn er weg ist;
-`Bestes Gebot` und `Kaufgebote (Stufen)` zeigen weiter das Buch, wie es ist, und die
+`Bestes Gebot (brutto)` und `Kaufgebote (Stufen)` zeigen weiter das Buch, wie es ist, und die
 Bewertung sagt, warum anders gerechnet wurde. Bleibt kein Gebot übrig, geht das Stück an
 den NPC wie bei jedem leeren Buch.
 
@@ -320,6 +329,12 @@ Kette, die vor allem Zukauf weiterreicht, nicht über einer ohne. „Gemessene z
 stand hier früher, und das stellte ein Item, das die Messung auf 50k drückte, über
 ungemessene mit 200k – eine Reihenfolge, die man dem Blatt nicht ansieht.
 
+Das gilt für `RANKING_BASIS = "instant"` (Standard). Bei `"patience"` folgt die Reihenfolge
+stattdessen `Gold/h mit Geduld` aus der Begründung – wo es fehlt (NPC-Verkauf: nichts zu
+verhandeln), der Sofort-Zahl, bei Ungemessenen weiter dem Papier-Wert – und das in
+Empfehlung **und** Begründung. Die gelb markierte Spalte `Gold/h realistisch` zeigt auch
+dann die Sofort-Zahl; nur die Reihenfolge ändert sich.
+
 Der Unterschied ist keine Kosmetik – das gerechnete Gold/h unterstellt, dass du beliebig
 viel zum besten Gebot los wirst:
 
@@ -369,6 +384,12 @@ Beim ersten Item ist Geduld viermal so viel wert – aber eine Stunde Produktion
 oder `"patience"` in `config.py`. Bis zum 11.10.2026 hiessen die Werte „sofort" und
 „geduld", der Code prüfte aber auf `"patience"` – „geduld" wirkte also nie. Ein
 unbekannter Wert bricht den Lauf jetzt ab, statt still auf den Sofortverkauf zu fallen.
+
+Auch danach verpuffte `"patience"` noch: die Begründung wurde nach `Gold/h mit Geduld`
+sortiert, aber `sort_by_measurement` ordnete die Empfehlung (und den Rang der Begründung)
+anschließend wieder allein nach `Gold/h realistisch` – im fertigen Blatt änderte die
+Einstellung nichts. Seit dem 30.10.2026 liest eine einzige Stelle die Basis
+(`_ranking_values` in `analysis.py`), und beide Sortierungen nehmen ihre Zahl von dort.
 
 **Was die Wartezeit nicht modelliert:** Warteschlangen. Wer unterbietet, liegt vorn – aber
 der Nächste unterbietet zurück. Übrig bleibt die belastbare Frage, ob der Tagesumsatz die
@@ -469,13 +490,13 @@ Zahl, die zählt: ein Gebot zeigt, was gerade oben steht, der Schnitt, was gehan
 wurde.
 
 Das Orderbuch kostet **keinen zusätzlichen Request**: gespeichert wird, was das Sheet
-„Begründung" ohnehin schon abgerufen hat. Abschalten mit `HISTORY_ENABLED = False`;
+„Begruendung" ohnehin schon abgerufen hat. Abschalten mit `HISTORY_ENABLED = False`;
 schlägt das Schreiben fehl, kostet das nur die Historie – die Excel-Datei steht da schon.
 
 ```python
 from market_analysis import history
 conn = history.open_db()
-history.trend_rows(conn, "yew_log")      # Preise und Gold/h über die Zeit
+history.trend_rows(conn, "yew_log")      # Preise, Mengen, Gold/h, Rang, Warnungen über die Zeit (jüngste 30 Zeilen, limit=...)
 history.last_runs(conn, 5)        # wann, mit welchem Code, welcher Config
 ```
 
@@ -488,7 +509,9 @@ auch Beute. Der Autoclicker liest sie von selbst: `scan_market_value_file` in se
 `config.json` zeigt standardmässig genau auf diese Datei, und sein Item-Scan sortiert
 die Klicks danach. Importiert wird in keine Richtung; die Datei ist die ganze
 Verbindung — wer `output/` verlegt, zieht den Standard im Autoclicker mit (die
-Vertragssuite prüft, dass beide auf dieselbe Datei zeigen).
+Vertragssuite prüft, dass beide auf dieselbe Datei zeigen). Geschrieben wird sie von
+`export_market_values` in `pricing.py`, ohne pandas – deshalb steht ihr Test in
+`test_market_analysis.py` und läuft auch in der CI.
 
 Hier stand bis zum 04.10.2026 die Spalte `Gold pro Stück` der Rohdaten, also die Marge
 beim Herstellen aus gekauften Zutaten, und zwar unter dem **Rezept**namen. Das passte
@@ -517,9 +540,6 @@ Betrifft nur `XP/h` und `Gold per XP`, **nicht** Gold/h.
 
 **Daily Boost.** Das Wiki nennt +30 % XP für 2 h, gemessen wurden +4 %. Steht auf
 `DAILY_BOOST_ACTIVE = False` und betrifft ebenfalls nur die XP-Spalten.
-
-**Brewing-Werkzeug.** Erledigt (18.08.2026): Brewing hat ein eigenes Werkzeug,
-`has_tool=True`, also 61 % statt 55 %.
 
 ## Bekannte Vereinfachungen
 
@@ -553,7 +573,7 @@ Heute gilt: **verkauft wird ins Gebot, also zählt nur die Gebotsseite** – `bu
 (`MIN_SELL_BID_VOLUME`), mehr nicht. Deckt das Top-Gebot weniger als `THIN_BID_HOURS`
 Stunden Produktion, steht das als Warnung `Top-Gebot dünn` in Empfehlung und Rohdaten.
 Wie tief das Buch wirklich ist, weiss der Bulk-Endpoint gar nicht – das misst das Sheet
-**Begründung**, indem es eine Stunde Produktion durch die echten Gebotsstufen verkauft.
+**Begruendung**, indem es eine Stunde Produktion durch die echten Gebotsstufen verkauft.
 
 Umgekehrt zählt beim **Einkauf** von Zutaten nur die Angebotsseite
 (`valid_buy_market`, `MIN_BUY_ASK_VOLUME`). Beides in einem Filter zu vermischen war
@@ -599,7 +619,7 @@ Kostenzeile kein Preis (kein Markteintrag, kein Angebot), bleibt `Gold/h` **leer
 `AusschlussGrund`. Vorher rutschte die Zeile stillschweigend mit 0 durch, und das
 Rezept stand mit vollem Gewinn in der Rangliste – genau dort, wo man am wenigsten
 nachrechnet. Solche Items können nicht ranken und fehlen deshalb in **Empfehlung** und
-**Begründung**; im Ketten- und Rohdaten-Sheet stehen sie mit Grund.
+**Begruendung**; im Ketten- und Rohdaten-Sheet stehen sie mit Grund.
 
 **Rezeptauswahl rein nach Zeit.** Produzieren mehrere Skills dasselbe Item, nimmt die
 Kettenanalyse den schnellsten Weg – der kann teurer und in Summe schlechter sein. Im

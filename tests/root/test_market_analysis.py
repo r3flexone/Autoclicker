@@ -8,6 +8,9 @@ Die eine Ausnahme ist `MeasurementRankingTest` am Ende: sie braucht
 `analysis.py` und wird ohne pandas übersprungen und gesagt.
 """
 
+import json
+import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 
@@ -189,17 +192,17 @@ class MarketRouteTest(unittest.TestCase):
         Ohne den Fix fiel das Item auf den NPC-Preis (20 x 1,155 = 23,1) zurück,
         obwohl 76 g geboten werden.
         """
-        channel = pricing.effective_sell_price(100, MARKET, INFO, amount_value=1000)
+        channel = pricing.effective_sell_price(100, MARKET, INFO, amount=1000)
         self.assertFalse(channel.to_npc)
-        self.assertAlmostEqual(channel.price_value, 76 * 0.99)
-        self.assertGreater(channel.price_value, channel.npc_price)
+        self.assertAlmostEqual(channel.price, 76 * 0.99)
+        self.assertGreater(channel.price, channel.npc_price)
 
     def test_npc_gewinnt_wenn_er_mehr_zahlt(self):
         info = dict(INFO)
         info[100] = dict(INFO[100], base_value=200)      # NPC: 231 > 75,24
-        channel = pricing.effective_sell_price(100, MARKET, info, amount_value=1000)
+        channel = pricing.effective_sell_price(100, MARKET, info, amount=1000)
         self.assertTrue(channel.to_npc)
-        self.assertAlmostEqual(channel.price_value, 200 * cfg.NPC_SELL_BOOST_MULTIPLIER)
+        self.assertAlmostEqual(channel.price, 200 * cfg.NPC_SELL_BOOST_MULTIPLIER)
 
     def test_duennes_gebot_ist_eine_frage_der_produktion(self):
         """Nicht 'unter 10.000 Stück', sondern 'reicht keine Stunde'."""
@@ -211,7 +214,7 @@ class MarketRouteTest(unittest.TestCase):
 
     def test_ohne_jeden_weg_kommt_ein_grund(self):
         channel = pricing.effective_sell_price(500, MARKET, INFO)
-        self.assertEqual(channel.price_value, 0.0)
+        self.assertEqual(channel.price, 0.0)
         self.assertIn("CanNotBeTraded", channel.reason)
         self.assertIn("CanNotBeSoldToGameShop", channel.reason)
 
@@ -219,9 +222,19 @@ class MarketRouteTest(unittest.TestCase):
         """Spielergebot verliert Steuer, der NPC nicht – sonst wäre der Vergleich schief."""
         info = dict(INFO)
         info[100] = dict(INFO[100], base_value=65)       # NPC: 75,075
-        channel = pricing.effective_sell_price(100, MARKET, info, amount_value=1000)
-        self.assertAlmostEqual(channel.player_net, 75.24)
+        channel = pricing.effective_sell_price(100, MARKET, info, amount=1000)
         self.assertFalse(channel.to_npc)                     # 75,24 > 75,075, aber knapp
+        self.assertAlmostEqual(channel.price, 75.24)         # der Preis ist der Nettoerlös
+
+    def test_npc_zwischen_netto_und_brutto_gewinnt(self):
+        """Gebot 76 g (brutto), 75,24 g nach Steuer; der NPC zahlt 75,54 g. Brutto gegen
+        netto verglichen gewänne der Spieler (76 > 75,54) – netto gegen netto der NPC."""
+        info = dict(INFO)
+        info[100] = dict(INFO[100], base_value=65.4)     # NPC: 65,4 x 1,155 = 75,537
+        channel = pricing.effective_sell_price(100, MARKET, info, amount=1000)
+        self.assertTrue(channel.to_npc)
+        self.assertAlmostEqual(channel.price, 65.4 * cfg.NPC_SELL_BOOST_MULTIPLIER)
+        self.assertGreater(MARKET[100]["buy"], channel.price)      # brutto läge der Spieler vorn
 
 
 class SaleValueTest(unittest.TestCase):
@@ -250,41 +263,70 @@ class SaleValueTest(unittest.TestCase):
         """Lieber kein Wert als 0 - ein Item mit Wert 0 stuende vor jedem ohne."""
         self.assertNotIn("gebunden", pricing.sale_values(MARKET, INFO))
 
+    def test_die_datei_traegt_name_und_wert(self):
+        """Die Schreibseite von marktwert.json. Sie lag in `analysis.py` und hing
+        damit an pandas; ein breites `except Exception` machte jeden Fehler dort zu
+        „uebersprungen". `export_market_values` braucht nur `sale_values` und die
+        Standardbibliothek, also laeuft der Test immer."""
+        market = {6: {"buy": 95, "sell": 120, "buyVol": 12934, "sellVol": 1842, "avg": 95},
+                  9: {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}}
+        info = {6: {"name": "oak_log", "base_value": 13, "can_trade": True,
+                    "can_sell_to_npc": True},
+                9: {"name": "gebunden", "base_value": 0, "can_trade": False,
+                    "can_sell_to_npc": False}}
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "output", "marktwert.json")    # Ordner fehlt noch
+            count = pricing.export_market_values(market, info, path)
+            with open(path, encoding="utf-8") as f:
+                written = json.load(f)
+        self.assertEqual(count, 1)
+        self.assertEqual(written, {"oak_log": 95.0})
+
+    def test_ohne_jeden_wert_wird_nichts_geschrieben(self):
+        """Eine leere Tabelle ueberschriebe eine brauchbare Datei mit nichts."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "marktwert.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"alt": 1.0}')
+            self.assertEqual(pricing.export_market_values({}, {}, path), 0)
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(json.load(f), {"alt": 1.0})
+
 
 class IngredientPriceTest(unittest.TestCase):
     def test_gold_ist_ein_item_und_kostet_eins(self):
         """API-Item 19 ist direktes Gold – früher als 'kein Markteintrag' mit 0 gerechnet."""
         self.assertEqual(GOLD_ITEM_ID, 19)
-        price_value, known = pricing.ingredient_price(19, MARKET)
+        price, known = pricing.ingredient_price(19, MARKET)
         self.assertTrue(known)
-        self.assertEqual(price_value, 1.0)
+        self.assertEqual(price, 1.0)
         # Gegenprobe: ohne den Sonderfall wäre die Zeile "unbekannt" und die
         # Carpentry-Kosten fielen auf 0 zurück.
         self.assertFalse(pricing.ingredient_price(18, MARKET).known)
 
     def test_fehlender_preis_ist_nicht_null(self):
-        price_value, known = pricing.ingredient_price(999, MARKET)
+        price, known = pricing.ingredient_price(999, MARKET)
         self.assertFalse(known)
-        self.assertEqual(price_value, 0.0)
+        self.assertEqual(price, 0.0)
 
     def test_markteintrag_ohne_angebot_gilt_als_unbekannt(self):
         _, known = pricing.ingredient_price(500, MARKET)
         self.assertFalse(known)
 
     def test_goldkosten_landen_in_der_summe(self):
-        image = pricing.cost_per_action(
+        picture = pricing.cost_per_action(
             [{"Item": 100, "Amount": 1}, {"Item": GOLD_ITEM_ID, "Amount": 250}],
             MARKET, item_info_map=INFO)
-        self.assertTrue(image.complete)
-        self.assertAlmostEqual(image.costs_value, 90 + 250)
+        self.assertTrue(picture.complete)
+        self.assertAlmostEqual(picture.costs, 90 + 250)
 
     def test_fehlende_zutat_macht_die_kosten_unvollstaendig(self):
-        image = pricing.cost_per_action(
+        picture = pricing.cost_per_action(
             [{"Item": 100, "Amount": 1}, {"Item": 999, "Amount": 2}],
             MARKET, item_info_map=INFO)
-        self.assertFalse(image.complete)
-        self.assertEqual(image.missing_ones, ("item_999",))
-        self.assertAlmostEqual(image.costs_value, 90)       # nur die bekannte Zeile
+        self.assertFalse(picture.complete)
+        self.assertEqual(picture.missing_ones, ("item_999",))
+        self.assertAlmostEqual(picture.costs, 90)       # nur die bekannte Zeile
 
 
 class ChainTest(unittest.TestCase):
@@ -303,7 +345,7 @@ class ChainTest(unittest.TestCase):
         k = pricing.resolve_chain(100, MARKET, self.recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
         self.assertTrue(k.costs_known)
-        self.assertEqual(k.costs_value, 0.0)
+        self.assertEqual(k.costs, 0.0)
         # Zeit für EIN Stück: die Aktionszeit geteilt durch die Ausbeute je Aktion.
         # Gegen das Rezept gerechnet statt gegen eine getippte Zahl – sonst prüft der
         # Test die Boost-Formel mit, und die hat ihren eigenen Test.
@@ -316,7 +358,7 @@ class ChainTest(unittest.TestCase):
                                costs=[{"Item": 100, "Amount": 2}])
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
-        self.assertEqual(k.costs_value, 0.0)            # Holz wird gefarmt, nicht gekauft
+        self.assertEqual(k.costs, 0.0)            # Holz wird gefarmt, nicht gekauft
         self.assertEqual(len(k.steps_list), 2)
 
     def test_gekaufte_zutat_bricht_die_autarkie(self):
@@ -324,14 +366,14 @@ class ChainTest(unittest.TestCase):
                                 costs=[{"Item": 100, "Amount": 2}])}
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.self_sufficient)
-        self.assertGreater(k.costs_value, 0.0)
+        self.assertGreater(k.costs, 0.0)
 
     def test_gold_kostet_bricht_aber_die_autarkie_nicht(self):
         recipes = {300: _recipe("plank", "Carpentry", 300, 6000,
                                 costs=[{"Item": GOLD_ITEM_ID, "Amount": 250}])}
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
-        self.assertAlmostEqual(k.costs_value, 250 / (1 * 1.05))     # je Stück Ausbeute
+        self.assertAlmostEqual(k.costs, 250 / (1 * 1.05))     # je Stück Ausbeute
         self.assertEqual(k.liquidity, 0.0)       # Gold hat keinen Markt, der knapp wird
 
     def test_unbekannter_zutatenpreis_wird_gemeldet_nicht_genullt(self):
@@ -348,7 +390,7 @@ class ChainTest(unittest.TestCase):
         # Pro gekochtem Stück fällt genau ein rohes an (Chance 0,5).
         raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
         channel = pricing.effective_sell_price(200, MARKET, INFO, raw_per_unit)
-        self.assertAlmostEqual(k.side_yield, raw_per_unit * channel.price_value)
+        self.assertAlmostEqual(k.side_yield, raw_per_unit * channel.price)
 
     def test_rohrest_versteuert_je_stunde_nicht_je_stueck(self):
         """Angeboten wird eine Stunde Fischen, nicht der eine rohe Fisch, der auf
@@ -378,7 +420,7 @@ class ChainTest(unittest.TestCase):
         cooked_per_raw = cfg.AUTO_COOK_CHANCE / raw_share
         cooked_per_hour = 3_600_000.0 / fish["base_time_ms"] * fish["item_amount"] * cfg.AUTO_COOK_CHANCE
         cooked = pricing.effective_sell_price(201, MARKET, INFO, cooked_per_hour)
-        self.assertAlmostEqual(k.side_yield, cooked_per_raw * cooked.price_value)
+        self.assertAlmostEqual(k.side_yield, cooked_per_raw * cooked.price)
         self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
 
     def test_nebenprodukt_steht_in_der_kette(self):
@@ -409,8 +451,8 @@ class ChainTest(unittest.TestCase):
         def gold_h(item_id):
             k = pricing.resolve_chain(item_id, MARKET, self.recipes, self.fish_to_cooked, INFO)
             per_hour = 3_600_000.0 / k.time_ms
-            price = pricing.effective_sell_price(item_id, MARKET, INFO, per_hour).price_value
-            return per_hour * (price + k.side_yield - k.costs_value)
+            price = pricing.effective_sell_price(item_id, MARKET, INFO, per_hour).price
+            return per_hour * (price + k.side_yield - k.costs)
         self.assertAlmostEqual(gold_h(200), gold_h(201))
 
     def test_auto_cook_fischt_statt_zu_kochen(self):
@@ -449,7 +491,7 @@ class OrderbookTest(unittest.TestCase):
             COMPREHENSIVE_AVG_FIELDS["Avg30D"]: 100,
         }
         result = patience_analysis(depth, 100, 20, 50)
-        self.assertEqual(result["price_value"], 119)
+        self.assertEqual(result["price"], 119)
         self.assertAlmostEqual(result["waiting_h"], 2.0)
         position, trend = price_position(120, depth)
         self.assertAlmostEqual(position, 0.2)
@@ -566,7 +608,7 @@ class OutlierTest(unittest.TestCase):
         um 1 g unterbieten koennte - sonst waere Geduld 4.900-mal so viel wert."""
         depth = dict(OAK_BOOK, lowestSellPricesWithVolume=[{"key": 464650, "value": 1}])
         result = patience_analysis(depth, 95, 3400, 0)
-        self.assertLess(result["price_value"], 200)
+        self.assertLess(result["price"], 200)
 
     def test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt(self):
         """Ein Gebot zu 464.650 g fuer EIN Stueck stuende sonst als Preis fuer die
@@ -617,7 +659,8 @@ class HistoryTest(unittest.TestCase):
 
     def _row(self, item="oak", **remainder):
         row = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
-               "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
+               "ask": 90, "avg": 78, "bid_vol": 6178, "ask_vol": 5000,
+               "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
                "warnungen": ""}
         row.update(remainder)
@@ -626,11 +669,14 @@ class HistoryTest(unittest.TestCase):
     def test_lauf_speichert_zeitpunkt_version_und_confighash(self):
         with history.run_ctx(self.conn) as run_id:
             history.write_items(self.conn, run_id, [self._row()])
-        run_ctx = history.last_runs(self.conn)[0]
-        self.assertTrue(run_ctx["ts"])
-        self.assertTrue(run_ctx["code_version"])
-        self.assertEqual(len(run_ctx["config_hash"]), 12)
-        self.assertEqual(run_ctx["items"], 1)
+        run = history.last_runs(self.conn)[0]
+        self.assertTrue(run["ts"])
+        self.assertTrue(run["code_version"])
+        self.assertEqual(len(run["config_hash"]), 12)
+        self.assertEqual(run["items"], 1)
+        # `notiz` gibt es nur noch, weil bestehende Datenbanken die Spalte haben: der
+        # Code schreibt sie nicht, sie behaelt ihren Standardwert.
+        self.assertEqual(run["notiz"], "")
 
     def test_jede_spalte_der_zeile_kommt_in_der_datenbank_an(self):
         """Die Testzeile trägt genau die Spalten der Tabelle — und ihre Werte kommen an.
@@ -683,9 +729,9 @@ class HistoryTest(unittest.TestCase):
         report = history.tidy_up(self.conn)
         self.assertEqual(report["condensed"], 1)
         self.assertEqual(report["items"], 1)
-        days_count = self.conn.execute("SELECT tag, gold_h FROM daily").fetchall()
-        self.assertEqual(len(days_count), 1)
-        self.assertAlmostEqual(days_count[0]["gold_h"], 1000)
+        daily = self.conn.execute("SELECT tag, gold_h FROM daily").fetchall()
+        self.assertEqual(len(daily), 1)
+        self.assertAlmostEqual(daily[0]["gold_h"], 1000)
         # Der junge Lauf bleibt als Detailzeile stehen.
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0], 1)
 
@@ -724,6 +770,43 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["quelle"], "detail")
         self.assertAlmostEqual(entries[0]["gold_h"], 1000)
+
+    def test_verlauf_traegt_alle_spalten_der_detailzeile(self):
+        """Schnitt, Mengen an den Bestpreisen, Skill, Rang und Warnungen standen in der
+        Datenbank, aber nicht im Verlauf - die einzige Stelle, die sie liest."""
+        with history.run_ctx(self.conn) as run_id:
+            history.write_items(self.conn, run_id, [self._row(warnungen="Spread", rang=3)])
+        entry = history.trend_rows(self.conn, "oak")[0]
+        for column in ("skill", "bid", "ask", "avg", "bid_vol", "ask_vol", "npc_preis",
+                       "kosten_h", "gold_h", "gold_h_real", "verkaufsweg", "rang", "warnungen"):
+            self.assertIn(column, entry)
+        self.assertEqual((entry["skill"], entry["avg"], entry["bid_vol"], entry["ask_vol"]),
+                         ("Woodcutting", 78, 6178, 5000))
+        self.assertEqual((entry["rang"], entry["warnungen"], entry["verkaufsweg"]),
+                         (3, "Spread", "Spieler"))
+
+    def test_verlauf_hat_fuer_tageswerte_dieselben_schluessel(self):
+        """Verdichtet bleiben nur Gebot, Angebot, NPC-Preis, Kosten und Gold/h - der Rest
+        steht leer da, nicht als fehlender Schluessel."""
+        old = datetime.now() - timedelta(days=cfg.HISTORY_DETAIL_DAYS + 5)
+        with history.run_ctx(self.conn, timestamp=old) as run_id:
+            history.write_items(self.conn, run_id, [self._row()])
+        history.tidy_up(self.conn)
+        with history.run_ctx(self.conn) as run_id:
+            history.write_items(self.conn, run_id, [self._row()])
+        entries = history.trend_rows(self.conn, "oak")
+        self.assertEqual([e["quelle"] for e in entries], ["detail", "tag"])
+        self.assertEqual(set(entries[0]), set(entries[1]))
+        self.assertAlmostEqual(entries[1]["gold_h"], 1000)
+        self.assertIsNone(entries[1]["avg"])
+        self.assertIsNone(entries[1]["warnungen"])
+
+    def test_verlauf_kappt_bei_limit_zeilen(self):
+        for _ in range(4):
+            with history.run_ctx(self.conn) as run_id:
+                history.write_items(self.conn, run_id, [self._row()])
+        self.assertEqual(len(history.trend_rows(self.conn, "oak")), 4)
+        self.assertEqual(len(history.trend_rows(self.conn, "oak", limit=2)), 2)
 
     def test_leere_werte_bleiben_leer(self):
         """Ein fehlendes Gold/h ist nicht 0 – auch nicht in der Datenbank."""
@@ -785,7 +868,6 @@ class ExtendedJsonTest(unittest.TestCase):
 
     def test_unparsbares_wirft_weiterhin(self):
         """Uebersetzt wird, was uebersetzbar ist — kaputtes JSON bleibt ein Fehler."""
-        import json
         with self.assertRaises(json.JSONDecodeError):
             extended_json.load('{"a": NumberLong(1), "b": }')
 
@@ -807,6 +889,16 @@ class MeasurementRankingTest(unittest.TestCase):
     `SKILL_RELIABILITY` nie an - bei zehn Zeilen unsichtbar, ueber den ganzen
     Bestand ein Papaya-Feld auf Platz 1.
     """
+
+    @staticmethod
+    def _chain_frame(columns):
+        """Ketten-Frame fuer `build_reason_df`. `_side_items` fehlt dort nie (die
+        Kette baut die Spalte immer); wo ein Test keinen Nebenertrag braucht, ist
+        sie leer."""
+        df = _pd.DataFrame(columns)
+        if "_side_items" not in df.columns:
+            df["_side_items"] = [()] * len(df)
+        return df
 
     @staticmethod
     def _recommendation(lines):
@@ -842,9 +934,9 @@ class MeasurementRankingTest(unittest.TestCase):
             (i, name, "Mining", 200 - i, "NPC-Vendor", 2 - i / 100, 100, 2, None, 1.0, None)
             for i, name in enumerate(names, start=1)] + [
             (13, "nichts", "Mining", 0, "NPC-Vendor", 0, 100, 0, None, 1.0, None)])
-        df_chain = _pd.DataFrame({"Item": names + ["nichts"], "ItemID": range(1, 14),
-                                  "Stück/h": 100.0, "RawMaterialCost/h": 0.0,
-                                  "Nebenertrag/h": 0.0})
+        df_chain = self._chain_frame({"Item": names + ["nichts"], "ItemID": range(1, 14),
+                                      "Stück/h": 100.0, "RawMaterialCost/h": 0.0,
+                                      "Nebenertrag/h": 0.0})
         old = _analysis.fetch_orderbook_depth
         try:
             _analysis.fetch_orderbook_depth = lambda item_id: None   # kein Netz noetig
@@ -892,9 +984,9 @@ class MeasurementRankingTest(unittest.TestCase):
             (1, "papaya", "Farming", 200, "NPC-Vendor", 2, 100, 2, None, 0.5, None),
             (2, "oak", "Woodcutting", 150, "NPC-Vendor", 1.5, 100, 1.5, None, 1.0, None),
         ])
-        df_chain = _pd.DataFrame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
-                                  "Stück/h": [100.0, 100.0],
-                                  "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
+        df_chain = self._chain_frame({"Item": ["papaya", "oak"], "ItemID": [1, 2],
+                                      "Stück/h": [100.0, 100.0],
+                                      "RawMaterialCost/h": [0.0, 0.0], "Nebenertrag/h": [0.0, 0.0]})
         old = _analysis.fetch_orderbook_depth
         try:
             _analysis.fetch_orderbook_depth = lambda item_id: None
@@ -922,10 +1014,10 @@ class MeasurementRankingTest(unittest.TestCase):
             (2, "sehr_langsam", "Smithing", 1_000_000, "Spieler", 0, 0.0,
              148_500_000, 150_000_000, 1.0, None),
         ])
-        df_chain = _pd.DataFrame({"Item": ["langsam", "sehr_langsam"], "ItemID": [1, 2],
-                                  "Stück/h": [0.065, 0.034],
-                                  "RawMaterialCost/h": [0.0, 4_000_000.0],
-                                  "Nebenertrag/h": [0.0, 0.0]})
+        df_chain = self._chain_frame({"Item": ["langsam", "sehr_langsam"], "ItemID": [1, 2],
+                                      "Stück/h": [0.065, 0.034],
+                                      "RawMaterialCost/h": [0.0, 4_000_000.0],
+                                      "Nebenertrag/h": [0.0, 0.0]})
         # Je ein Gebot einen Gold darueber: beide Ketten brauchen mehr als eine
         # Stunde je Stueck, also zaehlt das beste Gebot nicht (bids_for_measurement).
         books = {1: {"highestBuyPricesWithVolume": [{"key": 5_000_001, "value": 10},
@@ -991,9 +1083,9 @@ class MeasurementRankingTest(unittest.TestCase):
         df_rec = self._recommendation([
             (1, "barren", "Smithing", 1_000_000, "Spieler", 0, 0.0335,
              149_490_000, 151_000_000, 1.0, None)])
-        df_chain = _pd.DataFrame({"Item": ["barren"], "ItemID": [1], "Stück/h": [0.0335],
-                                  "RawMaterialCost/h": [3_833_413.0],
-                                  "Nebenertrag/h": [0.0]})
+        df_chain = self._chain_frame({"Item": ["barren"], "ItemID": [1], "Stück/h": [0.0335],
+                                      "RawMaterialCost/h": [3_833_413.0],
+                                      "Nebenertrag/h": [0.0]})
         book = {"highestBuyPricesWithVolume": [{"key": 151_000_000, "value": 2},
                                                {"key": 150_000_000, "value": 2}],
                 "lowestSellPricesWithVolume": [{"key": 220_000_000, "value": 1}],
@@ -1007,30 +1099,58 @@ class MeasurementRankingTest(unittest.TestCase):
         self.assertEqual(int(df_reason.loc[0, "Gold/h realistisch"]),
                          round(0.0335 * 150_000_000 * 0.99 - 3_833_413))
 
-    def test_geduld_als_rangbasis_dreht_die_reihenfolge(self):
-        """Der Wert aus RANKING_BASES muss im Code ankommen: "geduld" lief nach der
-        Englisch-Umbenennung ins Leere. Sofort bringt "tief" mehr, mit eigenem
-        Angebot "breit" (Gebot 100, Angebot 300)."""
-        df_rec = self._recommendation([
-            (1, "tief", "Mining", 1980, "Spieler", 0, 10, 198, 200, 1.0, None),
-            (2, "breit", "Mining", 990, "Spieler", 0, 10, 99, 100, 1.0, None)])
-        df_chain = _pd.DataFrame({"Item": ["tief", "breit"], "ItemID": [1, 2],
-                                  "Stück/h": [10.0, 10.0], "RawMaterialCost/h": [0.0, 0.0],
-                                  "Nebenertrag/h": [0.0, 0.0]})
-        books = {1: {"highestBuyPricesWithVolume": [{"key": 200, "value": 1000}],
-                     "lowestSellPricesWithVolume": [{"key": 201, "value": 1000}]},
-                 2: {"highestBuyPricesWithVolume": [{"key": 100, "value": 1000}],
-                     "lowestSellPricesWithVolume": [{"key": 300, "value": 1000}]}}
-        old = _analysis.RANKING_BASIS
+    def _ranked(self, basis, df_rec, df_chain, fetch):
+        """Der GANZE Weg wie in `main()`: Begruendung messen, danach die Empfehlung
+        neu ordnen - `(Empfehlung, Begruendung)`."""
+        old_basis, old_fetch = _analysis.RANKING_BASIS, _analysis.fetch_orderbook_depth
         try:
-            orders = {}
-            for basis in cfg.RANKING_BASES:
-                _analysis.RANKING_BASIS = basis
-                orders[basis] = list(self._measure(df_rec, df_chain, books.get)["Item"])
+            _analysis.RANKING_BASIS = basis
+            _analysis.fetch_orderbook_depth = fetch
+            df_reason, _ = _analysis.build_reason_df(df_rec, df_chain)
+            return _analysis.sort_by_measurement(df_rec, df_reason), df_reason
         finally:
-            _analysis.RANKING_BASIS = old
-        self.assertEqual(orders["instant"], ["tief", "breit"])
-        self.assertEqual(orders["patience"], ["breit", "tief"])
+            _analysis.RANKING_BASIS, _analysis.fetch_orderbook_depth = old_basis, old_fetch
+
+    def test_geduld_als_rangbasis_dreht_die_reihenfolge(self):
+        """Der Wert aus RANKING_BASES muss im fertigen Blatt ankommen. Zweimal
+        verpufft: "geduld" lief nach der Englisch-Umbenennung ins Leere, und danach
+        sortierte `build_reason_df` zwar nach `Gold/h mit Geduld`, aber
+        `sort_by_measurement` ordnete die Empfehlung (und den Rang der Begruendung)
+        wieder allein nach `Gold/h realistisch` - die Einstellung war im Blatt
+        wirkungslos. Darum wird hier beides durchlaufen, nicht nur die Begruendung.
+
+        Sofort bringt "tief" mehr als "breit", mit eigenem Angebot (Gebot 100, Angebot
+        300) ist es umgekehrt. "npc" hat nichts zu verhandeln und zaehlt mit seiner
+        Sofort-Zahl, "ungemessen" (Buch nicht abrufbar) mit dem Papier-Wert."""
+        df_rec = self._recommendation([
+            (1, "ungemessen", "Mining", 3500, "Spieler", 0, 10, 350, 350, 1.0, None),
+            (2, "npc", "Mining", 2500, "NPC-Vendor", 250, 10, 250, None, 1.0, None),
+            (3, "tief", "Mining", 1980, "Spieler", 0, 10, 198, 200, 1.0, None),
+            (4, "breit", "Mining", 990, "Spieler", 0, 10, 99, 100, 1.0, None)])
+        df_chain = self._chain_frame({"Item": ["ungemessen", "npc", "tief", "breit"],
+                                      "ItemID": [1, 2, 3, 4], "Stück/h": [10.0] * 4,
+                                      "RawMaterialCost/h": [0.0] * 4, "Nebenertrag/h": [0.0] * 4})
+        books = {3: {"highestBuyPricesWithVolume": [{"key": 200, "value": 1000}],
+                     "lowestSellPricesWithVolume": [{"key": 201, "value": 1000}]},
+                 4: {"highestBuyPricesWithVolume": [{"key": 100, "value": 1000}],
+                     "lowestSellPricesWithVolume": [{"key": 300, "value": 1000}]}}
+        self.assertEqual(cfg.RANKING_BASES, ("instant", "patience"))
+        expected = {"instant": ["ungemessen", "npc", "tief", "breit"],
+                    "patience": ["ungemessen", "breit", "npc", "tief"]}
+        for basis in cfg.RANKING_BASES:
+            with self.subTest(basis=basis):
+                out, df_reason = self._ranked(basis, df_rec, df_chain, books.get)
+                self.assertEqual(list(out["Item"]), expected[basis])
+                self.assertEqual(list(out["Rang"]), [1, 2, 3, 4])
+                # Die Begruendung traegt dieselben Nummern, ohne das Ungemessene.
+                self.assertEqual(list(df_reason["Item"]),
+                                 [n for n in expected[basis] if n != "ungemessen"])
+                self.assertEqual(dict(zip(df_reason["Item"], df_reason["Rang"])),
+                                 {k: v for k, v in zip(out["Item"], out["Rang"])
+                                  if k != "ungemessen"})
+                # Die Spalte bleibt die Sofort-Zahl; nur die Reihenfolge folgt der Basis.
+                real = dict(zip(out["Item"], out["Gold/h realistisch"]))
+                self.assertEqual((real["tief"], real["breit"], real["npc"]), (1980, 990, 2500))
 
     def test_ein_einzelner_bieter_traegt_keine_langsame_kette(self):
         """otherworldly_shield vom 11.10.2026: Platz 2, getragen von einem Gebot zu
@@ -1040,8 +1160,8 @@ class MeasurementRankingTest(unittest.TestCase):
         df_rec = self._recommendation([
             (2, "schild", "Smithing", 1_242_037, "Spieler", 0, units,
              594_000_000, 600_000_000, 0.271, None)])
-        df_chain = _pd.DataFrame({"Item": ["schild"], "ItemID": [1], "Stück/h": [units],
-                                  "RawMaterialCost/h": [cost_h], "Nebenertrag/h": [0.0]})
+        df_chain = self._chain_frame({"Item": ["schild"], "ItemID": [1], "Stück/h": [units],
+                                      "RawMaterialCost/h": [cost_h], "Nebenertrag/h": [0.0]})
         book = {"highestBuyPricesWithVolume": [{"key": 600_000_000, "value": 1},
                                                {"key": 111_111_112, "value": 1}]}
         row = self._measure(df_rec, df_chain, lambda item_id: book).iloc[0]
@@ -1057,9 +1177,9 @@ class MeasurementRankingTest(unittest.TestCase):
             (1, "erreichbar", "Woodcutting", 1000, "Spieler", 1.0, 10, 100, 100, 1.0, None),
             (2, "gedrosselt", "Woodcutting", 900, "Spieler", 1.0, 10, 90, 90, 1.0, None),
         ])
-        df_chain = _pd.DataFrame({"Item": ["erreichbar", "gedrosselt"], "ItemID": [1, 2],
-                                  "Stück/h": [10.0, 10.0], "RawMaterialCost/h": [0.0, 0.0],
-                                  "Nebenertrag/h": [0.0, 0.0]})
+        df_chain = self._chain_frame({"Item": ["erreichbar", "gedrosselt"], "ItemID": [1, 2],
+                                      "Stück/h": [10.0, 10.0], "RawMaterialCost/h": [0.0, 0.0],
+                                      "Nebenertrag/h": [0.0, 0.0]})
         return df_rec, df_chain
 
     def test_nicht_abrufbares_buch_ist_keine_messung(self):
@@ -1138,9 +1258,9 @@ class MeasurementRankingTest(unittest.TestCase):
         darunter 216.301 Stueck zu 16 g - die Stunde liefert 1.943 rohe."""
         df_rec = self._recommendation([
             (5, "cooked_piranha", "Fishing", 278964, "Spieler", 6.93, 1943.3, 10.89, 11, 1.0, None)])
-        df_chain = _pd.DataFrame({"Item": ["cooked_piranha"], "ItemID": [1], "Stück/h": [1943.3],
-                                  "RawMaterialCost/h": [0.0], "Nebenertrag/h": [257800.8],
-                                  "_side_items": [((7, 1943.3, 5.0),)]})
+        df_chain = self._chain_frame({"Item": ["cooked_piranha"], "ItemID": [1], "Stück/h": [1943.3],
+                                      "RawMaterialCost/h": [0.0], "Nebenertrag/h": [257800.8],
+                                      "_side_items": [((7, 1943.3, 5.0),)]})
         books = {1: {"highestBuyPricesWithVolume": [{"key": 11, "value": 291883}]},
                  7: {"highestBuyPricesWithVolume": [{"key": 134, "value": 321},
                                                     {"key": 16, "value": 216301}]}}
