@@ -349,8 +349,8 @@ Details: `autoclicker/CLAUDE.md`.
   worden.
 
   Zwei Eigenschaften, die man kennen muss: die gespeicherte `item.priority` wird
-  **nicht** überschrieben — die Sortierung gilt nur für den Lauf, `items.json` bleibt
-  unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
+  **nicht** überschrieben — die Sortierung gilt nur für den Lauf, die Item-Scan-Datei
+  bleibt unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
   negiert einsortiert wird. Das ist gewollt (ein gemessener Wert schlägt eine getippte
   Zahl), heisst aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
   will, leert `scan_market_value_file` — dann ändert sich gar nichts.

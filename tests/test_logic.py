@@ -1733,7 +1733,7 @@ try:
     _besucht = []
     _IS._check_profile_match = lambda *a, **k: (False, 0.0)
     _orig_learn = _IS._learn_unknown_slot_item
-    _IS._learn_unknown_slot_item = lambda st, slot, img, dbg, cfg=None: _besucht.append(slot.name)
+    _IS._learn_unknown_slot_item = lambda st, slot, img, dbg, cfg: _besucht.append(slot.name)
     try:
         _RS.execute_step(_st_learn, _SS(x=0, y=0, delay_before=0, name="L",
                                        item_scan="lern"), 1, 1, "T")
@@ -5696,7 +5696,6 @@ try:
     # gestoppt wird. Dieselbe Kette wie _handle_color_wait_timeout.
     from autoclicker.models import ElseConfig as _EC16, ACTION_TEXT as _AT16
     from autoclicker.models import TIMEOUT_TEXT as _TT16
-    from autoclicker.models import VALID_ELSE_ACTIONS as _VEA16
 
     class _CfgFake16:
         pixel_timeout_action = "stop"
@@ -5716,8 +5715,10 @@ try:
           == "ELSE: Schritt überspringen")
     # Die Texttabelle liegt in models.py, weil zwei Anzeigen sie brauchen, die
     # sich nicht kennen duerfen. Ein neuer Aktionstyp ohne Text stuende in beiden
-    # als rohes "skip_cycle" da.
-    check("jede else-Aktion hat einen Text", all(a in _AT16 for a in _VEA16))
+    # als rohes "skip_cycle" da. Gemessen wird an der Dispatch-Tabelle der
+    # Laufzeit: was dort einen Handler hat, kann ein Schritt wirklich ausloesen.
+    check("jede else-Aktion hat einen Text",
+          _act16._ELSE_ACTIONS and all(a in _AT16 for a in _act16._ELSE_ACTIONS))
 
     # --- Und dasselbe im Editor: was passiert OHNE else? ---
     # Der Hinweis im Inspektor behauptete "die Sequenz macht weiter". Die
@@ -6208,7 +6209,8 @@ from autoclicker.config import (
     AppConfig as _AC17, config_sections as _abs17, optional_fields as _opt17,
     save_config as _sc17, apply_config as _ueb17,
 )
-from autoclicker.config_meta import CONTROLS as _ARTEN17, META as _META17
+import autoclicker.config_meta as _cm17
+from autoclicker.config_meta import META as _META17
 
 _names17 = [f.name for f in _felder17(_AC17)]
 
@@ -6243,8 +6245,20 @@ check("und die Ansicht zeichnet ihn", "cfgAction(" in _H.studio_web_source())
 check("und der Katalog laesst sich im Fenster holen",
       _actions17.get("scan_catalog_file", ("",))[0] == "catalog_fetch")
 
-check("jede Art gibt es auch als Bedienelement",
-      all(m.kind in _ARTEN17 for m in _META17.values()))
+# --- Die Arten des Bedienelements: Tabelle und Seite kennen dieselbe Menge ---
+# `cfgControl()`/`cfgNumber()` in app.js unterscheiden die Arten mit
+# `m.kind === "…"`; `float` ist dort der Rest ohne eigene Verzweigung. Gemessen
+# wird an der Seite selbst: eine Art, die die Tabelle anbietet und die Seite nicht
+# kennt, faellt dort stumm auf ein Zahlenfeld, und umgekehrt waere eine Verzweigung
+# ohne Art ein Zweig, den die Tabelle nie ausloest.
+import re as _re17k
+_kinds17 = {v for k, v in vars(_cm17).items() if k.startswith("CONTROL_")}
+_handled17 = set(_re17k.findall(r'm\.kind === "(\w+)"', _H.studio_web_source()))
+check("jedes Feld der Tabelle hat eine Art, die config_meta kennt",
+      {m.kind for m in _META17.values()} <= _kinds17)
+check("jede Art gibt es auch als Bedienelement der Seite",
+      _kinds17 - {_cm17.CONTROL_FLOAT} <= _handled17 and len(_handled17) >= 6)
+check("und die Seite verzweigt nur nach Arten, die es gibt", _handled17 <= _kinds17)
 check("Kacheln nur bei enum - und enum nie ohne Kacheln",
       all(bool(m.options) == (m.kind == "enum") for m in _META17.values()))
 

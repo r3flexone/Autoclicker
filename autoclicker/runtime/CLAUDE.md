@@ -282,7 +282,7 @@ Drei Eigenschaften, an denen das hängt:
   ungedrosselt. Deshalb liegen die Schleifenrümpfe in eigenen Funktionen
   (`_wait_loop`, `_color_loop`) — sonst stünde nach „Farbe erkannt" noch
   „wartet auf Farbe" da, während der Klick längst raus ist. Der Blockwechsel räumt
-  zusätzlich ab (`"warten": None` in `execute_step`).
+  zusätzlich ab (`"waiting": None` in `_announce_step`).
 - **`waiting_for()` ersetzt das Lebenszeichen**, es kommt nicht dazu: es schreibt über
   dieselbe Funktion und schiebt `stamp` genauso vor.
 - **Auch eine reine Wartezeit zeigt den Ausschnitt** — um die Stelle, die danach

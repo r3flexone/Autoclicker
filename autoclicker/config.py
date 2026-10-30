@@ -58,18 +58,28 @@ SCAN_MOUSE_BACK = "back"       # an die Stelle von vor dem Scan
 SCAN_MOUSE_PARK = "park"       # auf die Parkposition (`scan_park_mouse`)
 SCAN_MOUSE_AFTER = (SCAN_MOUSE_BACK, SCAN_MOUSE_PARK)
 
+# pixel_timeout_action: was nach einem Farb-Timeout passiert. Die Texte dazu
+# stehen in `models.TIMEOUT_TEXT`.
+TIMEOUT_SKIP_CYCLE = "skip_cycle"
+TIMEOUT_RESTART = "restart"
+TIMEOUT_STOP = "stop"
+
+# pixel_consecutive_action: was die Notbremse nach zu vielen Timeouts in Folge tut
+CONSEC_STOP = "stop"
+CONSEC_QUIT = "quit"
+CONSEC_EXIT = "exit"
+
 
 def _config_rules() -> tuple:
     """Die Prüfregeln der Config: `(Feld, ungültig?, Ersatzwert)`.
 
-    Eine Funktion statt einer Konstante, weil die Aktions-Konstanten aus
-    `models.py` kommen und das zirkulär importiert (models.py importiert
-    bereits AppConfig aus dieser Datei). Single Source of Truth: models.py.
+    Eine Funktion statt einer Konstante, weil `AppConfig.__post_init__` sie bei
+    jedem Anlegen frisch liest. Die Aktions-Konstanten stehen in dieser Datei
+    und nicht in `models.py`: `models.py` importiert `AppConfig` von hier, und
+    `CONFIG = load_config()` legt schon beim Import ein `AppConfig` an — ein
+    Import von `models` in dieser Funktion hing damit an der Reihenfolge, in
+    der jemand zuerst `config` oder `models` lädt.
     """
-    from .models import (
-        TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
-        CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT,
-    )
     timeout_actions = {TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP}
     consec_actions = {CONSEC_STOP, CONSEC_QUIT, CONSEC_EXIT}
     return (
@@ -96,7 +106,7 @@ def _config_rules() -> tuple:
         ("ocr_backend", lambda v: v is not None and v not in ("easyocr", "tesseract"), None),
         ("ocr_min_confidence", lambda v: v < 0 or v > 1, 0.3),
         ("ocr_retry_count", lambda v: v < 0, 0),
-        ("scan_mouse_after", lambda v: v not in SCAN_MOUSE_AFTER, "back"),
+        ("scan_mouse_after", lambda v: v not in SCAN_MOUSE_AFTER, SCAN_MOUSE_BACK),
         # Window-Fokus-Check
         ("window_focus_action", lambda v: v not in ("pause", "stop"), "pause"),
         ("humanize_click_jitter", lambda v: v < 0, 0),
@@ -156,7 +166,7 @@ class AppConfig:
     # === SCAN-EINSTELLUNGEN ===
     scan_click_immediate: bool = False              # True = Scan→Klick pro Slot
     scan_park_mouse: Union[bool, list] = False      # [x, y] = Maus vor Scan parken, False = nicht
-    scan_mouse_after: str = "back"                  # nach dem Scan: "back" oder "park"
+    scan_mouse_after: str = SCAN_MOUSE_BACK         # nach dem Scan: "back" oder "park"
     scan_slot_delay: float = 0.1                    # Pause zwischen Slot-Scans in Sekunden
     scan_item_click_delay: float = 1.0              # Pause nach Item-Klick in Sekunden
     scan_marker_count: int = 5                      # Anzahl Marker-Farben beim Item-Lernen
@@ -217,7 +227,7 @@ class AppConfig:
     humanize_micro_delay_max: float = 0.0           # Zusätzliches Delay vor Klicks/Tasten: Max (Sek.)
     humanize_break_interval_min: float = 0          # Alle N Minuten Pause einlegen (0 = aus)
     humanize_break_duration_min: float = 0          # Pause-Dauer (Min) bei humanize-Break
-    humanize_break_duration_max: float = 0          # Max-Dauer (Sek. Varianz) der humanize-Breaks
+    humanize_break_duration_max: float = 0          # Max-Dauer (Min) der humanize-Breaks
 
     # === SESSION-LOG ===
     session_log_enabled: bool = False               # Schreibt alle Aktionen in CSV
@@ -291,10 +301,6 @@ class AppConfig:
         return cls(**{k: v for k, v in data.items() if k in valid_keys})
 
 
-# Abwärtskompatibel: DEFAULT_CONFIG als dict (für JSON-Serialisierung)
-DEFAULT_CONFIG = AppConfig().to_dict()
-
-
 def apply_config(target: AppConfig, source: AppConfig) -> None:
     """Schreibt alle Werte aus `source` in `target` — ohne das Objekt zu tauschen.
 
@@ -336,7 +342,7 @@ def load_config() -> AppConfig:
             abs_path = config_path.resolve()
 
             # Prüfe ob neue Optionen hinzugefügt wurden
-            missing_keys = set(DEFAULT_CONFIG.keys()) - set(loaded.keys())
+            missing_keys = {f.name for f in fields(AppConfig)} - set(loaded.keys())
             if missing_keys:
                 save_config(config)
                 print(ok(f"Config geladen + {len(missing_keys)} neue Option(en) ergänzt: {', '.join(missing_keys)}"))

@@ -507,7 +507,7 @@ def _scan_frame(regions: list, window_image, window_rect):
 
 
 def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
-                             config=None) -> None:
+                             config) -> None:
     """Lernt einen unbekannten Slot-Inhalt als neues Item des LAUFENDEN Scans (opt-in).
 
     **In den Scan, der gerade laeuft — nicht in die Arbeitsansicht der Konsole.**
@@ -542,7 +542,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     Slots, die nur die Hintergrundfarbe zeigen, gelten als leer.
     """
     from ..imaging import OPENCV_AVAILABLE
-    if not OPENCV_AVAILABLE or config is None:
+    if not OPENCV_AVAILABLE:
         return
     # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
     # kein Import-Zyklus mit runtime/)
@@ -695,7 +695,7 @@ def _store_learned_template(state: AutoClickerState, config, item, masked,
         return False
 
 
-def _save_learned(config) -> bool:
+def _save_learned(config) -> None:
     """Schreibt den Scan nach dem Lernen — ein Fehler bremst den Lauf nicht.
 
     `save_item_scan` wirft ohne Besitzer-Sequenz; im Worker riss das sonst den
@@ -703,10 +703,9 @@ def _save_learned(config) -> bool:
     """
     from ..persistence import save_item_scan
     try:
-        return bool(save_item_scan(config))
+        save_item_scan(config)
     except (ValueError, OSError) as e:
         print(warn(f"Auto-Lernen: Scan '{config.name}' konnte nicht gespeichert werden: {e}"))
-        return False
 
 
 def _park_mouse_for_scan(park_pos) -> None:
@@ -799,8 +798,8 @@ def _effective_priority(item, saved: int, values: dict) -> float:
     Wer das nicht will, leert `scan_market_value_file` (der Standard zeigt auf die
     Datei der Marktanalyse).
 
-    Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: items.json
-    bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
+    Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: die
+    Item-Scan-Datei bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
     """
     value = market_value(values, item.name)
     return -value if value is not None else float(saved)

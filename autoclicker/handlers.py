@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, apply_config
-from .models import AutoClickerState, ClickPoint
+from .models import AutoClickerState, ClickPoint, GATE_COMMANDS
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
 from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
 from .persistence import (
@@ -26,7 +26,7 @@ from .persistence import (
     init_directories
 )
 from .runtime import sequence_worker, print_status
-from .runtime.actions import is_verbose_debug
+from .runtime.debug import is_log_debug
 from .imaging import run_color_analyzer
 
 
@@ -793,7 +793,6 @@ def command_manual_action(state: AutoClickerState, arguments: dict) -> None:
     Haltepunkt hält einen Lauf an, der sonst gar nicht manuell ist, und seine
     Tafel im Live-Run schickt dieselben Befehle.
     """
-    from .runtime.debug import GATE_COMMANDS
     action = str(arguments.get("action") or "")
     if action not in GATE_COMMANDS:
         print(f"\n{err('Unbekannte manuelle Aktion — ignoriert.')}")
@@ -1395,7 +1394,7 @@ def _ask_schedule(state: AutoClickerState, seq_name: str) -> None:
         print(col("[ABBRUCH]", "yellow"))
         return
     seconds, desc, target_timestamp = parse_time_input(time_input)
-    if is_verbose_debug(state):
+    if is_log_debug(state):
         print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', "
                   f"target_timestamp={target_timestamp}"))
     if seconds < 0:

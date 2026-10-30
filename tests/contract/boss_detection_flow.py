@@ -289,8 +289,6 @@ check("nach einem Stopp nichts", _async_else(_EC(action="click", x=3, y=4), stop
 _clicks, _keys, _st = _async_else(_EC(action="click", x=3, y=4), failsafe=True)
 check("die Notbremse stoppt", _clicks == [] and _st.stop_event.is_set())
 check("eine gestoppte Pause: nichts", _async_else(_EC(action="click", x=3, y=4), paused_ok=False)[0] == [])
-check("das Aktions-Ereignis ist danach wieder frei",
-      not _async_else(_EC(action="click", x=3, y=4))[2].llm_action_event.is_set())
 
 
 def _thread(step, scans, failsafe=False, interval=0, max_scans=0, timeout=0, boom=False):
@@ -339,4 +337,4 @@ with _patched((_BD, "time", type("_Clock", (), {"time": staticmethod(lambda: nex
 check("Watcher: hört nach dem Timeout auf (Uhr: 1 s je Blick)", _a == [] and len(_left) == 3)
 _a, _e, _l, _out, _st, _ = _thread(_STEP(boss_scan="B"), [], boom=True)
 check("ein Fehler im Thread wird gemeldet und geloggt, nicht verschluckt",
-      _l == ["boss_async_error"] and "fehlgeschlagen" in _out and not _st.llm_action_event.is_set())
+      _l == ["boss_async_error"] and "fehlgeschlagen" in _out)

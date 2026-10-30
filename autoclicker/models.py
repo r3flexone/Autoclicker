@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .config import AppConfig
+from .config import AppConfig, TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP
 
 # Der DATEI-Default fuer min_confidence: was gilt, wenn das Feld in der JSON fehlt.
 # Konstant und NICHT aus der Config abgeleitet - sonst kaeme ein weggelassenes Feld
@@ -23,7 +23,7 @@ DEFAULT_MIN_CONFIDENCE: float = 0.8
 # =============================================================================
 # Aktions-Typen (zentral, eine Quelle der Wahrheit).
 # ElseConfig, BossProfile und IconScanConfig teilen sich dieselben Aktionswerte —
-# die familienspezifischen Namen unten sind nur Aliase für Lesbarkeit/Kompat.
+# die familienspezifischen Namen unten sind nur Aliase für die Lesbarkeit.
 ACTION_CLICK = "click"              # Punkt klicken
 ACTION_KEY = "key"                  # Taste drücken
 ACTION_SKIP = "skip"                # Schritt überspringen
@@ -37,7 +37,6 @@ ELSE_SKIP_CYCLE = ACTION_SKIP_CYCLE
 ELSE_RESTART = ACTION_RESTART
 ELSE_CLICK = ACTION_CLICK
 ELSE_KEY = ACTION_KEY
-VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
 # Was eine Aktion tut, als Satzteil. Steht hier und nicht bei den Anzeigen, weil
 # es zwei davon gibt, die es brauchen und sich nicht kennen dürfen: die Karte im
@@ -53,14 +52,10 @@ ACTION_TEXT = {
     ACTION_ITEM_SCAN: "Item-Scan ausführen",
 }
 
-# pixel_timeout_action (Config)
-TIMEOUT_SKIP_CYCLE = "skip_cycle"
-TIMEOUT_RESTART = "restart"
-TIMEOUT_STOP = "stop"
-
-# Was die Timeout-Aktion tut, als Satzteil — aus demselben Grund hier wie
-# ACTION_TEXT: die Laufzeit schreibt sie in den Laufstatus, das Studio zeigt sie
-# im Inspektor an, und die beiden duerfen sich nicht kennen.
+# Was die Timeout-Aktion (`pixel_timeout_action`, Werte in config.py) tut, als
+# Satzteil — aus demselben Grund hier wie ACTION_TEXT: die Laufzeit schreibt sie
+# in den Laufstatus, das Studio zeigt sie im Inspektor an, und die beiden duerfen
+# sich nicht kennen.
 TIMEOUT_TEXT = {
     TIMEOUT_SKIP_CYCLE: "Zyklus abbrechen, nächster Zyklus",
     TIMEOUT_RESTART: "Sequenz neu starten",
@@ -77,11 +72,6 @@ TIMEOUT_TEXT = {
 # run = ausfuehren, skip = ueberspringen, continue = Schrittmodus aus,
 # step = ab hier Schritt fuer Schritt, stop = Lauf abbrechen.
 GATE_COMMANDS = ("run", "skip", "continue", "step", "stop")
-
-# consecutive_timeout_action (Config)
-CONSEC_STOP = "stop"
-CONSEC_QUIT = "quit"
-CONSEC_EXIT = "exit"
 
 # SequenceStep.item_scan_mode
 SCAN_MODE_ALL = "all"         # Bestes pro Kategorie
@@ -540,8 +530,7 @@ class ItemProfile:
     # Editoren die erste Vorlage; weitere, groessenpassende Aufnahmen stehen hier.
     template_variants: list[str] = field(default_factory=list)
     # Das Profil bleibt vollständig im Scan gespeichert, kann für den Lauf aber
-    # vorübergehend geparkt werden. Hinter allen bisherigen Feldern, damit alte
-    # positionale Konstruktionen ihre Bedeutung behalten.
+    # vorübergehend geparkt werden.
     enabled: bool = True
 
     def template_names(self) -> list[str]:
@@ -583,7 +572,6 @@ class ItemSlot:
     # Der Slot bleibt mit Fläche, Klickpunkt und ID im Scan erhalten, kann für
     # den Lauf aber gezielt geparkt werden. Das ist kein zweiter Besitzbegriff:
     # er gehört weiterhin genau diesem Scan, nur `enabled=False` überspringt ihn.
-    # Hinter `id`, damit bestehende positionale Aufrufe kompatibel bleiben.
     enabled: bool = True
 
     def __str__(self) -> str:
@@ -855,7 +843,7 @@ class AutoClickerState:
     # übersprungen. Bewusst Laufzeit-Zustand statt Config - im Punkte-Menü
     # (CTRL+ALT+P -> 'manuell') umschaltbar. Mutation unter state.lock.
     step_mode: bool = False
-    # Wurde der manuelle Modus im Studio eingeschaltet, kommen die vier
+    # Wurde der manuelle Modus im Studio eingeschaltet, kommen die fünf
     # Entscheidungen über den Befehls-Briefkasten statt von stdin. Das Event
     # weckt den Worker; der String wird immer unter `state.lock` gelesen und
     # geschrieben. Der TUI-Modus bleibt davon unberührt.
@@ -974,7 +962,6 @@ class AutoClickerState:
 
     # LLM Async-Thread (Boss-Scan/Watcher läuft im Hintergrund)
     llm_thread: Optional[threading.Thread] = None
-    llm_action_event: threading.Event = field(default_factory=threading.Event)
 
     # Set für einmalige Konfigurations-Warnungen pro Worker-Lauf (z.B. "use_llm aber !llm_enabled").
     # Wird beim Sequenz-Start in sequence_worker geleert. Zugriff unter state.lock.

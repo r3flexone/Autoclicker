@@ -155,7 +155,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 def execute():
                     if kind == "boss":
                         return boss_detection._execute_boss_action(
-                            state, boss, SequenceStep(boss_scan="B"), 1, 1, "INIT", False)
+                            state, boss, 1, 1, "INIT", False)
                     return steps._execute_icon_scan_step(
                         state, SequenceStep(icon_scan="I"), 1, 1, "INIT")
 

@@ -29,7 +29,7 @@ from ..session_log import log_event
 from ..utils import col, err, dbg, warn
 from ..winapi import check_failsafe
 from .actions import (
-    safe_click, safe_key, _step_status, is_verbose_debug, wait_while_paused, input_refused,
+    safe_click, safe_key, _step_status, wait_while_paused, input_refused,
 )
 from .debug import is_log_debug
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
@@ -559,7 +559,7 @@ _DETECTION_ACTIONS = {
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
-                         step: SequenceStep, step_num: int, total_steps: int,
+                         step_num: int, total_steps: int,
                          phase: str, debug: bool) -> bool:
     """Führt die einem Boss zugeordnete Aktion aus (dünner Adapter)."""
     return _execute_detection_action(
@@ -598,9 +598,8 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
     state.input_lock in safe_click/safe_key garantiert: Worker und dieser Thread
     können nie gleichzeitig SetCursorPos+SendInput senden (echte Mutual-Exclusion).
-    llm_action_event bleibt als Status-Marker erhalten.
     """
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     try:
         if step.boss_scan:
             boss = _async_single_scan(state, step, step_num, total_steps, phase, debug)
@@ -608,12 +607,8 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
             boss = _async_watch(state, step.boss_watcher, debug)
         if boss is None or not _async_gate(state, "Async-Boss-Aktion pausiert..."):
             return
-        # Boss erkannt → Aktion ausführen, Event sichert exklusiven Zugriff auf Maus/Tastatur
-        state.llm_action_event.set()
-        try:
-            _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
-        finally:
-            state.llm_action_event.clear()
+        # Boss erkannt → Aktion ausführen
+        _execute_boss_action(state, boss, step_num, total_steps, phase, debug)
 
     except Exception as e:
         detail = f"{type(e).__name__}: {e}"
@@ -621,8 +616,6 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
         log_event(state, "boss_async_error", detail=detail,
                   extra=step.boss_scan or step.boss_watcher or "")
         print(err(f"  -> Asynchrone Boss-Erkennung fehlgeschlagen: {detail}"))
-    finally:
-        state.llm_action_event.clear()
 
 
 def _async_single_scan(state: AutoClickerState, step: SequenceStep, step_num: int,
@@ -679,27 +672,23 @@ def _maybe_execute_async_else(state: AutoClickerState, step: SequenceStep,
         return
     if not _async_gate(state, "Async-Else-Aktion pausiert..."):
         return
-    state.llm_action_event.set()
-    try:
-        if ec.delay > 0 and state.stop_event.wait(ec.delay):
-            return
-        if ec.action == ELSE_CLICK:
-            safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
-            if debug:
-                print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))
-        elif ec.key:
-            safe_key(state, ec.key, ec.name or f"Async-Else-Taste {ec.key}")
-            if debug:
-                print(dbg(f"  → Async-Else: Taste '{ec.key}'"))
-    finally:
-        state.llm_action_event.clear()
+    if ec.delay > 0 and state.stop_event.wait(ec.delay):
+        return
+    if ec.action == ELSE_CLICK:
+        safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
+        if debug:
+            print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))
+    elif ec.key:
+        safe_key(state, ec.key, ec.name or f"Async-Else-Taste {ec.key}")
+        if debug:
+            print(dbg(f"  → Async-Else: Taste '{ec.key}'"))
 
 
 def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
                       step_num: int, total_steps: int, phase: str) -> None:
     """Startet _boss_async_thread wenn kein Thread bereits läuft."""
     if state.llm_thread and state.llm_thread.is_alive():
-        if is_verbose_debug(state):
+        if is_log_debug(state):
             print(dbg("  → LLM-Async: vorheriger Thread noch aktiv, übersprungen"))
         return
     t = threading.Thread(
