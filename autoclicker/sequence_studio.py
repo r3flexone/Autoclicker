@@ -165,7 +165,7 @@ def _attach_close_handler(window, bridge,
 def main(argv: list[str]) -> int:
     # `--scans` waehlt nur den Reiter vor; ein leeres erstes Argument ist erlaubt.
     scans = "--scans" in argv[1:]
-    quit_with_window = "--beenden-mit-fenster" in argv[1:]
+    quit_with_window = "--quit-with-window" in argv[1:]
     positions = [a for a in argv[1:] if not a.startswith("--")]
     seq_name = positions[0] if positions else ""
 

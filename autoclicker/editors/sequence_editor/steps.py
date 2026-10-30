@@ -22,7 +22,10 @@ import copy
 from typing import Optional
 
 from ...imaging import PILLOW_AVAILABLE, select_region
-from ...models import ClickPoint, WaitCondition, SequenceStep, AutoClickerState
+from ...models import (
+    ClickPoint, WaitCondition, SequenceStep, AutoClickerState,
+    SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
+)
 from ...persistence import (
     get_next_point_id, get_point_by_id,
 )
@@ -254,11 +257,6 @@ _PREFIXED = (
 )
 
 
-def _point_click(ed, text: str) -> None:
-    """Der Rest: Punkt-ID + Optionen (z.B. "1 30 color")."""
-    ed._handle_point_click(text)
-
-
 # =============================================================================
 # PHASE-EDITOR (interaktive Schleife + Handler-Methoden)
 # =============================================================================
@@ -359,21 +357,18 @@ class _PhaseEditor:
         _print_phase_help()
 
         while True:
-            try:
-                user_input = safe_input(f"{self._prompt()} > ").strip()
-                cmd = user_input.lower()
+            user_input = safe_input(f"{self._prompt()} > ").strip()
+            cmd = user_input.lower()
 
-                if cmd in ("done", "d"):
-                    return self.steps
-                if is_cancel(user_input):
-                    print(col("[ABBRUCH]", "yellow") + " Phase abgebrochen.")
-                    return None
-                if cmd == "":
-                    continue
+            if cmd in ("done", "d"):
+                return self.steps
+            if is_cancel(user_input):
+                print(col("[ABBRUCH]", "yellow") + " Phase abgebrochen.")
+                return None
+            if cmd == "":
+                continue
 
-                self._dispatch(user_input, cmd)
-            except (KeyboardInterrupt, EOFError):
-                raise
+            self._dispatch(user_input, cmd)
 
     def _prompt(self) -> str:
         """Erzeugt den Eingabe-Prompt — zeigt Insert-Modus an wenn aktiv."""
@@ -386,9 +381,12 @@ class _PhaseEditor:
         """Routet einen Befehl an die zuständige Methode (`_EXACT`, dann `_PREFIXED`)."""
         handler = _EXACT.get(cmd)
         if handler is None:
-            handler = next((h for prefix, h in _PREFIXED if cmd.startswith(prefix)),
-                           _point_click)
-        handler(self, user_input)
+            handler = next((h for prefix, h in _PREFIXED if cmd.startswith(prefix)), None)
+        if handler is None:
+            # Der Rest: Punkt-ID + Optionen (z.B. "1 30 color")
+            self._handle_point_click(user_input)
+        else:
+            handler(self, user_input)
 
     def add_step(self, step: SequenceStep) -> None:
         """Fügt einen Schritt hinzu — an insert_position oder am Ende.
@@ -537,10 +535,10 @@ class _PhaseEditor:
             return
 
         scan_name = main_parts[0]
-        mode = "all"
+        mode = SCAN_MODE_ALL
         if len(main_parts) > 1:
             mode_str = main_parts[1].lower()
-            if mode_str in ("best", "every"):
+            if mode_str in (SCAN_MODE_BEST, SCAN_MODE_EVERY):
                 mode = mode_str
 
         step = SequenceStep(

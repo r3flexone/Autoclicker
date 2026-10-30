@@ -3,8 +3,10 @@
 Start/Stop über CTRL+ALT+J. Aufgezeichnet werden Linksklicks (Position,
 Zeitstempel, Pixelfarbe), Tastendrücke und die Marker (siehe CLAUDE.md). Das
 Mausrad war einmal dabei und ist ersatzlos gestrichen: es drehte in Idle Clans
-nur die Ansicht und blähte jede Aufnahme mit Schritten auf, die nichts tun. Alles muss mit EINEM globalen Tastendruck gehen — während der
-Aufnahme steht der Nutzer im Spiel, nicht in der Konsole.
+nur die Ansicht und blähte jede Aufnahme mit Schritten auf, die nichts tun.
+
+Alles muss mit EINEM globalen Tastendruck gehen — während der Aufnahme steht der
+Nutzer im Spiel, nicht in der Konsole.
 """
 
 import re
@@ -62,11 +64,6 @@ RECORDING_HOTKEYS = (
     ("CTRL+ALT+SHIFT+P", "Neue Phase",
      "ab hier die nächste Loop-Phase — beliebig oft"),
 )
-
-
-def recording_file(seq_name: str):
-    """Ziel einer neuen Aufnahme im einheitlichen Sequenzordner."""
-    return sequence_file(seq_name)
 
 
 def _color_text(color) -> str:
@@ -493,6 +490,11 @@ def phase_boundaries(events: list) -> tuple[list, list[int]]:
     return keep, limits
 
 
+def _loop_phase_name(number: int) -> str:
+    """Name der n-ten Loop-Phase — für die Datei (build_phases) wie für die Anzeige danach."""
+    return "Loop" if number == 1 else f"Loop {number}"
+
+
 def build_phases(steps: list, limits: list[int]) -> list:
     """Schneidet die fertige Schrittliste an den Grenzen in Loop-Phasen.
 
@@ -511,11 +513,9 @@ def build_phases(steps: list, limits: list[int]) -> list:
         part = list(steps[beginning:end_])
         if not part:
             continue
-        number = len(phases) + 1
-        name = "Loop" if number == 1 else f"Loop {number}"
-        phases.append(LoopPhase(name=name, steps=part, repeat=1))
+        phases.append(LoopPhase(name=_loop_phase_name(len(phases) + 1), steps=part, repeat=1))
     if not phases:
-        phases.append(LoopPhase(name="Loop", steps=[], repeat=1))
+        phases.append(LoopPhase(name=_loop_phase_name(1), steps=[], repeat=1))
     return phases
 
 
@@ -733,11 +733,6 @@ def _prepare_events(events: list) -> tuple[list, list]:
     return events, limits
 
 
-def _recording_phase_name(number: int) -> str:
-    """Wie in build_phases(), damit hier dasselbe steht wie danach in der Datei."""
-    return "Loop" if number == 1 else f"Loop {number}"
-
-
 def _print_recorded(events: list, limits: list) -> None:
     """Aufgezeichnetes zeigen, samt Phasengrenzen und schnellen Doppelklicks.
 
@@ -746,10 +741,10 @@ def _print_recorded(events: list, limits: list) -> None:
     die Aufteilung erst im Editor und kann sie beim Benennen nicht mehr
     einordnen. Der Schnitt liegt VOR dem Schritt mit diesem Index.
     """
-    cuts = {g: _recording_phase_name(nr + 2) for nr, g in enumerate(limits)}
+    cuts = {g: _loop_phase_name(nr + 2) for nr, g in enumerate(limits)}
     if limits:
         print(f"\n{col('Aufgezeichnet:', 'bold')} {hint('(Phasen sind markiert)')}")
-        print(f"  {col('┌─ ' + _recording_phase_name(1), 'magenta')}")
+        print(f"  {col('┌─ ' + _loop_phase_name(1), 'magenta')}")
     else:
         print(f"\n{col('Aufgezeichnet:', 'bold')}")
     fast_clicks = 0
@@ -858,7 +853,7 @@ def _save_recording(state: AutoClickerState, events: list, limits: list,
     # Besitzeinheit wie jede im Studio angelegte: sequences/<name>/sequence.json.
     # Direkte JSON-Dateien unter sequences/ waeren wieder das alte Mischlayout,
     # in dem Scans und Vorlagen nicht eindeutig zugeordnet werden konnten.
-    if not save_sequence_file(seq, recording_file(seq_name)):
+    if not save_sequence_file(seq, sequence_file(seq_name)):
         print(f"\n{err('Sequenz konnte nicht gespeichert werden!')}")
         return None
     # Ueber den EINEN Weg, der Punkte und Scans gemeinsam umstellt — hier

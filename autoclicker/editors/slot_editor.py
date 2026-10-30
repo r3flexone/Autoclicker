@@ -23,7 +23,7 @@ from .scan_services import detect_slots_in_image
 
 
 
-_SLOT_KNOWN = ["auto", "add", "edit", "del", "show", "save", "load", "preset",
+_SLOT_KNOWN = ["auto", "repair", "add", "edit", "del", "show", "save", "load", "preset",
                "help", "done", "cancel"]
 
 
@@ -216,7 +216,7 @@ def _slot_edit(state, session, argument) -> None:
         print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
         return
     name, slot = slot_list[number - 1]
-    new_slot = edit_slot(state, slot)
+    new_slot = edit_slot(slot)
     if new_slot:
         with state.lock:
             if new_slot.name != name:      # umbenannt: alter Schlüssel weg
@@ -422,7 +422,7 @@ _SLOT_EDIT_OPTIONS = ["Name", "Scan-Region", "Klickposition", "Hintergrundfarbe"
 _SLOT_EDIT_DONE = 5
 
 
-def edit_slot(state: AutoClickerState, slot: ItemSlot) -> Optional[ItemSlot]:
+def edit_slot(slot: ItemSlot) -> Optional[ItemSlot]:
     """Bearbeitet einen bestehenden Slot — Feld für Feld, bis 'Fertig'.
 
     Gearbeitet wird auf einer Kopie (`draft`); der übergebene Slot bleibt

@@ -19,7 +19,9 @@ from ..persistence import (
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
     save_global_items, active_templates_dir, free_template_file
 )
+from ._detection_capture import ask_min_confidence, ask_tolerance
 from ._item_fields import ask_confirm_click, ask_priority
+from .scan_services import save_template
 from .slot_editor import run_global_slot_editor
 from .item_editor import run_global_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
@@ -244,9 +246,6 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         else:
             print(warn(f"Item-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
-    if available_scans:
-        print("  (Tipp: 'del <Nr>' im Textmodus zum Löschen)")
-
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
@@ -359,13 +358,11 @@ def _new_item_from_template(state: AutoClickerState, user_input: str,
         return None
 
     template_file = free_template_file(active_templates_dir(state), item_name)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    template_img.save(template_path)
+    save_template(state, template_img, template_file)
 
     category = select_category(state)      # zuerst: die Prioritaets-Verschiebung braucht sie
     priority = ask_priority(state, category)
-    min_confidence = _ask_template_confidence(state.config.scan_min_confidence)
+    min_confidence = ask_min_confidence(state.config.scan_min_confidence)
     confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
         prompt="  Bestätigungs-Punkt-ID (Enter = keiner): ")
@@ -422,32 +419,12 @@ def _ask_template_item_name(available_items: dict) -> Optional[str]:
     return item_name
 
 
-def _ask_template_confidence(min_confidence: float) -> float:
-    """Min. Konfidenz in Prozent; eine Fehleingabe behält den Vorschlag."""
-    conf_input = ""
-    try:
-        conf_input = safe_input(
-            f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
-        if conf_input:
-            min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
-    except ValueError:
-        print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
-    return min_confidence
-
-
 def _step_tolerance(tolerance: int) -> int:
     """Schritt 3: Farbtoleranz. Fehleingabe behaelt den alten Wert."""
     print(header("SCHRITT 3: FARBTOLERANZ"))
     print(f"\nAktuelle Toleranz: {tolerance}")
     print("(Höher = mehr Farben werden als 'gleich' erkannt)")
-    tol_input = ""
-    try:
-        tol_input = safe_input(f"Neue Toleranz (Enter = {tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except ValueError:
-        print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
-    return tolerance
+    return ask_tolerance(f"Neue Toleranz (Enter = {tolerance}): ", tolerance)
 
 
 def _step_auto_learn(learn_unknown: bool) -> bool:

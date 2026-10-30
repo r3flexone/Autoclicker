@@ -167,15 +167,17 @@ Was im Worker sonst noch gilt (Begründungen in `autoclicker/runtime/CLAUDE.md`)
 
 Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral), Tastencode im jeweiligen Backend (`VK_*` in `platforms/windows.py`) → `register_hotkeys()`-Liste **beider** Backends → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
-**`CTRL+ALT+<Buchstabe>` ist voll.** 24 der 26 Buchstaben sind vergeben, frei blieben
-nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
-letzten zwei, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
+**`CTRL+ALT+<Buchstabe>` ist fast voll.** 22 der 26 Buchstaben sind vergeben; frei sind
+D, M, R (oft vom System belegt) und Y — D und M erst, seit die Aufnahme-Marker auf die
+SHIFT-Ebene gezogen sind. Wer eine neue Taste braucht, nimmt **nicht** die letzten
+vier, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
 (`CTRL+ALT+SHIFT+…`), und die trägt eine Bedeutung: **was dort liegt, wirkt nur während
 eines laufenden Vorgangs** — die Marker während einer Aufnahme, `SHIFT+K` während
 eines Laufs. Der Buchstabe darf derselbe bleiben wie in der Basis-Ebene,
-solange die Bedeutung verwandt ist — `M`/`SHIFT+M` sind beide „warte auf eine Farbe",
-`D`/`SHIFT+D` beide „Screenshot", `K`/`SHIFT+K` beide „überspringen" (die Wartezeit
-bzw. den ganzen Block). Der Block-Skip hatte vorher nur den Studio-Knopf und den
+solange die Bedeutung verwandt ist — `K`/`SHIFT+K` sind beide „überspringen" (die
+Wartezeit bzw. den ganzen Block), und `SHIFT+M` („warte auf eine Farbe") und `SHIFT+D`
+(„Screenshot") tragen die Buchstaben, die diese beiden früher in der Basis-Ebene hatten.
+Der Block-Skip hatte vorher nur den Studio-Knopf und den
 Briefkasten-Befehl `skip_step`; wer aus der Konsole lief, konnte einen hängenden
 Block nur mit dem ganzen Lauf abbrechen. Der Hotkey ruft **denselben**
 `handle_skip_step()` wie der Knopf — ein Ereignis, zwei Wege.

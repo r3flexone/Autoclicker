@@ -25,6 +25,7 @@ from ...utils import (
 )
 from .._detection_capture import ask_min_confidence
 from .._item_fields import ask_confirm_click, ask_priority
+from ..scan_services import save_template
 
 
 def select_category(state: AutoClickerState, show_explanation: bool = True) -> Optional[str]:
@@ -97,9 +98,7 @@ def _capture_item_template(state: AutoClickerState, item_name: str, min_confiden
     if not img:
         return None
     template_file = free_template_file(active_templates_dir(state), item_name)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(template_path)
+    template_path = save_template(state, img, template_file)
     print(f"  -> Template gespeichert: {template_path}")
     return template_file, ask_min_confidence(min_confidence)
 

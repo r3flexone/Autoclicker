@@ -9,8 +9,8 @@ Modul-Aufteilung:
     learn.py      item_learn_command (Bulk + Single)
     commands.py   rename/template/templates-Befehle
 
-Externe Konsumenten: editors/__init__.py + editors/item_scan_editor.py
-brauchen run_global_item_editor, select_category, item_autoscan_command.
+Externer Konsument: editors/item_scan_editor.py braucht
+run_global_item_editor, select_category und item_autoscan_command.
 """
 
 from .autoscan import item_autoscan_command

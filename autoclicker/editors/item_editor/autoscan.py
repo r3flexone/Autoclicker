@@ -15,8 +15,9 @@ from ...persistence import save_global_items, active_templates_dir, free_templat
 from ...utils import (
     col, confirm, err, header, hint, safe_input, unique_name,
 )
+from .._detection_capture import ask_min_confidence
 from .._item_fields import ask_confirm_click
-from ..scan_services import crop_screen_region
+from ..scan_services import crop_screen_region, save_template
 from .items import select_category
 from .markers import (
     _collect_markers_silent, _find_matching_existing_item,
@@ -24,7 +25,7 @@ from .markers import (
 )
 
 
-def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
+def item_autoscan_command(state: AutoClickerState, user_input: str) -> None:
     """Scannt automatisch ALLE Slots und erstellt Items mit Templates + Marker-Farben.
 
     Unterstützte Modi:
@@ -36,12 +37,12 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
 
     if not slot_list:
         print(f"  -> {err('Keine Slots vorhanden!')} Erst Slots mit 'auto' im Slot-Editor erstellen.")
-        return True
+        return
 
     if not OPENCV_AVAILABLE:
         print(f"  -> {err('OpenCV nicht installiert!')} (pip install opencv-python)")
         print("       OpenCV wird für Template-Matching benötigt.")
-        return True
+        return
 
     # Modus parsen
     args = user_input[8:].strip().lower()  # nach "autoscan"
@@ -54,10 +55,9 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> bool:
 
     settings = _collect_autoscan_settings(state, slot_list, use_markers)
     if settings is None:
-        return True
+        return
 
     _run_autoscan(state, slot_list, settings)
-    return True
 
 
 def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
@@ -85,12 +85,9 @@ def _collect_autoscan_settings(state: AutoClickerState, slot_list: list,
 
     # Konfidenz
     min_confidence = state.config.scan_min_confidence
-    try:
-        conf_input = safe_input(f"\n  Min. Konfidenz % für alle (Enter = {int(min_confidence * 100)}): ").strip()
-        if conf_input:
-            min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
-    except ValueError:
-        pass
+    min_confidence = ask_min_confidence(
+        min_confidence,
+        f"\n  Min. Konfidenz % für alle (Enter = {int(min_confidence * 100)}): ")
 
     # Bestätigung
     print("\n  --- Zusammenfassung ---")
@@ -142,11 +139,6 @@ def item_autoscan_from_image(state: AutoClickerState, slot_list: list,
                   region_origin=region_origin)
 
 
-def _crop_slot_template(slot, source_img, region_origin):
-    """Schneidet die Slot-Region aus dem Quellbild (lokale Koordinaten)."""
-    return crop_screen_region(source_img, slot.scan_region, region_origin)
-
-
 def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
                   source_img=None, region_origin: tuple = None) -> None:
     """Führt den eigentlichen Auto-Scan-Loop aus.
@@ -196,7 +188,7 @@ def _slot_image(slot, source_img, region_origin):
     """Der Slot als Bild: aus dem gemeinsamen Screenshot geschnitten oder neu aufgenommen."""
     if source_img is not None and region_origin is not None:
         try:
-            return _crop_slot_template(slot, source_img, region_origin)
+            return crop_screen_region(source_img, slot.scan_region, region_origin)
         except (ValueError, OSError):
             return None
     return take_screenshot(slot.scan_region)
@@ -205,9 +197,7 @@ def _slot_image(slot, source_img, region_origin):
 def _store_template(state: AutoClickerState, img, base_name: str) -> str:
     """Legt `img` unter einem freien Dateinamen im Vorlagenordner ab."""
     template_file = free_template_file(active_templates_dir(state), base_name)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(template_path)
+    save_template(state, img, template_file)
     return template_file
 
 

@@ -158,23 +158,28 @@ _new = _r(_SE.create_slot)
 check("neuer Slot: ohne Screenshot trotzdem ein Slot", _new is not None and "Top" not in _r.output)
 
 # ============================================================ edit_slot
+def _edit_slot(state, slot):
+    """`_Run` reicht immer den State mit; `edit_slot` braucht ihn nicht."""
+    return _SE.edit_slot(slot)
+
+
 _old = _SLOT("Alt", (0, 0, 10, 10), (5, 5), slot_color=(9, 9, 9), id=4)
 _r = _Run(inputs=["Neu", "", ""], choices=[0, 1, 2, 3, 4, 5], cursor=[(77, 88), (1, 1)],
           pixel=(4, 4, 4))
-_new = _r(_SE.edit_slot, _old)
+_new = _r(_edit_slot, _old)
 check("Slot bearbeiten: jedes Feld lässt sich ändern",
       (_new.name, _new.scan_region, _new.click_pos, _new.slot_color, _new.enabled)
       == ("Neu", (100, 200, 160, 260), (77, 88), (4, 4, 4), False))
 check("Slot bearbeiten: die ID bleibt", _new.id == 4)
 _r = _Run(inputs=[""], choices=[0, 1, 5], region=None)
-_new = _r(_SE.edit_slot, _old)
+_new = _r(_edit_slot, _old)
 check("Slot bearbeiten: Enter und eine abgebrochene Region ändern nichts",
       (_new.name, _new.scan_region) == ("Alt", (0, 0, 10, 10)))
 _r = _Run(inputs=[""], choices=[3, 5], pixel=None)
 check("Slot bearbeiten: unlesbare Farbe lässt die alte stehen",
-      _r(_SE.edit_slot, _old).slot_color == (9, 9, 9))
+      _r(_edit_slot, _old).slot_color == (9, 9, 9))
 _r = _Run(choices=[4, 4, 5])
-check("Slot bearbeiten: zweimal umschalten ist wieder an", _r(_SE.edit_slot, _old).enabled is True)
+check("Slot bearbeiten: zweimal umschalten ist wieder an", _r(_edit_slot, _old).enabled is True)
 check("Slot bearbeiten: der alte Slot bleibt unangetastet",
       (_old.name, _old.enabled) == ("Alt", True))
 

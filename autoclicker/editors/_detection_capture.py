@@ -19,14 +19,15 @@ from ..utils import (
 )
 from ..winapi import get_cursor_pos, KEY_NAMES
 from ..imaging import OPENCV_AVAILABLE, get_pixel_color, select_region
-from ..persistence import active_templates_dir, point_for_position
+from ..persistence import point_for_position
+from .scan_services import save_template
 
 DETECT_TEMPLATE = "Template-Bild aufnehmen"
 DETECT_MARKERS = "Farb-Marker setzen"
 DETECT_KEEP = "Bestehende Erkennung beibehalten"
 
 
-def prompt_key(prompt: str = "  Taste (z.B. 'enter', 'space', '1'): ") -> Optional[str]:
+def prompt_key() -> Optional[str]:
     """Fragt eine gültige Taste ab und wiederholt bei Fehleingabe.
 
     Geteilt von Boss- und Icon-Editor, damit ein Tippfehler nicht die ganze
@@ -37,7 +38,8 @@ def prompt_key(prompt: str = "  Taste (z.B. 'enter', 'space', '1'): ") -> Option
     """
     while True:
         try:
-            key = safe_input(f"{prompt}{hint('(cancel = zurück)')} ").strip().lower()
+            key = safe_input(
+                f"  Taste (z.B. 'enter', 'space', '1'): {hint('(cancel = zurück)')} ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             return None
         if is_cancel(key):
@@ -166,34 +168,40 @@ def choose_detection(title: str, can_keep: bool) -> Optional[str]:
     return None if choice == -1 else options[choice]
 
 
-def ask_min_confidence(current: float) -> float:
-    """Mindest-Konfidenz in Prozent; leer oder unlesbar = der bisherige Wert."""
+def ask_min_confidence(current: float, prompt: Optional[str] = None) -> float:
+    """Mindest-Konfidenz in Prozent (ein '%' darf dabei sein).
+
+    Leer = der bisherige Wert; unlesbar ebenso, aber gesagt. Eigener Fragetext
+    über `prompt`, die Auswertung bleibt dieselbe.
+    """
+    if prompt is None:
+        prompt = f"  Min. Konfidenz % (Enter={int(current * 100)}): "
+    text = ""
     try:
-        text = safe_input(f"  Min. Konfidenz % (Enter={int(current * 100)}): ").strip()
+        text = safe_input(prompt).strip()
         if text:
-            return max(0.1, min(1.0, float(text) / 100))
+            return max(0.1, min(1.0, float(text.replace("%", "")) / 100))
     except ValueError:
-        pass
+        print(f"  -> '{text}' ungültig — behalte {int(current * 100)}")
     return current
 
 
 def ask_tolerance(prompt: str, current: int) -> int:
-    """Farbtoleranz 1–100; leer oder unlesbar = der bisherige Wert."""
+    """Farbtoleranz 1–100; leer = der bisherige Wert, unlesbar ebenso, aber gesagt."""
+    text = ""
     try:
         text = safe_input(prompt).strip()
         if text:
             return max(1, min(100, int(text)))
     except ValueError:
-        pass
+        print(f"  -> '{text}' ungültig — behalte {current}")
     return current
 
 
 def store_template(state, img, base_name: str) -> str:
     """Legt ein Template im Vorlagenordner der Sequenz ab; gibt den Dateinamen zurück."""
     template_file = f"{sanitize_filename(base_name)}.png"
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(template_path)
+    save_template(state, img, template_file)
     print(f"  → Template gespeichert: {template_file}")
     return template_file
 

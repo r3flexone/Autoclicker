@@ -24,12 +24,12 @@ def run_sequence_loader(state: AutoClickerState) -> None:
 
     with state.lock:
         active_name = state.active_sequence.name if state.active_sequence else None
-    loaded_sequences = []  # (seq, filepath) Paare
+    loaded_sequences = []
     menu_options = []
-    for name, path in sequences:
+    for _name, path in sequences:
         seq = load_sequence_file(path)
         if seq:
-            loaded_sequences.append((seq, path))
+            loaded_sequences.append(seq)
             active_marker = " *AKTIV*" if active_name and active_name == seq.name else ""
             menu_options.append(f"{seq}{active_marker}")
 
@@ -38,7 +38,7 @@ def run_sequence_loader(state: AutoClickerState) -> None:
     if choice == -1 or choice >= len(loaded_sequences):
         return
 
-    seq, _seq_path = loaded_sequences[choice]
+    seq = loaded_sequences[choice]
 
     # Samt Scans — hier standen nur Sequenz und Punkte. Nach einem frischen
     # Start hatte der Lauf damit GAR keine Scans ("Item-Scan nicht gefunden"),

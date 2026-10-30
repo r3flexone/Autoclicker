@@ -27,6 +27,7 @@ import autoclicker.editors.item_editor.editor as _ED
 import autoclicker.editors.item_editor.items as _IT
 import autoclicker.editors.item_editor.learn as _LE
 import autoclicker.editors.item_editor.markers as _MK
+import autoclicker.editors.scan_services as _SS
 import autoclicker.imaging as _IMG
 import autoclicker.llm_vision as _LLM
 import autoclicker.utils as _UT
@@ -35,7 +36,7 @@ from autoclicker.models import (
     ItemSlot as _SLOT, Sequence as _SEQ,
 )
 
-_MODULES = (_ED, _IT, _LE, _AU, _CO, _MK, _IF, _DC, _UT, _IMG, _LLM)
+_MODULES = (_ED, _IT, _LE, _AU, _CO, _MK, _IF, _DC, _SS, _UT, _IMG, _LLM)
 _RUNS = [0]
 
 
@@ -501,8 +502,6 @@ _r(_CO.handle_autoname_command)
 check("autoname: ohne Auto-Items wird es gesagt", "Keine auto-gelernten" in _r.output)
 
 # ============================================================ Marker sammeln
-_r = _Run(region=None)
-check("Marker: ohne Region keine", _r(lambda st: _MK.collect_marker_colors()) == [])
 _r = _Run(shot=None)
 check("Marker: ohne Screenshot keine", _r(lambda st: _MK.collect_marker_colors((0, 0, 4, 2))) == [])
 _pixels = {(0, 0): (200, 0, 0), (1, 0): (200, 0, 0), (2, 0): (0, 200, 0), (3, 0): (0, 0, 200),

@@ -4,6 +4,21 @@ Konsolen-Editor und Sequence Studio dürfen unterschiedliche Oberflächen haben,
 aber Geometrie und Bilderkennung müssen dieselben Ergebnisse liefern.
 """
 
+from ..persistence import active_templates_dir
+
+
+def save_template(state, img, template_file: str):
+    """Schreibt `img` als `template_file` in den Vorlagenordner der Sequenz.
+
+    Legt den Ordner an und gibt den Pfad zurück. Den Dateinamen bestimmt der
+    Aufrufer: die Item-Editoren nehmen einen freien (`free_template_file`), der
+    Boss- und Icon-Editor überschreibt die Vorlage des eigenen Eintrags.
+    """
+    path = active_templates_dir(state) / template_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path)
+    return path
+
 
 def map_point_between_rects(point: tuple[int, int], source_rect: tuple,
                             target_rect: tuple) -> tuple[int, int]:

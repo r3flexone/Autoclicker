@@ -19,29 +19,31 @@ from ...utils import unique_name, is_cancel, ok, safe_input
 from .._item_fields import (
     CANCELLED, ask_confirm_click, ask_priority,
 )
+from ..scan_services import save_template
 from .items import ask_new_item_name, select_category
 from .markers import collect_marker_colors
 
 
-def item_learn_command(state: AutoClickerState, user_input: str) -> bool:
-    """Verarbeitet den learn-Befehl (Bulk und Single). Gibt True zurück wenn verarbeitet."""
+def item_learn_command(state: AutoClickerState, user_input: str) -> None:
+    """Verarbeitet den learn-Befehl (Bulk und Single)."""
     with state.lock:
         slot_list = list(state.global_slots.values())
 
     if not slot_list:
         print("  -> Keine Slots vorhanden! Erst Slots mit 'auto' im Slot-Editor erstellen.")
-        return True
+        return
 
     # Bulk-Learn: learn 5-10 [template|simple]
     learn_arg = user_input[5:].strip() if user_input.startswith("learn ") else ""
     if "-" in learn_arg:
-        return _learn_bulk(state, slot_list, learn_arg)
+        _learn_bulk(state, slot_list, learn_arg)
+        return
 
     # Single-Learn
-    return _learn_single(state, slot_list, user_input)
+    _learn_single(state, slot_list, user_input)
 
 
-def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> bool:
+def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> None:
     """Bulk-Variante: legt Items für einen Slot-Bereich an."""
     parts = learn_arg.split()
     range_part = parts[0]
@@ -54,7 +56,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
 
         if start_slot < 1 or end_slot > len(slot_list) or start_slot > end_slot:
             print(f"  -> Ungültiger Bereich! Verfügbar: 1-{len(slot_list)}")
-            return True
+            return
 
         use_template = mode_part.lower() in ("template", "t")
         mode_str = "MIT Template" if use_template else "OHNE Template"
@@ -93,9 +95,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
                 if template_img:
                     template_file = free_template_file(active_templates_dir(state),
                                                        item_name)
-                    template_path = active_templates_dir(state) / template_file
-                    template_path.parent.mkdir(parents=True, exist_ok=True)
-                    template_img.save(template_path)
+                    save_template(state, template_img, template_file)
                     item.template = template_file
 
             with state.lock:
@@ -106,16 +106,14 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> boo
             print(f"    + {item_name} (P{priority}){template_str}")
 
         print(f"\n  === {created_count} Items erstellt! ===")
-        return True
 
     except (ValueError, IndexError):
         print("  -> Format: learn <von>-<bis> [template|simple]")
         print("    Beispiel: learn 1-5 template  (mit Screenshot)")
         print("    Beispiel: learn 1-5 simple    (ohne Screenshot)")
-        return True
 
 
-def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> bool:
+def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> None:
     """Single-Variante: ein Item aus einem Slot lernen.
 
     Wichtig: Screenshot + Marker-Farben werden SOFORT aufgenommen (vor User-Eingaben),
@@ -125,20 +123,20 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     """
     slot_num = _ask_slot_number(slot_list, user_input)
     if slot_num is None:
-        return True
+        return
     selected_slot = slot_list[slot_num - 1]
 
     print(f"\n  Scanne Slot '{selected_slot.name}' SOFORT...")
     marker_colors = collect_marker_colors(selected_slot.scan_region, selected_slot.slot_color)
     if not marker_colors:
         print("  -> Keine Farben gefunden!")
-        return True
+        return
     pending = _PendingTemplate.capture(state, selected_slot, slot_num)
 
     details = _ask_learning_details(state)
     if details is None:
         pending.discard()
-        return True
+        return
     item_name, category, priority, (confirm_point_id, confirm_delay) = details
 
     item = ItemProfile(item_name, marker_colors, category, priority,
@@ -150,7 +148,6 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
     confirm_str = f" -> Punkt #{confirm_point_id} nach {confirm_delay}s" if confirm_point_id else ""
     template_str = " + Template" if item.template else ""
     print(f"  + Item '{item_name}' gelernt mit {len(marker_colors)} Marker-Farben!{confirm_str}{template_str}")
-    return True
 
 
 def _ask_slot_number(slot_list: list, user_input: str) -> Optional[int]:
@@ -195,9 +192,7 @@ class _PendingTemplate:
         template_img = take_screenshot(slot.scan_region)
         if not template_img:
             return cls()
-        path = active_templates_dir(state) / f"_learn_temp_{slot_num}.png"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        template_img.save(path)
+        path = save_template(state, template_img, f"_learn_temp_{slot_num}.png")
         print(ok("Screenshot + Farben aufgenommen! Jetzt hast du Zeit für die Eingaben."))
         return cls(path)
 

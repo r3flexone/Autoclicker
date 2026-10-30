@@ -59,7 +59,7 @@ class StartupEditorTest(unittest.TestCase):
 
         args = start_now.call_args.args[0]
         self.assertNotIn("AktivImHauptprozess", args)
-        self.assertIn("--beenden-mit-fenster", args)
+        self.assertIn("--quit-with-window", args)
 
 
 class MainStartTest(unittest.TestCase):

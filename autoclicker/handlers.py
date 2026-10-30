@@ -231,7 +231,7 @@ def handle_reset(state: AutoClickerState) -> None:
         init_directories()
 
         # Config auf Standard zurücksetzen — hineinschreiben, nicht austauschen
-        # (s. config.uebernehmen: state.config IST das Modul-CONFIG).
+        # (s. config.apply_config: state.config IST das Modul-CONFIG).
         with state.lock:
             apply_config(state.config, AppConfig())
 
@@ -283,7 +283,7 @@ def handle_load(state: AutoClickerState) -> None:
 
 
 def handle_step_mode(state: AutoClickerState) -> None:
-    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manuell').
+    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manual').
 
     Bewusst kein eigener Hotkey: CTRL+ALT+<Buchstabe> ist auf Windows häufig von anderen
     Programmen belegt, und gebraucht wird der Schalter ohnehin nur vor dem Start. Zurück
@@ -1041,7 +1041,7 @@ def reload_if_pending(state: AutoClickerState) -> None:
 
 
 def command_reclick(state: AutoClickerState, arguments: dict) -> None:
-    """Startet die Klick-Runde — der Studio-Knopf statt `click` im Punkte-Menü.
+    """Startet die Klick-Runde — der Studio-Knopf statt `reclick` im Punkte-Menü.
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
@@ -1496,7 +1496,7 @@ def handle_rec_watch(state: AutoClickerState) -> None:
 
 
 def handle_rec_phase(state: AutoClickerState) -> None:
-    """Setzt während der Aufnahme eine Phasengrenze (INIT | LOOP | END)."""
+    """Setzt während der Aufnahme eine Phasengrenze: ab hier die nächste Loop-Phase."""
     from .editors.sequence_recorder import mark_phase
     mark_phase(state)
 
@@ -1516,7 +1516,7 @@ def handle_sequence_studio(state: AutoClickerState,
 
     args = [sys.executable, "-m", "autoclicker.sequence_studio"]
     if quit_with_window:
-        args.append("--beenden-mit-fenster")
+        args.append("--quit-with-window")
 
     try:
         subprocess.Popen(args)

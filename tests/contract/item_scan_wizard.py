@@ -14,6 +14,7 @@ import tempfile as _tmp
 
 from ._harness import check, section
 
+import autoclicker.editors._detection_capture as _DC
 import autoclicker.editors.item_scan_editor as _ISE
 from autoclicker.models import (
     AutoClickerState as _ST, ItemProfile as _IP, ItemScanConfig as _ISC, ItemSlot as _SLOT,
@@ -67,6 +68,7 @@ class _Wizard:
     def run(self):
         stubs = [
             (_ISE, "safe_input", self._input),
+            (_DC, "safe_input", self._input),     # Konfidenz und Toleranz fragt der geteilte Helfer
             (_ISE, "confirm", self._confirm),
             (_ISE, "OPENCV_AVAILABLE", self.opencv),
             (_ISE, "take_screenshot", lambda region: _FakeImage() if self.screenshot else None),

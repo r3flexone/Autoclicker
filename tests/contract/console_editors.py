@@ -51,6 +51,49 @@ check("eine unbekannte Taste fragt erneut",
 check("eine leere Eingabe ebenso",
       _dc_sequence(_DC.prompt_key, ["", "1"]) == "1")
 
+
+# --- ask_min_confidence / ask_tolerance: eine Fehleingabe behaelt den Wert UND sagt es ---
+# Beide stehen an einer Stelle (Boss-, Icon-, Item- und Item-Scan-Editor fragen darueber);
+# vorher stand die Abfrage viermal da, und nur eine Kopie sagte, dass sie nichts verstand.
+def _dc_ask(fn, text, *args):
+    """Eine Abfrage mit EINER Eingabe: (Ergebnis, Ausgabe, gezeigter Fragetext)."""
+    shown = []
+    _old = _DC.safe_input
+    _DC.safe_input = lambda prompt="": shown.append(prompt) or text
+    buffer = _io2.StringIO()
+    try:
+        with _cl2.redirect_stdout(buffer):
+            result = fn(*args)
+    finally:
+        _DC.safe_input = _old
+    return result, buffer.getvalue(), shown[0]
+
+
+check("Konfidenz: eine Zahl in Prozent", _dc_ask(_DC.ask_min_confidence, "90", 0.8)[0] == 0.9)
+check("Konfidenz: ein '%' darf dabei sein",
+      _dc_ask(_DC.ask_min_confidence, "90%", 0.8)[0] == 0.9)
+check("Konfidenz: zu kleine Werte werden auf 10 % gehoben",
+      _dc_ask(_DC.ask_min_confidence, "5", 0.8)[0] == 0.1)
+_res, _out, _ = _dc_ask(_DC.ask_min_confidence, "", 0.8)
+check("Konfidenz: leer behaelt den Wert, ohne ein Wort", _res == 0.8 and _out == "")
+_res, _out, _ = _dc_ask(_DC.ask_min_confidence, "abc", 0.8)
+check("Konfidenz: Unlesbares behaelt den Wert und sagt es",
+      _res == 0.8 and "ungültig — behalte 80" in _out)
+_res, _out, _shown = _dc_ask(_DC.ask_min_confidence, "", 0.5, "  Eigener Text: ")
+check("Konfidenz: ein eigener Fragetext wird gezeigt", _shown == "  Eigener Text: ")
+check("Konfidenz: der Standard-Fragetext nennt den bisherigen Wert",
+      "Enter=50" in _dc_ask(_DC.ask_min_confidence, "", 0.5)[2])
+check("Toleranz: eine Zahl", _dc_ask(_DC.ask_tolerance, "35", "Toleranz: ", 20)[0] == 35)
+check("Toleranz: wird auf 1-100 begrenzt",
+      _dc_ask(_DC.ask_tolerance, "500", "Toleranz: ", 20)[0] == 100
+      and _dc_ask(_DC.ask_tolerance, "0", "Toleranz: ", 20)[0] == 1)
+_res, _out, _shown = _dc_ask(_DC.ask_tolerance, "", "Toleranz: ", 20)
+check("Toleranz: leer behaelt den Wert, ohne ein Wort; der Fragetext kommt vom Aufrufer",
+      _res == 20 and _out == "" and _shown == "Toleranz: ")
+_res, _out, _ = _dc_ask(_DC.ask_tolerance, "abc", "Toleranz: ", 20)
+check("Toleranz: Unlesbares behaelt den Wert und sagt es",
+      _res == 20 and "ungültig — behalte 20" in _out)
+
 # --- _prompt_region_coords: vier Zahlen, und x2>x1, y2>y1 ---
 _pr = _DC._prompt_region_coords
 check("vier Zahlen ergeben eine Region",
@@ -250,12 +293,10 @@ _IF.shift_category_priorities = lambda st, kat: _moved.append(kat)
 try:
     check("eine Zahl kommt als Prioritaet zurueck",
           _field_sequence(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
-    check("leere Eingabe behaelt die Vorgabe",
-          _field_sequence(_IF.ask_priority, [""], state=_st_f,
-                      category="Helme", default_value=4) == 4)
-    check("Zahlensalat behaelt die Vorgabe",
-          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f,
-                      category="Helme", default_value=4) == 4)
+    check("leere Eingabe ergibt die Vorgabe 1",
+          _field_sequence(_IF.ask_priority, [""], state=_st_f, category="Helme") == 1)
+    check("Zahlensalat ergibt die Vorgabe 1",
+          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f, category="Helme") == 1)
     check("negative Zahlen werden auf 1 gehoben",
           _field_sequence(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
     # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.

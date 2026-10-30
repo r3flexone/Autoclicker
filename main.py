@@ -99,7 +99,7 @@ def print_help(with_guide: bool = True) -> None:
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Item-, Boss- und Icon-Scans auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, klick = nachklicken, manuell, log/detail)')}")
+          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, reclick = nachklicken, manual, log/detail)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()
@@ -274,7 +274,7 @@ def main() -> int:
     # Dasselbe Objekt, keine Kopie: `from .config import CONFIG` steht in
     # imaging und in mehreren Item-Editoren, und mit einer Kopie lasen die
     # dauerhaft den Stand vom Programmstart. Wer die Werte aendert, schreibt
-    # deshalb HINEIN (config.uebernehmen) statt state.config auszutauschen.
+    # deshalb HINEIN (config.apply_config) statt state.config auszutauschen.
     state.config = CONFIG
     # Logger-Meldungen sichtbar und im Stil des Programms. DEBUG nur, wenn eine der
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur

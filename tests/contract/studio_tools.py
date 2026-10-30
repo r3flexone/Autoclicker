@@ -449,7 +449,7 @@ try:
     check("die UI-Vorgaben speichern ohne safe_input",
           _saved == "Abrechnung mit den Göttern")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
-    _file = _rec.recording_file("Abrechnung mit den Göttern")
+    _file = _rec.sequence_file("Abrechnung mit den Göttern")
     _loaded = _load_sequence_file(_file)
     check("die Aufnahme wird wirklich zur Sequenz", _loaded is not None)
     # Der Ordner ist bereinigt, der NAME nicht: er wird angezeigt.

@@ -61,8 +61,8 @@ class _Run:
             "PILLOW_AVAILABLE": self.pillow,
             "list_slot_presets": lambda: [],
             "create_slot": lambda state: self.created,
-            "edit_slot": lambda state, slot: (self.edited(slot) if callable(self.edited)
-                                              else self.edited),
+            "edit_slot": lambda slot: (self.edited(slot) if callable(self.edited)
+                                       else self.edited),
             "slot_auto_detect": lambda state: self.calls.append("auto"),
             "slot_repair": self._repair,
             "save_slot_preset": lambda state, name: self.calls.append(("save", name)),

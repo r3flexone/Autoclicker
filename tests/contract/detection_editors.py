@@ -22,6 +22,7 @@ section("Icon- und Boss-Scan-Editor: Tastenfolgen")
 import autoclicker.editors._detection_capture as _DC
 import autoclicker.editors.boss_scan_editor as _BO
 import autoclicker.editors.icon_scan_editor as _IC
+import autoclicker.editors.scan_services as _SS
 import autoclicker.ocr as _OCR
 from autoclicker.models import (
     AutoClickerState as _ST, BossProfile as _BP, BossScanConfig as _BSC,
@@ -31,7 +32,7 @@ from autoclicker.models import (
     ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
 )
 
-_MODULES = (_BO, _IC, _DC)
+_MODULES = (_BO, _IC, _DC, _SS)
 
 
 class _Shot:

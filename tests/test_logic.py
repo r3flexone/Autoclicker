@@ -2673,7 +2673,7 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 # Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
 # Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
 from autoclicker.editors.sequence_recorder import points_for_events as _pfe
-from autoclicker.editors.sequence_recorder import recording_file as _aufnahme_datei
+from autoclicker.editors.sequence_recorder import sequence_file as _sequence_file
 from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
                                 REC_KEY as _R_KEY, REC_WAIT_COLOR as _R_WAIT)
 
@@ -2761,7 +2761,7 @@ check("und damit dasselbe Schema wie die Aufnahme",
 _id_c = _pfs(_st_names, 500, 500, None, name="Bankschalter")
 check("ein getippter Name wird nicht ueberschrieben",
       next(pt.name for pt in _st_names.points if pt.id == _id_c) == "Bankschalter")
-_capture_target = _aufnahme_datei("Neue Aufnahme")
+_capture_target = _sequence_file("Neue Aufnahme")
 check("Recorder speichert im Besitzordner der Sequenz",
       _capture_target.parts[-3:] == ("sequences", "neue_aufnahme", "sequence.json"))
 check("Recorder legt keine direkte JSON-Datei mehr unter sequences/ an",

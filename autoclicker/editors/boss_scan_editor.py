@@ -19,7 +19,7 @@ from ..models import (
     BossProfile, BossScanConfig, AutoClickerState,
     BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
     BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
-    SCAN_MODE_ALL,
+    SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY,
 )
 from ..config import save_config
 from ..utils import (
@@ -55,9 +55,9 @@ _DEFAULT_ACTIONS = [
     ("Default Item-Scan ausführen", BOSS_ACTION_SCAN),
 ]
 _SCAN_MODES = [
-    ("Bestes pro Kategorie (all)", "all"),
-    ("Nur 1 bestes Item (best)", "best"),
-    ("Alle Treffer (every)", "every"),
+    ("Bestes pro Kategorie (all)", SCAN_MODE_ALL),
+    ("Nur 1 bestes Item (best)", SCAN_MODE_BEST),
+    ("Alle Treffer (every)", SCAN_MODE_EVERY),
 ]
 _LLM_OPTIONS = [
     "Kein LLM verwenden",
@@ -554,11 +554,7 @@ def _boss_step_ocr(draft: _BossDraft) -> None:
     print("\n  OCR liest den Boss-Namen direkt als Text vom Screenshot.")
     print("  Schneller als LLM, braucht aber sichtbaren Text im Bild.")
 
-    try:
-        from autoclicker.ocr import is_available, get_status
-    except ImportError:
-        print(f"\n  {warn('OCR-Modul nicht verfügbar')}")
-        return
+    from ..ocr import is_available, get_status
     if not is_available():
         print(f"\n  {warn(get_status())}")
         return
@@ -608,27 +604,16 @@ def _save_boss_config(state: AutoClickerState, draft: _BossDraft) -> None:
 
 def _test_llm_connection(state: AutoClickerState) -> None:
     """Testet die Verbindung zum LLM-Provider."""
-    try:
-        from ..llm_vision import test_connection, test_endpoint_for, PROVIDER_OLLAMA
-    except ImportError:
-        print(f"\n  {err('LLM Vision Modul konnte nicht geladen werden!')}")
-        return
+    from ..llm_vision import test_connection, PROVIDER_OLLAMA
 
     provider = state.config.llm_provider
-    endpoint = state.config.llm_endpoint
 
     print(f"\n  Teste Verbindung zu {provider}...")
 
-    # Teste den richtigen Endpoint (Tags/Models statt Chat)
-    if endpoint is None:
-        test_endpoint = test_endpoint_for(provider)
-    else:
-        # Leite den Test-Endpoint vom Chat-Endpoint ab
-        test_endpoint = endpoint
-
-    # Mit Modell: ein erreichbarer Server ohne das eingestellte Modell ist
-    # kein Erfolg — danach scheitert jeder Aufruf.
-    success, message = test_connection(provider, test_endpoint,
+    # Ohne eigenen Endpoint nimmt `test_connection` den Standard (Modell-Liste
+    # statt Chat). Mit Modell: ein erreichbarer Server ohne das eingestellte
+    # Modell ist kein Erfolg — danach scheitert jeder Aufruf.
+    success, message = test_connection(provider, state.config.llm_endpoint,
                                        state.config.llm_model)
 
     if success:

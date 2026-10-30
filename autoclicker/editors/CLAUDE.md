@@ -13,7 +13,8 @@ was **geteilt** ist: `editors/_detection_capture.py` gehört dem Boss- *und* dem
 Icon-Editor, ein Test deckt dort also zwei Editoren ab — Tastenabfrage,
 Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
 (**Fehleingabe wiederholen statt abbrechen**). Dazu `_apply_item_rename()`, weil
-am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
+am Namen zwei Dinge hängen: der Bestand und die Template-*Datei* — eine Scan-Referenz
+gibt es nicht mehr, ein Item gehört genau einem Scan.
 
 Es kommt **einer nach dem anderen**, nicht am Stück — und immer in derselben
 Reihenfolge: **erst die Tastenfolgen auf dem alten Code, dann der Umbau** (Ziel:
@@ -122,6 +123,12 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
   **Abbruch ist nicht `None`.** Beim Bestaetigungs-Klick ist `None` als Punkt-ID
   ein gueltiges Ergebnis („kein Klick danach"), taugt also nicht zugleich als
   Abbruch-Zeichen — dafuer gibt es `CANCELLED`.
+- **Konfidenz, Toleranz und das Ablegen einer Vorlage stehen je an einer Stelle**:
+  `ask_min_confidence()` und `ask_tolerance()` in `_detection_capture.py` (Fehleingabe
+  behält den Wert und sagt es), `save_template()` in `scan_services.py` (Ordner anlegen,
+  Bild schreiben). Den Dateinamen bestimmt der Aufrufer: die Item-Editoren nehmen einen
+  freien (`free_template_file`), Boss- und Icon-Editor überschreiben die Vorlage des
+  eigenen Eintrags.
 - **Mehrfachauswahl aus einer Liste**: `multi_select()` aus `editors/item_scan_editor.py`
   (`<Nr>`, `<Von>-<Bis>`, `all`, `clear`, `show`, `done`, `cancel`, optional ein eigener
   Befehl wie `new <Slot-Nr>`). Sie stand vorher zweimal ausgeschrieben da — für Slots und
@@ -267,8 +274,9 @@ Das allgemeine Muster für alles Neue: **beim Aufnehmen die Stelle im Ablauf mar
 im Editor konfigurieren.** Ein blockierender Prompt während der Aufnahme kommt nie an.
 
 `CTRL+ALT+U` nimmt während der Aufnahme das letzte Ereignis zurück, sonst den letzten
-Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: in
-der Basis-Ebene sind nur noch R/Y frei (D ging an den Screenshot-Marker). Es nimmt
+Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: die
+Basis-Ebene ist fast voll (frei sind nur D, M, R und Y, s. Hotkey-Flow in der
+Wurzel-`CLAUDE.md`). Es nimmt
 **jedes** Ereignis zurück, auch Marker — eine versehentlich gesetzte Phasengrenze oder
 eine falsch angefahrene Bereichs-Ecke räumt man damit weg.
 
@@ -397,7 +405,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
   zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
 - **Was sie nicht erreicht, sagt sie** (`click_points()` gibt zwei Listen
-  zurück): beobachtete Pixel, ELSE-Klicks, Nachprüfungen und Rad-Schritte kommen
+  zurück): beobachtete Pixel, ELSE-Klicks und Nachprüfungen kommen
   in einem normalen Durchlauf nicht vor. Dafür bleibt `walk`. Wer beides ist —
   erst beobachtet, später geklickt — zählt als Klick; deshalb sammelt die
   Funktion **erst alle Klicks und dann den Rest**, in einem Durchgang fiel so
@@ -445,7 +453,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Punkt zu verbrauchen), `CTRL+ALT+K` überspringt, `CTRL+ALT+U` geht zurück —
   und **zurück heisst zurück**: der eben gesetzte Punkt bekommt seine alte
   Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
-  Basis-Ebene ist voll (s. Hotkey-Flow in der Wurzel-`CLAUDE.md`); alle vier tragen hier dieselbe
+  Basis-Ebene ist fast voll (s. Hotkey-Flow in der Wurzel-`CLAUDE.md`); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
   `KEYS` in `editors/reclick.py`; das Studio zeigt sie als **Tabelle**
   (`WZ_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
@@ -462,7 +470,7 @@ Hier stand einmal das Gegenteil („springt **nicht** nach einem echten Klick"),
 und der Grund war nicht falsch: der Hook meldet den **Druck**, das Loslassen
 kommt erst danach — dazwischen die Maus wegzuziehen macht aus dem Klick ein
 Ziehen. Nur war die Antwort darauf falsch. Statt gar nicht zu springen, springt
-er nach `JUMP_DELAY` (0,25 s, `_jump(..., verzoegert=True)`); die
+er nach `JUMP_DELAY` (0,25 s, `_jump(..., delayed=True)`); die
 alte Fassung liess die Stelle als Zahlenpaar in der Konsole stehen, und man
 musste sie auf dem Schirm suchen, statt sie zu sehen.
 
