@@ -55,7 +55,6 @@ def _print_phase_help(full: bool = False) -> None:
         print(cmd_hint("edit <Schritt-Nr>", "Schritt ändern (geführtes Menü)"))
         print(cmd_hint("del <Schritt-Nr>", "Schritt löschen"))
         print(cmd_hint("points", "Punkte mit ihren Nummern anzeigen"))
-        print(cmd_hint("link", "Schritte mit Punkten verknüpfen (Referenz nachtragen)"))
         print(cmd_hint("screenshot / ss", "Screenshot-Schritt anlegen"))
         print(cmd_hint("verify <Nr> <Punkt-Nr>", "nachpruefen, ob der Schritt gewirkt hat"))
         print(cmd_hint(f"done / d | cancel / {cancel_hint()}", "Phase speichern / verwerfen"))
@@ -152,7 +151,7 @@ def _split_main_and_else(parts_raw: list[str]) -> tuple[list[str], list[str]]:
 _KNOWN_COMMANDS = [
     "done", "cancel", "help", "show", "edit", "del", "ins", "points", "learn",
     "scan", "boss", "watcher", "icon", "key", "wait", "screenshot", "ss",
-    "color", "colorgone", "checkcolor", "checkgone", "link", "verify",
+    "color", "colorgone", "checkcolor", "checkgone", "verify",
     "recolor", "noclick", "click", "time", "copy", "move", "scale", "test", "break",
 ]
 
@@ -220,8 +219,6 @@ _EXACT = {
     "ins end": lambda ed, text: ed._handle_ins_clear(),
     "points": lambda ed, text: ed._handle_points(),
     "p": lambda ed, text: ed._handle_points(),
-    "link": lambda ed, text: ed._handle_link(),
-    "link all": lambda ed, text: ed._handle_link(),
     "ss": lambda ed, text: ed._handle_screenshot(text),
     "screenshot": lambda ed, text: ed._handle_screenshot(text),
 }
@@ -265,54 +262,6 @@ def _point_click(ed, text: str) -> None:
 # =============================================================================
 # PHASE-EDITOR (interaktive Schleife + Handler-Methoden)
 # =============================================================================
-
-def _has_no_click_position(step: SequenceStep) -> bool:
-    """Taste, Scan, Warten, Screenshot: Schritte ohne eigene Klickstelle."""
-    return bool(step.key_press or step.item_scan or step.boss_scan or step.boss_watcher
-                or step.icon_scan or step.screenshot_only or step.wait_only)
-
-
-def _link_step(i: int, step: SequenceStep, to_pos: dict) -> Optional[tuple[str, str]]:
-    """Verknüpft EINEN Schritt, wenn genau ein Punkt auf seiner Stelle liegt.
-
-    Gibt `(Gruppe, Zeile)` für den Bericht zurück — None für Schritte ohne Stelle.
-    """
-    if step.point_id is not None:
-        return "already", ""
-    if _has_no_click_position(step):
-        return None
-    match = to_pos.get((step.x, step.y), [])
-    if len(match) == 1:
-        step.point_id = match[0].id
-        return "linked", (f"[{i}] '{step.name}' -> Punkt #{match[0].id} "
-                          f"'{match[0].name or '(ohne Name)'}'")
-    if match:
-        ids = ", ".join(f"#{p.id}" for p in match)
-        return "ambiguous", (f"[{i}] '{step.name}' ({step.x}, {step.y}): "
-                             f"mehrere Punkte passen ({ids}) - nicht verknüpft")
-    return "without", f"[{i}] '{step.name}' ({step.x}, {step.y}): kein Punkt an dieser Stelle"
-
-
-def _print_link_report(groups: dict) -> None:
-    """Was `link` getan hat — je Gruppe eine Überschrift und ihre Zeilen."""
-    for key, title in (("linked", "verknüpft"), ("ambiguous", "mehrdeutig"),
-                       ("without", "ohne passenden Punkt")):
-        lines = groups[key]
-        if not lines:
-            continue
-        label = f"{len(lines)} Schritt(e) {title}:" if key == "linked" else f"{len(lines)} {title}:"
-        print(f"  {(ok if key == 'linked' else warn)(label)}")
-        for line in lines:
-            print(f"    {line}")
-    if groups["without"]:
-        print(f"    {hint('Diese Schritte behalten ihre eigenen Koordinaten - das ist ok.')}")
-    if groups["already"]:
-        print(f"  {hint(str(len(groups['already'])) + ' Schritt(e) waren schon verknüpft.')}")
-    if not (groups["linked"] or groups["ambiguous"] or groups["without"]):
-        print("  -> Nichts zu tun.")
-    elif groups["linked"]:
-        print(f"  {hint('Mit done speichern - danach folgen diese Schritte ihrem Punkt.')}")
-
 
 def _wait_for_time(arg: str) -> Optional[SequenceStep]:
     """wait <Zeit> | wait <Min>-<Max> — reines Warten, None bei unlesbarer Zeit."""
@@ -692,33 +641,6 @@ class _PhaseEditor:
             key_press=key_name,
         )
         self.add_step(step)
-
-    def _handle_link(self) -> None:
-        """Verknüpft Schritte ohne point_id nachträglich mit Punkten aus dem Pool.
-
-        Zugeordnet wird über exakt übereinstimmende Koordinaten - das ist die einzige
-        verlässliche Brücke für Sequenzen, die vor der Referenz-Umstellung entstanden
-        sind. Mehrdeutige Fälle (zwei Punkte auf derselben Stelle) werden gemeldet und
-        NICHT verknüpft, damit nicht stillschweigend der falsche Punkt gewinnt.
-        """
-        with self.state.lock:
-            points = list(self.state.points)
-
-        if not points:
-            print("  -> Keine Punkte im Pool - nichts zu verknüpfen.")
-            return
-
-        # Koordinate -> Punkte (mehrere = mehrdeutig)
-        to_pos = {}
-        for p in points:
-            to_pos.setdefault((p.x, p.y), []).append(p)
-
-        groups = {"linked": [], "ambiguous": [], "without": [], "already": []}
-        for i, step in enumerate(self.steps, 1):
-            found = _link_step(i, step, to_pos)
-            if found is not None:
-                groups[found[0]].append(found[1])
-        _print_link_report(groups)
 
     def _handle_wait(self, user_input: str) -> None:
         """Format: wait <Zeit> | wait <Min>-<Max> | wait <Punkt-Nr> color|colorgone | wait pixel|pixelgone [else ...]

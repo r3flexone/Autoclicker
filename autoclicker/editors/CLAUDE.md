@@ -487,14 +487,19 @@ nur wenn der Punkt schon eine hatte — sonst schliche sich ein Trigger ein, den
 gesetzt hat.
 
 Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
-`calibrate_inventory()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
-und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
+`calibrate_inventory()` rechnet Punkte, Slots, Scan-Regionen, die Fenster-Anker der
+Item-Scans und die Screenshot-Regionen in den Sequenz-**Dateien** um. Den
+Bestätigungsklick der Items und die Klicks von Bossen und Icons rechnet sie nicht um:
+sie zeigen auf Punkte und holen ihre Werte von dort (`resolve_click_references()`).
+Regeln:
 
 - **`with_slots` steht getrennt von `with_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
 - **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
   zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`
-  und `_remap_sequence_data` prüfen deshalb `point_id is None`, bevor sie rechnen.
+  und `_remap_sequence_data` rechnen deshalb nur noch die Screenshot-Region; ihre
+  `point_id is None`-Zweige bedienten Schritte mit Koordinate statt Punkt, die das
+  Dateiformat nicht mehr kennt, und sind gegangen.
 - **Die geladene Sequenz im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
   das nächste `save_points()` den alten Stand aus dem Speicher zurück. Ihre Datei wird
   danach **nicht** ein zweites Mal über die Platte umgerechnet.

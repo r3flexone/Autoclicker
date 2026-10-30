@@ -11,7 +11,7 @@ from pathlib import Path
 from ..models import AutoClickerState
 from ..utils import compact_json, sanitize_filename, save_tag, load_tag, delete_tag, err, atomic_write
 from .globals import save_global_items, save_global_slots
-from .migration import KIND_ITEMS, KIND_SLOTS, migrate
+from ._scan_store import LOAD_EXCEPTIONS
 from .paths import ITEM_PRESETS_DIR, SLOT_PRESETS_DIR
 from .serialization import _item_to_dict, _slot_to_dict, _item_from_dict, _slot_from_dict
 
@@ -31,7 +31,7 @@ def _list_presets(presets_dir: str) -> list[tuple[str, Path, int]]:
             with open(f, "r", encoding="utf-8") as file:
                 data = json.load(file)
                 presets.append((f.stem, f, len(data)))
-        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
+        except LOAD_EXCEPTIONS:
             pass
     return presets
 
@@ -94,7 +94,6 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_SLOTS)
         if not isinstance(data, dict):
             raise TypeError("Slot-Preset muss ein JSON-Objekt sein")
         loaded = {name: _slot_from_dict(name, s) for name, s in data.items()}
@@ -106,7 +105,7 @@ def load_slot_preset(state: AutoClickerState, preset_name: str) -> bool:
             return False
         print(load_tag(f"Slot-Preset '{preset_name}' geladen ({len(loaded)} Slots)"))
         return True
-    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
+    except LOAD_EXCEPTIONS as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
         return False
 
@@ -147,7 +146,6 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_ITEMS)
         if not isinstance(data, dict):
             raise TypeError("Item-Preset muss ein JSON-Objekt sein")
         loaded = {name: _item_from_dict(i, name) for name, i in data.items()}
@@ -158,7 +156,7 @@ def load_item_preset(state: AutoClickerState, preset_name: str) -> bool:
             return False
         print(load_tag(f"Item-Preset '{preset_name}' geladen ({len(loaded)} Items)"))
         return True
-    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
+    except LOAD_EXCEPTIONS as e:
         print(err(f"Preset laden fehlgeschlagen: {e}"))
         return False
 

@@ -39,7 +39,8 @@ sondern müssen über `runtime.actions.safe_click` bzw. `safe_key` laufen.
 - `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`: Dateien der
   jeweiligen Domäne.
 - `globals.py`, `presets.py`: globale Slots/Items und Presets.
-- `migration.py`, `sweep.py`: Schema-Migration, Sicherungen und Bestandsprüfung.
+- `schema.py`, `sweep.py`: Schema-Version (Stempel, Erkennung einer neueren Fassung),
+  Start-Durchgang mit Sicherungen und Bestandsprüfung.
 
 Schreibvorgänge verwenden möglichst `atomic_write`; Referenzen werden nach dem
 Laden zentral aufgelöst.

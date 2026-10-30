@@ -111,15 +111,15 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("manifest.json", json.dumps(_manifest_data(version=999)))
             zf.writestr("points.json", json.dumps([{"id": 2, "x": 1, "y": 1}]))
         state = AutoClickerState()
-        state.points = [ClickPoint(5, 5, "Alt", 1)]
 
-        ok, _ = import_bundle(state, "bundle.zip", import_config=False)
+        ok, message = import_bundle(state, "bundle.zip", import_config=False)
 
         self.assertFalse(ok)
-        self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
+        self.assertIn("Unbekannte Version", message)
         self.assertFalse(Path("points.json").exists())
+        self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
 
-    def test_failed_import_rolls_back_state_and_files(self):
+    def test_failed_import_rolls_back_files(self):
         from autoclicker import import_export as module_name
         original = _write_sequence("inventory")
         before = (original / "sequence.json").read_bytes()
@@ -131,7 +131,6 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("sequences/A/templates/neu.png", b"neues Bild")
             zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
-        state.points = [ClickPoint(5, 5, "Alt", 1)]
         real_copytree = module_name.shutil.copytree
         mutated = []
 
@@ -146,7 +145,6 @@ class ImportExportSecurityTest(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertEqual(mutated, [b"neues Bild"])
-        self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual((original / "sequence.json").read_bytes(), before)
         self.assertFalse((original / "templates/neu.png").exists())
         self.assertFalse(Path("sequences/broken").exists())
@@ -327,17 +325,20 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertIn("verlässt den Importordner", message)
         self.assertEqual([], list(inner.rglob("ausserhalb.txt")))
 
-    def test_else_klick_ohne_punkt_steht_in_der_kalibrier_vorschau(self):
+    def test_kalibrier_vorschau_listet_nur_die_punkte(self):
+        # Was an einem Punkt haengt (Schritt, Else-Klick, Bestaetigung, Boss, Icon),
+        # steht nicht daneben: doppelt gelistet versprach die Vorschau eine Umrechnung,
+        # die gar nicht stattfindet. Ein Else-Klick ohne Punkt hat keine Stelle.
         from autoclicker.import_export import collect_click_positions
         from autoclicker.models import ElseConfig, LoopPhase, SequenceStep
         state = AutoClickerState()
-        with_point = SequenceStep(point_id=3, else_config=ElseConfig("click", point_id=4))
+        state.points = [ClickPoint(10, 20, "Knopf", 3)]
+        with_point = SequenceStep(point_id=3, else_config=ElseConfig("click", point_id=3))
         without = SequenceStep(point_id=3, else_config=ElseConfig("click", x=70, y=80))
         state.active_sequence = Sequence(
-            name="Farm", loop_phases=[LoopPhase("L", [with_point, without])])
-        positions = collect_click_positions(state)
-        self.assertIn(("Seq 'Farm'/L #2 (else)", 70, 80), positions)
-        self.assertFalse(any(label.endswith("#1 (else)") for label, _x, _y in positions))
+            name="Farm", loop_phases=[LoopPhase("L", [with_point, without])],
+            points=state.points)
+        self.assertEqual([("Punkt #3 Knopf", 10, 20)], collect_click_positions(state))
 
     def test_kalibrieren_rechnet_die_geladene_sequenz_nur_einmal_um(self):
         # Die geladene Sequenz schreibt `save_points()` aus dem Speicher —

@@ -7,18 +7,6 @@ aufgerufen damit die Ordnerstruktur garantiert existiert.
 
 import os
 
-# Ordner aus der Zeit vor den Besitzeinheiten. Sie werden NICHT mehr beschrieben —
-# aktuelle Daten liegen unter sequences/<name>/. Stehen bleiben sie fuer genau
-# einen Zweck: der Factory-Reset (handlers.py) soll einen solchen Altbestand
-# sicher wegraeumen koennen, falls er auf einer Platte noch herumliegt.
-# `SLOTS_FILE`, `ITEMS_FILE` und `SCREENSHOTS_DIR` (slots/Screenshots) sind mit
-# dem globalen Bestand ersatzlos entfallen; niemand las sie mehr.
-BOSS_SCANS_DIR: str = "boss_scans"
-ICON_SCANS_DIR: str = "icon_scans"
-ITEM_SCANS_DIR: str = "item_scans"
-SLOTS_DIR: str = "slots"
-ITEMS_DIR: str = "items"
-
 SEQUENCE_SCREENSHOTS_DIR: str = "screenshots"
 SLOT_PRESETS_DIR: str = os.path.join("presets", "slots")
 ITEM_PRESETS_DIR: str = os.path.join("presets", "items")

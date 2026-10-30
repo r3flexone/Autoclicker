@@ -68,8 +68,8 @@ class BridgeServicesMixin:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
 
         Keine Momentaufnahme — deshalb über `ask()` zu holen, sonst zerschösse die
-        Antwort den Editor-Zustand. Über `load_sequence_file()`, damit Migration und
-        Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
+        Antwort den Editor-Zustand. Über `load_sequence_file()`, damit die
+        Punkt-Auflösung mitläuft. Nur Kennzahlen, keine Schritte.
         """
         out: list[dict] = []
         root_layer = Path(self.sequences_dir)

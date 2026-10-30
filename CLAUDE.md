@@ -271,7 +271,12 @@ Die Regeln dazu (Begründungen in `autoclicker/persistence/CLAUDE.md`):
   Dataclass-Defaults übereinstimmen), nur Referenzen, nie Kopien.
 - **Der Start-Durchgang** (`persistence/sweep.py`) bringt alle Dateien über
   Loader + Serializer auf den heutigen Stand: still, wenn nichts zu tun ist,
-  `.bak` unter `backups/` vor der ersten Änderung.
+  `.bak` unter `backups/` vor der ersten Änderung. Eine Datei aus einer
+  **neueren** Fassung (höheres `schema_version`) lässt er, wie sie ist. Umgerechnet
+  wird nichts: es gibt keine Migrationsschritte und keine Schleuse dafür.
+- **Ein Schritt trägt keine Koordinate, auch nicht ersatzweise**: der Loader liest
+  `x/y`, Prüf-Pixel, Else-Koordinaten und `recorded_color` nicht, der Serializer
+  schreibt sie nicht. Ohne `point_id` hat ein Schritt keine Stelle.
 - **Ein Name, der Schlüssel ist, wird nie doppelt vergeben**: `next_free_name()`
   für Serien, `unique_name()` für einen kollidierenden Namen. Bei Sequenzen ist
   der Schlüssel der **Ordner** — `sanitize_filename()` gehört an den Pfad, nie
@@ -311,7 +316,7 @@ Details: `autoclicker/CLAUDE.md`.
 - `autoclicker/catalog.py` — liest den Item-Katalog, den `tools/catalog.py` aus der Spiel-API holt (Verbindung über eine Datei, kein Import).
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
-- `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s. `persistence/CLAUDE.md`), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
+- `autoclicker/persistence/` — JSON-Persistenz: `schema.py` (Schema-Version: Stempel und Erkennung einer neueren Fassung, s. `persistence/CLAUDE.md`), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von den Savern und vom Start-Durchgang `sweep.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
 - `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 - `autoclicker/mailbox.py` — der Briefkasten Studio → Hauptprozess (`.command.json`); `runtime/status.py` ist der Rückweg (`.run.json`). Liegt bewusst nicht unter `runtime/`, damit das Fenster den Worker nicht nachzieht.
@@ -458,14 +463,19 @@ ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
 
 - Migration: „Das Modul soll schrumpfen, nicht wachsen." Ein Schritt wird
   **ersatzlos gelöscht**, sobald keine Altbestände mehr existieren — samt dem
-  Alt-Code, den er ersetzt hat. **Das ist einmal vollständig passiert:** die
-  Sequenz-Kette ist leer, und mit ihren vier Schritten fielen `_sichere_neue_punkte`,
-  `_punkte_schreibfertig`, `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` sowie rund
-  vierzig Tests weg. Die Regel ist also nicht nur aufgeschrieben, sondern eingelöst.
+  Alt-Code, den er ersetzt hat. **Das ist vollständig passiert:** die vier Schritte
+  der Sequenz-Kette fielen samt `_sichere_neue_punkte`, `_punkte_schreibfertig`,
+  `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` und rund vierzig Tests weg — und danach
+  auch die leere Schleuse (`migrate()`, `_CHAINS`, die `KIND_*`-Konstanten), die
+  „für die nächste Umstellung" stehengeblieben war. Aus `migration.py` wurde
+  `schema.py`: es heisst nach dem, was es noch tut. Die Regel ist nicht nur
+  aufgeschrieben, sondern eingelöst.
 - Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
 - `tools/sync_json.py` wurde gelöscht statt gepflegt; die Normalisierer der
   Migration, `_FIELD_MIGRATION` der Config, `reload_points`, `_REF_KEYS`, die
-  sieben Import-Flags und das Mausrad sind ihm gefolgt.
+  sieben Import-Flags und das Mausrad sind ihm gefolgt — ebenso die Inline-Koordinaten
+  an Schritten (samt dem Befehl `link` im Sequenz-Editor), die Altlayout-Ordner
+  des Factory-Resets (`items/`, `slots/`, `item_scans/` …) und `_legacy_reported`.
 
 Drei Sorten Altlast, die auffallen sollen:
 
@@ -473,15 +483,15 @@ Drei Sorten Altlast, die auffallen sollen:
 |---|---|---|
 | **Weiterleitung ohne Inhalt** | `execution.py` — reiner Re-Export, Docstring sagte selbst „damit main.py und handlers.py ihre Imports unverändert lassen können" | eine Datei, deren einziger Zweck ist, zwei Zeilen nicht anzufassen |
 | **Name eines Paradigmas, das es nicht mehr gibt** | `node_editor`, `node_canvas`, `BlockGraph`, `rebuild_canvas` nach dem Umbau auf Listen | ein Name, der etwas Falsches verspricht, ist dieselbe Sorte Fehler wie eine Oberfläche, die es tut — er führt den nächsten Leser in die Irre |
-| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt | Pflegeaufwand für etwas, das nie passiert |
+| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt; ebenso die `point_id is None`-Zweige der Kalibrierung, die nur Schritte mit Inline-Koordinate bedienten | Pflegeaufwand für etwas, das nie passiert |
 
 Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 
 - **Daten dürfen einen Default bekommen, aber nicht den Loader werfen.** Früher
   stand hier „Bestandsdateien werden über die Migration gehoben, nicht
-  fallengelassen". Das gilt nur noch für das, was schon eine Migration hat: für
-  Neues ist ein Migrationsschritt ausdrücklich **nicht** mehr nötig (s. o. bei
-  der Persistenz). Ein Feld, das eine alte Datei nicht kennt, bekommt seinen
+  fallengelassen". Das gilt nicht mehr: es gibt keine Migration, und ein
+  Migrationsschritt ist ausdrücklich **nicht** mehr nötig (s. o. bei der
+  Persistenz). Ein Feld, das eine alte Datei nicht kennt, bekommt seinen
   Standardwert — einen Scan im Studio neu zu bauen ist billiger als ein
   Migrationsschritt. Kaputtgehen darf trotzdem nichts: unlesbar ist ein Fehler,
   auf dem Standardwert ist keiner.

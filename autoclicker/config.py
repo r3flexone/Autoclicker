@@ -24,7 +24,7 @@ SEQUENCES_DIR: str = "sequences"       # Ordner für gespeicherte Sequenzen
 # Bewusst im Wurzelverzeichnis neben config.json und NICHT in sequences/:
 # `Path.glob("*.json")` erfasst auch Dateien mit führendem Punkt, die Datei
 # stünde also als Sequenz im Studio-Menü, im Konsolen-Menü und in der
-# Start-Migration — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
+# Start-Durchgang — und weil sie sich sekündlich ändert, gewänne sie jedes Mal
 # `last_edited()`. Dieselbe Falle, wegen der die `.bak`-Sicherungen
 # unter backups/ liegen statt neben dem Original.
 RUN_STATUS_FILE: str = ".run.json"
@@ -237,9 +237,9 @@ class AppConfig:
     timing_pause_interval: float = 0.5              # Prüf-Intervall während Pause (Sekunden)
 
     # === DATEIEN ===
-    # Beim Start alle JSON-Dateien aufs aktuelle Format heben (persistence/sweep.py).
-    # Nur ausschalten, wenn man Altbestand absichtlich einfrieren will - dann hebt
-    # tools/migrate.py von Hand.
+    # Beim Start alle JSON-Dateien aufraeumen, d.h. durch Loader und Serializer schicken
+    # (persistence/sweep.py). Nur ausschalten, wenn man Altbestand absichtlich einfrieren
+    # will - dann raeumt `tools/migrate.py --write` von Hand auf.
     migrate_on_start: bool = True
 
     # === DEBUG-EINSTELLUNGEN ===

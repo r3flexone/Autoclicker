@@ -10,17 +10,13 @@ import logging
 import shutil
 import tempfile
 import zipfile
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .models import AutoClickerState
 
-from .persistence import (
-    save_item_scan, save_boss_scan, save_icon_scan, save_global_bosses,
-)
-from .models import ACTION_CLICK
+from .persistence import save_item_scan, save_boss_scan, save_icon_scan
 from .utils import atomic_write, compact_json, sanitize_filename
 
 logger = logging.getLogger("autoclicker")
@@ -84,60 +80,20 @@ def remap_region(region: tuple[int, int, int, int], transform: dict) -> tuple[in
 
 
 def collect_click_positions(state: 'AutoClickerState') -> list[tuple[str, int, int]]:
-    """Sammelt die wichtigsten Klick-Koordinaten (Label, x, y) aus dem State.
+    """Die Klick-Koordinaten (Label, x, y) aus dem State: die Punkte der aktiven Sequenz.
 
-    Erfasst: Punkte, Klick-Schritte OHNE Punkt-Referenz (inkl. else-Klick) sowie
-    Klick-Aktionen von Boss- und Icon-Scans. Scan-interne Positionen (Slots,
-    confirm_points) bleiben aussen vor — es geht um die eigentlichen Klick-Ziele.
-
-    **Was an einem Punkt haengt, steht hier nur EINMAL — als Punkt.** Seit Schema 4
-    sind `step.x/y` abgeleitete Arbeitswerte, und `_remap_sequence_obj` laesst sie
-    deshalb in Ruhe. Beide zu listen hiesse, dieselbe Stelle doppelt zu zaehlen: in
-    der Kalibrier-Vorschau stand jede Aenderung zweimal da (einmal "Punkt #1",
-    einmal "Seq 'Farm'/A #1"), und die zweite Zeile versprach eine Umrechnung, die
-    gar nicht stattfindet. Uebrig bleiben die Schritte ohne Referenz — die gibt es
-    nur noch in von Hand geschriebenen Dateien, und genau die will man sehen.
+    **Was an einem Punkt haengt, steht hier nur EINMAL — als Punkt.** Schritte, ihr
+    Prüf-Pixel und Else-Klick sowie die Klicks von Items, Bossen und Icons haben keine
+    eigene Stelle: `x/y` und Co. sind abgeleitete Arbeitswerte, und
+    `_remap_sequence_obj` laesst sie deshalb in Ruhe. Sie neben ihrem Punkt zu listen
+    hiesse, dieselbe Stelle doppelt zu zaehlen: in der Kalibrier-Vorschau stand jede
+    Aenderung zweimal da (einmal "Punkt #1", einmal "Seq 'Farm'/A #1"), und die zweite
+    Zeile versprach eine Umrechnung, die gar nicht stattfindet. Scan-interne Positionen
+    (Slots) bleiben aussen vor — es geht um die eigentlichen Klick-Ziele.
     """
-    positions: list[tuple[str, int, int]] = []
     with state.lock:
-        for p in state.points:
-            label = f"Punkt #{p.id}" + (f" {p.name}" if p.name else "")
-            positions.append((label, p.x, p.y))
-        if state.active_sequence is not None:
-            positions += _unlinked_sequence_clicks(state.active_sequence)
-        positions += _detection_clicks(state)
-    return positions
-
-
-def _unlinked_sequence_clicks(seq) -> list[tuple[str, int, int]]:
-    """Klick-Schritte und ELSE-Klicks OHNE Punkt-Referenz (nur von Hand geschriebene Dateien)."""
-    positions = []
-    groups = [("Init", seq.init_steps), ("End", seq.end_steps)]
-    groups += [(lp.name, lp.steps) for lp in seq.loop_phases]
-    for gname, steps in groups:
-        for i, s in enumerate(steps, 1):
-            # Echter Klick-Schritt ohne Punkt: nicht wait-only, kein
-            # Scan/Key/Screenshot, und nicht schon ueber `point_id` erfasst.
-            if s.point_id is None and not (
-                    s.wait_only or s.item_scan or s.boss_scan or s.icon_scan
-                    or s.screenshot_only or s.key_press):
-                positions.append((f"Seq '{seq.name}'/{gname} #{i}", s.x, s.y))
-            ec = s.else_config
-            if ec and ec.action == ACTION_CLICK and ec.point_id is None:
-                positions.append((f"Seq '{seq.name}'/{gname} #{i} (else)", ec.x, ec.y))
-    return positions
-
-
-def _detection_clicks(state: 'AutoClickerState') -> list[tuple[str, int, int]]:
-    """Klick-Aktionen von Boss- und Icon-Scans (lokal und Bibliothek)."""
-    positions = [(f"Boss '{b.name}'", b.action_x, b.action_y)
-                 for cfg in state.boss_scans.values() for b in cfg.bosses
-                 if b.action == ACTION_CLICK]
-    positions += [(f"Boss '{b.name}' (global)", b.action_x, b.action_y)
-                  for b in state.global_bosses if b.action == ACTION_CLICK]
-    positions += [(f"Icon '{cfg.name}'", cfg.action_x, cfg.action_y)
-                  for cfg in state.icon_scans.values() if cfg.action == ACTION_CLICK]
-    return positions
+        return [(f"Punkt #{p.id}" + (f" {p.name}" if p.name else ""), p.x, p.y)
+                for p in state.points]
 
 
 def clicks_outside_window(state: 'AutoClickerState',
@@ -198,21 +154,13 @@ def _remap_sequence_obj(seq, transform: dict) -> None:
 
     Die geladene Sequenz MUSS mitgezogen werden, nicht nur die Dateien: sonst
     schreibt das nächste `save_points()` den alten Stand aus dem Speicher wieder über
-    die frisch umgerechnete Datei.
+    die frisch umgerechnete Datei. Umgerechnet wird nur, was keinen Punkt haben kann:
+    die Screenshot-Region. Klick, Prüf-Pixel und Else-Klick sind Punkte und oben
+    schon umgerechnet; der naechste `resolve()`-Lauf holt ihre Werte von dort.
     """
     phases = [seq.init_steps, seq.end_steps] + [lp.steps for lp in seq.loop_phases]
     for steps in phases:
         for s in steps:
-            # Referenzierte Stellen ueberspringen: ihr Punkt ist schon umgerechnet,
-            # und der naechste `resolve()`-Lauf holt den Wert ohnehin von dort.
-            if s.point_id is None:
-                s.x, s.y = remap_point(s.x, s.y, transform)
-            if s.wait_condition is not None and s.wait_condition.point_id is None:
-                px = s.wait_condition.pixel
-                s.wait_condition.pixel = remap_point(px[0], px[1], transform)
-            if s.else_config is not None and s.else_config.point_id is None:
-                ec = s.else_config
-                ec.x, ec.y = remap_point(ec.x, ec.y, transform)
             if s.screenshot_region is not None:
                 s.screenshot_region = remap_region(s.screenshot_region, transform)
 
@@ -244,11 +192,13 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
                        with_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `with_scans` zieht die vollständigen Bestände der Item-Scans
-    sowie Boss-/Icon-Scans mit, `with_sequences` die Screenshot-Regionen in den
-    Sequenz-DATEIEN.
-    Die Klick-Stellen der Sequenzen stehen NICHT in der Liste — sie sind Punkte
-    und oben schon umgerechnet.
+    Punkte immer; `with_scans` zieht die Slots und Fenster-Anker der Item-Scans
+    sowie die Regionen der Boss-/Icon-Scans mit, `with_sequences` die
+    Screenshot-Regionen in den Sequenz-DATEIEN.
+    Alles, was auf einen Punkt zeigt — Klick-Stellen der Sequenzen, Bestätigungsklick
+    der Items, Klicks von Bossen und Icons —, wird NICHT angefasst: der Punkt ist
+    schon umgerechnet, und die abgeleiteten Werte holt `resolve()` bzw.
+    `resolve_click_references()` von dort.
 
     `with_slots` ist getrennt schaltbar, obwohl Slots zu den Scans gehören: nach
     einer `slot_repair()`-Reparatur dürfen sie kein zweites Mal wandern.
@@ -257,8 +207,8 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
     """
     from .persistence import sequence_file
 
-    number = {"points": 0, "slots": 0, "items": 0, "item_scans": 0,
-            "boss_scans": 0, "icon_scans": 0, "bosses": 0, "sequences": 0}
+    number = {"points": 0, "slots": 0, "item_scans": 0,
+            "boss_scans": 0, "icon_scans": 0, "sequences": 0}
 
     # --- alles, was im State liegt: unter Lock mutieren, ausserhalb speichern ---
     with state.lock:
@@ -305,11 +255,6 @@ def _remap_item_scans(state: 'AutoClickerState', transform: dict, with_slots: bo
                 slot.scan_region = remap_region(slot.scan_region, transform)
                 slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
                 number["slots"] += 1
-        for item in cfg.items:
-            if item.confirm_point is not None:
-                cp = item.confirm_point
-                cp.x, cp.y = remap_point(cp.x, cp.y, transform)
-                number["items"] += 1
         # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar.
         # Wird nur eine Hälfte transformiert, würde die Runtime beim
         # nächsten Lauf ein zweites, falsches Remapping anwenden.
@@ -320,25 +265,22 @@ def _remap_item_scans(state: 'AutoClickerState', transform: dict, with_slots: bo
 
 def _remap_detection_scans(state: 'AutoClickerState', transform: dict,
                            owner: Optional[str], number: dict) -> None:
-    """Boss-Scans samt Bossen, die Boss-Bibliothek und die Icon-Scans."""
+    """Die Regionen der Boss- und Icon-Scans. Ihre Klicks sind Punkte (s. oben)."""
     for cfg in state.boss_scans.values():
         _own(cfg, owner)
         cfg.scan_region = remap_region(cfg.scan_region, transform)
-        for b in cfg.bosses:
-            b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
         number["boss_scans"] += 1
-    for b in state.global_bosses:
-        b.action_x, b.action_y = remap_point(b.action_x, b.action_y, transform)
-        number["bosses"] += 1
     for cfg in state.icon_scans.values():
         _own(cfg, owner)
         cfg.scan_region = remap_region(cfg.scan_region, transform)
-        cfg.action_x, cfg.action_y = remap_point(cfg.action_x, cfg.action_y, transform)
         number["icon_scans"] += 1
 
 
 def _save_calibrated(state: 'AutoClickerState', scans: Optional[tuple]) -> None:
-    """Punkte und (mit `scans`) alle Scans samt Bibliothek schreiben.
+    """Punkte und (mit `scans`) alle Scans schreiben.
+
+    Die Boss-Bibliothek gehört nicht dazu: sie trägt nur Punkt-IDs, und die Punkte
+    stehen oben in der Sequenz.
 
     Jeder Saver meldet seinen Fehler selbst — dieselbe Zeile wie bei den
     Sequenzdateien, damit ein Fehlschlag im Log neben der Bilanz steht. Vor dem
@@ -349,8 +291,6 @@ def _save_calibrated(state: 'AutoClickerState', scans: Optional[tuple]) -> None:
         logger.warning("Kalibrierung: Punkte der aktiven Sequenz nicht geschrieben")
     if scans is None:
         return
-    if not save_global_bosses(state):
-        logger.warning("Kalibrierung: Boss-Bibliothek nicht geschrieben")
     item_scans, boss_scans, icon_scans = scans
     for kind, saver, configs in (("Item-Scan", save_item_scan, item_scans),
                                  ("Boss-Scan", save_boss_scan, boss_scans),
@@ -364,7 +304,6 @@ def _remap_sequence_files(transform: dict, written_from_memory: Optional[Path]) 
     """Sequenzen über die Dateien, damit auch nicht geladene erfasst werden.
     Gibt zurück, wie viele umgerechnet sind."""
     from .persistence import list_available_sequences
-    from .utils import atomic_write, compact_json
     count = 0
     for _name, path in list_available_sequences():
         # Die aktive Sequenz hat `save_points()` eben aus dem Speicher
@@ -391,10 +330,27 @@ def _remap_sequence_files(transform: dict, written_from_memory: Optional[Path]) 
 # EXPORT
 # =============================================================================
 
-def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
-                            ref_point1, ref_point2, include_data: bool,
-                            include_config: bool, source_window=None) -> tuple[bool, str]:
-    """Schreibt Sequenzordner unverändert als geordnetes Bundle."""
+def export_bundle(state: 'AutoClickerState', filepath: str,
+                  ref_point1: tuple[int, int], ref_point2: tuple[int, int],
+                  include_sequences: bool = True, include_config: bool = True,
+                  source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
+    """Exportiert Setup als ZIP-Archiv: die Sequenzordner unverändert, dazu die Config.
+
+    include_sequences: die Sequenzordner. Eine Sequenz ist samt Punkten, Scans,
+    Slots/Items, Vorlagen und Bildern eine Besitzeinheit — getrennt wird nicht.
+    Hier standen sieben Schalter (Punkte, Sequenzen, Slots, Items, drei
+    Scan-Arten) aus der Zeit der getrennten Bestände; die Funktion fasste sie
+    längst zu einem ODER zusammen, und weil jeder auf True stand, schaltete ein
+    vergessener den Export wieder ein. Drei Tests taten genau das, ohne es zu
+    sagen.
+
+    source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
+    Manifest abgelegt, damit der Import die Skalierung automatisch aus der
+    Fenstergrösse ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
+
+    Returns:
+        (success, message)
+    """
     from .persistence import list_available_sequences
 
     manifest = {
@@ -411,7 +367,7 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
             names = []
             counters = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
                        "templates": 0}
-            if include_data:
+            if include_sequences:
                 for name, main_file in list_available_sequences():
                     folder = Path(main_file).parent
                     archive_root = PurePosixPath("sequences", folder.name)
@@ -435,29 +391,6 @@ def _export_sequence_bundle(state: 'AutoClickerState', filepath: str,
         logger.error("Export fehlgeschlagen: %s", e)
         return False, str(e)
 
-def export_bundle(state: 'AutoClickerState', filepath: str,
-                  ref_point1: tuple[int, int], ref_point2: tuple[int, int],
-                  include_sequences: bool = True, include_config: bool = True,
-                  source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
-    """Exportiert Setup als ZIP-Archiv.
-
-    include_sequences: die Sequenzordner. Eine Sequenz ist samt Punkten, Scans,
-    Slots/Items, Vorlagen und Bildern eine Besitzeinheit — getrennt wird nicht.
-    Hier standen sieben Schalter (Punkte, Sequenzen, Slots, Items, drei
-    Scan-Arten) aus der Zeit der getrennten Bestände; die Funktion fasste sie
-    längst zu einem ODER zusammen, und weil jeder auf True stand, schaltete ein
-    vergessener den Export wieder ein. Drei Tests taten genau das, ohne es zu
-    sagen.
-
-    source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
-    Manifest abgelegt, damit der Import die Skalierung automatisch aus der
-    Fenstergrösse ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
-
-    Returns:
-        (success, message)
-    """
-    return _export_sequence_bundle(state, filepath, ref_point1, ref_point2,
-                                   include_sequences, include_config, source_window)
 
 # Maschinen-/sicherheitsspezifische Config-Felder, die NIE zwischen Setups
 # wandern sollen (Failsafe-Position, Log-Pfad). Werden weder exportiert noch
@@ -484,6 +417,21 @@ def _export_config(config) -> dict:
 # IMPORT
 # =============================================================================
 
+def _manifest_problem(manifest) -> Optional[str]:
+    """Was am Manifest nicht stimmt — None, wenn es in Ordnung ist.
+
+    Die EINE Prüfung: `read_manifest` (Vorschau) und `_validate_bundle` (Import)
+    stellten sie vorher je für sich, mit leicht anderem Wortlaut.
+    """
+    if not isinstance(manifest, dict):
+        return "Ungültiges Manifest: Objekt erwartet"
+    if manifest.get("version") != EXPORT_VERSION:
+        return f"Unbekannte Version: {manifest.get('version')} (erwartet: {EXPORT_VERSION})"
+    if not isinstance(manifest.get("contents", {}), dict):
+        return "Ungültiges Manifest: 'contents' muss ein Objekt sein"
+    return None
+
+
 def read_manifest(filepath: str) -> tuple[bool, dict | str]:
     """Liest das Manifest aus einer ZIP-Datei.
 
@@ -495,32 +443,21 @@ def read_manifest(filepath: str) -> tuple[bool, dict | str]:
             if MANIFEST_FILE not in zf.namelist():
                 return False, "Keine gültige Export-Datei (manifest.json fehlt)"
             manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
-            if not isinstance(manifest, dict):
-                return False, "Ungültiges Manifest: Objekt erwartet"
-            if manifest.get("version") != EXPORT_VERSION:
-                return False, f"Unbekannte Version: {manifest.get('version')} (erwartet: {EXPORT_VERSION})"
-            if not isinstance(manifest.get("contents", {}), dict):
-                return False, "Ungültiges Manifest: 'contents' muss ein Objekt sein"
-            return True, manifest
+            problem = _manifest_problem(manifest)
+            return (False, problem) if problem else (True, manifest)
     except zipfile.BadZipFile:
         return False, "Datei ist kein gültiges ZIP-Archiv"
     except (IOError, OSError, json.JSONDecodeError) as e:
         return False, str(e)
 
 
-
-
 def _validate_bundle(zf: zipfile.ZipFile, names: list[str]) -> dict:
     """Prüft Version, Größen, doppelte Namen und JSON-Grundstrukturen vor Mutation."""
     _check_bundle_sizes(zf, names)
     manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
-    if not isinstance(manifest, dict):
-        raise ValueError("Ungültiges Manifest: Objekt erwartet")
-    if manifest.get("version") != EXPORT_VERSION:
-        raise ValueError(
-            f"Unbekannte Bundle-Version {manifest.get('version')} (erwartet {EXPORT_VERSION})")
-    if not isinstance(manifest.get("contents", {}), dict):
-        raise ValueError("Ungültiges Manifest: 'contents' muss ein Objekt sein")
+    problem = _manifest_problem(manifest)
+    if problem:
+        raise ValueError(problem)
 
     # Alles im Bundle ist ein Objekt — bis auf die Boss-Bibliothek, die als
     # Liste in den Boss-Scans der Sequenz liegt. Die Sonderfaelle fuer
@@ -551,12 +488,13 @@ def _check_bundle_sizes(zf: zipfile.ZipFile, names: list[str]) -> None:
 
 
 class _ImportTransaction:
-    """Sichert State und importrelevante Dateien und rollt bei Fehlern zurück."""
+    """Sichert die Config und die importrelevanten Dateien und rollt bei Fehlern zurück.
 
-    _STATE_FIELDS = (
-        "points", "global_slots", "global_items", "item_scans",
-        "boss_scans", "icon_scans", "global_bosses",
-    )
+    Der State bleibt dabei ausser Betracht: ein Import schreibt Sequenzordner auf die
+    Platte und die Config; Punkte, Scans und Bestand im Speicher fasst er nicht an
+    (geladen wird danach von dort).
+    """
+
     # Was ausserhalb der Sequenzordner liegt und ein Import anfassen kann.
     # Hier standen einmal `points.json`, `slots/slots.json`, `items/items.json`
     # und `boss_scans/global/bosses.json` — alle vier gibt es nicht mehr, sie
@@ -567,9 +505,6 @@ class _ImportTransaction:
     def __init__(self, state):
         self.state = state
         with state.lock:
-            self.state_snapshot = {
-                field: copy.deepcopy(getattr(state, field)) for field in self._STATE_FIELDS
-            }
             self.config_snapshot = copy.deepcopy(state.config)
         self.temp = tempfile.TemporaryDirectory(prefix="autoclicker_import_")
         self.backup_root = Path(self.temp.name)
@@ -612,8 +547,6 @@ class _ImportTransaction:
         from .config import apply_config
 
         with self.state.lock:
-            for field, value in self.state_snapshot.items():
-                setattr(self.state, field, value)
             apply_config(self.state.config, self.config_snapshot)
 
         for target in self._managed_files():
@@ -636,36 +569,6 @@ class _ImportTransaction:
                 path.rmdir()
             except OSError:
                 pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Was in der Abschlussmeldung steht, in dieser Reihenfolge. Als Tabelle statt als
-# neun `if`-Blöcke: eine neue Datenart ist damit eine Zeile, und niemand vergisst
-# die Meldung — genau das war bei `global_bosses` schon einmal passiert (der
-# Schlüssel fehlte im `stats`-Vorbelegung und wurde nur per `.get()` gerettet).
-
-
 
 
 def _safe_bundle_path(name: str) -> Optional[PurePosixPath]:
@@ -720,7 +623,7 @@ def _import_sequence_bundle(state: 'AutoClickerState', zf: zipfile.ZipFile,
                             names: list[str], transform: dict,
                             import_sequences: bool, import_config: bool,
                             merge: bool) -> tuple[bool, str]:
-    """Importiert das neue, nach Sequenzordnern geordnete Bundle."""
+    """Importiert das nach Sequenzordnern geordnete Bundle."""
     imported_ones = []
     with tempfile.TemporaryDirectory(prefix="autoclicker_import_") as temp:
         temp_root = Path(temp)
@@ -830,8 +733,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             if MANIFEST_FILE not in names:
                 return False, "Keine gültige Export-Datei"
 
-            _validate_bundle(zf, names)
-            manifest = json.loads(zf.read(MANIFEST_FILE).decode("utf-8"))
+            manifest = _validate_bundle(zf, names)
             # **Es gibt genau einen Import-Weg.** Daneben stand bis hierher eine
             # zweite, vollstaendige Implementierung fuer Buendel aus der Zeit des
             # globalen Bestands (`points.json`, `slots.json`, `items.json`,
@@ -871,23 +773,10 @@ def _remap_sequence_data(seq_data: dict, transform: dict) -> None:
 
     Was eine Punkt-Referenz hat, wird hier NICHT angefasst - der Punkt ist schon
     umgerechnet, und ein zweites Mal hiesse doppelt verschoben. Uebrig bleibt, was
-    keinen Punkt haben kann: die Screenshot-Region.
+    keinen Punkt haben kann: die Screenshot-Region. Koordinaten an den Schritten
+    selbst kennt das Dateiformat nicht (sie stehen im Punkt).
     """
     for s in _iter_import_steps(seq_data):
-        if s.get("point_id") is None and (s.get("x") is not None or s.get("y") is not None):
-            s["x"], s["y"] = remap_point(s.get("x", 0), s.get("y", 0), transform)
-        if s.get("wait_point_id") is None and s.get("wait_pixel"):
-            wp = s["wait_pixel"]
-            s["wait_pixel"] = list(remap_point(wp[0], wp[1], transform))
-        if s.get("else_point_id") is None and (
-                s.get("else_x") is not None or s.get("else_y") is not None):
-            s["else_x"], s["else_y"] = remap_point(
-                s.get("else_x", 0), s.get("else_y", 0), transform)
         if s.get("screenshot_region"):
             sr = s["screenshot_region"]
             s["screenshot_region"] = list(remap_region(tuple(sr), transform))
-
-
-
-
-

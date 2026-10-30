@@ -362,8 +362,9 @@ class PalettePoint:
 def load_palette_points(sequence_file) -> list[PalettePoint]:
     """Lädt die Punkte aus der geöffneten ``sequence.json``.
 
-    Eigene schlanke Ladefunktion statt persistence.load_points, da letztere ein
-    AutoClickerState-Objekt braucht — der Subprocess hat keinen State.
+    Eigene schlanke Ladefunktion statt `load_sequence_file()`: gebraucht wird nur das
+    Feld `points`, und der Subprocess soll dafür weder Schritte noch Punkt-Auflösung
+    noch Konsolenmeldungen laden.
     """
     points_file = Path(sequence_file)
     if not points_file.exists():

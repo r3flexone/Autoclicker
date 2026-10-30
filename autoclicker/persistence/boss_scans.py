@@ -9,7 +9,6 @@ from typing import Optional
 
 from ..models import BossScanConfig, AutoClickerState, BOSS_ACTION_SKIP
 from ..utils import compact_json, atomic_write, save_tag, load_tag, err, warn, sanitize_filename
-from .migration import KIND_BOSS_SCAN, KIND_GLOBAL_BOSSES, migrate
 from .sequences import sequence_dir
 from .serialization import _boss_profile_to_dict, _boss_profile_from_dict, _boss_scan_to_dict
 from ._scan_store import write_scan, list_scan_files, LOAD_EXCEPTIONS
@@ -46,7 +45,6 @@ def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_BOSS_SCAN)
         if not isinstance(data, dict):
             raise TypeError("Boss-Scan muss ein JSON-Objekt sein")
 
@@ -97,7 +95,7 @@ def save_global_bosses(state: AutoClickerState, owner: str = "") -> bool:
 def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
     """Lädt die globale Boss-Bibliothek (fehlende Datei = leere Bibliothek)."""
     with state.lock:
-        owner = owner or (state.active_sequence.name if getattr(state, "active_sequence", None) else "")
+        owner = owner or (state.active_sequence.name if state.active_sequence else "")
         state.global_bosses = []
     if not owner:
         return
@@ -107,7 +105,6 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_GLOBAL_BOSSES)
         if not isinstance(data, list):
             raise TypeError("Boss-Bibliothek muss eine JSON-Liste sein")
         loaded = [_boss_profile_from_dict(b) for b in data]
@@ -115,12 +112,12 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
             state.global_bosses = loaded
             count = len(state.global_bosses)
         print(load_tag(f"{count} globale(r) Boss(e) geladen"))
-    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
+    except LOAD_EXCEPTIONS as e:
         print(warn(f"Boss-Bibliothek konnte nicht geladen werden: {e}"))
         logger.error(f"Konnte {filepath} nicht laden: {e}")
 
 
-def list_available_boss_scans(owner: str = "") -> list[tuple[str, Path]]:
+def list_available_boss_scans(owner: str) -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Boss-Scan Konfigurationen auf."""
     if not owner:
         return []

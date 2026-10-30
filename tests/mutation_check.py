@@ -55,7 +55,7 @@ CASES = {
     "import-rollback": (
         "autoclicker.import_export", "_ImportTransaction.rollback",
         "from .config import apply_config", "return\n    from .config import apply_config",
-        "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_state_and_files"),
+        "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_files"),
     "loader-scans": (
         "autoclicker.editors.sequence_editor.loader", "run_sequence_loader",
         "activate_sequence(state, seq)",

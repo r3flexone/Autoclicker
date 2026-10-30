@@ -22,7 +22,6 @@ from .persistence import (
     load_sequence_file, locate_step, find_sequence_path,
     get_next_point_id, get_point_by_id, print_points,
     activate_sequence,
-    ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
 from .runtime import sequence_worker, print_status
@@ -213,14 +212,13 @@ def handle_reset(state: AutoClickerState) -> None:
             state.boss_scans.clear()
             state.icon_scans.clear()
 
-        # Alle Ordner löschen
-        folders_to_delete = [SEQUENCES_DIR, ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR,
-                             BOSS_SCANS_DIR, ICON_SCANS_DIR]
-        for folder in folders_to_delete:
-            folder_path = Path(folder)
-            if folder_path.exists():
-                _rmtree_robust(folder_path)
-                print(f"  {col('-', 'red')} {folder}/ {col('gelöscht', 'red')}")
+        # Alle Sequenzen löschen — mit ihnen gehen Punkte, Scans, Vorlagen und gemerkte
+        # Bilder, denn die liegen in den Sequenzordnern. Eigene Ordner im Wurzelverzeichnis
+        # (items/, slots/, item_scans/ …) gibt es seit den Besitzeinheiten nicht mehr.
+        folder_path = Path(SEQUENCES_DIR)
+        if folder_path.exists():
+            _rmtree_robust(folder_path)
+            print(f"  {col('-', 'red')} {SEQUENCES_DIR}/ {col('gelöscht', 'red')}")
 
         # Config löschen
         config_path = Path(CONFIG_FILE)

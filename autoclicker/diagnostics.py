@@ -8,7 +8,7 @@ Boss-Scan. Hier laufen sie an einer Stelle und auf Zuruf.
 
 Zwei Aufrufer:
 - `main.py` beim Start — nur die billigen Prüfungen (kein Datei-Scan), und **still, wenn
-  nichts zu melden ist**. Dieselbe Regel wie beim Migrations-Durchgang: der Normalfall
+  nichts zu melden ist**. Dieselbe Regel wie beim Start-Durchgang (`persistence/sweep.py`): der Normalfall
   kostet kein Wort.
 - Punkte-Menü (`CTRL+ALT+P` → `check`) — alles, inklusive der Sequenzdateien.
 
@@ -62,11 +62,11 @@ class CheckReport:
 
     @property
     def errors(self) -> list[Finding]:
-        return [b for b in self.findings if b.level == LEVEL_ERROR]
+        return [f for f in self.findings if f.level == LEVEL_ERROR]
 
     @property
     def hints(self) -> list[Finding]:
-        return [b for b in self.findings if b.level == LEVEL_HINT]
+        return [f for f in self.findings if f.level == LEVEL_HINT]
 
     def __bool__(self) -> bool:
         """True = es gibt etwas zu melden."""
@@ -149,7 +149,7 @@ def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
     report.checked.append(f"{len(candidates) + len(items)} Erkennungs-Profile")
 
 
-def _check_scan_references(state: AutoClickerState, report: CheckReport) -> None:
+def _check_scans(state: AutoClickerState, report: CheckReport) -> None:
     """Ein eigenständiger Scan braucht mindestens Slots und Erkennung."""
     with state.lock:
         scans = list(state.item_scans.values())
@@ -278,6 +278,7 @@ def _dead_references(seq) -> tuple[list, list]:
     """
     from .persistence import (list_available_item_scans, list_available_boss_scans,
                               list_available_icon_scans)
+    from .persistence.sequences import named_phases
     point_ids = {p.id for p in seq.points}
     boss_scans = {n for n, _ in list_available_boss_scans(seq.name)}
     known = {
@@ -286,12 +287,8 @@ def _dead_references(seq) -> tuple[list, list]:
         "boss_watcher": boss_scans,
         "icon_scan": {n for n, _ in list_available_icon_scans(seq.name)},
     }
-    phases = [("INIT", seq.init_steps)]
-    phases += [(lp.name, lp.steps) for lp in seq.loop_phases]
-    phases.append(("END", seq.end_steps))
-
     dead_refs, dead_scans = [], []
-    for lane, (phase, steps) in enumerate(phases):
+    for lane, (phase, steps) in enumerate(named_phases(seq)):
         for i, step in enumerate(steps, 1):
             target = _block_target(lane, i - 1, seq.name)
             if step.point_id is not None and step.point_id not in point_ids:
@@ -322,7 +319,7 @@ def check_setup(state: AutoClickerState, with_sequences: bool = True) -> CheckRe
     report = CheckReport()
     _check_templates(state, report)
     _check_detection(state, report)
-    _check_scan_references(state, report)
+    _check_scans(state, report)
     _check_llm_ocr(state, report)
     _check_coordinates(state, report)
     if with_sequences:
@@ -330,13 +327,12 @@ def check_setup(state: AutoClickerState, with_sequences: bool = True) -> CheckRe
     return report
 
 
-def print_report(report: CheckReport, quiet_when_clean: bool = False) -> None:
-    """Gibt den Bericht aus. `quiet_when_clean` unterdrückt die Erfolgsmeldung."""
+def print_report(report: CheckReport) -> None:
+    """Gibt den Bericht aus — auch die Erfolgsmeldung, wenn nichts zu beanstanden ist."""
     if not report:
-        if not quiet_when_clean:
-            print(f"\n{ok('Setup-Prüfung: nichts zu beanstanden.')}")
-            if report.checked:
-                print(f"       {hint('Geprüft: ' + ', '.join(report.checked))}")
+        print(f"\n{ok('Setup-Prüfung: nichts zu beanstanden.')}")
+        if report.checked:
+            print(f"       {hint('Geprüft: ' + ', '.join(report.checked))}")
         return
 
     print(f"\n{col('=' * 60, 'cyan')}")
@@ -351,10 +347,10 @@ def print_report(report: CheckReport, quiet_when_clean: bool = False) -> None:
         if not listing:
             continue
         print(f"\n{style(heading)}")
-        for b in listing:
-            print(f"  {col(b.area, 'cyan')}: {b.text}")
-            if b.tip:
-                print(f"    {hint('→ ' + b.tip)}")
+        for f in listing:
+            print(f"  {col(f.area, 'cyan')}: {f.text}")
+            if f.tip:
+                print(f"    {hint('→ ' + f.tip)}")
 
     if report.checked:
         print(f"\n{info('Geprüft: ' + ', '.join(report.checked))}")

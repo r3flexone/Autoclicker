@@ -28,7 +28,7 @@ _k = Catalog({
     "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
     "Bronze Helmet": {"kategorie": "Helm", "wert": 32},
     "Godlike Pickaxe": {"kategorie": "Pickaxe", "wert": 500000},
-}, ["Black Dragon", "Banshee"])
+})
 
 check("kennt seine Items", len(_k) == 4 and bool(_k))
 check("leerer Katalog ist falsy", not Catalog() and not EMPTY)
@@ -41,7 +41,6 @@ check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet
 check("unbekannter Name -> None", _k.category("Gibtsnicht") is None)
 check("unbekannter Name hat keinen Wert", _k.value("Gibtsnicht") is None)
 check("Wert kommt als Zahl", _k.value("Godlike Pickaxe") == 500000.0)
-check("Gegner stehen bereit", _k.enemy == ["Black Dragon", "Banshee"])
 check("names() ist die geschlossene Liste", "Godlike Pickaxe" in _k.names() and len(_k.names()) == 4)
 
 # Der Rang gilt INNERHALB des Scans und dicht. Ein globaler Rang aus dem Katalog
@@ -94,7 +93,11 @@ check("gute Eintraege kommen an", _gl.category("Citadel Helmet") == "Helm")
 check("kaputter Eintrag fliegt einzeln raus", _gl.match("Kaputt") is None)
 check("fehlender Wert wird 0", _gl.value("Ohne Wert") == 0.0)
 check("unbrauchbarer Wert wird 0", _gl.value("Wert ist Text") == 0.0)
-check("leerer Gegnername faellt weg", _gl.enemy == ["Black Dragon"])
+# Die Gegnernamen in der Datei liest der Katalog nicht: gebraucht werden sie nur vom Studio,
+# das sie fuer seine Anzeige zaehlt (`bridge_services`). Hier stand `Catalog.enemy` — mit
+# einem einzigen Leser, dem Test dafuer.
+check("der Katalog traegt keine Gegnerliste (ein Leser nur im Studio)",
+      not hasattr(_gl, "enemy") and not hasattr(Catalog(), "enemy"))
 check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
       load_catalog(str(_good)) is _gl)
 

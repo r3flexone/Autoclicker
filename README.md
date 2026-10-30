@@ -1359,7 +1359,7 @@ Autoclicker-Idleclans/
 │   │   ├── icon_scans.py   # IconScanConfig-Persistenz
 │   │   ├── globals.py      # Global-Slots, Global-Items, Kategorien
 │   │   ├── presets.py      # Slot- und Item-Presets
-│   │   ├── migration.py    # Schema-Migrationen
+│   │   ├── schema.py       # Schema-Version: Stempel, Erkennung einer neueren Fassung
 │   │   └── sweep.py        # Bestandsprüfung und Sicherungen
 │   ├── runtime/            # Sequenz-Ausführung (Worker-Thread)
 │   │   ├── actions.py      # safe_click/safe_key, Humanize, Fokus-Check, Else-Aktion
@@ -1581,9 +1581,10 @@ nicht überlebt, fällt erst im Browser auf.
 
 ### Migrations-Tool (`tools/migrate.py`)
 
-Hebt alle JSON-Dateien aufs aktuelle Format. **Normalerweise brauchst du das nicht** —
-der Autoclicker macht denselben Durchgang bei jedem Start (Einstellung
-`migrate_on_start`, Standard an) und meldet sich nur, wenn es etwas zu tun gab.
+Räumt alle JSON-Dateien auf: der Trockenlauf des Start-Durchgangs. **Normalerweise
+brauchst du das nicht** — der Autoclicker macht denselben Durchgang bei jedem Start
+(Einstellung `migrate_on_start`, Standard an) und meldet sich nur, wenn es etwas zu tun
+gab.
 
 ```bash
 python tools/migrate.py            # zeigt nur an, was passieren würde
@@ -1596,13 +1597,16 @@ python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
 - Erfasst alle Dateien, und zwar über die **Besitzeinheiten**: `config.json`,
   dann je Sequenzordner die `sequence.json` (mit ihren Punkten), ihre item-,
   boss- und icon-Scans und ihre Boss-Bibliothek, zuletzt beide Preset-Ordner
+- Eine Datei aus einer **neueren** Fassung des Programms (höheres `schema_version`)
+  lässt er, wie sie ist, und meldet sie
 
-> **Sequenzen werden nicht mehr umgerechnet.** Die Schritte, die alte Sequenz-Formate
+> **Sequenzen werden nicht umgerechnet.** Die Schritte, die alte Sequenz-Formate
 > aufs heutige Schema hoben (`steps`/`loop_steps` → `loop_phases`, `delay_after`,
 > Koordinaten → Punktliste in `sequence.json`), sind gelöscht — es gibt keine Dateien mehr, die sie
-> bräuchten. Eine sehr alte Sicherung wird deshalb zwar gelesen und gestempelt, kommt
-> aber **leer** an. In dem Fall die Sequenz im Studio neu bauen; das geht inzwischen
-> schneller, als es das Zurückholen der Migrationsschritte täte.
+> bräuchten. Ein Schritt trägt auch keine eigene Koordinate mehr: der Loader liest nur
+> noch `point_id` und die Punkte in `sequence.json`. Eine sehr alte Sicherung wird deshalb
+> zwar gelesen, kommt aber **leer** an. In dem Fall die Sequenz im Studio neu bauen; das
+> geht inzwischen schneller, als es das Zurückholen der Migrationsschritte täte.
 
 Ein zweiter Lauf muss „0 angepasst" melden — daran erkennst du, dass alles sauber ist.
 

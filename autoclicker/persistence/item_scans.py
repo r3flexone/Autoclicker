@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ClickPoint, ItemScanConfig, AutoClickerState
-from .migration import KIND_ITEM_SCAN, migrate
 from .sequences import sequence_dir
 from .serialization import _item_scan_from_dict, _item_scan_to_dict
 from ._scan_store import write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
@@ -41,8 +40,6 @@ def load_item_scan_file(filepath: Path, owner: str = "") -> Optional[ItemScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_ITEM_SCAN)
-
         config = _item_scan_from_dict(data)
         config.owner_sequence = owner or filepath.parent.parent.name
         return config
@@ -52,7 +49,7 @@ def load_item_scan_file(filepath: Path, owner: str = "") -> Optional[ItemScanCon
         return None
 
 
-def list_available_item_scans(owner: str = "") -> list[tuple[str, Path]]:
+def list_available_item_scans(owner: str) -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Item-Scan Konfigurationen auf."""
     if not owner:
         return []
@@ -120,7 +117,7 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             bosses += list(cfg.bosses)
         icons = list(state.icon_scans.values())
 
-    def fetch_value(pid, where):
+    def lookup_point(pid, where):
         point = points.get(pid)
         if point is None:
             messages.append(f"{where} zeigt auf Punkt #{pid}, den es nicht mehr gibt "
@@ -132,15 +129,15 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
             if item.confirm_point_id is None:
                 item.confirm_point = None
                 continue
-            point = fetch_value(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
+            point = lookup_point(item.confirm_point_id, f"Item '{item.name}' (Bestaetigung)")
             item.confirm_point = ClickPoint(point.x, point.y, point.name,
                                             point.id) if point else None
 
-        for carrier, wo in ([(b, f"Boss '{b.name}'") for b in bosses]
+        for carrier, where in ([(b, f"Boss '{b.name}'") for b in bosses]
                             + [(i, f"Icon-Scan '{i.name}'") for i in icons]):
             if carrier.action_point_id is None:
                 continue
-            point = fetch_value(carrier.action_point_id, wo)
+            point = lookup_point(carrier.action_point_id, where)
             if point is not None:
                 carrier.action_x, carrier.action_y = point.x, point.y
             else:

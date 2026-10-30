@@ -240,17 +240,22 @@ try:
     check("und kein Sequenz-Schritt daneben", not any("Seq " in w for w in _was))
     check("es sind genau so viele wie Punkte", len(_was) == 3)
 
-    # Gegenprobe: ein Schritt OHNE Punkt hat seine eigene Stelle und gehoert sehr
-    # wohl in die Liste - sonst raeumte der Fix zu viel weg.
+    # Dasselbe gilt fuer alles andere, was an einem Punkt haengt: der Else-Klick, der
+    # Bestaetigungsklick, Boss und Icon. Sie standen frueher mit ihren abgeleiteten
+    # Koordinaten neben dem Punkt - und ein Schritt ohne Punkt hat keine Stelle, die
+    # man listen koennte (die Datei kennt keine Koordinate am Schritt).
     from autoclicker.import_export import collect_click_positions
+    from autoclicker.models import BossProfile as _BP, ElseConfig as _EC
     _st = _ST()
-    _st.active_sequence = _SEQ(name="S", points=[_CP(id=1, x=10, y=10, name="A")],
-                               loop_phases=[_LP(name="L", steps=[
-        _SS(x=70, y=80, point_id=None), _SS(x=10, y=10, point_id=1)])])
+    _st.points = [_CP(id=1, x=10, y=10, name="A")]
+    _st.active_sequence = _SEQ(name="S", points=_st.points, loop_phases=[_LP(name="L", steps=[
+        _SS(x=70, y=80, point_id=None),
+        _SS(x=10, y=10, point_id=1, else_config=_EC("click", point_id=1, x=10, y=10))])])
+    _st.global_bosses = [_BP(name="Drache", action="click", action_point_id=1,
+                              action_x=10, action_y=10)]
     _labels = [lb for lb, _, _ in collect_click_positions(_st)]
-    check("ein Schritt ohne point_id bleibt sichtbar",
-          any("Seq 'S'" in lb for lb in _labels))
-    check("und der mit point_id nicht", sum("Seq 'S'" in lb for lb in _labels) == 1)
+    check("es steht genau der Punkt da - nichts, was an ihm haengt",
+          _labels == ["Punkt #1 A"])
 finally:
     _os.chdir(_cwd)
 

@@ -61,7 +61,7 @@ def send_command(command: str, **arguments) -> bool:
         return False
 
 
-def fetch_command(max_age: float = MAX_AGE) -> Optional[dict]:
+def fetch_command() -> Optional[dict]:
     """Nimmt den nächsten Befehl aus dem Briefkasten — oder None.
 
     Leert ihn dabei **immer**, auch bei einem zu alten oder unlesbaren Eintrag:
@@ -94,7 +94,7 @@ def fetch_command(max_age: float = MAX_AGE) -> Optional[dict]:
         age = time.time() - float(data.get("sent_at") or 0)
     except (TypeError, ValueError):
         return None
-    if age > max_age:
+    if age > MAX_AGE:
         return None
     arguments = data.get("arguments")
     data["arguments"] = arguments if isinstance(arguments, dict) else {}

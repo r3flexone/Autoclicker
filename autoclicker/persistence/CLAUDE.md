@@ -32,6 +32,19 @@ drei Stellen eines Schritts: den Klick, den Prüf-Pixel und den Else-Klick. `ste
 sind **abgeleitete Arbeitswerte** — im Speicher gefüllt, in der Datei nicht vorhanden.
 Dasselbe Muster wie `ItemScanConfig.slots`, nur konsequenter.
 
+**Auch der Loader liest keine Koordinate am Schritt.** Ein `x`/`y`, `wait_pixel`/
+`wait_color`, `verify_pixel`/`verify_color`, `else_x`/`else_y`/`else_name` oder
+`recorded_color` in einer Datei ist ein unbekannter Schlüssel: eine Bedingung ohne
+`wait_point_id`/`verify_point_id` gibt es nicht (der Loader liefert `None`), ein
+Else-Klick ohne `else_point_id` bringt keine Stelle mit. Bis zum 30.10.2026 las er sie
+noch als Ersatz für einen Punkt, der Serializer schrieb sie für Schritte ohne Punkt, die
+Kalibrierung rechnete sie um (`_unlinked_sequence_clicks`, die `point_id is None`-Zweige
+in `_remap_sequence_obj` und `_remap_sequence_data`) und `link` im Sequenz-Editor knüpfte
+sie nachträglich an einen Punkt. Der Bestand des Nutzers — drei Sequenzen, 161 Schritte,
+alle Schema 4 — trug keine einzige: Wege, die niemand mehr geht, machen nur noch die
+Regel oben unwahr. Dass ein Schritt ohne Punkt seinen `name` behält, ist keine Ausnahme:
+bei Taste, Scans und Screenshot ist er die Beschriftung des Blocks.
+
 Dieselbe Regel gilt ausserhalb der Sequenzen: `ItemProfile.confirm_point`,
 `BossProfile.action_x/y` und `IconScanConfig.action_x/y` sind ebenfalls abgeleitet.
 `resolve_click_references()` (in `persistence/item_scans.py`) füllt sie und läuft in
@@ -39,18 +52,25 @@ Dieselbe Regel gilt ausserhalb der Sequenzen: `ItemProfile.confirm_point`,
 Icon-Scans an seiner Stelle noch gar nicht, deren Klicks stünden sonst bis zum ersten
 Sequenzlauf auf (0, 0).
 
-Für diese drei gibt es **bewusst keine Migration**: die alten Koordinaten liessen sich
-zwar in Punkte heben, aber der Weg dorthin — die Punkte-Liste durch jeden Item-, Boss-
-und Icon-Loader reichen — kostet mehr, als das Feld einmal neu zu setzen. Der Loader
-meldet ein Altfeld stattdessen einmal pro Fundstelle (`_legacy_reported` in
-`serialization.py`) und nennt den Editor, in dem es neu gesetzt wird. Still verschwinden
-darf es nicht.
+Für diese drei gibt es **bewusst keine Migration** — und keine Meldung mehr. Die alten
+Koordinaten liessen sich zwar in Punkte heben, aber der Weg dorthin — die Punkte-Liste
+durch jeden Item-, Boss- und Icon-Loader reichen — kostet mehr, als das Feld einmal neu
+zu setzen. Ein altes `confirm_point` oder `action_x/y` ist deshalb ein unbekannter
+Schlüssel wie jeder andere: der Loader liest es nicht, der Start-Durchgang schreibt es
+nicht zurück. Hier stand `_legacy_reported`, das es einmal pro Fundstelle meldete — beim
+Laden. Der Start-Durchgang schaltet die Loader aber stumm und schreibt die Datei danach
+ohne das Feld: die Meldung kam nie an, und das Feld war trotzdem weg. Eine Meldung, die
+niemand sieht, rechtfertigt den Umweg nicht, und der Bestand des Nutzers trug keines
+dieser Felder mehr.
 
 Warum so streng: eine Koordinate an zwei Stellen ist eine Koordinate, die an einer der
 beiden falsch sein kann. Wer die Sequenzdatei liest, sah dann etwas anderes als das, was
 die App klickt — und bei einer Kalibrierung musste jede Kopie einzeln erwischt werden.
-`calibrate_inventory()` rechnet Sequenz-Klickstellen deshalb **nicht mehr** um: die Punkte
-sind schon umgerechnet, ein zweiter Durchgang hiesse doppelt verschoben.
+`calibrate_inventory()` rechnet deshalb weder Sequenz-Klickstellen noch den
+Bestätigungsklick der Items oder die Klicks von Bossen und Icons um: die Punkte sind schon
+umgerechnet, ein zweiter Durchgang hiesse doppelt verschoben — und die abgeleiteten Werte
+holt `resolve()` bzw. `resolve_click_references()` ohnehin von dort. Umgerechnet wird, was
+keinen Punkt haben kann: Slots, Scan-Regionen, Fenster-Anker, Screenshot-Regionen.
 
 **Vier Stellen pro Schritt, zwei Klassen.** `point_id` (Klick) und
 `wait_condition.point_id` (Vorbedingung) *sind* der Schritt — fehlt ihr Punkt, darf er
@@ -254,41 +274,52 @@ im Baum; ausgenommen sind Schritte ohne echte Position (Taste, Scan, Wait, Scree
 der Blanko-Block `(0, 0)` des Sequenz-Studios, der noch gar keine Stelle hat.
 
 Darauf zu vertrauen, dass eine Migration das nachträglich verknüpft, reicht **nicht** —
-und heute gibt es sie gar nicht mehr: die Sequenz-Kette ist leer (s.u.). Wer einen
-Klick-Schritt baut, baut ihn mit `point_id`, sonst hat er keine Stelle. Genau daran hing
+und heute gibt es sie gar nicht mehr: die Kette ist samt Schleuse gelöscht (s.u.), und
+auch der Konsolenbefehl `link`, der Schritte ohne Punkt nachträglich verknüpfte, ist
+weg. Wer einen Klick-Schritt baut, baut ihn mit `point_id`, sonst hat er keine Stelle. Genau daran hing
 einmal der Recorder: er legte Schritte und Punkte unabhängig voneinander an, und jede
 aufgenommene Sequenz blieb dauerhaft unverknüpft.
 
-**Die Kette hat ihre Arbeit getan und ist gelöscht.** Vier Schritte hoben den Altbestand
-auf Schema 4 — zuletzt `_seq_v3_to_v4`, das jede Koordinate aus der Sequenz nach
-`points.json` zog und dafür notfalls einen Punkt anlegte. Seither gilt die Regel
-ausnahmslos, es gibt keinen Bestand mehr unterhalb von Schema 4, und damit sind die
-Schritte weg. Mit ihnen entfielen `_sichere_neue_punkte()` (sequences.py),
+**Die Kette hat ihre Arbeit getan und ist gelöscht — und die Schleuse mit ihr.** Vier
+Schritte hoben den Altbestand auf Schema 4 — zuletzt `_seq_v3_to_v4`, das jede Koordinate
+aus der Sequenz nach `points.json` zog und dafür notfalls einen Punkt anlegte. Seither
+gilt die Regel ausnahmslos, es gibt keinen Bestand mehr unterhalb von Schema 4, und damit
+sind die Schritte weg. Mit ihnen entfielen `_sichere_neue_punkte()` (sequences.py),
 `_punkte_schreibfertig()` (sweep.py) und `_als_dicts()`: sie schrieben die von der
 Migration angelegten Punkte zurück, und dieses Ereignis tritt nicht mehr ein.
 
-Was das für eine sehr alte Datei heisst, steht ausdrücklich im Modul-Kopf von
-`migration.py` und in einem Test: sie wird **auf 4 gestempelt, aber nicht umgerechnet**.
-Der Loader wirft deshalb nicht — er liest mit `data.get(key, default)` —, die Sequenz
-kommt aber leer an. Der Weg dorthin ist dann nicht die Wiederbelebung der Schritte,
-sondern `git show <commit>:autoclicker/persistence/migration.py` oder die Sequenz im
-Studio neu zu bauen.
+Die leere Hülle blieb danach noch eine Weile stehen: `_CHAINS` mit einem leeren Eintrag,
+`MigrationStep`, `migrate()` in jedem Loader und im Start-Durchgang, `needs_migration`,
+`ALL_KINDS` und eine `KIND_*`-Konstante je Dateityp — „damit die Schleuse sitzt, wenn die
+nächste Umstellung kommt". Sie ist am 30.10.2026 ersatzlos gegangen: die nächste
+Umstellung bekommt ausdrücklich **keinen** Schritt (s. u.), und eine Schleuse, durch die
+nichts mehr geht, ist ein Platzhalter, den jeder Loader mitschleppte. Das Modul hiess
+danach nach etwas, das es nicht mehr tat — es heisst jetzt `schema.py` und trägt, was kein
+Loader ersetzen kann: `SCHEMA_VERSION`, `stamp()` und die Erkennung einer **neueren**
+Fassung (`from_newer_version()`, s. u.).
 
-Das ist der vorgesehene Lebenslauf: **neue Daten entstehen korrekt, Altlasten gehen
-einmal durch die Schleuse — und dann verschwindet die Schleuse.** `link` im
-Sequenz-Editor bleibt für Sonderfälle, nicht als Teil des normalen Wegs.
+Was das für eine sehr alte Datei heisst, steht im Modul-Kopf von `schema.py` und in einem
+Test: sie wird **gelesen, nicht umgerechnet**. Der Loader wirft deshalb nicht — er liest mit
+`data.get(key, default)` —, die Sequenz kommt aber leer an. Der Weg dorthin ist dann nicht
+die Wiederbelebung der Schritte, sondern `git show <commit>:autoclicker/persistence/migration.py`
+oder die Sequenz im Studio neu zu bauen.
+
+Das ist der vorgesehene Lebenslauf: **neue Daten entstehen korrekt, Altlasten gehen einmal
+durch den Start-Durchgang — und dann gibt es nichts mehr, wofür man eine Schleuse bräuchte.**
 
 ## Persistenz-Layout (der Baum steht in der Wurzel-`CLAUDE.md`)
 
 **Es gibt keinen globalen Bestand mehr.** `sequences/points.json`,
 `slots/slots.json`, `items/items.json` und die Scan-Ordner im Wurzelverzeichnis
-sind ersatzlos entfallen. In `paths.py` stehen davon nur noch die **Ordner**
-(`SLOTS_DIR`, `ITEMS_DIR`) — für genau einen Zweck: der Factory-Reset soll einen
-solchen Altbestand wegräumen können, falls er auf einer Platte herumliegt. Die
-Dateikonstanten selbst (`SLOTS_FILE`, `ITEMS_FILE`, eine für die Punkte) gibt es
-nicht mehr. Wer zwei
-Spiele betreibt, hat damit nicht mehr die Slots beider in einer Liste — das war
-der Grund für den Umzug.
+sind ersatzlos entfallen — auch ihre Pfade: `paths.py` kennt weder die Dateien noch
+die Ordner (`SLOTS_DIR`, `ITEMS_DIR`, `ITEM_SCANS_DIR`, `BOSS_SCANS_DIR`, `ICON_SCANS_DIR`).
+Die Ordner hielt es noch für genau einen Zweck, den Factory-Reset, der einen
+solchen Altbestand wegräumen sollte, falls er auf einer Platte herumliegt; der Nutzer hat
+entschieden, dass er das nicht mehr muss (sein Bestand liegt ohnehin in `sequences/`),
+und mit den Konstanten gingen ihre Einträge in `handlers.handle_reset` und die
+Altlayout-Muster in der `.gitignore`. Der Reset löscht `sequences/` — und damit alles,
+was einer Sequenz gehört — und die Config. Wer zwei Spiele betreibt, hat nicht mehr die
+Slots beider in einer Liste — das war der Grund für den Umzug.
 
 Daraus folgt, was ein Loader braucht: **eine Scan-Datei kennt ihre Besitzerin**
 (`owner_sequence`, aus dem Ordnernamen abgeleitet), und ohne Besitzerin lässt sich
@@ -329,7 +360,7 @@ Zwei Tests messen beide Richtungen bis auf die **Platte** — einer, der nur die
 Liste im Speicher prüft, sieht die Wirkung nicht, denn geschrieben wird erst
 beim Speichern.
 
-**`.run.json` ist kein Bestand** und steht deshalb nicht in der Migration: es
+**`.run.json` ist kein Bestand** und steht deshalb nicht im Start-Durchgang: es
 beschreibt den Zustand JETZT und wird überschrieben statt angehängt
 (`runtime/status.py`). Am Sequenz-Ende bleibt genau **ein** Eintrag stehen — die
 Zusammenfassung des letzten Laufs —, bis der nächste Start sie überschreibt. Dass es **oben** liegt und nicht in
@@ -361,25 +392,29 @@ Was das **nicht** heisst:
   (Round-Trip durch Loader + Serializer, `.bak` vor der ersten Änderung). Genau
   darüber verschwindet ein gelöschtes Config-Feld von selbst aus der
   `config.json`, ohne dass jemand etwas anfassen muss.
-- **Nicht: `_CHAINS` wird jetzt egal.** Die vorhandenen Schritte laufen weiter,
-  bis der Altbestand durch ist, und werden dann ersatzlos gelöscht. Das Modul
-  soll schrumpfen — es soll nur eben auch nicht mehr wachsen.
+- **Nicht: eine Datei aus einer neueren Fassung darf überschrieben werden.** Sie
+  wird gelesen, aber der Start-Durchgang lässt sie, wie sie ist (s. u.).
 
-Die bisherige Regel „Bestandsdateien werden über die Migration gehoben, nicht
-fallengelassen" gilt damit **nur noch für das, was schon eine Migration hat**.
-Für alles Neue ist die Antwort: Default in der Dataclass, fertig.
+Die frühere Regel „Bestandsdateien werden über die Migration gehoben, nicht
+fallengelassen" gibt es nicht mehr: es gibt keine Migration. Die Antwort ist immer:
+Default in der Dataclass, fertig.
 
-**Vorhandene Migrationen laufen vor dem Loader.** Neue Umstellungen bekommen
-keinen zusätzlichen Migrationsschritt. Loader lesen das aktuelle Format, verwenden
-Defaults für fehlende Felder und melden falsche JSON-Strukturen als Ladefehler
-(`TypeError` in den `_*_from_dict`-Lesern, gefangen von `LOAD_EXCEPTIONS`).
+**Loader lesen das aktuelle Format**, verwenden Defaults für fehlende Felder und melden
+falsche JSON-Strukturen als Ladefehler (`TypeError` in den `_*_from_dict`-Lesern, gefangen
+von `LOAD_EXCEPTIONS`). Versioniert ist nur, was ein Dict als obersten Knoten hat und
+einen Stempel braucht — heute `sequences/<name>/sequence.json`. Die trägt
+`schema_version`, Saver stempeln mit `stamp()`. Alle anderen Typen (Presets, Scans, die
+Boss-Bibliothek) tragen kein Versionsfeld.
 
-Versioniert (`_CHAINS`) ist nur, was ein Dict als obersten Knoten hat und
-eine Kette besitzt — heute `sequences/<name>/sequence.json`. Die trägt
-`schema_version`, die Kette hebt Schritt für Schritt (Eintrag i: Version i →
-i+1), Saver stempeln mit `stamp()`. Alle anderen Typen (Presets, Scans, die
-Boss-Bibliothek) tragen kein Versionsfeld; `migrate()` gibt sie unverändert
-zurück.
+**Eine Datei aus einer neueren Fassung bleibt, wie sie ist.** `schema.from_newer_version()`
+erkennt ein Schema über `SCHEMA_VERSION` — etwa weil jemand zwischen zwei Ständen des
+Programms hin- und herwechselt. Der Round-Trip des Start-Durchgangs liesse alles fallen,
+was nur die neuere Fassung kennt, und stempelte das alte Schema darüber: aus der Datei
+würde still eine Datei des alten Programms. Deshalb schreibt `sweep()` sie nicht zurück
+(`SweepResult.newer`, gemeldet als „stammt aus einer neueren Fassung … bleibt
+unverändert"), und `load_sequence_file()` sagt beim Laden ehrlich, dass beim **Speichern**
+Felder verloren gehen. Hier stand beides falsch: der Loader meldete „auf Schema 4
+gehoben", obwohl nichts gehoben wurde, und der Durchgang schrieb die Datei um.
 
 **Die Normalisierer sind Geschichte.** Es gab einen zweiten Weg (`_NORMALIZER`,
 idempotente Funktionen für Dateien ohne Versionsfeld); `_norm_points` hob
@@ -392,44 +427,38 @@ genommen: der Start-Durchgang schreibt `config.json` seit langem im aktuellen
 Format, die Tabelle war nach dem ersten Start wirkungslos. Ein alter Schlüssel ist
 heute ein unbekannter — er fällt weg, das Feld bekommt seinen Default.
 
-Loader lesen nur das aktuelle Format, und sobald keine Altbestände mehr existieren,
-wird ein Schritt **ersatzlos gelöscht** — samt dem Alt-Code, den er ersetzt hat. Das
-Modul soll schrumpfen, nicht wachsen. `SCHEMA_VERSION` dabei nie zurückdrehen.
-
 Regeln beim Format-Ändern:
 1. Dataclass, Loader und Serializer gemeinsam anpassen; fehlende Felder bekommen Defaults.
 2. Entfallene Felder im Serializer entfernen; der Start-Durchgang bereinigt die Dateien.
-3. Keine neuen Ketten oder Normalisierer ergänzen; bestehende nach erledigter Migration entfernen.
+3. Keine Ketten, Normalisierer oder Schleusen ergänzen — es gibt keine.
 4. Saver stempeln weiterhin mit `stamp()`; `SCHEMA_VERSION` nicht zurückdrehen.
 
-**Ein Migrationsschritt läuft genau so lange, wie es etwas zu heben gibt.** `migrate()`
-ruft zwar jeder Loader auf (ein Test erzwingt das), aber die Schleife
-`while version < SCHEMA_VERSION` ist bei einer aktuellen Datei leer: kein Schritt, keine
-Änderung, kein Schreibzugriff. Gemessen an einer Sequenz auf Schema 2:
+**Der Durchgang schreibt eine Datei genau so lange um, wie es etwas aufzuräumen gibt.**
+Eine aktuelle Datei ist ihr eigener Round-Trip: kein Schreibzugriff, kein `.bak`. Gemessen
+an einer Sequenz ohne Stempel:
 
-| | Kette läuft |
+| | Datei wird geschrieben |
 |---|---|
-| 1. Start | ja — Datei wird gehoben und zurückgeschrieben |
+| 1. Start | ja — gestempelt und zurückgeschrieben |
 | 2./3. Start | **nein** |
 | 20× Sequenz laden | **nein** |
 
-Ein Test pinnt das fest (`weitere Starts rufen keinen Migrationsschritt mehr auf`).
+Ein Test pinnt das fest (`weitere Starts schreiben nichts mehr`).
 
 **Der Durchgang läuft beim Programmstart**, nicht beim Speichern: `persistence/sweep.py`,
 aufgerufen in `main.py` nach `init_directories()` und vor dem Laden (abschaltbar über
-`migrate_on_start`). Speichern schreibt sowieso aktuelles Format — das Problem sind
-Dateien, die man *nicht* anfasst. Nach dem ersten Start mit einer neuen Version sind alle
-Dateien aktuell, und der Migrationsschritt darf gelöscht werden. Genau so schrumpft das
-Modul.
+`migrate_on_start` — der Schlüssel in der `config.json` heisst so, die Beschriftung im
+Studio „Beim Start aufräumen"). Speichern schreibt sowieso aktuelles Format — das Problem
+sind Dateien, die man *nicht* anfasst. Nach dem ersten Start mit einer neuen Version sind
+alle Dateien aktuell.
 
 `sweep.py` erfasst **alle** JSON-Dateien und geht dafür über die **Besitzeinheiten**,
 nicht über Dateitypen: `config.json`, dann je Sequenzordner die `sequence.json`
 (mit ihren Punkten), ihre item-/boss-/icon-Scans und ihre Boss-Bibliothek, zuletzt
-die beiden Preset-Ordner. Pro Datei zwei Dinge: Migration/Normalisierung **und**
-einen Round-Trip durch Loader + Serializer. Der Round-Trip ist die eigentliche
-Reinigung — was der Loader nicht kennt, schreibt der Serializer nicht zurück.
-Deshalb werden auch Dateitypen ohne jeden Migrationsschritt sauber.
-`tools/migrate.py` ist nur noch die CLI über derselben Funktion.
+die beiden Preset-Ordner. Pro Datei ein Round-Trip durch Loader + Serializer. Der
+Round-Trip ist die ganze Reinigung — was der Loader nicht kennt, schreibt der Serializer
+nicht zurück. `tools/migrate.py` ist nur die CLI über derselben Funktion (der
+Trockenlauf des Start-Durchgangs; der Name stammt aus der Zeit der Migrationsschritte).
 
 **Hier stand einmal die flache Struktur, und der Durchgang war dadurch still tot.**
 Aufgezählt waren `sequences/*.json`, `points.json` und die Scan-Ordner im
@@ -448,8 +477,8 @@ häufigsten dazukommt, denn ein Lauf legt dort entdeckte Bosse ab.
 
 Zwei Regeln für den Start-Durchgang: **still, wenn nichts zu tun ist** (Normalfall — kein
 Wort), und **nie Daten verlieren** (`.bak` vor der ersten Änderung, nicht ladbare Dateien
-bleiben unangetastet). Zweiter Start muss „0 geändert" ergeben; tut er das nicht, ist ein
-Schritt nicht idempotent.
+bleiben unangetastet; eine Datei aus einer neueren Fassung ebenfalls). Zweiter Start
+muss „0 geändert" ergeben; tut er das nicht, ist Loader oder Serializer nicht idempotent.
 
 Die Sicherungen liegen unter **`backups/`** mit **gespiegelter Ordnerstruktur**
 (`sequences/all_dayli.json` → `backups/sequences/all_dayli.json.bak`, `backup_path()`).
@@ -465,8 +494,8 @@ Rauschen. Wie bisher gilt `if not backup.exists()` — die **erste** Sicherung b
 `600` und `600.0` sind dieselbe. `_equal()` zieht beide Seiten deshalb durch
 `_normalize_numbers()`, bevor es vergleicht. Ohne das galt eine von Hand auf `600`
 getippte Wartezeit als aufzuräumen — der Loader macht `600.0` daraus —, und der Durchgang
-schrieb die Datei um, legte ein `.bak` an und meldete eine Migration, die inhaltlich nichts
-tat. `bool` bleibt dabei ausgenommen: `True` darf nicht als `1.0` durchgehen, sonst wäre
+schrieb die Datei um, legte ein `.bak` an und meldete eine Aufräumarbeit, die inhaltlich
+nichts tat. `bool` bleibt dabei ausgenommen: `True` darf nicht als `1.0` durchgehen, sonst wäre
 ein umgekipptes Flag unsichtbar.
 
 **Nur gesetzte Felder werden geschrieben.** Jeder Serializer läuft durch
@@ -536,9 +565,10 @@ Beschriftung — als Schlüssel taugt er nur da, wo etwas ihn erzwingt.
 
 **Speichern wird geschrieben, als gäbe es keine Altbestände.** Die Serializer schreiben
 das optimale Format, nicht das kompatible: nur gesetzte Felder (`_STEP_DEFAULTS`), nur
-Referenzen statt Kopien. Alles Alte hebt die Migration beim Start — und was sie nicht
-heben kann, ist verloren. Das ist die bewusste Entscheidung: lieber ein optimales Format
-mit einem Migrationsschritt als ein Format, das für immer seine Vorgeschichte mitträgt.
+Referenzen statt Kopien. Alles Alte räumt der Start-Durchgang beim nächsten Start weg —
+was der Loader nicht kennt, kommt nicht zurück. Das ist die bewusste Entscheidung: lieber
+ein optimales Format, dessen Altdatei ein Feld auf dem Standardwert bekommt, als ein
+Format, das für immer seine Vorgeschichte mitträgt.
 
 Für neue *optionale* Felder gilt weiterhin: Default in der Dataclass, `data.get(key,
 default)` im Loader. Das ist kein Altlast-Fall und braucht keine Migration.

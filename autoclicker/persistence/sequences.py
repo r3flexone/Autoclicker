@@ -16,9 +16,10 @@ from ..models import (
     POSITIONLESS_BLOCKS, ClickPoint, LoopPhase, Sequence, AutoClickerState,
     block_type, drop_position,
 )
-from .migration import KIND_SEQUENCE, SCHEMA_VERSION, migrate, stamp
-from ..utils import compact_json, sanitize_filename, err, info, warn, hint, atomic_write, describe_color
+from .schema import SCHEMA_VERSION, VERSION_KEY, from_newer_version, stamp
+from ..utils import compact_json, sanitize_filename, err, info, warn, atomic_write, describe_color
 from .serialization import _parse_steps, _sequence_to_dict
+from ._scan_store import LOAD_EXCEPTIONS
 
 logger = logging.getLogger("autoclicker")
 
@@ -117,12 +118,12 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
         phases = data.get("loop_phases", [])
         if not isinstance(phases, list) or any(not isinstance(p, dict) for p in phases):
             raise ValueError("Loop-Phasen müssen eine Liste von Objekten sein")
-        data, messages = migrate(data, KIND_SEQUENCE)
-        if messages:
-            print(info(f"'{filepath.stem}' auf Schema {SCHEMA_VERSION} gehoben:"))
-            for m in messages:
-                print(f"         - {m}")
-            print(f"         {hint('Beim nächsten Speichern wird das Format dauerhaft sauber.')}")
+        if from_newer_version(data):
+            # Gelesen wird sie trotzdem, aber das Speichern schreibt nur, was dieser
+            # Stand kennt — der Rest der neueren Fassung ginge dabei verloren.
+            print(warn(f"'{filepath.stem}' stammt aus einer neueren Fassung (Schema "
+                       f"{data[VERSION_KEY]}, bekannt: {SCHEMA_VERSION}) — beim Speichern "
+                       "gehen Felder verloren, die dieser Stand nicht kennt."))
 
         loop_phases = [
             LoopPhase(
@@ -133,7 +134,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             )
             for lp in data.get("loop_phases", [])
         ]
-        seq_points = _as_points(data.get("points", []))
+        seq_points = _points_from_dicts(data.get("points", []))
         seq = Sequence(
             data["name"],
             _parse_steps(data.get("init_steps", [])),
@@ -156,7 +157,7 @@ def load_sequence_file(filepath: Path) -> Optional[Sequence]:
             print(warn(f"'{filepath.stem}': {m}"))
         return seq
 
-    except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError) as e:
+    except LOAD_EXCEPTIONS as e:
         logger.error(f"Konnte {filepath} nicht laden: {e}")
         return None
 
@@ -307,8 +308,7 @@ def list_available_sequences() -> list[tuple[str, Path]]:
                     continue
                 name = data.get("name", folder.name)
                 sequences.append((name, f))
-        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError,
-                ValueError, UnicodeDecodeError):
+        except LOAD_EXCEPTIONS:
             pass
     _seq_cache = sequences
     _seq_cache_key = current_key
@@ -331,12 +331,6 @@ def save_points(state: AutoClickerState) -> bool:
         seq.points = state.points
         name = seq.name
     return save_sequence_file(seq, sequence_file(name))
-
-
-def load_points(state: AutoClickerState) -> None:
-    """Setzt die Arbeitsansicht auf die Punkte der aktiven Sequenz."""
-    with state.lock:
-        state.points = state.active_sequence.points if state.active_sequence else []
 
 
 def activate_sequence(state: AutoClickerState, seq: Sequence) -> list[str]:
@@ -368,42 +362,22 @@ def activate_sequence(state: AutoClickerState, seq: Sequence) -> list[str]:
 
 
 def _point_from_dict(p: dict) -> ClickPoint:
-    """Ein rohes Punkt-Dict (schon migriert) als ClickPoint."""
+    """Ein rohes Punkt-Dict aus der Datei als ClickPoint."""
     color = p.get("color")
     return ClickPoint(p["x"], p["y"], p.get("name", ""), p["id"],
                       color=tuple(int(v) for v in color) if color else None,
                       source=p.get("source", ""))
 
 
-# `_sichere_neue_punkte()` stand hier und ist mit der Migrationskette entfallen: es
-# schrieb Punkte weg, die `_seq_v3_to_v4` gerade angelegt hatte. Ohne Kette legt die
-# Migration keine Punkte mehr an, also gibt es auch nichts nachzuschreiben — und eine
-# Funktion, die auf ein Ereignis wartet, das nicht mehr eintritt, ist genau die Sorte
-# Altlast, die dieses Projekt nicht mitschleppt.
-
-
-def _as_points(points) -> list[ClickPoint]:
-    """Punkte-Liste vereinheitlichen: ClickPoints ODER rohe Dicts rein, ClickPoints raus.
-
-    Noetig, weil die Aufrufer beides liefern — der Sweep rohe Dicts (er will den
-    State nicht anfassen), die Editoren `list(state.points)`.
-    """
-    out = []
-    for p in points or []:
-        if isinstance(p, dict):
-            try:
-                out.append(_point_from_dict(p))
-            except (KeyError, TypeError, ValueError):
-                continue
-        else:
-            out.append(p)
-    return out
-
-
-# `_als_dicts()` ist mit der Migrationskette entfallen. Es reichte die Punkte als rohe
-# Dicts in die Migration - und zwar bewusst als DIESELBE Liste statt als Kopie, damit
-# von `_seq_v3_to_v4` angelegte Punkte beim Aufrufer ankamen. Ohne Kette bekommt
-# `migrate()` fuer Sequenzen gar keinen Punkte-Kontext mehr.
+def _points_from_dicts(raw) -> list[ClickPoint]:
+    """Die Punktliste einer Sequenz-Datei — ein unlesbarer Eintrag fällt einzeln raus."""
+    points = []
+    for entry in raw or []:
+        try:
+            points.append(_point_from_dict(entry))
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+    return points
 
 
 def get_next_point_id(state: AutoClickerState) -> int:
@@ -509,7 +483,7 @@ def get_point_by_id(state: AutoClickerState, point_id: int) -> Optional[ClickPoi
     return next((p for p in state.points if p.id == point_id), None)
 
 
-def _phases(sequence):
+def named_phases(sequence):
     """(Phasenname, Schrittliste) fuer INIT, jede Loop-Phase und END."""
     out = [("INIT", sequence.init_steps)]
     for lp in sequence.loop_phases:
@@ -535,7 +509,7 @@ def drop_position_leftovers(points: dict, sequence) -> list[str]:
     bleibt in der Liste; benutzt ihn sonst niemand, ist er danach ungenutzt.
     """
     messages = []
-    for phase_name, steps in _phases(sequence):
+    for phase_name, steps in named_phases(sequence):
         for i, step in enumerate(steps, 1):
             if step.point_id is None or block_type(step) not in POSITIONLESS_BLOCKS:
                 continue
@@ -574,7 +548,7 @@ def resolve(points: dict, sequence, quiet: bool = False) -> list[str]:
     Normalfall); verwaiste Referenzen werden IMMER gemeldet.
     """
     messages = []
-    for phase_name, steps in _phases(sequence):
+    for phase_name, steps in named_phases(sequence):
         for i, step in enumerate(steps, 1):
             location = f"{phase_name}[{i}]"
             # Jeder Durchgang entscheidet neu. Zurueckgesetzt wurde nur im Zweig

@@ -124,7 +124,7 @@ eine neue braucht, schreibt dazu, auf welchen Timer sie wartet — sonst ist sie
 in einem Jahr wieder ein „700, das reicht wohl".
 
 **`tests/test_logic.py`** prüft Serialisierung,
-Migration, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
+Schema-Version, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
 GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
 deshalb läuft die komplette Logik-Schicht auch hier.
 
