@@ -1,9 +1,11 @@
 """Feste Referenzwerte für die reine Marktberechnung.
 
-Alles hier läuft **ohne pandas** – das ist kein Zufall, sondern der Grund, warum
-`pricing.py` und `history.py` überhaupt eigene Module sind. Die CI installiert
-pandas nicht, und solange die rechnende Logik zwischen DataFrames und
-Excel-Formatierung in `analysis.py` lag, lief sie in keinem einzigen Test.
+Fast alles hier läuft **ohne pandas** – das ist kein Zufall, sondern der Grund,
+warum `pricing.py` und `history.py` überhaupt eigene Module sind. Die CI
+installiert pandas nicht, und solange die rechnende Logik zwischen DataFrames
+und Excel-Formatierung in `analysis.py` lag, lief sie in keinem einzigen Test.
+Die eine Ausnahme ist `MeasurementRankingTest` am Ende: sie braucht
+`analysis.py` und wird ohne pandas übersprungen und gesagt.
 """
 
 import unittest
@@ -52,7 +54,7 @@ INFO = {
 }
 
 
-def _rezept(name, skill, item_id, base_time, amount=1, costs=None, xp=0.0):
+def _recipe(name, skill, item_id, base_time, amount=1, costs=None, xp=0.0):
     """Ein normalisiertes Rezept, wie es aus der API käme."""
     return normalize_recipe(skill, {
         "Name": name, "BaseTime": base_time, "ItemReward": item_id,
@@ -61,9 +63,9 @@ def _rezept(name, skill, item_id, base_time, amount=1, costs=None, xp=0.0):
     })
 
 
-class RezeptTest(unittest.TestCase):
+class RecipeTest(unittest.TestCase):
     def test_mining_recipe_reference_values(self):
-        recipe = _rezept("reference_ore", "Mining", 1, 10000, amount=2, xp=100)
+        recipe = _recipe("reference_ore", "Mining", 1, 10000, amount=2, xp=100)
         self.assertAlmostEqual(recipe["base_time_ms"], 3705.0)
         self.assertAlmostEqual(recipe["item_amount"], 2.1)
         self.assertAlmostEqual(recipe["xp"], 150.0)
@@ -89,7 +91,7 @@ class RezeptTest(unittest.TestCase):
                                cfg.EQUIPMENT_BASE_BOOST + cfg.EQUIPPED_TOOL_BONUS)
 
 
-class ErsparnisTest(unittest.TestCase):
+class SavingsTest(unittest.TestCase):
     """Storage-Boni und Potion of Trickery – Schalter und Kombination."""
 
     def test_spar_faktor_ist_multiplikativ(self):
@@ -132,17 +134,17 @@ class ErsparnisTest(unittest.TestCase):
         Regel die Zeile auf 1.0 zurückfallen liesse.
         """
         cfg_smith = skill_cfg("Smithing")
-        ausgenommen = cost_factor(cfg_smith, True, 0, 10, "best", frozenset({10}),
-                                    smelt_factor=0.63, storage_factor=0.90)
-        self.assertAlmostEqual(ausgenommen, 0.90)
+        excluded = cost_factor(cfg_smith, True, 0, 10, "best", frozenset({10}),
+                               smelt_factor=0.63, storage_factor=0.90)
+        self.assertAlmostEqual(excluded, 0.90)
         # Nebenzutat im Worst Case: ebenfalls nur das Lager, nicht der volle Preis.
         side = cost_factor(cfg_smith, True, 1, 11, "worst", frozenset(),
-                              smelt_factor=0.63, storage_factor=0.90)
+                           smelt_factor=0.63, storage_factor=0.90)
         self.assertAlmostEqual(side, 0.90)
         # Die Erz-Zeile selbst bekommt beide Ersparnisse.
-        erz = cost_factor(cfg_smith, True, 0, 10, "worst", frozenset(),
-                            smelt_factor=0.63, storage_factor=0.90)
-        self.assertAlmostEqual(erz, 0.63)
+        ore = cost_factor(cfg_smith, True, 0, 10, "worst", frozenset(),
+                          smelt_factor=0.63, storage_factor=0.90)
+        self.assertAlmostEqual(ore, 0.63)
 
     def test_kosten_faktor_ausserhalb_des_schmelzens(self):
         self.assertAlmostEqual(
@@ -168,7 +170,7 @@ class TaxTest(unittest.TestCase):
         self.assertAlmostEqual(net_player_price(3, 1000), 2.97)
 
 
-class MarktwegTest(unittest.TestCase):
+class MarketRouteTest(unittest.TestCase):
     """Verkaufen zählt Kaufgebote, kaufen zählt Angebote."""
 
     def test_verkauf_ignoriert_die_angebotsseite(self):
@@ -290,12 +292,12 @@ class ChainTest(unittest.TestCase):
 
     def setUp(self):
         self.recipes = {
-            100: _rezept("yew_log", "Woodcutting", 100, 8000),
-            200: _rezept("tuna", "Fishing", 200, 9000),
-            201: _rezept("cooked_tuna", "Cooking", 201, 3000,
+            100: _recipe("yew_log", "Woodcutting", 100, 8000),
+            200: _recipe("tuna", "Fishing", 200, 9000),
+            201: _recipe("cooked_tuna", "Cooking", 201, 3000,
                          costs=[{"Item": 200, "Amount": 1}]),
         }
-        self.fisch = {200: 201}
+        self.fish_to_cooked = {200: 201}
 
     def test_einzelne_stufe_ohne_zutaten(self):
         k = pricing.resolve_chain(100, MARKET, self.recipes, {}, INFO)
@@ -305,12 +307,12 @@ class ChainTest(unittest.TestCase):
         # Zeit für EIN Stück: die Aktionszeit geteilt durch die Ausbeute je Aktion.
         # Gegen das Rezept gerechnet statt gegen eine getippte Zahl – sonst prüft der
         # Test die Boost-Formel mit, und die hat ihren eigenen Test.
-        rezept = self.recipes[100]
-        self.assertAlmostEqual(k.time_ms, rezept["base_time_ms"] / rezept["item_amount"])
+        recipe = self.recipes[100]
+        self.assertAlmostEqual(k.time_ms, recipe["base_time_ms"] / recipe["item_amount"])
 
     def test_zutat_wird_selbst_hergestellt_statt_gekauft(self):
         recipes = dict(self.recipes)
-        recipes[300] = _rezept("plank", "Carpentry", 300, 6000,
+        recipes[300] = _recipe("plank", "Carpentry", 300, 6000,
                                costs=[{"Item": 100, "Amount": 2}])
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
@@ -318,14 +320,14 @@ class ChainTest(unittest.TestCase):
         self.assertEqual(len(k.steps_list), 2)
 
     def test_gekaufte_zutat_bricht_die_autarkie(self):
-        recipes = {300: _rezept("ring", "Crafting", 300, 5000,
+        recipes = {300: _recipe("ring", "Crafting", 300, 5000,
                                 costs=[{"Item": 100, "Amount": 2}])}
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.self_sufficient)
         self.assertGreater(k.costs_value, 0.0)
 
     def test_gold_kostet_bricht_aber_die_autarkie_nicht(self):
-        recipes = {300: _rezept("plank", "Carpentry", 300, 6000,
+        recipes = {300: _recipe("plank", "Carpentry", 300, 6000,
                                 costs=[{"Item": GOLD_ITEM_ID, "Amount": 250}])}
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertTrue(k.self_sufficient)
@@ -333,7 +335,7 @@ class ChainTest(unittest.TestCase):
         self.assertEqual(k.liquidity, 0.0)       # Gold hat keinen Markt, der knapp wird
 
     def test_unbekannter_zutatenpreis_wird_gemeldet_nicht_genullt(self):
-        recipes = {300: _rezept("ring", "Crafting", 300, 5000,
+        recipes = {300: _recipe("ring", "Crafting", 300, 5000,
                                 costs=[{"Item": 999, "Amount": 2}])}
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.costs_known)
@@ -341,7 +343,7 @@ class ChainTest(unittest.TestCase):
 
     def test_auto_cook_verkauft_den_rohen_rest(self):
         """Ein Fischzug liefert je zur Hälfte gekocht und roh – der rohe Teil zählt."""
-        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fish_to_cooked, INFO)
         self.assertGreater(k.side_yield, 0.0)
         # Pro gekochtem Stück fällt genau ein rohes an (Chance 0,5).
         raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
@@ -357,8 +359,8 @@ class ChainTest(unittest.TestCase):
         info = dict(INFO)
         info[210] = {"name": "raw_carp", "base_value": 1, "can_trade": True, "can_sell_to_npc": True}
         info[211] = {"name": "cooked_carp", "base_value": 1, "can_trade": True, "can_sell_to_npc": True}
-        recipes = {210: _rezept("raw_carp", "Fishing", 210, 5000),
-                   211: _rezept("cooked_carp", "Cooking", 211, 3000,
+        recipes = {210: _recipe("raw_carp", "Fishing", 210, 5000),
+                   211: _recipe("cooked_carp", "Cooking", 211, 3000,
                                 costs=[{"Item": 210, "Amount": 1}])}
         k = pricing.resolve_chain(211, market, recipes, {210: 211}, info)
         raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
@@ -369,7 +371,7 @@ class ChainTest(unittest.TestCase):
         mehr Zuege, und der gekochte Teil ist Nebenertrag. Vorher rechnete roher
         Fisch, als kaeme der ganze Fang roh an (raw_piranha 61.564 statt 52.256
         Gold/h; sea_serpent_scale bekam doppelt so viele rohe Seeschlangen)."""
-        k = pricing.resolve_chain(200, MARKET, self.recipes, self.fisch, INFO)
+        k = pricing.resolve_chain(200, MARKET, self.recipes, self.fish_to_cooked, INFO)
         fish = self.recipes[200]
         raw_share = 1.0 - cfg.AUTO_COOK_CHANCE
         self.assertAlmostEqual(k.time_ms, fish["base_time_ms"] / (fish["item_amount"] * raw_share))
@@ -382,7 +384,7 @@ class ChainTest(unittest.TestCase):
     def test_nebenprodukt_steht_in_der_kette(self):
         """Damit die Begruendung den Nebenertrag durchs Buch verkaufen kann, sagt die
         Kette, WAS anfaellt, wie viel und was der NPC dafuer zahlt."""
-        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fish_to_cooked, INFO)
         raw_per_unit = (1.0 - cfg.AUTO_COOK_CHANCE) / cfg.AUTO_COOK_CHANCE
         self.assertEqual(len(k.side_items), 1)
         item, qty, npc = k.side_items[0]
@@ -394,25 +396,25 @@ class ChainTest(unittest.TestCase):
         """power_pizza fischt zwei Fische; dieselbe Zutat zweimal faengt denselben
         Fisch doppelt - das ist EIN Nebenprodukt mit doppelter Menge."""
         recipes = dict(self.recipes)
-        recipes[300] = _rezept("einmal", "Cooking", 300, 1000, costs=[{"Item": 201, "Amount": 1}])
-        recipes[301] = _rezept("zweimal", "Cooking", 301, 1000,
+        recipes[300] = _recipe("einmal", "Cooking", 300, 1000, costs=[{"Item": 201, "Amount": 1}])
+        recipes[301] = _recipe("zweimal", "Cooking", 301, 1000,
                                costs=[{"Item": 201, "Amount": 1}, {"Item": 201, "Amount": 1}])
-        once = pricing.resolve_chain(300, MARKET, recipes, self.fisch, INFO).side_items
-        twice = pricing.resolve_chain(301, MARKET, recipes, self.fisch, INFO).side_items
+        once = pricing.resolve_chain(300, MARKET, recipes, self.fish_to_cooked, INFO).side_items
+        twice = pricing.resolve_chain(301, MARKET, recipes, self.fish_to_cooked, INFO).side_items
         self.assertEqual(len(twice), 1)
         self.assertAlmostEqual(twice[0][1], 2 * once[0][1])
 
     def test_roh_und_gekocht_sind_derselbe_fischzug(self):
         """Gefragt von beiden Seiten: dieselben Zuege je Stunde, derselbe Ertrag."""
         def gold_h(item_id):
-            k = pricing.resolve_chain(item_id, MARKET, self.recipes, self.fisch, INFO)
+            k = pricing.resolve_chain(item_id, MARKET, self.recipes, self.fish_to_cooked, INFO)
             per_hour = 3_600_000.0 / k.time_ms
             price = pricing.effective_sell_price(item_id, MARKET, INFO, per_hour).price_value
             return per_hour * (price + k.side_yield - k.costs_value)
         self.assertAlmostEqual(gold_h(200), gold_h(201))
 
     def test_auto_cook_fischt_statt_zu_kochen(self):
-        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
+        k = pricing.resolve_chain(201, MARKET, self.recipes, self.fish_to_cooked, INFO)
         self.assertEqual([s[1] for s in k.steps_list], ["Fishing"])
 
     def test_auto_cook_abschaltbar(self):
@@ -420,15 +422,15 @@ class ChainTest(unittest.TestCase):
         old = pricing.AUTO_COOK_SELL_REST
         try:
             pricing.AUTO_COOK_SELL_REST = False
-            k = pricing.resolve_chain(201, MARKET, self.recipes, self.fisch, INFO)
+            k = pricing.resolve_chain(201, MARKET, self.recipes, self.fish_to_cooked, INFO)
             self.assertEqual(k.side_yield, 0.0)
         finally:
             pricing.AUTO_COOK_SELL_REST = old
 
     def test_zyklus_bricht_die_rekursion(self):
         recipes = {
-            300: _rezept("a", "Crafting", 300, 1000, costs=[{"Item": 301, "Amount": 1}]),
-            301: _rezept("b", "Crafting", 301, 1000, costs=[{"Item": 300, "Amount": 1}]),
+            300: _recipe("a", "Crafting", 300, 1000, costs=[{"Item": 301, "Amount": 1}]),
+            301: _recipe("b", "Crafting", 301, 1000, costs=[{"Item": 300, "Amount": 1}]),
         }
         k = pricing.resolve_chain(300, MARKET, recipes, {}, INFO)
         self.assertFalse(k.self_sufficient)
@@ -614,12 +616,12 @@ class HistoryTest(unittest.TestCase):
         self.conn.close()
 
     def _row(self, item="oak", **remainder):
-        basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
-                 "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
-                 "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
-                 "warnungen": ""}
-        basis.update(remainder)
-        return basis
+        row = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
+               "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
+               "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
+               "warnungen": ""}
+        row.update(remainder)
+        return row
 
     def test_lauf_speichert_zeitpunkt_version_und_confighash(self):
         with history.run_ctx(self.conn) as run_id:
@@ -1174,9 +1176,9 @@ class MeasurementRankingTest(unittest.TestCase):
     def test_roher_fisch_steht_nicht_doppelt_in_den_ketten(self):
         """Mit Auto-Cook sind roh und gekocht derselbe Fischzug - eine Zeile, beim
         gekochten Fisch, samt rohem Rest."""
-        recipes = {100: _rezept("yew_log", "Woodcutting", 100, 8000),
-                   200: _rezept("tuna", "Fishing", 200, 9000),
-                   201: _rezept("cooked_tuna", "Cooking", 201, 3000,
+        recipes = {100: _recipe("yew_log", "Woodcutting", 100, 8000),
+                   200: _recipe("tuna", "Fishing", 200, 9000),
+                   201: _recipe("cooked_tuna", "Cooking", 201, 3000,
                                 costs=[{"Item": 200, "Amount": 1}])}
         df = _analysis.build_chain_df(recipes, MARKET, INFO, {200: 201})
         self.assertEqual(sorted(df["Item"]), ["cooked_tuna", "yew_log"])
@@ -1186,8 +1188,8 @@ class MeasurementRankingTest(unittest.TestCase):
         ersten 17 Laeufen (bis 04.10.2026) war der gehandelte Schnitt nie
         gespeichert. Gemessen wird bis in die Datenbank: die Kette muss die Werte
         tragen UND die Historie sie schreiben."""
-        recipes = {100: _rezept("yew_log", "Woodcutting", 100, 8000),
-                   400: _rezept("billig", "Woodcutting", 400, 8000)}
+        recipes = {100: _recipe("yew_log", "Woodcutting", 100, 8000),
+                   400: _recipe("billig", "Woodcutting", 400, 8000)}
         market = {**MARKET, 400: dict(MARKET[400], avg=0)}
         df = _analysis.build_chain_df(recipes, market, INFO, {})
         conn = history.open_db(":memory:")

@@ -5,7 +5,7 @@ Scrollposition. Ein `subgrid`, das der Browser nicht kann, und ein `sticky`, das
 an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 """
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def _sequence(name: str, note: str, phases: int, steps_list: int):
@@ -47,10 +47,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b, width=1300, height=560) as f:
         # ---------------------------------------------------------- Übersicht
@@ -112,8 +109,8 @@ def run():
         f.settle()
         after = f.page.eval_on_selector(
             head, "e => Math.round(e.getBoundingClientRect().top)")
-        gescrollt = f.page.eval_on_selector(".page.left", "e => e.scrollTop")
-        expect(gescrollt > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
+        scrolled = f.page.eval_on_selector(".page.left", "e => e.scrollTop")
+        expect(scrolled > 0, "die linke Spalte scrollt gar nicht — Test misst nichts")
         expect(before == after,
                f"der Block scrollt mit: {before} -> {after}")
         f.image("sequenzen_editor")
@@ -125,10 +122,10 @@ def run():
         # hat, las sich das als „wegmachen" statt als „mal". Daneben stand ein
         # zweites × als Vorsatz der Wiederholungen, und der Kopf sah aus, als
         # liesse sich dort etwas entfernen.
-        knopftexte = f.page.eval_on_selector_all(
+        button_texts = f.page.eval_on_selector_all(
             ".phase-header.loop button", "ns => ns.map(n => n.textContent.trim())")
-        expect(not any("×" in t for t in knopftexte),
-               f"ein Knopf im Phasenkopf traegt ein ×: {knopftexte}")
+        expect(not any("×" in t for t in button_texts),
+               f"ein Knopf im Phasenkopf traegt ein ×: {button_texts}")
         # **Eigenschaften und Sammel-Aktionen sind getrennt.** In der
         # Werkzeugzeile stehen nur die beiden Felder, die die Phase
         # BESCHREIBEN; was auf alle Bloecke wirkt, steht unten beieinander.
@@ -146,27 +143,27 @@ def run():
         grid = f.page.eval_on_selector(".phase-header.loop", """e => {
           const boxEl = (s) => [...e.querySelectorAll(s)]
             .map(n => n.getBoundingClientRect());
-          const spanne = (r) => [Math.round(r[0].left),
-                                 Math.round(r[r.length - 1].right)];
-          const zellen = boxEl('.phase-tool > *');
-          const knoepfe = boxEl('.phase-all > .btn');
-          return {eig: spanne(zellen), akt: spanne(knoepfe),
-                  zellbreiten: zellen.map(r => Math.round(r.width)),
+          const span = (r) => [Math.round(r[0].left),
+                               Math.round(r[r.length - 1].right)];
+          const cells = boxEl('.phase-tool > *');
+          const buttons = boxEl('.phase-all > .btn');
+          return {props: span(cells), actions: span(buttons),
+                  cellWidths: cells.map(r => Math.round(r.width)),
                   fields: boxEl('.phase-tool input').map(r => Math.round(r.width)),
-                  knoepfe: knoepfe.map(r => Math.round(r.width)),
-                  knopfoben: knoepfe.map(r => Math.round(r.top))};
+                  buttons: buttons.map(r => Math.round(r.width)),
+                  buttonTops: buttons.map(r => Math.round(r.top))};
         }""")
-        expect(grid["eig"] == grid["akt"],
+        expect(grid["props"] == grid["actions"],
                f"Eigenschaften und Sammel-Aktionen haben verschiedene Kanten: {grid}")
         expect(len(set(grid["fields"])) == 1,
                f"die beiden Felder sind verschieden breit: {grid}")
         # Ein Feld ist so breit wie ein Knopf — dasselbe Raster, nicht nur
         # zufaellig dieselbe Aussenkante.
-        expect(set(grid["fields"]) == set(grid["knoepfe"]),
+        expect(set(grid["fields"]) == set(grid["buttons"]),
                f"Felder und Knoepfe liegen nicht auf demselben Raster: {grid}")
-        expect(len(grid["knoepfe"]) == 2 and len(set(grid["knoepfe"])) == 1,
+        expect(len(grid["buttons"]) == 2 and len(set(grid["buttons"])) == 1,
                f"zwei gleich breite Sammel-Knoepfe erwartet: {grid}")
-        expect(len(set(grid["knopfoben"])) == 1,
+        expect(len(set(grid["buttonTops"])) == 1,
                f"die Sammel-Knoepfe stehen nicht auf einer Zeile: {grid}")
         # Und die Felder sagen selbst, was sie sind — vorher stand das nur im
         # Tooltip, und ein Tooltip ist keine Beschriftung.

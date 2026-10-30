@@ -86,6 +86,8 @@ market_analysis/output/
 # Item-/Gegner-Katalog aus der Spiel-API (tools/catalog.py) — generierte Daten,
 # dieselbe Ueberlegung wie beim Programm-Symbol: eine Kopie im Repo veraltet
 # still, sobald das Spiel Items nachlegt. Neu holen kostet ein Kommando.
+# (katalog.json ist der Name, den das Werkzeug frueher schrieb.)
+catalog.json
 katalog.json
 
 # Das Programm-Symbol wird erzeugt, nicht eingecheckt (tools/symbol.py) —

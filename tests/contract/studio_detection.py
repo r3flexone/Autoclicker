@@ -3,7 +3,7 @@
 Bis hierher waren die beiden nur ueber die Konsolen-Editoren erreichbar und
 standen in keinem Test. Was jetzt zaehlt, ist dasselbe wie beim Item-Teil: nicht
 die Ansicht (die laeuft in keinem Test), sondern was die Bruecke daraus macht —
-aus zwei Klicks eine Region, aus einem Klick ein Punkt in `points.json`, aus
+aus zwei Klicks eine Region, aus einem Klick ein Punkt der `sequence.json`, aus
 einem Verschieben ein Boss, der in jedem Scan gilt.
 
 Zwei Eigenschaften sind wichtiger als alle Feldsetzer zusammen und stehen
@@ -19,7 +19,7 @@ from pathlib import Path
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 from autoclicker.editors.sequence_studio.scan_contract import (
-    SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODES as _MODI,
+    SCAN_KINDS as _KINDS, MIN_REGION as _MIN_REGION, MODES as _MODES,
     MODES_ALL as _MODI_ALLE, MODE_ACTION as _M_AKTION,
     MODE_REGION as _M_REGION, MODE_CHOICE as _M_WAHL,
 )
@@ -62,11 +62,11 @@ check("und jede nimmt das eine Argument an, das die Seite schickt", _unpassend =
 # den es am laengsten gibt).
 _tiles = re.findall(r'data-scan-kind="([a-z]+)"', _web)
 check("jede Scan-Art hat eine Kachel, in der Reihenfolge der Bruecke",
-      _tiles == list(_ARTEN))
+      _tiles == list(_KINDS))
 _js_kinds = re.search(r'const SCAN_KINDS = \[([^\]]+)\]', _web)
 check("und die Seite fuehrt dieselbe Liste",
       _js_kinds is not None
-      and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_ARTEN))
+      and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_KINDS))
 
 # **Der Fallback eines Boss-Scans kann weniger als ein Boss.** Ohne erkannten
 # Boss gibt es keinen Punkt und keine Taste — die Felder dafuer sitzen am
@@ -249,7 +249,7 @@ try:
     # --- Werkzeuge ---
     section("Region und Klickpunkt: zwei Werkzeuge, ein Rueckweg")
     check("die Modi der Item-Ansicht bleiben unter sich",
-          _M_REGION not in _MODI and _M_AKTION not in _MODI)
+          _M_REGION not in _MODES and _M_AKTION not in _MODES)
     check("angenommen werden sie trotzdem",
           _M_REGION in _MODI_ALLE and _M_AKTION in _MODI_ALLE)
     _z = _b.scan_mode_set({"mode": _M_REGION})
@@ -367,7 +367,7 @@ try:
             check("die Koordinate steht im Punkt", (_b.points[0].x, _b.points[0].y)
                   == (500, 320))
             # **Ein vorhandener Punkt wird wiederverwendet** — sonst laege
-            # derselbe Knopf zweimal in points.json, und beim Nachjustieren
+            # derselbe Knopf zweimal in den Punkten, und beim Nachjustieren
             # wanderte die Haelfte.
             _b.boss_scan_open({"name": "Bossfarm"})
             _b.boss_new({"name": "Hydra"})
@@ -411,8 +411,8 @@ try:
                   Path("sequences/s/icon_scans/mission_nicht_machbar.json").exists())
             check("und die Bibliothek",
                   Path("sequences/s/boss_scans/bibliothek.json").exists())
-            # **Die Punkte gehen mit.** Ein Klickpunkt ist ein Punkt in
-            # points.json — bliebe er ungeschrieben, zeigte die gespeicherte
+            # **Die Punkte gehen mit.** Ein Klickpunkt ist ein Punkt in der
+            # sequence.json — bliebe er ungeschrieben, zeigte die gespeicherte
             # Aktion beim naechsten Start ins Leere.
             check("und die Punkte, an denen die Aktionen haengen",
                   Path("sequences/s/sequence.json").exists()
@@ -491,14 +491,14 @@ check("und die Phasenfarben sind drei verschiedene",
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen
 # sie auf denselben Schluesseln.
 from autoclicker.editors.sequence_studio.scan_detect import (
-    _ACTION_SHORT as _KURZ, _BOSS_ACTIONS as _ORDNUNG,
+    _ACTION_SHORT as _SHORT, _BOSS_ACTIONS as _ORDER,
 )
 from autoclicker.models import ACTION_TEXT as _TEXT
 check("jede angebotene Aktion hat eine Kurzbeschriftung",
-      set(_KURZ) == set(_ORDNUNG))
-check("und einen Satz dazu", set(_ORDNUNG) <= set(_TEXT))
+      set(_SHORT) == set(_ORDER))
+check("und einen Satz dazu", set(_ORDER) <= set(_TEXT))
 check("die Reihenfolge deckt genau die gueltigen Boss-Aktionen ab",
-      set(_ORDNUNG) == _V_BOSS)
+      set(_ORDER) == _V_BOSS)
 
 # **Was etwas kostet, wird gefragt und nicht mitgeliefert.** `autoclicker.ocr`
 # importiert EasyOCR beim Laden und zieht damit Torch nach — Sekunden, in denen

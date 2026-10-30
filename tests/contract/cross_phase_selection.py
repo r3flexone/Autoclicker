@@ -18,7 +18,7 @@ from autoclicker.models import (
 )
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 
-INIT, A, B, END = 0, 1, 2, 3
+A, B, END = 1, 2, 3        # Positionen im Brett; 0 ist INIT
 
 
 def _bridge(shared: bool = False):

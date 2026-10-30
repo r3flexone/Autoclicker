@@ -170,21 +170,21 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--case", choices=CASES, action="append")
-    parser.add_argument("--kind", choices=("basis", "mutiert"), help=argparse.SUPPRESS)
+    parser.add_argument("--kind", choices=("base", "mutated"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.kind:
-        return run_check(args.case[0], args.kind == "mutiert")
+        return run_check(args.case[0], args.kind == "mutated")
     error = 0
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.case or CASES:
-        for mode in ("basis", "mutiert"):
+        for mode in ("base", "mutated"):
             # Jeder Lauf in einem eigenen, leeren Ordner — nie im Repo. Die
             # Pfade der App sind CWD-relativ, und die Testfaelle hier werden
             # beim Namen geladen, also ohne den Arbeitsordner von
             # `root_tests.main()`: ein Item-Scan-Fall schrieb so bei jeder
             # Gegenprobe `.run.json` in die echten Daten. `run_check` legt das
             # Repo selbst in `sys.path`.
-            with tempfile.TemporaryDirectory(prefix="gegenprobe_",
+            with tempfile.TemporaryDirectory(prefix="mutation_",
                                              ignore_cleanup_errors=True) as workdir:
                 try:
                     run = subprocess.run(

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ._image import inventory_image, mock_screen
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def setup():
@@ -31,10 +31,7 @@ def setup():
 def run():
     b, count = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     expect(len(b.items) == count, f"{count} Items erwartet, gelernt: {sorted(b.items)}")
 
@@ -49,13 +46,13 @@ def run():
                "das Namensfeld zeigt nicht den Namen des offenen Scans")
         source_layout = f.page.eval_on_selector(".scan-source-state", """e => {
           const info = e.querySelector('.scan-source-info').getBoundingClientRect();
-          const knopf = e.querySelector('#scan-fullscreen').getBoundingClientRect();
-          const breite = e.getBoundingClientRect().width;
-          return {info: info.width, knopf: knopf.width, breite};
+          const button = e.querySelector('#scan-fullscreen').getBoundingClientRect();
+          const width = e.getBoundingClientRect().width;
+          return {info: info.width, button: button.width, width};
         }""")
-        expect(source_layout["info"] >= source_layout["breite"] - 1,
+        expect(source_layout["info"] >= source_layout["width"] - 1,
                f"der Quellenstand nutzt nicht die volle Breite: {source_layout}")
-        expect(source_layout["knopf"] >= source_layout["breite"] - 1,
+        expect(source_layout["button"] >= source_layout["width"] - 1,
                f"der Vollbild-Knopf quetscht den Quellenstand ein: {source_layout}")
 
         # **Der Speichern-Knopf zeigt, ob es etwas zu speichern gibt.** Er war
@@ -188,19 +185,19 @@ def run():
         expect(had_image, "das Item hat vor dem Umbenennen keine Vorschau")
         # Jeden Neuaufbau der rechten Spalte mitzaehlen.
         f.page.evaluate("""() => {
-          window.__aufbauten = 0;
-          const ziel = document.getElementById('scan-insp');
-          window.__beob = new MutationObserver(() => { window.__aufbauten++; });
-          window.__beob.observe(ziel, {childList: true});
+          window.__rebuilds = 0;
+          const target = document.getElementById('scan-insp');
+          window.__observer = new MutationObserver(() => { window.__rebuilds++; });
+          window.__observer.observe(target, {childList: true});
         }""")
         f.page.click(name_field)
         f.page.fill(name_field, "Zeta")
         f.page.keyboard.press("Tab")
         f.page.wait_for_timeout(900)
-        aufbauten = f.page.evaluate("() => { window.__beob.disconnect();"
-                                     " return window.__aufbauten; }")
-        expect(aufbauten <= 1,
-               f"das Umbenennen baut die Spalte {aufbauten}x neu auf (Flackern)")
+        rebuilds = f.page.evaluate("() => { window.__observer.disconnect();"
+                                   " return window.__rebuilds; }")
+        expect(rebuilds <= 1,
+               f"das Umbenennen baut die Spalte {rebuilds}x neu auf (Flackern)")
         expect(f.page.eval_on_selector(
                    '[id="card:item:Zeta"]',
                    "e => !!e.querySelector('img.mini')"),
@@ -211,13 +208,13 @@ def run():
                f"das Umbenennen verschiebt die Zeile: {after}")
         expect(len(after) == len(before) and after[1:] == before[1:],
                f"die uebrigen Zeilen haben sich bewegt: {before} -> {after}")
-        wo = f.page.evaluate("""() => {
+        focus_id = f.page.evaluate("""() => {
           const a = document.activeElement;
           const m = a && a.closest ? a.closest('.scan-card') : null;
-          return m ? m.id : (a ? a.tagName : "nichts");
+          return m ? m.id : (a ? a.tagName : "nothing");
         }""")
-        expect(wo == "card:item:Zeta",
-               f"der Fokus verlaesst die Maske: erwartet Zeta, da: {wo}")
+        expect(focus_id == "card:item:Zeta",
+               f"der Fokus verlaesst die Maske: erwartet Zeta, da: {focus_id}")
 
         # 2. Kategorie: sie war der erste Sortierschluessel und damit das letzte
         #    Feld, das die Zeile noch wegspringen liess.
@@ -265,10 +262,10 @@ def run():
         # Gegenprobe zur Gegenprobe: der Knopf muss sie sehr wohl umsortieren,
         # sonst misst der Test oben nur eine Liste, die sich ohnehin nicht regt.
         f.click_text("#scan-insp .scan-header button", "Sortieren")
-        sortiert = f.page.eval_on_selector_all(
+        sorted_ids = f.page.eval_on_selector_all(
             "#scan-insp .scan-card", "ns => ns.map(n => n.id)")
-        expect(sortiert != before_prio,
-               f"„Sortieren“ ordnet die Liste nicht um: {sortiert}")
+        expect(sorted_ids != before_prio,
+               f"„Sortieren“ ordnet die Liste nicht um: {sorted_ids}")
 
         buttons = f.page.eval_on_selector_all(
             "#scan-insp .scan-header button", "ns => ns.map(n => n.textContent)")

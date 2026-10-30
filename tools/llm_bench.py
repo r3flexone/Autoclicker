@@ -49,7 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from autoclicker.config import load_config                          # noqa: E402
 from autoclicker.catalog import load_catalog                        # noqa: E402
 from autoclicker.llm_vision import (                                # noqa: E402
-    TIMEOUT, analyze_image, chat_endpoint, clean_boss_name,
+    TIMEOUT, analyze_image, clean_boss_name, is_timeout,
     suggest_item_name_with_reason, test_endpoint_for,
 )
 
@@ -63,7 +63,7 @@ class ConfigOnly:
     """`state`-Stellvertreter fuer `_check_profile_match`.
 
     Die Erkennung braucht vom State nichts als die Config. Nachgebaut statt
-    das private `_NurConfig` des Studios zu importieren: ein Werkzeug, das an
+    das private `_ConfigOnly` des Studios zu importieren: ein Werkzeug, das an
     internen Namen haengt, bricht beim naechsten Umbau — und drei Zeilen sind
     billiger als diese Kopplung.
     """
@@ -231,7 +231,7 @@ def ask_two_stage(image, catalog, config, model: str) -> tuple:
         system_prompt=system, timeout=max(config.llm_timeout, 120),
         max_tokens=16)
     if not ok:
-        return None, (TIMEOUT if str(answer).startswith("Timeout") else str(answer))
+        return None, (TIMEOUT if is_timeout(answer) else str(answer))
     kind = clean_boss_name(answer)
     matching = {k.casefold(): k for k in categories}.get(kind.casefold())
     if matching is None:
@@ -267,9 +267,9 @@ def with_votes(ask_fn, votes: int) -> tuple:
 def warm_up(image, config, model: str) -> float:
     """Ein Aufruf vor der Messung — er misst das Laden, nicht die Frage."""
     start = time.time()
-    suggest_item_name_with_reason(image, provider=config.llm_provider,
-                            endpoint=config.llm_endpoint, model=model,
-                            timeout=300, candidates=["Godlike Bow"])
+    suggest_item_name_with_reason(
+        image, provider=config.llm_provider, endpoint=config.llm_endpoint,
+        model=model, timeout=300, candidates=["Godlike Bow"])
     return time.time() - start
 
 
@@ -308,15 +308,19 @@ def run(samples: list, catalog, config, args, model: str) -> dict:
 
 def loaded_models(config) -> list:
     """Was der Server gerade anbietet — fuer `--all-models`."""
-    import json as _json
     import urllib.request
-    target = config.llm_endpoint or test_endpoint_for(config.llm_provider)
     if config.llm_endpoint:
-        target = chat_endpoint(config.llm_provider).replace(
-            "/chat/completions", "/models")
+        # In der Config steht die Adresse des CHATS; die Modell-Liste liegt
+        # daneben, auf demselben Server und unter demselben Pfad-Anfang.
+        chat_path, list_path = (
+            ("/api/chat", "/api/tags") if config.llm_provider == "ollama"
+            else ("/chat/completions", "/models"))
+        target = config.llm_endpoint.replace(chat_path, list_path)
+    else:
+        target = test_endpoint_for(config.llm_provider)
     try:
         with urllib.request.urlopen(target, timeout=10) as answer:
-            raw = _json.loads(answer.read().decode("utf-8"))
+            raw = json.loads(answer.read().decode("utf-8"))
     except Exception as e:                       # noqa: BLE001 — Auskunft, kein Absturz
         print(f"[WARN] Modell-Liste nicht lesbar: {e}")
         return []

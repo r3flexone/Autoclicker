@@ -136,7 +136,6 @@ try:
     save_sequence_file(_seq, sequence_file(_seq.name))
     _st.item_scans["Inventar"] = _ISC(name="Inventar")           # ohne Slots
     _rep = _cs(_st)
-    _by_text = {b.text: b for b in _rep.findings}
     _scan = next((b for b in _rep.findings if b.area == "Item-Scan 'Inventar'"), None)
     check("ein Scan ohne Slot zeigt in den Scans-Reiter",
           _scan is not None

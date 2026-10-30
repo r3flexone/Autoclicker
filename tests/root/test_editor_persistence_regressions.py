@@ -25,7 +25,7 @@ from autoclicker.editors.sequence_studio.bridge import StudioBridge
 from autoclicker.handlers import _load_sequence_data
 
 
-class EditorPersistenzTest(unittest.TestCase):
+class EditorPersistenceTest(unittest.TestCase):
     def setUp(self):
         self.cwd = os.getcwd()
         self.temp = tempfile.TemporaryDirectory()
@@ -210,18 +210,18 @@ class EditorPersistenzTest(unittest.TestCase):
         item_scans.save_item_scan(self.scan)
         scan_file = Path("sequences/alt/item_scans/inventar.json")
         before = scan_file.read_bytes()
-        for kind, load, attribut in (
+        for kind, load, attribute in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
             file = Path("presets") / kind / "broken.json"
             file.parent.mkdir(parents=True, exist_ok=True)
-            inventory_before = dict(getattr(self.state, attribut))
+            inventory_before = dict(getattr(self.state, attribute))
             is_valid = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}
             for data in ([], {"Gueltig": is_valid, "Defekt": None}):
                 with self.subTest(kind=kind, data=data):
                     file.write_text(json.dumps(data), encoding="utf-8")
                     self.assertFalse(load(self.state, "broken"))
-                    self.assertEqual(getattr(self.state, attribut), inventory_before)
+                    self.assertEqual(getattr(self.state, attribute), inventory_before)
                     self.assertEqual(scan_file.read_bytes(), before)
 
     def test_preset_meldet_speicherfehler(self):

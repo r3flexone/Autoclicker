@@ -11,7 +11,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from ._harness import check, section, studio_web_source
+from ._harness import check, section
 from autoclicker.models import (
     ClickPoint as _CP,
     LoopPhase as _PHASE,
@@ -19,7 +19,6 @@ from autoclicker.models import (
     SequenceStep as _STEP,
 )
 
-_web = studio_web_source()
 _WEB = Path(__file__).resolve().parents[2] / "autoclicker/editors/sequence_studio/web"
 _js = (_WEB / "app.js").read_text(encoding="utf-8")
 _css = (_WEB / "styles.css").read_text(encoding="utf-8")

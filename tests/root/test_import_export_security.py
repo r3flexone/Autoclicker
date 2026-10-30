@@ -120,7 +120,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
 
     def test_failed_import_rolls_back_files(self):
-        from autoclicker import import_export as module_name
+        from autoclicker import import_export as import_export_module
         original = _write_sequence("inventory")
         before = (original / "sequence.json").read_bytes()
         manifest = _manifest_data()
@@ -131,16 +131,16 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("sequences/A/templates/neu.png", b"neues Bild")
             zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
-        real_copytree = module_name.shutil.copytree
+        real_copytree = import_export_module.shutil.copytree
         mutated = []
 
-        def kopieren(source, target, *args, **kwargs):
+        def copy_tree(source, target, *args, **kwargs):
             if Path(target).name == "broken":
                 mutated.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
             return real_copytree(source, target, *args, **kwargs)
 
-        with patch.object(module_name.shutil, "copytree", side_effect=kopieren):
+        with patch.object(import_export_module.shutil, "copytree", side_effect=copy_tree):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
 
         self.assertFalse(ok)
@@ -289,12 +289,12 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
 
     def test_ein_buendel_ueber_der_gesamtgroesse_wird_abgelehnt(self):
-        from autoclicker import import_export as module_name
+        from autoclicker import import_export as import_export_module
         self._folder_bundle([
             ("sequences/farm/sequence.json", json.dumps(_sequence_data("farm"))),
             ("sequences/farm/templates/a.png", b"x" * 40),
         ])
-        with patch.object(module_name, "MAX_BUNDLE_TOTAL_SIZE", 60):
+        with patch.object(import_export_module, "MAX_BUNDLE_TOTAL_SIZE", 60):
             ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
         self.assertFalse(ok)
         self.assertIn("zu groß", message)
@@ -305,7 +305,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         # misst das Ziel. Hier wird die erste ausgehängt, um die zweite zu sehen.
         import tempfile as tempfile_module
         from pathlib import PurePosixPath
-        from autoclicker import import_export as module_name
+        from autoclicker import import_export as import_export_module
         inner = Path("tief/innen")
         inner.mkdir(parents=True)
         real = tempfile_module.TemporaryDirectory
@@ -317,8 +317,8 @@ class ImportExportSecurityTest(unittest.TestCase):
         def names_only(name):
             return PurePosixPath(name) if name.startswith("sequences/") else None
 
-        with patch.object(module_name, "_safe_bundle_path", names_only), \
-                patch.object(module_name.tempfile, "TemporaryDirectory",
+        with patch.object(import_export_module, "_safe_bundle_path", names_only), \
+                patch.object(import_export_module.tempfile, "TemporaryDirectory",
                              lambda prefix="": real(prefix=prefix, dir=inner)):
             ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
         self.assertFalse(ok)

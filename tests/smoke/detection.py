@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ._image import area_with_badge, mock_screen
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def setup():
@@ -38,10 +38,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b) as f:
         f.tab("scans")

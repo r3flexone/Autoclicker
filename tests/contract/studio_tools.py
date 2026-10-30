@@ -382,9 +382,9 @@ finally:
 
 
 section("Studio-Live-Run: alle Laufentscheidungen sind verdrahtet")
-from autoclicker.handlers import COMMANDS as _BEFEHLE_NEU
+from autoclicker.handlers import COMMANDS as _HANDLER_COMMANDS
 check("Studio und Hauptprozess kennen dieselben Befehle",
-      sorted(_SB.ALL_COMMANDS) == sorted(_BEFEHLE_NEU))
+      sorted(_SB.ALL_COMMANDS) == sorted(_HANDLER_COMMANDS))
 check("Warte- und Block-Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
       {"skip", "skip_step", "finish", "start_manual", "manual_action", "schedule"}
       <= set(_SB.RUN_COMMANDS))

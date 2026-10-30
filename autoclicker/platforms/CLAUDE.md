@@ -25,7 +25,7 @@ sich später als stiller Fehlschlag zu zeigen.
 
 Windows-spezifischer Code darf nur noch in **drei** Dateien stehen —
 `platforms/windows.py`, `utils/io.py`, `utils/console.py`. Ein Test in
-`tests/test_logic.py` (`PLATTFORM_MODULE`) hält das fest: greift ein anderes Modul auf
+`tests/test_logic.py` (`PLATFORM_MODULES`) hält das fest: greift ein anderes Modul auf
 `ctypes.windll`, `ctypes.WinDLL`, `wintypes` oder `msvcrt` zu, schlägt er fehl und nennt
 die Datei. Er prüft **beide** Richtungen — kein Windows-Aufruf ausserhalb der Liste, und
 kein Eintrag auf der Liste, der gar nichts Plattformspezifisches mehr enthält, sonst

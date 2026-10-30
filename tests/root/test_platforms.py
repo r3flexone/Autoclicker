@@ -75,11 +75,11 @@ class LinuxBackendTests(unittest.TestCase):
             self.assertFalse(linux_x11.register_hotkeys())
 
     def test_hotkey_listener_stellt_ids_in_die_event_queue(self):
-        erfasst = {}
+        captured = {}
 
         class Listener:
             def __init__(self, callbacks):
-                erfasst.update(callbacks)
+                captured.update(callbacks)
 
             def start(self):
                 return None
@@ -92,7 +92,7 @@ class LinuxBackendTests(unittest.TestCase):
                         clear=True), patch.object(
                             linux_x11, "_pynput", return_value=(Keyboard, object())):
             self.assertTrue(linux_x11.register_hotkeys())
-            erfasst["<ctrl>+<alt>+a"]()
+            captured["<ctrl>+<alt>+a"]()
             self.assertEqual(1, linux_x11.poll_hotkey())
 
     def test_tastaturhook_ignoriert_tasten_bei_gehaltenem_alt_oder_strg(self):
@@ -141,12 +141,12 @@ class LinuxBackendTests(unittest.TestCase):
             def __init__(self, char):
                 self.char = char
 
-        erfasst = {}
+        captured = {}
 
         class Listener:
             def __init__(self, on_press, on_release):
-                erfasst["press"] = on_press
-                erfasst["release"] = on_release
+                captured["press"] = on_press
+                captured["release"] = on_release
 
             def start(self):
                 return None
@@ -160,26 +160,26 @@ class LinuxBackendTests(unittest.TestCase):
         Keyboard.Key = Key
         Keyboard.Listener = Listener
 
-        gemeldet = []
+        reported = []
         linux_x11._keyboard_listener = None
         try:
             with patch.object(linux_x11, "_pynput",
                               return_value=(Keyboard, object())):
-                self.assertTrue(linux_x11.install_keyboard_hook(gemeldet.append))
-            press, release = erfasst["press"], erfasst["release"]
+                self.assertTrue(linux_x11.install_keyboard_hook(reported.append))
+            press, release = captured["press"], captured["release"]
 
             press(Letter("a"))
-            self.assertEqual(["a"], gemeldet)
+            self.assertEqual(["a"], reported)
 
             for modifier in (Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
                              Key.ctrl, Key.ctrl_l, Key.ctrl_r):
                 press(modifier)
                 press(Letter("b"))
                 release(modifier)
-            self.assertEqual(["a"], gemeldet)
+            self.assertEqual(["a"], reported)
 
             press(Letter("c"))
-            self.assertEqual(["a", "c"], gemeldet)
+            self.assertEqual(["a", "c"], reported)
         finally:
             linux_x11._keyboard_listener = None
 
@@ -188,7 +188,7 @@ class LinuxBackendTests(unittest.TestCase):
 
         `PILLOW_AVAILABLE` wird mitgesetzt: geprueft wird die WEITERGABE, und die
         haengt nicht daran, ob Pillow installiert ist. Ohne den Patch faellt der
-        Test in der `without`-Variante um, obwohl an der Weitergabe nichts fehlt -
+        Test in der `ohne`-Variante um, obwohl an der Weitergabe nichts fehlt -
         ein roter Test, der nur die Testumgebung meldet, verdeckt echte.
         """
         from autoclicker import imaging
@@ -248,13 +248,13 @@ class FacadeHelperTests(unittest.TestCase):
             failsafe_enabled=enabled, failsafe_x=x, failsafe_y=y))
 
     def test_backend_vertrag_enthaelt_nur_systemaufrufe(self):
-        abgeleitet = {"resolve_window", "get_virtual_origin",
-                      "get_screen_center", "check_failsafe"}
-        self.assertEqual(set(), abgeleitet & set(BACKEND_FUNCTIONS))
+        derived = {"resolve_window", "get_virtual_origin",
+                   "get_screen_center", "check_failsafe"}
+        self.assertEqual(set(), derived & set(BACKEND_FUNCTIONS))
         for backend in (linux_x11, windows):
-            self.assertEqual([], [name for name in abgeleitet
+            self.assertEqual([], [name for name in derived
                                   if hasattr(backend, name)], backend.__name__)
-        for name in abgeleitet:
+        for name in derived:
             self.assertTrue(callable(getattr(winapi, name)), name)
 
     def test_fensteraufloesung_bevorzugt_exakten_titel(self):

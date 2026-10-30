@@ -13,7 +13,7 @@ import time
 import zlib
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def _png(color: tuple, width: int = 8, height: int = 8) -> bytes:
@@ -83,10 +83,7 @@ def run():
     from autoclicker.config import RUN_STATUS_FILE
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b) as f:
         f.tab("run")

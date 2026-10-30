@@ -242,7 +242,7 @@ META: dict = {
         empty="nach getippter Priorität"),
     "scan_catalog_file": M(
         "Item-Katalog", CONTROL_TEXT,
-        "Pfad zur katalog.json mit den echten Item-Namen des Spiels. Der Knopf "
+        "Pfad zur catalog.json mit den echten Item-Namen des Spiels. Der Knopf "
         "darunter holt sie aus der offiziellen Spiel-API und trägt den Pfad "
         "gleich hier ein. Ist sie gesetzt, setzt „Aus Katalog einordnen“ "
         "Kategorie und Priorität, und die LLM-Benennung wählt aus den echten "

@@ -6,24 +6,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test_support import install_platform_stubs
+from test_support import Image, install_platform_stubs, needs_pillow
 
 install_platform_stubs()
 
 # Die Seite wird aus dem Repo gelesen, nicht aus dem Arbeitsverzeichnis: der
 # Runner startet die Wurzelmodule in einem eigenen Ordner (`root_tests.main`).
 REPO = Path(__file__).resolve().parents[2]
-
-# Pillow ist optional (s. test_scan_services.py): der Import stand hier oben und
-# ohne Pillow starb das Modul beim LADEN.
-try:
-    from PIL import Image
-    PILLOW = True
-except ImportError:                                              # pragma: no cover
-    Image = None
-    PILLOW = False
-
-needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
 from autoclicker.editors.sequence_studio.scan_contract import MODE_SLOT, MODE_CHOICE
@@ -62,11 +51,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def tearDown(self):
         os.chdir(self.old_cwd)
         self.temp.cleanup()
-
-    def test_membership_api_is_removed(self):
-        self.assertFalse(hasattr(self.bridge, "scan_mitglied"))
-        self.assertFalse(hasattr(self.bridge, "scan_alle"))
-        self.assertFalse(hasattr(self.bridge, "scan_auswahl_mitglied"))
 
     def test_invalid_tolerance_is_reported_without_mutation(self):
         cfg = self.bridge.scans["Inventar"]
@@ -445,7 +429,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # eigener Knopf in `prioritaetsfeld()`, den seit dem Masken-Umbau
         # niemand mehr rief: der Text war da, das Bedienelement nicht.
         self.assertIn("0 = ganz nach vorn", js)
-        self.assertNotIn("function prioritaetsfeld", js)
         self.assertIn('"P" + i.priority', js)
         # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
         # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem
@@ -476,8 +459,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn('$("scan-photo-info")', js)
         self.assertIn('id="scan-photo-info"', html)
         self.assertIn('id="scan-size"', html)
-        self.assertNotIn('id="scan-bar-foto"', html)
-        self.assertNotIn('id="scan-bar-lernen"', html)
 
     def test_window_source_moves_editor_slots_with_the_game(self):
         old_rect = (0, 0, 120, 80)

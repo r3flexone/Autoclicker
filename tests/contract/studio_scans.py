@@ -35,8 +35,6 @@ from autoclicker.editors.sequence_studio.scan_contract import (
 from autoclicker.models import (ItemProfile as _ITEM8, ItemSlot as _SLOT8,
                                 ItemScanConfig as _ISC8)
 
-_repo17 = Path(__file__).resolve().parent.parent
-
 _sandbox18 = tempfile.mkdtemp(prefix="studioscan_")
 _cwd18 = _os.getcwd()
 _os.chdir(_sandbox18)
@@ -657,9 +655,9 @@ try:
     check("beim Zurückwechseln kommt genau dessen Bestand wieder",
           sorted(_b18.slots) == ["Slot 1"] and sorted(_b18.items) == ["Item 1"])
 
-    _z_besitz18 = _b18.scan_save()
+    _z_owner18 = _b18.scan_save()
     check("Scan-Bestand wird unter seiner Sequenz gespeichert",
-          _z_besitz18["status"]["kind"] == "ok"
+          _z_owner18["status"]["kind"] == "ok"
           and Path("sequences/s/item_scans/lokal.json").exists())
     check("keine globalen Slot-/Item-Dateien entstehen",
           not Path("slots/slots.json").exists()
@@ -1516,7 +1514,7 @@ try:
     check("und die Ansicht nennt ihn beim Namen",
           _itemB["confirmation"]["point_id"] == _pidB
           and "OK-Knopf" in _itemB["confirmation"]["text"])
-    # **Die Koordinate steht in points.json, sonst nirgends.** `confirm_point`
+    # **Die Koordinate steht im Punkt der sequence.json, sonst nirgends.** `confirm_point`
     # ist der abgeleitete Arbeitswert — dieselbe Rolle wie `action_x/y`.
     check("der abgeleitete Arbeitswert wird mitgezogen",
           _bB.items["Trank"].confirm_point is not None
@@ -1810,9 +1808,9 @@ try:
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bs = _build_on()
-        _erg_std = _pass_on(_bs, {})
+        _res_std = _pass_on(_bs, {})
         check("ohne 'alle' bleibt es bei den auto-gelernten Items",
-              _erg_std["status"]["kind"] == "warn" and "Item 1" in _bs.items)
+              _res_std["status"]["kind"] == "warn" and "Item 1" in _bs.items)
 
         # --- Der Grund, warum die Kategorie nie kam ---------------------------
         # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
@@ -1831,9 +1829,8 @@ try:
         _CFG_an.scan_catalog_file = str(Path("catalog.json").resolve())
         try:
             _bk = _build_on()
-            # `item_names` gehoert NICHT in den Konstruktor: die Namen sind
-            # die Wahrheit, aber abgeleitet — `sync_names()` fuellt sie aus den
-            # Objekten (`__post_init__`).
+            # `item_names` gehoert NICHT in den Konstruktor: die Objekte in
+            # `items` sind die Wahrheit, die Namen werden daraus abgeleitet.
             _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
             _bk.open_scan = "S"
@@ -1878,7 +1875,7 @@ try:
         _lv_an.suggest_item_name_with_reason = _erst_timeout
         _bt = _build_on()
         _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to = _pass_on(_bt, {"all_items": True})
+        _pass_on(_bt, {"all_items": True})
         check("nach einem Timeout wird einmal wiederholt", len(_attempts_on) == 2)
         check("und der zweite Versuch bekommt mehr Zeit",
               _attempts_on[1] > _attempts_on[0])
@@ -1889,8 +1886,8 @@ try:
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, _TO_an)
         _bt2 = _build_on()
         _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to2 = _pass_on(_bt2, {"all_items": True})
-        _txt_to = _erg_to2["status"]["text"]
+        _res_to2 = _pass_on(_bt2, {"all_items": True})
+        _txt_to = _res_to2["status"]["text"]
         check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
               "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
         check("und die Meldung nennt die Abhilfe", "llm_timeout" in _txt_to)
@@ -1904,7 +1901,7 @@ try:
         # Gegenstand.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bd = _build_on()
-        _erg_dop = _pass_on(_bd, {"all_items": True})
+        _res_dop = _pass_on(_bd, {"all_items": True})
         check("derselbe Name legt kein zweites Item an",
               "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
         # Die erste Vorlage ist beim Benennen dem Namen gefolgt
@@ -1916,9 +1913,9 @@ try:
               len(_names_dop) == 2 and _names_dop[0].startswith("godlike_bow")
               and _names_dop[1] == "b.png")
         check("und die Meldung sagt es",
-              "angehängt" in _erg_dop["status"]["text"])
-        # Der Name IST die Referenz: ohne `_sync_objects()` kaeme das
-        # geloeschte Item ueber `sync_names()` beim Speichern zurueck.
+              "angehängt" in _res_dop["status"]["text"])
+        # Die Objekte im Scan sind die Wahrheit: ohne `_sync_objects()` bliebe
+        # das geloeschte Item dort stehen und kaeme beim Speichern zurueck.
         check("das Doppel ist auch aus dem Scan raus",
               "Item 2" not in (_bd.scans[_bd.open_scan].item_names
                                if _bd.open_scan in _bd.scans else []))

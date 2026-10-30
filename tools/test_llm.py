@@ -22,7 +22,7 @@ from pathlib import Path
 # Repo-Root in sys.path damit `autoclicker` importierbar ist, auch aus tools/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from autoclicker.config import AppConfig
+from autoclicker.config import AppConfig, load_config
 from autoclicker.llm_vision import analyze_image, match_boss_name, test_connection
 
 
@@ -304,16 +304,9 @@ def run_item_scan(config: AppConfig) -> None:
 
 
 def main() -> int:
-    config = AppConfig()
-
-    # Versuche eine vorhandene config.json zu nutzen — sonst bleiben die Defaults
-    try:
-        from autoclicker.config import load_config
-        loaded = load_config()
-        if loaded is not None:
-            config = loaded
-    except Exception:
-        pass
+    # Eine vorhandene config.json gilt; sonst liefert load_config() die Defaults
+    # (und meldet selbst, wenn die Datei unlesbar war).
+    config = load_config()
 
     _print_header("BOSS-SCANNER LLM-TEST")
     print(f"Provider: {config.llm_provider}")

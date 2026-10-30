@@ -3,17 +3,17 @@
 import re
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
-def source_wz() -> str:
+def tools_table_source() -> str:
     """Der `WZ_TOOLS`-Block aus `app.js` — die Liste, die die Seite zeichnet."""
     # Absolut, denn `sandbox()` wechselt vorher das Arbeitsverzeichnis.
     file = (Path(__file__).resolve().parents[2]
-             / "autoclicker/editors/sequence_studio/web/app.js")
+            / "autoclicker/editors/sequence_studio/web/app.js")
     source = file.read_text(encoding="utf-8")
-    ab = source.index("const WZ_TOOLS = [")
-    return source[ab:source.index("];", ab)]
+    start = source.index("const WZ_TOOLS = [")
+    return source[start:source.index("];", start)]
 
 
 def setup():
@@ -55,10 +55,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b) as f:
         f.tab("tools")
@@ -66,7 +63,7 @@ def run():
         # Zahl.** Hier stand `== 4`, als es vier Werkzeuge gab; mit dem fuenften
         # und sechsten war der Pin schlicht falsch, ohne dass jemand etwas
         # kaputtgemacht haette. Gezaehlt wird jetzt, was `WZ_TOOLS` fuehrt.
-        target = len(re.findall(r'\{key: "', source_wz()))
+        target = len(re.findall(r'\{key: "', tools_table_source()))
         expect(f.count("#wz-left button") == target,
                f"{target} Werkzeuge erwartet (je eines aus WZ_TOOLS), "
                f"da: {f.count('#wz-left button')}")
@@ -82,7 +79,7 @@ def run():
         # In der Tabelle stand dort `bezug: "bestand"`, was fuer ein Werkzeug,
         # das nur misst, schlicht falsch gewesen waere; gezeichnet wurde die
         # Zeile gar nicht, also fiel die Unwahrheit nicht auf.
-        for w in re.findall(r'\{key: "([a-z]+)"', source_wz()):
+        for w in re.findall(r'\{key: "([a-z]+)"', tools_table_source()):
             f.click(f".wz-nav.{w}")
             expect(f.count("#wz-middle .wz-scope") == 1,
                    f"Werkzeug '{w}' hat keine Bezugszeile")
@@ -224,11 +221,11 @@ def run():
         # so lange im Spiel ist. Solange sie laeuft, kann die Datei aber gar
         # nicht da sein.
         counted = f.page.evaluate("""() => {
-          window.__liste = 0;
-          const alt = window.ask;
-          window.ask = async function (name, daten) {
-            if (name === "sequence_list") window.__liste++;
-            return alt(name, daten);
+          window.__listCalls = 0;
+          const original = window.ask;
+          window.ask = async function (name, data) {
+            if (name === "sequence_list") window.__listCalls++;
+            return original(name, data);
           };
           // Aufnahme laeuft: der Waechter darf nur warten.
           wzRecordingStarted = true;
@@ -239,14 +236,14 @@ def run():
         }""")
         expect(counted, "der Waechter liess sich nicht anwerfen")
         f.page.wait_for_timeout(3400)
-        during = f.page.evaluate("window.__liste")
+        during = f.page.evaluate("window.__listCalls")
         expect(during == 0,
                f"der Waechter fragt waehrend der laufenden Aufnahme: {during}x")
         # Endet sie, muss er sofort nachsehen — sonst faende er sie nie.
         f.page.evaluate("wzRecordingLive = {active: false, pausiert: false, "
                          "count: 0, events: []}")
         f.page.wait_for_timeout(2400)
-        after_that = f.page.evaluate("window.__liste")
+        after_that = f.page.evaluate("window.__listCalls")
         expect(after_that > 0, "nach dem Ende der Aufnahme fragt der Waechter gar nicht")
         f.page.evaluate("wzRecordingStarted = false; ++wzRecordingPoll; "
                          "++wzRecordingLivePoll;")

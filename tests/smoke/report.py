@@ -10,7 +10,7 @@ sofort auffallen (der Reiter bleibt leer) und im Test gar nicht.
 import csv
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 COLUMNS = ["timestamp", "elapsed_sec", "event", "detail", "x", "y", "extra"]
 
@@ -68,10 +68,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b) as f:
         f.tab("report")

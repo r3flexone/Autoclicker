@@ -131,7 +131,7 @@ try:
     check("der Klick merkt die neue Stelle",
           _s.reclick_set[0][:3] == (1, (100, 100), (150, 160)))
     # **Der Punkt bleibt bis zum Schluss unangetastet.** Sonst waere ein Abbruch
-    # eine halb ueberschriebene points.json - und genau so sind in einer echten
+    # eine halb ueberschriebene Punktliste - und genau so sind in einer echten
     # Runde drei Fehlklicks dauerhaft in den Punkten gelandet.
     check("der Punkt selbst ist noch unverändert",
           (_s.points[0].x, _s.points[0].y) == (100, 100))

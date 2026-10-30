@@ -174,10 +174,10 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_worker_fehler_raeumt_lauf_und_log_auf(self):
         state = AutoClickerState()
         state.is_running = True
-        protokoll = Mock()
+        session_log = Mock()
         seq = Sequence("Test", init_steps=[SequenceStep(wait_only=True)])
         with patch.object(worker, "_prepare_worker_state", return_value=seq), \
-                patch("autoclicker.session_log.start_session_log", return_value=protokoll), \
+                patch("autoclicker.session_log.start_session_log", return_value=session_log), \
                 patch.object(worker, "_run_main_loop", side_effect=RuntimeError("Schritt kaputt")), \
                 patch.object(worker, "set_console_title"), \
                 patch.object(worker.status, "write_status"), \
@@ -189,7 +189,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertFalse(state.is_running)
         self.assertTrue(state.stop_event.is_set())
         self.assertIsNone(state.session_log)
-        protokoll.close.assert_called_once()
+        session_log.close.assert_called_once()
         self.assertIn("Fehler", end.call_args.args[1])
 
     def test_zyklen_vor_einem_neustart_zaehlen_in_der_zusammenfassung_mit(self):
@@ -321,7 +321,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         ein falsches Schluesselwort scheitert hier mit TypeError, so wie es
         in der echten Bibliothek scheitern wuerde.
         """
-        erhalten = {}
+        received = {}
 
         class FakePytesseract:
             class Output:
@@ -331,18 +331,18 @@ class RuntimeHardeningTest(unittest.TestCase):
             def image_to_data(image, lang=None, config="", nice=0,
                               output_type="string", timeout=0,
                               pandas_config=None):
-                erhalten["lang"] = lang
-                erhalten["output_type"] = output_type
+                received["lang"] = lang
+                received["output_type"] = output_type
                 return {"text": ["", " Drache "], "conf": ["-1", "90"]}
 
         with patch.object(ocr, "_pytesseract_mod", FakePytesseract):
-            treffer = ocr._read_tesseract(Mock(), ["de", "en"], 0.3)
-            self.assertEqual("de+en", erhalten["lang"])
+            matches = ocr._read_tesseract(Mock(), ["de", "en"], 0.3)
+            self.assertEqual("de+en", received["lang"])
             ocr._read_tesseract(Mock(), None, 0.3)
-            self.assertEqual("eng", erhalten["lang"])
+            self.assertEqual("eng", received["lang"])
 
-        self.assertEqual([("Drache", 0.9)], treffer)
-        self.assertEqual("dict", erhalten["output_type"])
+        self.assertEqual([("Drache", 0.9)], matches)
+        self.assertEqual("dict", received["output_type"])
 
     def test_immediate_modus_nimmt_das_fenster_nur_nach_einem_klick_neu_auf(self):
         """Ein Durchgang, viele Slots, EINE Aufnahme — bis geklickt wird.

@@ -47,7 +47,7 @@ try:
         return seq
 
     _farm = _create("Farm")
-    _raid = _create("Raid")
+    _create("Raid")
     # An „Raid" haengt mehr als die JSON — genau das soll die Rueckfrage nennen.
     save_item_scan(_ISC(name="Inventar", owner_sequence="Raid",
                         slots=[_SLOT(name="Slot 1", scan_region=(0, 0, 10, 10), click_pos=(5, 5))],

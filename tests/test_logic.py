@@ -1,9 +1,9 @@
 """Logik-/Daten-Schicht-Tests — laufen ohne GUI/LLM, plattformunabhängig.
 
-Aufruf:  python tests/test_logic.py   (Exit 0 = alle grün)
+Aufruf:  python tests/test_logic.py   (muss mit `N PASS / 0 FAIL` enden)
 
-Prüft Serialisierung/Persistenz, Backward-Compat, Farb-/Parsing-Helfer und
-das Export-Format. Auf Linux/Mac wird msvcrt gestubbt (auf Windows nicht —
+Prüft Serialisierung/Persistenz, Farb-/Parsing-Helfer und das
+Export-Format. Auf Linux/Mac wird msvcrt gestubbt (auf Windows nicht —
 da ist es echt vorhanden), damit der Import der utils nicht scheitert.
 """
 import sys, types, json, tempfile
@@ -198,7 +198,7 @@ check("String mit Zahlen bleibt unangetastet", '"[1,\\n2,\\n3]"' in cj2 or "[1,\
 cjn = compact_json({"region": [-1920, 0, -1000, 500], "xy": [-5, -7]})
 check("negative Koordinaten ebenfalls kompakt",
       "[-1920, 0, -1000, 500]" in cjn and "[-5, -7]" in cjn)
-check("compact_json nimmt auch Listen (points.json, bosses.json)",
+check("compact_json nimmt auch Listen (die Boss-Bibliothek)",
       compact_json([{"id": 1, "x": 2, "y": 3}]).startswith("["))
 
 # ---------------------------------------------------------------- sanitize_filename
@@ -231,7 +231,7 @@ check("2x-Skalierung Region normalisiert", remap_region((10, 10, 30, 40), scale2
 offset = compute_transform((0, 0), (100, 0), (10, 5), (110, 5))
 check("Reiner Offset", remap_point(0, 0, offset) == (10, 5))
 
-# ---------------------------------------------------------------- Config-Backward-Compat
+# ---------------------------------------------------------------- Config: entfernte Felder
 section("Config: entferntes Feld bricht alte config.json nicht")
 from autoclicker.config import AppConfig
 old = AppConfig().to_dict(); old["scan_learn_llm_names"] = True  # alter, jetzt entfernter Key
@@ -628,11 +628,11 @@ check("alte Schritte ohne point_id -> None",
 # DIE Invariante der Umstellung: in einer gespeicherten Sequenz steht keine Koordinate.
 # Sie hier gegen den Serializer zu pruefen ist der Zweck der ganzen Uebung - faellt sie,
 # ist eine Kopie zurueck, und die naechste Kalibrierung erwischt sie nicht.
-_KOORD_KEYS = ("x", "y", "wait_pixel", "wait_color", "verify_pixel", "verify_color",
+_COORD_KEYS = ("x", "y", "wait_pixel", "wait_color", "verify_pixel", "verify_color",
                "else_x", "else_y", "recorded_color", "else_name")
 _saved = [_step_to_dict(st) for st in _s]
 check("kein Schritt speichert eine Koordinate, mit Punkt wie ohne",
-      all(not any(k in d for k in _KOORD_KEYS) for d in _saved))
+      all(not any(k in d for k in _COORD_KEYS) for d in _saved))
 check("ein Schritt MIT Punkt speichert auch seinen Namen nicht",
       all("name" not in d for d, st in zip(_saved, _s) if st.point_id is not None))
 # Auch eine Koordinate, die im Modell steht, kommt nicht in die Datei: ohne Punkt
@@ -644,7 +644,7 @@ _hand = _step_to_dict(SequenceStep(
     verify_condition=_WC(pixel=(5, 6), color=(7, 8, 9)),
     else_config=_EC("click", x=1, y=2, name="e")))
 check("auch ein Schritt ohne Punkt schreibt weder Koordinate noch Farbe",
-      not any(k in _hand for k in _KOORD_KEYS) and _hand["name"] == "Hand"
+      not any(k in _hand for k in _COORD_KEYS) and _hand["name"] == "Hand"
       and _hand["else_action"] == "click")
 check("die ID wird stattdessen gespeichert",
       all("point_id" in d for d, st in zip(_saved, _s) if st.point_id is not None))
@@ -2358,7 +2358,7 @@ section("Slot-Reparatur uebernimmt nur eine eindeutige Zuordnung")
 from autoclicker.editors.slot_editor import _check_assignment as _zp
 
 _INSET = 2
-_BASIS = [(100, 100, 150, 150), (160, 100, 210, 150),
+_BASE = [(100, 100, 150, 150), (160, 100, 210, 150),
           (220, 100, 270, 150), (100, 160, 150, 210)]
 
 
@@ -2375,10 +2375,10 @@ def _rep_rects(regions, dx=0, dy=0):
             for (x1, y1, x2, y2) in regions]
 
 
-_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS), _INSET, (0, 0))
+_p, _v, _ = _zp(_rep_slots(_BASE), _rep_rects(_BASE), _INSET, (0, 0))
 check("unveraendert: Zuordnung gilt, Versatz ist null", bool(_p) and _v == (0, 0))
 
-_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS, 37, -14), _INSET, (0, 0))
+_p, _v, _ = _zp(_rep_slots(_BASE), _rep_rects(_BASE, 37, -14), _INSET, (0, 0))
 check("durchgaengige Verschiebung wird uebernommen", bool(_p) and _v == (37, -14))
 check("jeder Slot bekommt seine eigene gemessene Region",
       _p[0][1] == (137, 86, 187, 136) and _p[1][1] == (197, 86, 247, 136))
@@ -2386,35 +2386,35 @@ check("Namen bleiben an ihren Slots", [s.name for s, _ in _p] ==
       ["Slot 1", "Slot 2", "Slot 3", "Slot 4"])
 
 # Ablehnen, wo die Zuordnung geraten waere
-_p, _, _m = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS[:3], 37, -14), _INSET, (0, 0))
+_p, _, _m = _zp(_rep_slots(_BASE), _rep_rects(_BASE[:3], 37, -14), _INSET, (0, 0))
 check("ein Slot weniger erkannt -> abgelehnt", not _p and _m)
-_p, _, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS + [(280, 100, 330, 150)]),
+_p, _, _ = _zp(_rep_slots(_BASE), _rep_rects(_BASE + [(280, 100, 330, 150)]),
                _INSET, (0, 0))
 check("ein Slot zu viel erkannt -> abgelehnt", not _p)
 
-_verdreht = _rep_rects([_BASIS[1], _BASIS[0], _BASIS[2], _BASIS[3]], 37, -14)
-_p, _, _ = _zp(_rep_slots(_BASIS), _verdreht, _INSET, (0, 0))
+_twisted = _rep_rects([_BASE[1], _BASE[0], _BASE[2], _BASE[3]], 37, -14)
+_p, _, _ = _zp(_rep_slots(_BASE), _twisted, _INSET, (0, 0))
 check("vertauschte Reihenfolge -> abgelehnt (Versaetze streuen)", not _p)
 
-_larger = [(x, y, int(w * 1.4), int(h * 1.4)) for (x, y, w, h) in _rep_rects(_BASIS, 10, 10)]
-_p, _, _m = _zp(_rep_slots(_BASIS), _larger, _INSET, (0, 0))
+_larger = [(x, y, int(w * 1.4), int(h * 1.4)) for (x, y, w, h) in _rep_rects(_BASE, 10, 10)]
+_p, _, _m = _zp(_rep_slots(_BASE), _larger, _INSET, (0, 0))
 check("andere Slot-Groesse -> abgelehnt (Aufloesung, nicht Verschiebung)",
       not _p and any("Aufloesung" in m for m in _m))
 
 # Toleranzgrenze: Erkennungs-Rauschen ja, Ausreisser nein
-_leicht = _rep_rects(_BASIS, 37, -14)
-_leicht[2] = (_leicht[2][0] + 3, _leicht[2][1], _leicht[2][2], _leicht[2][3])
-_p, _, _ = _zp(_rep_slots(_BASIS), _leicht, _INSET, (0, 0))
+_slight = _rep_rects(_BASE, 37, -14)
+_slight[2] = (_slight[2][0] + 3, _slight[2][1], _slight[2][2], _slight[2][3])
+_p, _, _ = _zp(_rep_slots(_BASE), _slight, _INSET, (0, 0))
 check("3 px Rauschen bleiben in der Toleranz", bool(_p))
 
-_grob = _rep_rects(_BASIS, 37, -14)
-_grob[2] = (_grob[2][0] + 9, _grob[2][1], _grob[2][2], _grob[2][3])
-_p, _, _ = _zp(_rep_slots(_BASIS), _grob, _INSET, (0, 0))
+_coarse = _rep_rects(_BASE, 37, -14)
+_coarse[2] = (_coarse[2][0] + 9, _coarse[2][1], _coarse[2][2], _coarse[2][3])
+_p, _, _ = _zp(_rep_slots(_BASE), _coarse, _INSET, (0, 0))
 check("9 px Ausreisser -> abgelehnt", not _p)
 
 # Der Offset der markierten Region muss herausgerechnet werden, sonst haengt das
 # Ergebnis davon ab, wie der Nutzer den Bereich gezogen hat
-_p, _v, _ = _zp(_rep_slots(_BASIS), _rep_rects(_BASIS, -50, -50), _INSET, (50, 50))
+_p, _v, _ = _zp(_rep_slots(_BASE), _rep_rects(_BASE, -50, -50), _INSET, (50, 50))
 check("Offset der markierten Region wird eingerechnet", _v == (0, 0))
 
 
@@ -2603,7 +2603,7 @@ section("Betriebssystem-Abhaengigkeiten liegen nur in der Plattform-Schicht")
 # scan_studio, console), jedes Mal mit eigenen SM_*-Konstanten.
 import re as _re_p
 
-PLATTFORM_MODULE = {
+PLATFORM_MODULES = {
     "autoclicker/platforms/windows.py",  # WinAPI-Backend
     "autoclicker/utils/io.py",      # Tastendruck-Erfassung (msvcrt / GetAsyncKeyState)
     "autoclicker/utils/console.py", # Konsolen-Erkennung, Fenstertitel, ANSI-Freischaltung
@@ -2614,7 +2614,7 @@ _package = Path(__file__).resolve().parent.parent / "autoclicker"
 _outlier = []
 for _path in sorted(_package.rglob("*.py")):
     _rel = _path.relative_to(_package.parent).as_posix()
-    if _rel in PLATTFORM_MODULE:
+    if _rel in PLATFORM_MODULES:
         continue
     _matches = _WIN_PATTERN.findall(_path.read_text(encoding="utf-8"))
     if _matches:
@@ -2627,7 +2627,7 @@ if _outlier:
 
 # Die Gegenrichtung: steht ein Modul auf der Liste, das gar nichts Windows-Spezifisches
 # mehr enthaelt, gehoert es runter — sonst waechst die Liste zur Fiktion.
-_superfluous = [m for m in sorted(PLATTFORM_MODULE)
+_superfluous = [m for m in sorted(PLATFORM_MODULES)
                   if not _WIN_PATTERN.search((_package.parent / m).read_text(encoding="utf-8"))]
 check("jedes gelistete Plattform-Modul ist auch wirklich eines", _superfluous == [])
 if _superfluous:
@@ -2670,14 +2670,12 @@ section("Jeder Klick-Schritt zeigt per point_id auf seinen Punkt")
 # Der Punkt ist die Wahrheit, der Schritt verweist nur. Haelt ein Schritt seine
 # Koordinaten selbst, zieht ein verschobener Punkt ihn NICHT mit — und genau dafuer
 # gibt es point_id. Der Recorder legte frueher beides unabhaengig an: Schritte ohne
-# Referenz, Punkte hinterher. Die Migration verknuepft nur ALTE Dateien, eine frische
-# Aufnahme ist schon gestempelt und blieb deshalb dauerhaft unverknuepft.
+# Referenz, Punkte hinterher - eine frische Aufnahme blieb so dauerhaft unverknuepft.
 from autoclicker.editors.sequence_recorder import points_for_events as _pfe
 from autoclicker.editors.sequence_recorder import sequence_file as _sequence_file
 from autoclicker.models import (RecordEvent as _RE, REC_CLICK as _R_CLICK,
                                 REC_KEY as _R_KEY, REC_WAIT_COLOR as _R_WAIT)
 
-_st_rec = AutoClickerState()
 _events = [_RE(_R_CLICK, 0.0, 100, 200, (1, 2, 3)),
            _RE(_R_CLICK, 1.0, 300, 400, None),
            _RE(_R_CLICK, 2.0, 100, 200, (1, 2, 3))]
@@ -2777,7 +2775,6 @@ import autoclicker.config as _cfg_pas
 _cfg_pas.CONFIG.punkt_radius = 8
 _cfg_pas.CONFIG.punkt_farbtoleranz = 10
 
-_st_rec3 = AutoClickerState()
 _ev_nah = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
            _RE(_R_CLICK, 1.0, 103, 202, (32, 135, 111)),   # 3.6 px daneben
            _RE(_R_CLICK, 2.0, 104, 205, (32, 135, 111))]   # 6.4 px daneben
@@ -2789,7 +2786,6 @@ check("und alle drei Schritte zeigen darauf",
 # Deine Bedingung: sobald die Farbe abweicht, MUSS ein eigener Punkt entstehen -
 # auch einen Pixel daneben. An einer Farbgrenze klickt man zwei verschiedene
 # Dinge, und zwei Spiele uebereinander unterscheiden sich in nichts anderem.
-_st_rec4 = AutoClickerState()
 _ev_color = [_RE(_R_CLICK, 0.0, 100, 200, (32, 135, 111)),
              _RE(_R_CLICK, 1.0, 101, 200, (179, 57, 57))]
 _map4, _new4 = _pfe(_ev_color)
@@ -2879,7 +2875,6 @@ _ev_all = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_CLICK, 5.4, 50, 60, (7, 7, 7)),
             _RE(_R_KEY, 6.0, key="enter"),
             _RE(_R_CLICK, 6.5, 50, 60, (7, 7, 7))]
-_st_all = AutoClickerState()
 _map_all, _new_all = _pfe(_ev_all)
 _steps_all = _sae(_ev_all, _map_all)
 
@@ -2969,7 +2964,6 @@ from autoclicker.editors.sequence_recorder import mark_screenshot as _mshot
 _ev_shot = [_RE(_R_CLICK, 0.0, 10, 20, (1, 2, 3)),
             _RE(_R_SHOT, 1.5),
             _RE(_R_CLICK, 2.0, 30, 40, (4, 5, 6))]
-_st_shot = AutoClickerState()
 _map_shot, _new_shot = _pfe(_ev_shot)
 _steps_shot = _sae(_ev_shot, _map_shot)
 
@@ -3082,7 +3076,7 @@ _st_watch = AutoClickerState()
 _map_watch, _points_watch = _pfe(_ev_watch)
 _steps_watch = _sae(_ev_watch, _map_watch)
 # Anders als der Warte-Marker: die Stelle ist BEWUSST gewaehlt, also bekommt sie
-# einen Punkt — points.json ist die einzige Quelle fuer Koordinaten.
+# einen Punkt — der Punkt in der sequence.json ist die einzige Quelle fuer Koordinaten.
 check("der Beobachtungs-Marker bekommt einen eigenen Punkt", 1 in _map_watch)
 check("und der liegt auf der beobachteten Stelle",
       any((p.x, p.y) == (500, 600) for p in _points_watch))
@@ -3313,8 +3307,8 @@ check("keine Status-Zeile schliesst sich mit \\n ab",
 
 # Volle Loeschbreite: die 112 sichtbaren Zeichen der zweiten Zeile muessen weg sein,
 # bevor die dritte (18 Zeichen) sie ersetzt. Mit fixen 80 blieb der Rest stehen.
-_dritte = _with.writes[2]
-_width = _dritte.count(" ", 0, _dritte.rfind("\r"))
+_third = _with.writes[2]
+_width = _third.count(" ", 0, _third.rfind("\r"))
 check("die Loeschbreite folgt der vorherigen Zeile statt fixer 80",
       _width >= len("[Loop] Schritt 2/50 | ") + 90)
 
@@ -3607,11 +3601,11 @@ check("und der Schritt gilt als erledigt", _res is True)
 _res, _clicks, _shots = _run(effective_from_click=9999, retries=2)
 check("bleibt die Wirkung aus, wird genau (retries+1)x versucht", _clicks == 3)
 check("danach reisst die Sequenz NICHT ab (Hinweis, kein Abbruch)", _res is True)
-_erg0, _clicks0, _ = _run(effective_from_click=9999, retries=0)
+_res0, _clicks0, _ = _run(effective_from_click=9999, retries=0)
 check("verify_retries=0 heisst: ein Versuch, keine Wiederholung", _clicks0 == 1)
 # Mit else greift dieselbe Mechanik wie bei einer nicht erfuellten Vorbedingung
-_erg_e, _, _ = _run(effective_from_click=9999, retries=1, else_cfg=_EC4(action=_ESK4))
-check("mit else_config greift else nach dem letzten Versuch", _erg_e is True)
+_res_else, _, _ = _run(effective_from_click=9999, retries=1, else_cfg=_EC4(action=_ESK4))
+check("mit else_config greift else nach dem letzten Versuch", _res_else is True)
 
 # Der Normalfall darf nichts kosten: ohne Bedingung kein einziger Screenshot
 def _run_without():
@@ -3650,14 +3644,14 @@ from autoclicker.models import (ItemScanConfig as _ISC5, BossScanConfig as _BSC5
                                 IconScanConfig as _ICS5)
 
 # Abgeleitete Felder - stehen bewusst nicht in der Datei (siehe CLAUDE.md)
-_SCAN_FLUECHTIG = {
+_SCAN_TRANSIENT = {
     "ItemScanConfig": {"slots", "items", "owner_sequence"},
     "BossScanConfig": {"bosses"},                # eigene Liste, eigener Serialisierer
     "IconScanConfig": {"action_x", "action_y"},  # aus action_point_id
 }
 # Besitzer wird aus dem Ordner abgeleitet und steht bewusst in keiner Scan-Datei.
-_SCAN_FLUECHTIG["BossScanConfig"].add("owner_sequence")
-_SCAN_FLUECHTIG["IconScanConfig"].add("owner_sequence")
+_SCAN_TRANSIENT["BossScanConfig"].add("owner_sequence")
+_SCAN_TRANSIENT["IconScanConfig"].add("owner_sequence")
 
 
 def _probe_value(field):
@@ -3696,7 +3690,7 @@ try:
                 ("ItemScanConfig", _ISC5, _svi5, _ldi5, "item_scans"),
                 ("BossScanConfig", _BSC5, _svb5, _ldb5, "boss_scans"),
                 ("IconScanConfig", _ICS5, _svc5, _ldc5, "icon_scans")):
-            _fl5 = _SCAN_FLUECHTIG.get(_label5, set())
+            _fl5 = _SCAN_TRANSIENT.get(_label5, set())
             for _f5 in _dc5.fields(_kls5):
                 if _f5.name in _fl5 or _f5.name == "name":
                     continue
@@ -3736,7 +3730,6 @@ section("Was das Sequenz-Studio schreibt, findet der Hauptprozess wieder")
 # Sequenz. Punkt und Schritt müssen aus derselben `sequence.json` kommen; eine
 # zweite Datei oder ein Speicher-Merge würde wieder zwei Zeitstände mischen.
 import shutil as _sh11
-from autoclicker.models import AutoClickerState as _ST11
 
 _old_cwd11 = _os.getcwd()
 _sandbox11 = tempfile.mkdtemp(prefix="punkte_nach_")
@@ -3748,7 +3741,6 @@ try:
     with _cl2.redirect_stdout(_io2.StringIO()):
         _esd11()
 
-    _st11 = _ST11()
     _studio11 = _sf11("studio")
     _studio11.parent.mkdir(parents=True, exist_ok=True)
     _studio11.write_text(json.dumps({
@@ -3804,13 +3796,18 @@ for _path11, _function11 in (
         ("autoclicker/handlers.py", "handle_switch"),
         ("autoclicker/editors/sequence_editor/loader.py", "run_sequence_loader")):
     _tree11 = _ast11.parse((_H.REPO / _path11).read_text(encoding="utf-8"))
-    for _k11 in _ast11.walk(_tree11):
-        if isinstance(_k11, _ast11.FunctionDef) and _k11.name == _function11:
-            _names11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
-                        if isinstance(_n11, _ast11.Call)
-                        and isinstance(_n11.func, _ast11.Name)}
-            if "load_sequence_file" in _names11 and "reload_points" in _names11:
-                _wrong_reload11.append(f"{_path11}:{_function11}")
+    # `next` statt einer Schleife: wird eine der Funktionen umbenannt, laeuft
+    # der Waechter sonst still ins Leere und meldet gruen, ohne etwas zu pruefen.
+    _k11 = next((_f for _f in _ast11.walk(_tree11)
+                 if isinstance(_f, _ast11.FunctionDef) and _f.name == _function11), None)
+    if _k11 is None:
+        _wrong_reload11.append(f"{_path11}:{_function11} (Funktion nicht gefunden)")
+        continue
+    _names11 = {_n11.func.id for _n11 in _ast11.walk(_k11)
+                if isinstance(_n11, _ast11.Call)
+                and isinstance(_n11.func, _ast11.Name)}
+    if "load_sequence_file" in _names11 and "reload_points" in _names11:
+        _wrong_reload11.append(f"{_path11}:{_function11}")
 check("kein Ladeweg mischt einen separaten Punkte-Pool hinein",
       _wrong_reload11 == [])
 if _wrong_reload11:
@@ -3832,10 +3829,10 @@ from autoclicker.platforms.windows import (
 import autoclicker.symbol as _sym12
 
 _t0_12 = _t12.monotonic()
-_erg12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", waiting=0.5)
+_res12 = _sfs12("Fenster mit diesem Titel gibt es garantiert nicht", waiting=0.5)
 _duration12 = _t12.monotonic() - _t0_12
 check("ohne passendes Fenster wird die Frist ausgeschoepft und dann aufgegeben",
-      _erg12 is False and _duration12 >= 0.45)
+      _res12 is False and _duration12 >= 0.45)
 
 _t0_12 = _t12.monotonic()
 _sfs12("Fenster mit diesem Titel gibt es garantiert nicht")
@@ -4204,9 +4201,9 @@ try:
     _market6 = {87: {"buy": 18006, "sell": 18500, "buyVol": 6, "sellVol": 40, "avg": 18100}}
     Path(_path6).write_text(_js6.dumps(_sv6(_market6, _info6)), encoding="utf-8")
     _os6.utime(_path6, (1, 1))
-    _platte = _IP6(name="Titanium Platebody", priority=9)
+    _plate = _IP6(name="Titanium Platebody", priority=9)
     check("der Item-Scan findet den Wert unter dem Katalognamen",
-          _eprio(_platte, 9, _lmw(_path6)) == -round(15600 * 1.10 * 1.05, 2))
+          _eprio(_plate, 9, _lmw(_path6)) == -round(15600 * 1.10 * 1.05, 2))
 finally:
     _os6.unlink(_path6)
 
@@ -4590,7 +4587,7 @@ check("jeder Typ laesst sich auch einstellen", _error10b == [])
 # --- FARBE+KLICK haengt am Punkt, nicht an einer Koordinaten-Kopie ---
 # `set_block_type()` legt die Bedingung notfalls auf step.x/y an - das landete als
 # wait_pixel/wait_color in der Datei, also als zweite Kopie einer Stelle, die es
-# ausserhalb von points.json nicht geben soll. Der Typwechsel bindet sie deshalb an
+# ausserhalb der Punkte der sequence.json nicht geben soll. Der Typwechsel bindet sie an
 # den Punkt des Schritts, und ohne Punkt wird er abgelehnt - dieselbe Regel, die
 # block_trigger schon hatte.
 _b10.select({"phase": 1, "row": 0})
@@ -4621,7 +4618,7 @@ check("und auch das wird begruendet",
 # Und zwar in `set_block_type()` SELBST, nicht als Reparatur danach. Die Funktion
 # legte die Bedingung auf die rohen step.x/y an, und die Bruecke bog sie hinterher
 # auf den Punkt um - wer sie direkt aufruft (oder die Reparatur vergisst), bekam
-# wieder eine Koordinaten-Kopie ausserhalb von points.json.
+# wieder eine Koordinaten-Kopie ausserhalb der Punkte der sequence.json.
 from autoclicker.editors.sequence_studio.model import set_block_type as _sbt10
 from autoclicker.models import SequenceStep as _SS10
 _with_point10 = _SS10(x=100, y=200, point_id=7, recorded_color=(1, 2, 3))
@@ -4937,13 +4934,13 @@ _sc_tmp = tempfile.mkdtemp()
 _sc_cwd = _os.getcwd()
 _os.chdir(_sc_tmp)
 try:
-    _besitz14 = Path("sequences") / "s"
+    _owner14 = Path("sequences") / "s"
     for _folder14, _files14 in (("item_scans", ["beutel", "amboss"]),
                                   ("boss_scans", ["hoehle"]),
                                   ("icon_scans", [])):
-        (_besitz14 / _folder14).mkdir(parents=True, exist_ok=True)
+        (_owner14 / _folder14).mkdir(parents=True, exist_ok=True)
         for _d14 in _files14:
-            (_besitz14 / _folder14 / f"{_d14}.json").write_text(
+            (_owner14 / _folder14 / f"{_d14}.json").write_text(
                 "{}", encoding="utf-8")
 
     _b14 = _SB8(_SEQ8(name="S", loop_phases=[_LP8(name="L", repeat=1, steps=[
@@ -4960,7 +4957,7 @@ try:
     # Neu angelegte Konfigurationen tauchen ohne Neustart auf: gelesen wird bei
     # jeder Momentaufnahme. Zwischen Haupt- und Studio-Prozess ist die Datei der
     # einzige gemeinsame Nenner - ein einmal gefuellter Cache waere hier falsch.
-    (_besitz14 / "icon_scans" / "lupe.json").write_text("{}", encoding="utf-8")
+    (_owner14 / "icon_scans" / "lupe.json").write_text("{}", encoding="utf-8")
     check("eine neu angelegte Konfiguration erscheint sofort",
           _b14.snapshot()["scan_names"]["icon_scan"] == ["lupe"])
 finally:
@@ -5039,8 +5036,7 @@ check("Executor und Studio kennen dieselben Scan-Felder",
 # --------------------------- Sequenz-Studio: Seite und Bruecke passen zusammen
 section("Sequenz-Studio: jeder Aufruf der Seite passt zur Bruecke")
 
-# Dieselbe Klasse Fehler wie bei den dpg-Signaturen weiter oben, nur eine Ebene
-# tiefer: die Seite ruft die Bruecke ueber EINEN Helfer (`call()`), und der reicht
+# Die Seite ruft die Bruecke ueber EINEN Helfer (`call()`), und der reicht
 # immer genau ein Argument durch - `null`, wenn es nichts zu uebergeben gibt.
 # `snapshot()` nahm keins an, also scheiterte ausgerechnet der Aufruf, der die
 # Ansicht ueberhaupt erst fuellt: das Fenster ging auf und blieb leer, mit
@@ -6171,7 +6167,7 @@ check("er darf auch nicht unter seinen Inhalt schrumpfen",
 # waere dagegen ein Modul, das gar nicht erst startet.
 import ast as _ast10
 _repo17 = Path(__file__).resolve().parent.parent
-_rest18 = []
+_leftover18 = []
 for _pf18 in sorted((_repo17 / "autoclicker").rglob("*.py")):
     if "__pycache__" in _pf18.parts:
         continue
@@ -6183,28 +6179,27 @@ for _pf18 in sorted((_repo17 / "autoclicker").rglob("*.py")):
             _names18 = [_k18.module or ""]
         for _n18 in _names18:
             if "dearpygui" in _n18 or "scan_canvas" in _n18:
-                _rest18.append(f"{_pf18.name}:{_k18.lineno} {_n18}")
-check("kein Modul importiert mehr Dear PyGui", _rest18 == [])
-if _rest18:
-    print("        " + ", ".join(_rest18))
-check("und das alte Scan-Studio-Modul ist geloescht",
-      not (_repo17 / "autoclicker/scan_studio.py").exists())
-check("der Ordner scan_canvas ebenso",
+                _leftover18.append(f"{_pf18.name}:{_k18.lineno} {_n18}")
+check("kein Modul importiert mehr Dear PyGui", _leftover18 == [])
+if _leftover18:
+    print("        " + ", ".join(_leftover18))
+# Dass `scan_studio.py` nicht zurueckkommt, haelt `_DELETED16` weiter unten fest.
+check("der Ordner scan_canvas ist geloescht",
       not (_repo17 / "autoclicker/editors/scan_canvas").exists())
 
 
 # --------------------------- Einstellungen im Studio: Schema, Bruecke, Datei
 section("Einstellungen: jedes Feld beschrieben, jeder Wert schreibbar")
 
-from dataclasses import fields as _felder17
+from dataclasses import fields as _fields17
 from autoclicker.config import (
-    AppConfig as _AC17, config_sections as _abs17, optional_fields as _opt17,
-    save_config as _sc17, apply_config as _ueb17,
+    AppConfig as _AC17, config_sections as _sections17, optional_fields as _opt17,
+    save_config as _sc17, apply_config as _apply17,
 )
 import autoclicker.config_meta as _cm17
 from autoclicker.config_meta import META as _META17
 
-_names17 = [f.name for f in _felder17(_AC17)]
+_names17 = [f.name for f in _fields17(_AC17)]
 
 # --- Das Schema deckt die Dataclass ab, in beide Richtungen ---
 # Ohne diesen Test ist die Tabelle in drei Wochen unvollstaendig: ein neues Feld
@@ -6257,7 +6252,7 @@ check("Kacheln nur bei enum - und enum nie ohne Kacheln",
 # --- Abhaengigkeiten zeigen auf Felder, die es gibt ---
 # Ein `dep` ins Leere macht das Feld dauerhaft blass: es waere sichtbar,
 # unbedienbar und ohne Erklaerung, warum.
-_bools17 = {f.name for f in _felder17(_AC17) if isinstance(f.default, bool)}
+_bools17 = {f.name for f in _fields17(_AC17) if isinstance(f.default, bool)}
 _broken17 = []
 for _k17, _m17 in _META17.items():
     for _field17, _expected17 in ((_m17.dep, _bools17), (_m17.dep_not, _bools17),
@@ -6286,7 +6281,7 @@ if _unfit17:
 # `config_sections()` haengt Nichtzugeordnetes hinten an (damit nichts
 # unsichtbar wird). Genau das darf aber nie noetig sein - sonst steht ein Feld
 # in der Datei woanders als in seiner Gruppe.
-_groups17 = _abs17()
+_groups17 = _sections17()
 check("die Abschnitte decken jedes Feld ab",
       sorted(k for _, keys in _groups17 for k in keys) == sorted(_names17))
 check("kein Feld faellt in den Nachzuegler-Abschnitt",
@@ -6295,7 +6290,7 @@ check("und keines steht doppelt",
       len([k for _, keys in _groups17 for k in keys]) == len(_names17))
 
 # --- Optional heisst: leeres Feld ist `null`, nicht 0 ---
-_defaults17 = {f.name: f.default for f in _felder17(_AC17)}
+_defaults17 = {f.name: f.default for f in _fields17(_AC17)}
 check("optionale Felder sind genau die mit Standard None",
       sorted(_opt17()) == sorted(k for k, v in _defaults17.items() if v is None))
 
@@ -6411,7 +6406,7 @@ finally:
 # hineingeschrieben, und deshalb prueft der Test die QUELLE: eine Zuweisung an
 # `.config` ist ausserhalb von main.py ein Fehler.
 _target17, _source17 = _AC17(), _AC17(click_per_point=7, llm_model="x")
-_ueb17(_target17, _source17)
+_apply17(_target17, _source17)
 check("apply_config() traegt alle Werte ueber",
       _target17.click_per_point == 7 and _target17.llm_model == "x")
 check("und laesst das Objekt in Ruhe", _target17 is not _source17)
@@ -6541,13 +6536,13 @@ if _missing16:
     print("        gibt es nicht: " + ", ".join(_missing16))
 
 # Und die Ausnahmeliste bleibt ehrlich: taucht eine der vier wieder auf, gehoert
-# sie da nicht mehr hin. Dieselbe Regel wie bei `PLATTFORM_MODULE` — eine Liste,
+# sie da nicht mehr hin. Dieselbe Regel wie bei `PLATFORM_MODULES` — eine Liste,
 # die niemand prueft, waechst zur Fiktion.
-_wieder16 = sorted(d for d in _DELETED16
+_back16 = sorted(d for d in _DELETED16
                    if _repo_files16(d.split("/")[-1]))
-check("und keine der vier Ausnahmen ist heimlich zurueck", _wieder16 == [])
-if _wieder16:
-    print("        wieder da: " + ", ".join(_wieder16))
+check("und keine der vier Ausnahmen ist heimlich zurueck", _back16 == [])
+if _back16:
+    print("        wieder da: " + ", ".join(_back16))
 
 
 # --------------------------- Jedes Modul laesst sich ueberhaupt importieren
