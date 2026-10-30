@@ -498,7 +498,7 @@ _active(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s10)
 _click(_s10, 4444, 55, None)          # etwas gesetzt, aber nicht übernommen
-_hd.handle_quit(_s10, 0)
+_hd.handle_quit(_s10)
 check("das Beenden des Programms verwirft die Runde", _s10.reclick_active is False)
 check("und lässt die Punkte stehen", (_s10.points[0].x, _s10.points[0].y) == (100, 100))
 

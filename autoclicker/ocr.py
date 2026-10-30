@@ -208,10 +208,9 @@ def detect_boss_name(
 
     # Kein bekannter Boss — prüfe ob ein Text mit hoher Konfidenz als neuer Name gilt
     new_candidate = None
-    if texts:
-        best_text, best_conf = texts[0]  # bereits nach Konfidenz absteigend sortiert
-        if best_conf >= new_boss_min_confidence and len(best_text.strip()) >= 3:
-            new_candidate = best_text.strip()
+    best_text, best_conf = texts[0]  # bereits nach Konfidenz absteigend sortiert
+    if best_conf >= new_boss_min_confidence and len(best_text.strip()) >= 3:
+        new_candidate = best_text.strip()
 
     return False, None, full_text, duration_ms, new_candidate
 

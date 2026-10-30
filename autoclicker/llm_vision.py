@@ -10,6 +10,8 @@ import logging
 import re
 import socket
 import time
+import urllib.error
+import urllib.request
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,14 +19,6 @@ if TYPE_CHECKING:
 
 # Logger
 logger = logging.getLogger("autoclicker")
-
-# HTTP-Bibliothek (eingebaut in Python)
-try:
-    import urllib.request
-    import urllib.error
-    HTTP_AVAILABLE = True
-except ImportError:
-    HTTP_AVAILABLE = False
 
 
 # =============================================================================
@@ -332,9 +326,6 @@ def analyze_image(
     Returns:
         (success: bool, response_text: str, duration_ms: float)
     """
-    if not HTTP_AVAILABLE:
-        return False, "HTTP-Bibliothek nicht verfügbar", 0.0
-
     # Defaults
     if provider not in VALID_PROVIDERS:
         return False, f"Unbekannter Provider: {provider}. Erlaubt: {VALID_PROVIDERS}", 0.0
@@ -680,8 +671,8 @@ def _model_known(model: str, models: list) -> bool:
         return True
     target = model.casefold()
     for existing in models:
-        da = str(existing or "").casefold()
-        if da == target or da.split(":", 1)[0] == target:
+        listed = str(existing or "").casefold()
+        if listed == target or listed.split(":", 1)[0] == target:
             return True
     return False
 
@@ -703,9 +694,6 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
     Returns:
         (success: bool, message: str)
     """
-    if not HTTP_AVAILABLE:
-        return False, "HTTP-Bibliothek nicht verfügbar"
-
     if endpoint is None:
         endpoint = test_endpoint_for(provider)
 

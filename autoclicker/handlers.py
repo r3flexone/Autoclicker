@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, apply_config
 from .models import AutoClickerState, ClickPoint, GATE_COMMANDS
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
-from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
+from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences, sequence_file,
     load_sequence_file, locate_step, find_sequence_path,
@@ -1128,8 +1128,7 @@ def command_record_from(state: AutoClickerState, arguments: dict) -> None:
 
 def command_quit(state: AutoClickerState, arguments: dict) -> None:
     """Das automatisch gestartete Studio wurde geschlossen — Hauptprozess mit."""
-    import threading
-    handle_quit(state, threading.get_ident())
+    handle_quit(state)
 
 
 # Warum die Runde verworfen wurde. Der Aufrufer weiss es, der Handler nicht —
@@ -1524,14 +1523,14 @@ def handle_sequence_studio(state: AutoClickerState,
         print(f"\n{err(f'Konnte Sequenz-Studio nicht starten: {e}')}")
         return False
 
-    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet "
+    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Sequenz-Studio geöffnet "
           "(zuletzt geöffnet/gespeichert).")
     print("     Starten geht dort auch — der Hauptprozess führt es aus.")
     print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     return True
 
 
-def handle_scan_studio(state: AutoClickerState) -> None:
+def handle_studio_scans(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio auf dem Reiter „Scans".
 
     Derselbe Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter. Bis zum
@@ -1553,8 +1552,8 @@ def handle_scan_studio(state: AutoClickerState) -> None:
     print(f"     Danach im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
-def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
-    """Beendet das Programm."""
+def handle_quit(state: AutoClickerState) -> None:
+    """Beendet das Programm: `quit_event` verlässt die Hauptschleife in `main.py`."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
 
     # Falls noch eine Aufnahme läuft, BEIDE Hooks sauber entfernen — ein liegen
@@ -1577,5 +1576,3 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
 
     state.stop_event.set()
     state.quit_event.set()
-
-    post_quit(main_thread_id)

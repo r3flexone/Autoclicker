@@ -269,18 +269,18 @@ _COMPACT = [
 ]
 
 
-def compact_json(data, indent: int = 2) -> str:
+def compact_json(data) -> str:
     """Formatiert JSON mit kompakten Arrays (Koordinaten/Farben auf einer Zeile).
 
-    `data` ist dict ODER Liste — points.json und die Boss-Bibliothek sind Listen.
+    `data` ist dict ODER Liste — die Boss-Bibliothek ist eine Liste.
     """
-    json_str = json.dumps(data, indent=indent, ensure_ascii=False)
+    json_str = json.dumps(data, indent=2, ensure_ascii=False)
     for pattern, replacement in _COMPACT:
         json_str = pattern.sub(replacement, json_str)
     return json_str
 
 
-def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
+def atomic_write(path, text: str | bytes) -> None:
     """Schreibt `text` crash-sicher in `path`.
 
     Erst in eine temporäre Datei im selben Verzeichnis, flush + fsync, dann per
@@ -294,7 +294,7 @@ def atomic_write(path, text: str | bytes, encoding: str = "utf-8") -> None:
     try:
         binary = isinstance(text, bytes)
         with os.fdopen(fd, "wb" if binary else "w",
-                       **({} if binary else {"encoding": encoding})) as f:
+                       encoding=None if binary else "utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

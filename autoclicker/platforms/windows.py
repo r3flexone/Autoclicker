@@ -8,7 +8,6 @@ import ctypes.wintypes as wintypes
 import logging
 import struct
 import time
-from typing import TYPE_CHECKING
 
 from .common import (
     APP_ID, HOTKEY_ANALYZE, HOTKEY_CLEAR, HOTKEY_EDITOR, HOTKEY_FINISH,
@@ -16,18 +15,14 @@ from .common import (
     HOTKEY_PAUSE, HOTKEY_QUIT, HOTKEY_RECORD, HOTKEY_RECORD_COLOR,
     HOTKEY_RECORD_PAUSE, HOTKEY_RECORD_SCREENSHOT, HOTKEY_RECORD_SEQ,
     HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH, HOTKEY_RESET,
-    HOTKEY_SCAN_STUDIO, HOTKEY_SCHEDULE, HOTKEY_SEQUENCE_STUDIO,
-    HOTKEY_SHOW, HOTKEY_SKIP, HOTKEY_SKIP_STEP, HOTKEY_SWITCH, HOTKEY_TOGGLE,
-    HOTKEY_UNDO, PlatformError,
+    HOTKEY_SCHEDULE, HOTKEY_SEQUENCE_STUDIO, HOTKEY_SHOW, HOTKEY_SKIP,
+    HOTKEY_SKIP_STEP, HOTKEY_STUDIO_SCANS, HOTKEY_SWITCH, HOTKEY_TOGGLE,
+    HOTKEY_UNDO, PlatformError, desktop_origin,
 )
 
 logger = logging.getLogger("autoclicker")
 
-if TYPE_CHECKING:
-    from ..models import AutoClickerState
-
 from .. import symbol
-from ..config import CONFIG
 from ..utils import err, warn
 
 # Win32-spezifische Modifier und Virtual-Key-Codes bleiben im Windows-Backend.
@@ -41,7 +36,7 @@ VK_A, VK_B, VK_C, VK_D, VK_E, VK_F = (0x41, 0x42, 0x43, 0x44, 0x45, 0x46)
 VK_G, VK_H, VK_I, VK_J, VK_K, VK_L = (0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C)
 VK_M, VK_N, VK_O, VK_P, VK_Q, VK_R = (0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52)
 VK_S, VK_T, VK_U, VK_V, VK_W, VK_X = (0x53, 0x54, 0x55, 0x56, 0x57, 0x58)
-VK_Y, VK_Z = 0x59, 0x5A
+VK_Z = 0x5A
 
 VK_CODES = {
     "enter": 0x0D, "return": 0x0D, "tab": 0x09,
@@ -171,11 +166,7 @@ user32.UnregisterHotKey.restype = wintypes.BOOL
 user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT]
 user32.PeekMessageW.restype = wintypes.BOOL
 
-user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
-user32.PostThreadMessageW.restype = wintypes.BOOL
-
 kernel32 = ctypes.windll.kernel32
-kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
@@ -356,7 +347,7 @@ def remove_mouse_hook() -> None:
 # Modifier-Tasten. Waehrend der Aufnahme wird bei gedruecktem CTRL oder ALT NICHTS
 # mitgeschnitten - dort liegen die Hotkeys der App (alle CTRL+ALT+Buchstabe). Sonst
 # stuende ein 'j' in der Sequenz, sobald man die Aufnahme mit CTRL+ALT+J stoppt.
-_VK_CONTROL, _VK_MENU, _VK_SHIFT = 0x11, 0x12, 0x10
+_VK_CONTROL, _VK_MENU = 0x11, 0x12
 
 
 def install_keyboard_hook(on_key_down) -> bool:
@@ -450,23 +441,6 @@ def get_virtual_desktop() -> tuple[int, int, int, int] | None:
     if b <= 0 or h <= 0:
         return None
     return (x, y, x + b, y + h)
-
-
-def get_virtual_origin() -> tuple[int, int]:
-    """Linke/obere Kante des virtuellen Desktops. (0, 0), wenn nicht ermittelbar."""
-    rect = get_virtual_desktop()
-    return (rect[0], rect[1]) if rect else (0, 0)
-
-
-def get_screen_center() -> tuple[int, int]:
-    """Mitte des virtuellen Desktops, sonst des Primaermonitors, sonst 960x540."""
-    rect = get_virtual_desktop()
-    if rect:
-        return (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
-    size = get_screen_size()
-    if size:
-        return size[0] // 2, size[1] // 2
-    return 960, 540
 
 
 # =============================================================================
@@ -596,8 +570,8 @@ def get_window_title_at(x: int, y: int) -> str:
         hwnd = user32.WindowFromPoint(point)
         if not hwnd:
             return ""
-        root_layer = user32.GetAncestor(hwnd, 2)  # GA_ROOT
-        return _window_title(root_layer or hwnd)
+        top_level = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+        return _window_title(top_level or hwnd)
     except Exception:
         return ""
 
@@ -624,13 +598,9 @@ def _find_window_by_title(title_substring: str):
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length > 0:
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            if target in (buf.value or "").lower():
-                found.append(hwnd)
-                return False  # Enumeration abbrechen
+        if target in _window_title(hwnd).lower():
+            found.append(hwnd)
+            return False  # Enumeration abbrechen
         return True
 
     try:
@@ -653,12 +623,7 @@ def list_windows() -> list:
     def _cb(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        length_value = user32.GetWindowTextLengthW(hwnd)
-        if length_value <= 0:
-            return True
-        buffer = ctypes.create_unicode_buffer(length_value + 1)
-        user32.GetWindowTextW(hwnd, buffer, length_value + 1)
-        title = (buffer.value or "").strip()
+        title = _window_title(hwnd).strip()
         if not title:
             return True
         rect = wintypes.RECT()
@@ -710,38 +675,6 @@ def get_client_rect_by_handle(hwnd: int):
         return None
 
 
-def resolve_window(title: str, instance: int = 0, reference_rect=None):
-    """Findet eine gespeicherte Fensterquelle erneut.
-
-    Ergebnis ist dasselbe Tupel wie ein Eintrag aus :func:`list_windows`.
-    Exakte Titel gewinnen; bei mehreren gleichnamigen die gemerkte Instanz, und
-    ist deren Index weg, das geometrisch ähnlichste Fenster.
-    """
-    if not isinstance(title, str) or not title.strip():
-        return None
-    window = list_windows()
-    target = title.strip().casefold()
-    candidates = [e for e in window if e[0].strip().casefold() == target]
-    if not candidates:
-        candidates = [e for e in window if target in e[0].casefold()]
-    if not candidates:
-        return None
-    try:
-        index = int(instance)
-    except (TypeError, ValueError):
-        index = 0
-    if 0 <= index < len(candidates):
-        return candidates[index]
-    if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
-        try:
-            ref = tuple(int(v) for v in reference_rect)
-            return min(candidates, key=lambda e: sum(
-                abs(int(e[1][i]) - ref[i]) for i in range(4)))
-        except (TypeError, ValueError):
-            pass
-    return candidates[0]
-
-
 def get_client_rect_by_title(title_substring: str):
     """Liefert den Client-Bereich (Spielinhalt ohne Titelleiste/Rahmen) des Fensters
     mit passendem Titel als absolute Bildschirm-Koordinaten.
@@ -753,18 +686,6 @@ def get_client_rect_by_title(title_substring: str):
     if not hwnd:
         return None
     return get_client_rect_by_handle(hwnd)
-
-
-def check_failsafe(state: 'AutoClickerState' = None) -> bool:
-    """Prüft, ob die Maus in der Fail-Safe-Ecke ist."""
-    cfg = state.config if state else CONFIG
-    if not cfg.failsafe_enabled:
-        return False
-    try:
-        x, y = get_cursor_pos()
-    except PlatformError:
-        return True
-    return x <= cfg.failsafe_x and y <= cfg.failsafe_y
 
 
 # =============================================================================
@@ -792,8 +713,8 @@ _HOTKEY_DEFINITIONS = [
     (HOTKEY_IMPORT_EXPORT, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_I, "CTRL+ALT+I (Import/Export)"),
     (HOTKEY_RECORD_SEQ, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_J, "CTRL+ALT+J (Sequenz aufnehmen)"),
     (HOTKEY_RECORD_PAUSE, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_H, "CTRL+ALT+H (Aufnahme pausieren)"),
-    (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Visueller Editor)"),
-    (HOTKEY_SCAN_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Scan-Studio)"),
+    (HOTKEY_SEQUENCE_STUDIO, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_B, "CTRL+ALT+B (Sequenz-Studio)"),
+    (HOTKEY_STUDIO_SCANS, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_V, "CTRL+ALT+V (Studio: Reiter Scans)"),
     (HOTKEY_HELP, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_O, "CTRL+ALT+O (Hilfe anzeigen)"),
     (HOTKEY_RECORD_COLOR, MOD_REC, VK_M, "CTRL+ALT+SHIFT+M (Aufnahme: auf Farbe warten)"),
     (HOTKEY_RECORD_SCREENSHOT, MOD_REC, VK_D, "CTRL+ALT+SHIFT+D (Aufnahme: Screenshot-Marker)"),
@@ -828,16 +749,6 @@ def poll_hotkey() -> int | None:
             ctypes.byref(msg), None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
         return int(msg.wParam)
     return None
-
-
-def get_current_thread_id() -> int:
-    """Kennung des Threads mit der Windows-Nachrichtenqueue."""
-    return int(kernel32.GetCurrentThreadId())
-
-
-def post_quit(thread_id: int) -> None:
-    """Weckt und beendet die Nachrichtenqueue des Hauptthreads."""
-    user32.PostThreadMessageW(int(thread_id), 0x0012, 0, 0)  # WM_QUIT
 
 
 def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):
@@ -1002,7 +913,7 @@ def capture_screen(region=None):
         if region is None:
             return full_image
         left, top, right, bottom = (int(value) for value in region)
-        origin_x, origin_y = get_virtual_origin()
+        origin_x, origin_y = desktop_origin(get_virtual_desktop())
         crop = (
             left - origin_x, top - origin_y,
             right - origin_x, bottom - origin_y,
@@ -1091,10 +1002,6 @@ def unregister_hotkeys() -> None:
         user32.UnregisterHotKey(None, hotkey_id)
 
 
-# Wie das Symbol AUSSIEHT, steht in der SVG-Datei der Weboberfläche —
-# `symbol.py` rastert sie hier nur in die Form, die Windows haben will. Auch
-# `tools/symbol.py` macht daraus PNG-/ICO-Dateien für eine Verknüpfung; es gibt
-# deshalb keine zweite Beschreibung des Motivs, die auseinanderlaufen könnte.
 def set_app_id(app_id: str = APP_ID) -> bool:
     """Gibt dem Prozess eine eigene Kennung für die Taskleiste. True = gesetzt.
 
@@ -1110,6 +1017,10 @@ def set_app_id(app_id: str = APP_ID) -> bool:
         return False
 
 
+# Wie das Symbol AUSSIEHT, steht in der SVG-Datei der Weboberfläche —
+# `symbol.py` rastert sie hier nur in die Form, die Windows haben will. Auch
+# `tools/symbol.py` macht daraus PNG-/ICO-Dateien für eine Verknüpfung; es gibt
+# deshalb keine zweite Beschreibung des Motivs, die auseinanderlaufen könnte.
 def _icon_bits(edge: int = 32) -> bytes:
     """Das Symbol als ICO-Bilddaten: BITMAPINFOHEADER + BGRA + AND-Maske.
 
@@ -1124,7 +1035,7 @@ def _icon_bits(edge: int = 32) -> bytes:
     head = struct.pack("<IiiHHIIiiII", 40, edge, edge * 2, 1, 32, 0, 0, 0, 0, 0, 0)
     colors = bytearray()
     # DIB-Zeilen stehen von UNTEN nach oben, `pixel_rows()` liefert von oben —
-    # deshalb umgedreht. Ohne das steht auch das neue Logo auf dem Kopf.
+    # deshalb umgedreht. Ohne das steht das Logo auf dem Kopf.
     for line in reversed(list(symbol.pixel_rows(edge))):
         for r, g, b, a in line:
             colors += bytes((b, g, r, a))       # BGRA, nicht RGBA
@@ -1170,11 +1081,11 @@ def set_window_icon(title_substring: str, waiting: float = 0.0) -> bool:
         for kind, edge in ((0, 16), (1, 32)):
             bits = _icon_bits(edge)
             # 0x00030000 = Version 3 des Symbol-Formats, die einzige, die es gibt.
-            symbol = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
-                                                     edge, edge, 0)
-            if not symbol:
+            icon = user32.CreateIconFromResourceEx(bits, len(bits), 1, 0x00030000,
+                                                   edge, edge, 0)
+            if not icon:
                 return False
-            user32.SendMessageW(hwnd, WM_SETICON, kind, symbol)
+            user32.SendMessageW(hwnd, WM_SETICON, kind, icon)
         return True
     except (OSError, ValueError, AttributeError):
         return False

@@ -1,4 +1,4 @@
-"""Input-Handling: Tastatur, interaktive Auswahl, Pause-Warten.
+"""Input-Handling: Tastatur, interaktive Auswahl, globales Warten auf eine Taste.
 
 Drei Konsolen-Modi: echte Windows-Konsole (msvcrt + ANSI mit Cursor),
 PyCharm/IntelliJ (GetAsyncKeyState-Polling, ANSI ohne Cursor), sonstige

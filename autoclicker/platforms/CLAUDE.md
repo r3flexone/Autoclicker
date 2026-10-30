@@ -15,9 +15,9 @@ sich später als stiller Fehlschlag zu zeigen.
 
 | Modul | was |
 |---|---|
-| `winapi.py` | **stabile Fassade** — 24 Zeilen, reicht an das Backend durch. Kein Systemcode mehr. |
-| `platforms/base.py` | der Vertrag (`PlatformBackend`-Protocol): Eingabe, Fenster, Hotkeys, Bildschirm |
-| `platforms/common.py` | betriebssystemneutral: Tastennamen, `HOTKEY_*`-IDs, `PlatformError`, `APP_ID` |
+| `winapi.py` | **stabile Fassade** — reicht den Vertrag an das Backend durch, dazu vier Helfer, die nur aus Systemaufrufen abgeleitet sind (`resolve_window`, `get_virtual_origin`, `get_screen_center`, `check_failsafe`). Kein Systemcode. |
+| `platforms/base.py` | der Vertrag (`PlatformBackend`-Protocol): Eingabe, Fenster, Hotkeys, Bildschirm — nur Systemaufrufe |
+| `platforms/common.py` | betriebssystemneutral: Tastennamen, `HOTKEY_*`-IDs, `PlatformError`, `APP_ID`, `desktop_origin()` |
 | `platforms/windows.py` | WinAPI-Backend (ctypes: Maus, Tastatur, Hotkeys, GDI, Hooks, Fenster-Symbol) |
 | `platforms/linux_x11.py` | X11-Backend (`python-xlib`, `pynput`, `mss`) |
 | `utils/io.py` | Tastendruck-Erfassung (`msvcrt` / `GetAsyncKeyState`) |
@@ -39,6 +39,20 @@ denselben Testvertrag (`test_platforms.py`).
 
 Das gilt auch für `imaging.py`: es ist seit dem Umbau plattformneutral und holt sich
 den Screenshot über das Backend, statt selbst BitBlt zu rufen.
+
+**Der Vertrag besteht aus Systemaufrufen — was sich nur aus ihnen ergibt, steht
+einmal in der Fassade.** `resolve_window`, `get_virtual_origin`, `get_screen_center`
+und `check_failsafe` lagen früher gleichlautend in beiden Backends. Sie rufen die
+Primitiven des Backends (`list_windows`, `get_virtual_desktop`, `get_screen_size`,
+`get_cursor_pos`) über `_backend`; ein Test, der sie mit anderen Daten füttern will,
+patcht deshalb `winapi._backend`, nicht die Fassade. Wer eine fünfte solche Funktion
+schreibt, prüft zuerst, ob sie ein Systemaufruf ist.
+
+**Es gibt keine Nachricht, die der Hauptthread abholt.** `poll_hotkey()` fragt
+`PeekMessage` nur nach `WM_HOTKEY`, und die Hauptschleife endet über
+`state.quit_event`. Ein `post_quit()`, das ein `WM_QUIT` in die Queue des
+Hauptthreads stellte, las niemand — es ist samt `get_current_thread_id()` gelöscht.
+Wer einen Thread aufwecken will, nimmt ein Event.
 
 **Bildschirm-Geometrie gehört in `winapi.py`, nicht in den Aufrufer.** `GetSystemMetrics`
 lag vorher fünfmal im Baum (`imaging`, `runtime/item_scan`, `diagnostics`, `scan_studio`,

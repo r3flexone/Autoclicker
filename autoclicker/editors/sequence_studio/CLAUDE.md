@@ -44,7 +44,7 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 
 | Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/sequence_studio.py` (Prozess-Einstieg; gestartet von `handle_sequence_studio` und `handle_scan_studio` in `handlers.py`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
+| `autoclicker/sequence_studio.py` (Prozess-Einstieg; gestartet von `handle_sequence_studio` und `handle_studio_scans` in `handlers.py`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
 
 **Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
 `slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein

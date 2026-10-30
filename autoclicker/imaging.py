@@ -349,13 +349,13 @@ def _masked_confidence(image, template, mask, shift: int = MASK_SHIFT) -> float:
     Quadratsumme des Ausschnitts unter der Maske. In reinem numpy kostete ein
     Vergleich 3,7 ms — bei 26 Slots × 47 Items über 4 s je Scan.
     """
-    choice = mask > 127
-    count = int(choice.sum())
+    opaque = mask > 127
+    count = int(opaque.sum())
     if count < 16:
         # Fast alles wegmaskiert — dann sagt die Rechnung nichts mehr aus.
         return 0.0
     channels = template.shape[2] if template.ndim == 3 else 1
-    m = choice.astype(np.float32)
+    m = opaque.astype(np.float32)
     if channels > 1:
         m = np.repeat(m[:, :, None], channels, axis=2)
     t = template.astype(np.float32)
