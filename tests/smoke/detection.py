@@ -46,7 +46,7 @@ def run():
     with Window(b) as f:
         f.tab("scans")
         for kind in ("item", "boss", "icon"):
-            f.click(f'#scan-art button[data-scan-kind="{kind}"]')
+            f.click(f'#scan-kind button[data-scan-kind="{kind}"]')
             expect(bool(f.text("#view-scans").strip()), f"{kind}: Ansicht leer")
             if kind in ("boss", "icon"):
                 # Testen ist folgenlos - es zeigt nur, WAS passieren wuerde.
@@ -55,7 +55,7 @@ def run():
                 expect(bool(f.status().strip()), f"{kind}: Test meldete nichts")
             f.image(f"erkennung_{kind}")
         # Die Aufnahme-Karte wandert zwischen den Assistenten und muss zurueck.
-        f.click('#scan-art button[data-scan-kind="item"]')
+        f.click('#scan-kind button[data-scan-kind="item"]')
         expect("Aufnahme" in f.text("#view-scans"),
                "die Aufnahme-Karte kam nicht zum Item-Assistenten zurueck")
         error.extend(f.error)

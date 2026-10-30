@@ -421,7 +421,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-header.loop .phase-name{color:var(--loop)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
-/* **Dasselbe Raster wie das `knopfpaar` darunter** — gleiche Spaltenbreite,
+/* **Dasselbe Raster wie das `button-pair` darunter** — gleiche Spaltenbreite,
    gleiche Kanten, gleicher Umbruchpunkt. Vorher war das ein `flex` mit fest
    getippten 70 und 74 px: die Zeile hoerte bei rund 60 % auf, waehrend die
    Knopfzeile darunter ueber die volle Breite ging, und die beiden Felder waren
@@ -434,7 +434,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-tool label.field{font-size:10.5px;gap:2px;min-width:0}
 .phase-tool .row{gap:4px}
 /* Die Sammel-Aktionen der Phase: frueher EIN Knopf, deshalb stand hier ein
-   `align-self`. Jetzt ein `knopfpaar` (gleiche Spalten, bricht um statt
+   `align-self`. Jetzt ein `button-pair` (gleiche Spalten, bricht um statt
    abzuschneiden) — die Groesse bleibt die kleine des Phasenkopfs. */
 .phase-all > .btn{font-size:11px;padding:4px 7px}
 .phases-create{gap:8px}
@@ -479,9 +479,8 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .card-label.else{color:var(--accent)}
 .card-label.dead{color:var(--dim)}
 .card-row{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-width:0}
-.card-row.with-color,
+.card-row.with-color{display:flex;align-items:center;gap:6px}
 .card-color{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
-.card-row.with-color{font-size:11.5px}
 .card-row .swatch,
 .card-color .swatch{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
 .card-else{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:11px;min-width:0}
@@ -729,16 +728,13 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-tile.done{opacity:.55}
 .phase-tile .p-name{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.phase-tile.running .p-name{color:var(--accent)}
+/* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
+   läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
+   kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. Deshalb gibt es
+   hier keine eigene Regel für `.running` — jede Kachel trägt ihre Art. */
 .phase-tile[data-kind="init"] .p-name{color:var(--init)}
 .phase-tile[data-kind="loop"] .p-name{color:var(--loop)}
 .phase-tile[data-kind="end"] .p-name{color:var(--end)}
-/* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
-   läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
-   kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. */
-.phase-tile.running[data-kind="init"] .p-name{color:var(--init)}
-.phase-tile.running[data-kind="loop"] .p-name{color:var(--loop)}
-.phase-tile.running[data-kind="end"] .p-name{color:var(--end)}
 .phase-tile .p-position{font-size:11.5px;color:var(--dim)}
 
 /* Der laufende Block traegt seine Typfarbe — dieselbe wie seine Karte im Board.
@@ -853,10 +849,8 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-review-order{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}
 .scan-review-prio{display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--dim)}
 .scan-review-row.done{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
-.scan-review-row.assign{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .scan-review-row.variant{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
 .scan-review-row.other{opacity:1;border-color:#7C9CF5;box-shadow:inset 3px 0 0 #7C9CF5}
-.scan-review-row.remove{opacity:1;border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
 .scan-review-row.skip{opacity:.58}
 .scan-review-action{align-self:flex-start;width:auto;padding:4px 8px;font-size:10.5px}
 .scan-advanced{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
@@ -985,7 +979,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    aendert. */
 /* Der Schalter oben, die Nummer UNTEN — dadurch steht sie auf derselben Hoehe
    wie die Zustandszeile in der dritten Spalte, und die Groesse daneben ist
-   dieselbe Kachel (`zahl`). Ohne `stretch` waere die Spalte nur so hoch wie
+   dieselbe Kachel (`num`). Ohne `stretch` waere die Spalte nur so hoch wie
    ihr Inhalt, und die beiden lägen ein paar Pixel auseinander. */
 .scan-badge{display:flex;flex-direction:column;align-items:center;gap:5px;
   align-self:stretch;justify-content:space-between}
@@ -1007,9 +1001,6 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-bulk{display:flex;flex-direction:column;gap:7px;padding:9px 10px;
   margin-bottom:10px;border:1px solid var(--accent);border-radius:6px;
   background:#F59E0B0F}
-/* Die Filterzeile traegt in 370 px drei Bedienelemente. Ohne Umbruch wird das
-   letzte abgeschnitten — und das war ausgerechnet der Kategorie-Filter. */
-.row.wrapping{flex-wrap:wrap}
 #scan-insp .section > .row{flex-wrap:wrap}
 /* Boss und Icon tragen keine Masken: das Gewaehlte steht unter der Liste. Die
    Trennlinie sagt, wo die Liste aufhoert — sonst liest sich der Editor wie ein
@@ -1065,14 +1056,14 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-filter > label.on.tile{width:100%;justify-self:stretch;
   border:1px solid var(--line);border-radius:5px;padding:6px 10px}
 /* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
-   nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
+   nahm „Items erkennen" den Rest der Zeile (`grow`) und „Rueckgaengig" nur
    seine Textbreite — bei einem langen Rueckgaengig-Namen kippte das Verhaeltnis
    von Zeile zu Zeile. Gleiche Spalten stehen still.
 
-   **Zwei Klassen, ein Wortschatz**: `btn breit` ist EIN Knopf ueber die volle
-   Breite, `knopfpaar` sind mehrere zu gleichen Teilen. Damit gibt es fuer
+   **Zwei Klassen, ein Wortschatz**: `btn wide` ist EIN Knopf ueber die volle
+   Breite, `button-pair` sind mehrere zu gleichen Teilen. Damit gibt es fuer
    „nebeneinander" nur noch eine Antwort — vorher stand an jeder Zeile eine
-   eigene Mischung aus `wachse`, Abstandhaltern und Textbreite. */
+   eigene Mischung aus `grow`, Abstandhaltern und Textbreite. */
 /* **Gleiche Spalten duerfen nichts kosten, was man lesen muss.** Mit einer
    festen Spaltenzahl schnitten drei Knoepfe in 290 px die Beschriftung ab
    („Item ler…", „Hintergrund mes…") — ein abgeschnittenes Wort ist schlimmer
@@ -1177,7 +1168,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-card-numbers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
 .seq-card.new-from-llm{border-color:var(--accent)}
 /* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang sein.
-   Im `knopfpaar` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
+   Im `button-pair` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
    `max-width` braucht es dafuer nicht mehr, die Spalte deckelt ihn. */
 .scan-undo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -1347,7 +1338,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wz-hero-icon .wz-symbol{width:28px;height:28px;color:var(--bg);filter:brightness(2)}
 .wz-hero-copy{position:relative;z-index:1;min-width:0}
 .wz-kicker,.wz-subheader{font-size:9.5px;letter-spacing:.15em;font-weight:700;
-  color:currentColor;margin-bottom:3px}
+  margin-bottom:3px}
 .wz-hero h2{font-size:18px;line-height:1.2;color:var(--text);margin:0 0 5px}
 .wz-hero p{font-size:12px;line-height:1.5;color:var(--muted);max-width:660px}
 
@@ -1365,10 +1356,10 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
   border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
 /* NUR der Abstand. Vorher stand hier zusaetzlich `display:flex` — und weil die
    Regel weiter unten steht als `.grid2`/`.grid3`, gewann sie bei gleicher
-   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-action gitter2` bzw.
-   `gitter3 wz-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
+   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-action grid2` bzw.
+   `grid3 wz-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
    war das als Knopfreihe in Textbreite — genau die Ungleichheit, die die
-   Klasse verhindern sollte. Wer eine Reihe will, schreibt `reihe` dazu. */
+   Klasse verhindern sollte. Wer eine Reihe will, schreibt `row` dazu. */
 .wz-action{margin:13px 0}
 .wz-main-action{display:flex;align-items:center;gap:8px;padding:8px 15px}
 .wz-main-action .wz-symbol{width:16px;height:16px}
@@ -1594,7 +1585,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 
 /* ---------------------------------------------------------------- Bericht */
 /* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `wz-metrics`,
-   Karten sind `share-card`, die Spalten sind `abschnitt`. Eigene Klassen gibt
+   Karten sind `share-card`, die Spalten sind `section`. Eigene Klassen gibt
    es nur fuer die beiden Dinge, die es sonst nirgends gibt — die Rangzeile und
    die Sitzungsauswahl. */
 

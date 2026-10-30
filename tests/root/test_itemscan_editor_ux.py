@@ -464,7 +464,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         html = (REPO /
                 "autoclicker/editors/sequence_studio/web/index.html").read_text(
                     encoding="utf-8")
-        self.assertNotIn(".scans.guided.has-image #ab-bild{display:none}", html)
         self.assertIn("SCAN EINRICHTEN", html)
         # Die Erklaerung dazu steht weiterhin da, aber im ⓘ statt als Absatz:
         # sie gilt immer und aendert sich nie, also stand sie bei jedem Blick

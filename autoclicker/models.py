@@ -1019,8 +1019,8 @@ class AutoClickerState:
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
     # `reclick_set`.
     reclick_history: list = field(default_factory=list)
-    # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE,
-    # Rad). Steht im Banner und im Studio — eine Runde, die schweigt, was sie
+    # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE).
+    # Steht im Banner und im Studio — eine Runde, die schweigt, was sie
     # auslaesst, sieht vollstaendiger aus als sie ist.
     reclick_other: int = 0
     # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus

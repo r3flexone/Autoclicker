@@ -135,7 +135,7 @@ def run():
         expect(f.count(".phase-tool button") == 0,
                "in der Eigenschaften-Zeile der Phase steht ein Knopf")
         # **Beide Zeilen liegen auf demselben Raster.** Vorher war oben ein
-        # `flex` mit fest getippten 70/74 px und unten ein `knopfpaar`: die
+        # `flex` mit fest getippten 70/74 px und unten ein `button-pair`: die
         # Eigenschaften-Zeile hoerte bei rund 60 % auf, die Knopfzeile ging
         # ueber die volle Breite. Zwei Kanten uebereinander, die fast, aber
         # nicht ganz zusammenfallen, lesen sich als Versehen.

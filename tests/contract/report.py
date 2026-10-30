@@ -377,12 +377,12 @@ check("und die Karten dieselben wie im Teilen-Reiter",
       "share-card" in _report_js)
 # Dieselbe Pruefung wie bei den `--slot-*`-Variablen: eine benutzte Klasse, die
 # niemand definiert, ist ein unsichtbarer Kasten.
-# Nur was wirklich als KLASSE gesetzt wird. Ein blosses `"ber-..."` faengt auch
+# Nur was wirklich als KLASSE gesetzt wird. Ein blosses `"rep-..."` faengt auch
 # die Element-Ids (`$("rep-middle")`) und die Schluessel der Erklaerungen —
 # beides ist keine Klasse, und der Test meldete zehn Fehlalarme.
 _used = set()
 for _raw in re.findall(r'class: "([^"]+)"', _report_js):
-    _used |= {k for k in _raw.split() if k.startswith("ber-")}
+    _used |= {k for k in _raw.split() if k.startswith("rep-")}
 _css = (Path(_ROOT) / "autoclicker/editors/sequence_studio/web/styles.css"
         ).read_text(encoding="utf-8")
 _without_css = sorted(k for k in _used if "." + k not in _css)

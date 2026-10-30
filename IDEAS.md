@@ -21,7 +21,7 @@ Sequenz, eine Ebene über dem Worker im Main-Thread — `start_next_if_pending`)
 
 **Was Oberfläche anfasst, wird symmetrisch gebaut.** Für die Einträge unten ist das keine
 Geschmacksfrage, sondern eine Abnahmebedingung: gleiche Spalten statt Textbreite
-(`knopfpaar` bzw. `btn breit` — kein drittes Muster daneben), untereinander stehende Zeilen
+(`button-pair` bzw. `btn wide` — kein drittes Muster daneben), untereinander stehende Zeilen
 auf **derselben** `auto-fit`-Regel (min. 118 px, damit nichts abgeschnitten wird), Zustand
 ringsum markiert statt an einer Kante, und die Vorschau-Quadrate mit fester Kantenlänge.
 Ein neuer Reiter reiht sich in die vorhandene `.tabs`-Leiste ein, statt sich eine zweite

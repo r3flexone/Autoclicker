@@ -73,7 +73,7 @@ check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
       "function wzMetric(" in _app and ".wz-metrics{" in _css
       and ".wz-success{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
-      'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
+      'function wzInfo(' in _app and 'info(text, "tool-" + title)' in _app
       and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
 # **Symbole sind SVG** (`ICONS`/`icon()`), keine Unicode-Zeichen: die kommen aus
 # der Systemschrift und stehen je nach Fenster verschieden gross und hoch. Vier

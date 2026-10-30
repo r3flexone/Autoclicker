@@ -195,7 +195,7 @@ Position angewiesen, die beim Drücken niemand bewusst wählt.
 
 ### Die fünf Marker
 
-Alles ausser Klick/Taste/Rad ist ein **Marker**: ein globaler Tastendruck ohne
+Alles ausser Klick/Taste ist ein **Marker**: ein globaler Tastendruck ohne
 Rückfrage, der beim Stoppen zu Struktur wird. Sie unterscheiden sich in genau drei
 Fragen, und daran hängt der jeweilige Bau:
 

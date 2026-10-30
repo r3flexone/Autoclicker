@@ -688,7 +688,7 @@ check("und jede Kachel eine eigene Taste",
       len(_keys18) == len(_tiles18) == len(set(_keys18)))
 
 # --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
-# Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`collapsed`) muessen
+# Kopf (`data-collapse`), Rahmen (`id="sec-…"`) und Zustand (`collapsed`) muessen
 # denselben Schluessel tragen. Ein Tippfehler in einem davon ist kein Fehler,
 # den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
 # oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
@@ -701,10 +701,10 @@ _state18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
 check("und jeder hat einen Zustand in collapsed",
       _state18 is not None
       and sorted(_re13.findall(r'(\w+):', _state18.group(1))) == _collapse18)
-# Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
+# Gegenrichtung: ein Abschnitt, der als `collapsible` ausgezeichnet ist, aber keinen
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
-      _html18.count('class="section klappbar"') == _html18.count('class="collapse-body'))
+      _html18.count('class="section collapsible"') == _html18.count('class="collapse-body'))
 
 # Die drei Hauptaufgaben sind kein zweiter Satz Klapp-Panels mehr. Sie bilden
 # einen eigenen Assistenten: genau drei feste Karten, von denen jede ueber ihren
@@ -1474,7 +1474,7 @@ check("und schneiden dabei keine Beschriftung ab",
       "white-space:normal}" in _html18[_html18.index(".button-pair > .btn{"):
                                        _html18.index(".button-pair > .btn{") + 90])
 # Der Wortschatz ist zu zweit vollstaendig: EIN Knopf ueber die volle Breite
-# ist `btn breit`, mehrere nebeneinander sind ein `knopfpaar`. Ein `wachse` in
+# ist `btn wide`, mehrere nebeneinander sind ein `button-pair`. Ein `grow` in
 # einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
 _button_rows18 = _html18.count('class: "button-pair"')
 check(f"und die Regel gilt ueberall ({_button_rows18} Zeilen)",

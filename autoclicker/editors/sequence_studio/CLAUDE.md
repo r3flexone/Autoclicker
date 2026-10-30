@@ -1933,7 +1933,7 @@ Regeln beim Erweitern:
   etwas so ist, gehört ins ⓘ — es gilt immer, ändert sich nie und steht deshalb
   bei jedem Blick im Weg; `openHelps` merkt sich, welche aufgeklappt sind.
   `toggle()`, `numberField()`, `color_swatch()`, `selection()` und `heading()`
-  nehmen dafür alle `hilfe, schluessel` entgegen — ein Erklärungsabsatz **unter**
+  nehmen dafür alle `help, key` entgegen — ein Erklärungsabsatz **unter**
   einem dieser Bedienelemente ist deshalb fast immer ein Fehler.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
   und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
@@ -1974,7 +1974,7 @@ Regeln beim Erweitern:
   für jede der neun Typfarben nach — Mindestmass 4,5:1. Der Typ sitzt dabei als
   umrandete **Marke** in der Kopfzeile, nicht als Wort im Fluss.
 - **Jede Kartenzeile trägt ein Etikett** (`_lines()` liefert `{label, text}`:
-  STELLE, WARTE, TASTE, SCAN, RAD, BEREICH, FARBE, ELSE), und der Kartenkörper
+  STELLE, WARTE, TASTE, SCAN, BEREICH, FARBE, ELSE), und der Kartenkörper
   ist ein zweispaltiges Raster, damit die Etiketten bündig stehen. Bei fünfzig
   Karten untereinander findet das Auge „WARTE" schneller als „1.5s" — und ohne
   Etikett musste man das Vorzeichen als Wartezeit erkennen (das `+` ist

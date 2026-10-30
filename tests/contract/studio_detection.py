@@ -550,7 +550,7 @@ if _without:
     print("        fehlt in index.html: " + ", ".join(_without))
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
       {"sec-det-choice", "sec-det-steps", "scan-library"} <= _asked)
-check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)
+check("und der Umschalter steht im Dokument", 'id="scan-kind"' in _html)
 
 # **Der Wert am Werkzeug ist ein Befehl, kein Beschriftungstext.** Die Seite
 # schickt `button.dataset.scanTool` unverändert als `mode` an `scan_mode_set`,

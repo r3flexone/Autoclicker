@@ -14,7 +14,7 @@
   Zustand hält sie keinen: `S` ist die letzte Momentaufnahme aus der Brücke, jede
   Änderung geht als Befehl dorthin und kommt als neue Momentaufnahme zurück. Das
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
-  Umsortieren, Feldregeln) liegt in bridge.py und wird dort gemessen.
+  Umsortieren, Feldregeln) liegt in der Brücke (`bridge*.py`) und wird dort gemessen.
 -->
   <link rel="stylesheet" href="styles.css?v=20261004-1">
 </head>
@@ -216,9 +216,9 @@
            `view` und `scanList`: er aendert nichts an den Daten. Die Buehne
            (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
            dasselbe Bild, nur eine andere Frage daran. -->
-      <div class="section" id="sec-scan-kind">
+      <div class="section">
         <span class="heading">SCAN-ART</span>
-        <div class="segment" id="scan-art">
+        <div class="segment" id="scan-kind">
           <button data-scan-kind="item">Items</button>
           <button data-scan-kind="boss">Bosse</button>
           <button data-scan-kind="icon">Icons</button>
@@ -327,7 +327,7 @@
           </div>
         </div>
       </div>
-      <div class="section klappbar" id="sec-modes">
+      <div class="section collapsible" id="sec-modes">
         <button class="collapse-header" data-collapse="modes">
           <span class="arrow"></span>
           <span class="heading grow">WAS EIN KLICK TUT</span>
@@ -341,7 +341,7 @@
           <p class="hint" id="scan-modes-back" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
           <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
-               Modus (scan_direct in scans.py). Sie gehoeren hierher, weil hier
+               Modus (scan_direct in scan_interaction.py). Sie gehoeren hierher, weil hier
                steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
                ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
                und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
@@ -464,7 +464,7 @@
   </footer>
 </div>
 
-<!-- Die Tastenkuerzel-Tafel. Gebaut aus `SHORTCUTS` in app.js — derselben
+<!-- Die Tastenkuerzel-Tafel. Gebaut aus `shortcutTable()` in app.js — derselben
      Tabelle, aus der die Scan-Modi ihre Buchstaben nehmen —, nicht als
      abgetippte Liste: ein Kuerzel, das im Code existiert und hier fehlt, ist
      dann ein Testfehler. -->
