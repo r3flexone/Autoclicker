@@ -95,6 +95,94 @@ class LinuxBackendTests(unittest.TestCase):
             erfasst["<ctrl>+<alt>+a"]()
             self.assertEqual(1, linux_x11.poll_hotkey())
 
+    def test_tastaturhook_ignoriert_tasten_bei_gehaltenem_alt_oder_strg(self):
+        """Der Hook baut seine Modifikator-Mengen aus echten pynput-Namen.
+
+        Der Fake kennt nur, was pynput kennt: ein erfundener Name wie
+        `Key.old` (statt `Key.alt`) wirft hier einen AttributeError, den der
+        `except` im Hook nicht faengt — die Tastatur-Aufnahme waere unter
+        Linux tot. Gehaltenes ALT bzw. STRG darf keinen Tastendruck melden
+        (so landen die Marker-Hotkeys nicht in der Aufnahme).
+        """
+        import enum
+
+        class Key(enum.Enum):
+            ctrl = 1
+            ctrl_l = 2
+            ctrl_r = 3
+            alt = 4
+            alt_l = 5
+            alt_r = 6
+            alt_gr = 7
+            enter = 8
+            tab = 9
+            space = 10
+            esc = 11
+            backspace = 12
+            delete = 13
+            left = 14
+            right = 15
+            up = 16
+            down = 17
+            f1 = 18
+            f2 = 19
+            f3 = 20
+            f4 = 21
+            f5 = 22
+            f6 = 23
+            f7 = 24
+            f8 = 25
+            f9 = 26
+            f10 = 27
+            f11 = 28
+            f12 = 29
+
+        class Letter:
+            def __init__(self, char):
+                self.char = char
+
+        erfasst = {}
+
+        class Listener:
+            def __init__(self, on_press, on_release):
+                erfasst["press"] = on_press
+                erfasst["release"] = on_release
+
+            def start(self):
+                return None
+
+            def stop(self):
+                return None
+
+        class Keyboard:
+            pass
+
+        Keyboard.Key = Key
+        Keyboard.Listener = Listener
+
+        gemeldet = []
+        linux_x11._keyboard_listener = None
+        try:
+            with patch.object(linux_x11, "_pynput",
+                              return_value=(Keyboard, object())):
+                self.assertTrue(linux_x11.install_keyboard_hook(gemeldet.append))
+            press, release = erfasst["press"], erfasst["release"]
+
+            press(Letter("a"))
+            self.assertEqual(["a"], gemeldet)
+
+            for modifier in (Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
+                             Key.ctrl, Key.ctrl_l, Key.ctrl_r):
+                press(modifier)
+                press(Letter("b"))
+                release(modifier)
+            self.assertEqual(["a"], gemeldet)
+
+            press(Letter("c"))
+            self.assertEqual(["a", "c"], gemeldet)
+        finally:
+            linux_x11._keyboard_listener = None
+
     def test_fensteraufloesung_bevorzugt_exakten_titel(self):
         window = [
             ("Idle Clans - Hilfe", (0, 0, 100, 100), 1),

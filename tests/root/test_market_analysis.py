@@ -617,7 +617,7 @@ class HistoryTest(unittest.TestCase):
         basis = {"item": item, "item_id": 1, "skill": "Woodcutting", "bid": 76,
                  "ask": 90, "npc_preis": 23, "kosten_h": 0, "gold_h": 1000,
                  "gold_h_real": 900, "verkaufsweg": "Spieler", "rang": 1,
-                 "warnings": ""}
+                 "warnungen": ""}
         basis.update(remainder)
         return basis
 
@@ -629,6 +629,20 @@ class HistoryTest(unittest.TestCase):
         self.assertTrue(run_ctx["code_version"])
         self.assertEqual(len(run_ctx["config_hash"]), 12)
         self.assertEqual(run_ctx["items"], 1)
+
+    def test_jede_spalte_der_zeile_kommt_in_der_datenbank_an(self):
+        """Die Testzeile trägt genau die Spalten der Tabelle — und ihre Werte kommen an.
+
+        `_row` hatte `warnings` statt `warnungen`: `write_items` liest nur die
+        Spalten aus `ITEM_COLUMNS`, der falsch benannte Wert wurde still
+        ignoriert, und kein Test sah je einen Warnungstext in der Datenbank.
+        """
+        columns = set(history.ITEM_COLUMNS)
+        self.assertLessEqual(set(self._row()), columns)
+        with history.run_ctx(self.conn) as run_id:
+            history.write_items(self.conn, run_id, [self._row(warnungen="Preis unplausibel")])
+        stored = self.conn.execute("SELECT warnungen FROM items").fetchone()[0]
+        self.assertEqual(stored, "Preis unplausibel")
 
     def test_nur_erfolgreiche_laeufe_werden_uebernommen(self):
         with self.assertRaises(RuntimeError):

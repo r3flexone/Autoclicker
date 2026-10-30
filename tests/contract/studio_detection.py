@@ -219,6 +219,33 @@ try:
     _z = _b.icon_set({"field": "action", "value": "item_scan"})
     check("ein Item-Scan ist als Icon-Aktion nicht erlaubt", _icon.action == "click")
 
+    # **Die Wörter, die die Seite für „woran erkennt der Scan" übersetzt, sind die,
+    # die die Brücke liefert.** `detHowText` hatte `keine` statt `none` — beim
+    # Englisch-Umbau auf der Brückenseite übersetzt, in der Tabelle der Seite nicht:
+    # ein Scan ohne Erkennung zeigte das Rohwort. Gemessen wird beides, die echten
+    # Werte der Brücke und die Schlüssel der Tabelle in `app.js`.
+    from autoclicker.models import (
+        BossProfile as _BossProfile, IconScanConfig as _IconScanConfig)
+    _how_bridge = {
+        _b._icon_scan_json(_IconScanConfig(name="a", template="t.png"))["detection"],
+        _b._icon_scan_json(_IconScanConfig(name="b", marker_colors=[(1, 2, 3)]))["detection"],
+        _b._icon_scan_json(_IconScanConfig(name="c"))["detection"],
+        _b._boss_json(_BossProfile(name="d", template="t.png"), False)["detection"],
+        _b._boss_json(_BossProfile(name="e", marker_colors=[(1, 2, 3)]), False)["detection"],
+        _b._boss_json(_BossProfile(name="f"), False)["detection"],
+    }
+    _how_table = re.search(r"function detHowText\(how\) \{\s*return \{([^}]*)\}\[how\]", _web)
+    _how_keys = set(re.findall(r"(\w+):", _how_table.group(1))) if _how_table else set()
+    check("die Brücke kennt drei Erkennungsarten", len(_how_bridge) == 3)
+    check("jede davon steht in der Übersetzungstabelle der Seite",
+          _how_bridge <= _how_keys)
+    if not _how_bridge <= _how_keys:
+        print("        ohne Übersetzung: " + ", ".join(sorted(_how_bridge - _how_keys)))
+    check("und die Tabelle führt keinen Schlüssel, den die Brücke nie liefert",
+          _how_keys <= _how_bridge)
+    check("die Bibliothekskarte zeigt die Erkennung über dieselbe Tabelle",
+          "detHowText(b.detection)" in _web)
+
     # --- Werkzeuge ---
     section("Region und Klickpunkt: zwei Werkzeuge, ein Rueckweg")
     check("die Modi der Item-Ansicht bleiben unter sich",
@@ -524,3 +551,36 @@ if _without:
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
       {"sec-det-choice", "sec-det-steps", "scan-library"} <= _asked)
 check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)
+
+# **Der Wert am Werkzeug ist ein Befehl, kein Beschriftungstext.** Die Seite
+# schickt `button.dataset.scanTool` unverändert als `mode` an `scan_mode_set`,
+# und das lehnt jeden Wert ausserhalb von `MODES_ALL` ab. Beim Englisch-Umbau
+# blieb das „Auswählen"-Werkzeug auf `data-scan-tool="wahl"` stehen: der Klick
+# kam als „Unbekannter Modus" zurück, ohne dass etwas in der Konsole auftauchte.
+_scan_tools = re.findall(r'data-scan-tool="([^"]*)"', _html)
+check("die Werkzeugleiste hat mindestens das Auswählen-Werkzeug",
+      _M_WAHL in _scan_tools)
+check("jedes data-scan-tool ist ein Modus, den scan_mode_set annimmt",
+      set(_scan_tools) <= set(_MODI_ALLE))
+if not set(_scan_tools) <= set(_MODI_ALLE):
+    print("        unbekannt: " + ", ".join(sorted(set(_scan_tools) - set(_MODI_ALLE))))
+
+# **Eine Klasse, die die Seite vergibt, braucht eine Regel im Stylesheet.** Die
+# Zeilen von „alle Bosse gegen dieses Bild halten" tragen den Grund in einem
+# `span.reason`; die Regel dazu hiess nach dem Umbau noch `.ground` und traf
+# nichts mehr — der Grund stand in der falschen Spalte, ohne dass es auffiel.
+_css = (Path(__file__).resolve().parent.parent.parent
+        / "autoclicker/editors/sequence_studio/web/styles.css").read_text("utf-8")
+_row_start = _js.index('class: "scan-result-row"')
+_row_js = _js[_row_start:_js.index("t.reason)", _row_start)]
+_row_classes = {name for text in re.findall(r'class: "([a-z -]+)"', _row_js)
+                for name in text.split()}
+_row_unstyled = sorted(name for name in _row_classes
+                       if not re.search(r"\." + re.escape(name) + r"\b", _css))
+check("die Boss-Testzeile vergibt den Grund als Klasse 'reason'",
+      "reason" in _row_classes)
+check("jede Klasse der Boss-Testzeilen hat eine CSS-Regel", _row_unstyled == [])
+if _row_unstyled:
+    print("        ohne Regel: " + ", ".join(_row_unstyled))
+check("und die Grund-Regel hängt an der Zeile (über beide Spalten)",
+      re.search(r"\.scan-result-row \.reason\{grid-column:1/-1", _css) is not None)

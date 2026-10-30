@@ -314,6 +314,36 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertIsNot(english_1, german)
         self.assertEqual([entry[0] for entry in created], [("en",), ("de",)])
 
+    def test_tesseract_bekommt_die_sprache_als_lang(self):
+        """Die Sprache geht als `lang` an pytesseract, nicht unter erfundenem Namen.
+
+        Der Fake hat die Signatur des echten `image_to_data` (ohne `**kwargs`):
+        ein falsches Schluesselwort scheitert hier mit TypeError, so wie es
+        in der echten Bibliothek scheitern wuerde.
+        """
+        erhalten = {}
+
+        class FakePytesseract:
+            class Output:
+                DICT = "dict"
+
+            @staticmethod
+            def image_to_data(image, lang=None, config="", nice=0,
+                              output_type="string", timeout=0,
+                              pandas_config=None):
+                erhalten["lang"] = lang
+                erhalten["output_type"] = output_type
+                return {"text": ["", " Drache "], "conf": ["-1", "90"]}
+
+        with patch.object(ocr, "_pytesseract_mod", FakePytesseract):
+            treffer = ocr._read_tesseract(Mock(), ["de", "en"], 0.3)
+            self.assertEqual("de+en", erhalten["lang"])
+            ocr._read_tesseract(Mock(), None, 0.3)
+            self.assertEqual("eng", erhalten["lang"])
+
+        self.assertEqual([("Drache", 0.9)], treffer)
+        self.assertEqual("dict", erhalten["output_type"])
+
     def test_immediate_modus_nimmt_das_fenster_nur_nach_einem_klick_neu_auf(self):
         """Ein Durchgang, viele Slots, EINE Aufnahme — bis geklickt wird.
 

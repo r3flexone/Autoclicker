@@ -267,11 +267,11 @@ def install_keyboard_hook(on_key_down) -> bool:
         keyboard, _ = _pynput()
         modifier = set()
         controls = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
-        old = {keyboard.Key.old, keyboard.Key.alt_l, keyboard.Key.alt_r,
-               keyboard.Key.alt_gr}
+        alts = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+                keyboard.Key.alt_gr}
 
         def on_press(key):
-            if key in controls or key in old:
+            if key in controls or key in alts:
                 modifier.add(key)
                 return
             name = _key_name(keyboard, key)

@@ -401,7 +401,7 @@ class BridgeViewMixin:
         type_value = block_type(step)
         wc, vc, ec = step.wait_condition, step.verify_condition, step.else_config
         return {
-            "phase": self.board.lanes.index(lane),
+            "phase": self.board.position(lane),
             "row": row,
             "type": type_value,
             "label": BLOCK_LABELS[type_value],

@@ -149,7 +149,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual((original / "sequence.json").read_bytes(), before)
         self.assertFalse((original / "templates/neu.png").exists())
-        self.assertFalse(Path("sequences/defekt").exists())
+        self.assertFalse(Path("sequences/broken").exists())
 
     def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
         from autoclicker.import_export import _safe_bundle_path

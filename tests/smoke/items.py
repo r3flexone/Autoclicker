@@ -293,7 +293,7 @@ def run():
             own_ones = f.count(f'#scan-insp .scan-card[id^="card:{kind}:"]')
             expect(own_ones == cards_list,
                    f"„{tab}“: {cards_list} Masken, davon {own_ones} mit {kind}-id")
-            expect(f.count("#ab-listen .scan-card") == 0,
+            expect(f.count("#view-scans .page.left .scan-card") == 0,
                    f"„{tab}“: es steht noch eine Maske in der linken Spalte")
             left = f.page.eval_on_selector(
                 "#view-scans .page.left", "e => e.getBoundingClientRect().height")

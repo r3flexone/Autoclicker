@@ -90,7 +90,7 @@ def run():
         expect(f.count(head) == 1, "kein klebender Abschnitt in der linken Spalte")
         expect(f.count(head + " #btn-recording") == 1,
                "Aufnahme-Verweis steht nicht unter der festgehaltenen Notiz")
-        expect(f.count("#aufnahme-info, .recording-row .info") == 0,
+        expect(f.count(".recording-row .info") == 0,
                "der reine Werkzeug-Verweis hat noch ein ueberfluessiges i")
         field_heights = f.page.eval_on_selector_all(
             "#seq-cycles, #seq-blocks",

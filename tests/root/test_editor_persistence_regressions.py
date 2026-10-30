@@ -213,7 +213,7 @@ class EditorPersistenzTest(unittest.TestCase):
         for kind, load, attribut in (
                 ("items", presets.load_item_preset, "global_items"),
                 ("slots", presets.load_slot_preset, "global_slots")):
-            file = Path("presets") / kind / "defekt.json"
+            file = Path("presets") / kind / "broken.json"
             file.parent.mkdir(parents=True, exist_ok=True)
             inventory_before = dict(getattr(self.state, attribut))
             is_valid = {"scan_region": [0, 0, 10, 10], "click_pos": [5, 5]} if kind == "slots" else {}

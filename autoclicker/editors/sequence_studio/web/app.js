@@ -4405,7 +4405,7 @@ function scanOverlay() {
     const [x1, y1] = scanToImage(s.region[0] + v[0], s.region[1] + v[1]);
     const [x2, y2] = scanToImage(s.region[2] + v[0], s.region[3] + v[1]);
     // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
-    // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
+    // dreissig. `SC.choice` bleibt der eine, den der Inspektor bearbeitet.
     const selected = SC.selection.includes(s.name)
       || (SC.choice.kind === "slot" && SC.choice.name === s.name);
     // Gruen = hier liegt ein Item, das der Scan kennt; Rot = nichts erkannt,
@@ -5353,7 +5353,7 @@ function detRenderChoice() {
 /** Woran ein Scan erkennt — als Wort, nicht als Schluessel. */
 function detHowText(how) {
   return {template: "per Vorlage", marker: "per Farben",
-          keine: "ohne Erkennung"}[how] || how;
+          none: "ohne Erkennung"}[how] || how;
 }
 
 /** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
@@ -5850,7 +5850,7 @@ function detLibraryCard(b) {
                  : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
                                style: b.marker.length ? "background:" + b.marker[0] : ""}),
       el("b", {class: "grow"}, b.name),
-      el("span", {class: "num"}, open ? "neu vom LLM" : b.detection)));
+      el("span", {class: "num"}, open ? "neu vom LLM" : detHowText(b.detection))));
   if (b.marker.length) {
     cardEl.appendChild(el("div", {class: "scan-marker"},
       b.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h}))));
