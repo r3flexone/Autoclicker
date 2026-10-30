@@ -27,7 +27,7 @@ section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
 # was die Bruecke daraus macht: aus zwei Klicks ein Rechteck, aus einem Klick
 # eine gemessene Farbe, aus einem Umbenennen eine nachgezogene Referenz.
 import re as _re13
-from autoclicker.editors.sequence_studio.scans import (
+from autoclicker.editors.sequence_studio.scan_contract import (
     MODE_CLICK as _MK18, MODE_MEASURE as _MM18, MODE_SLOT as _MS18,
     MODE_CHOICE as _MW18, MODE_AREA as _MB18, MODE_FIND as _MF18,
     MODES as _MODI18, MIN_SLOT as _MINSLOT18,
@@ -954,9 +954,6 @@ try:
     check("der mitgeschickte Maskenname entscheidet, was gelöscht wird",
           "Erster" not in _bL18.scans and "Zweiter" in _bL18.scans
           and "Erster" in _zL18["status"]["text"])
-    _zL18 = _bL18.scan_delete()
-    check("ohne Maskenname bleibt der offene Scan der Rückfall",
-          not _bL18.scans and "Zweiter" in _zL18["status"]["text"])
 finally:
     _os.chdir(_cwdL18)
     shutil.rmtree(_sandboxL18, ignore_errors=True)

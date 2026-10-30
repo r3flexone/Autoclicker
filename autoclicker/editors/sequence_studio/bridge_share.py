@@ -12,6 +12,7 @@ from typing import Optional
 
 from ...models import AutoClickerState
 from ...utils import sanitize_filename
+from .model import palette_from_sequence
 
 # Was ein Bündel enthalten kann. Reihenfolge = Anzeige; die Schlüssel sind die
 # Argumentnamen von `export_bundle`/`import_bundle` ohne Präfix.
@@ -45,8 +46,7 @@ class BridgeShareMixin:
             "import": self._share_import,
             # Was im Fenster noch nicht gespeichert ist, liegt nicht auf Platte
             # und landet deshalb auch nicht im Bündel.
-            "open": bool(getattr(self, "_dirty", False)
-                          or getattr(self, "_scan_dirty", False)),
+            "open": bool(self._dirty or self._scan_dirty),
             "status": {"text": text, "kind": kind},
         }
 
@@ -273,6 +273,5 @@ class BridgeShareMixin:
 
     def _points_new(self) -> list:
         from ...persistence import load_sequence_file
-        from .model import palette_from_sequence
         seq = load_sequence_file(self.filepath) if self.filepath.exists() else None
         return palette_from_sequence(seq) if seq is not None else list(self.points)

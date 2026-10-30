@@ -166,9 +166,9 @@ class ScanDetectMixin:
         Platte hat sich etwas geändert" nur für Items — also ausgerechnet nicht
         für das, was hier gerade bearbeitet wird.
         """
-        root_layer = self.filepath.parent
-        folder_list = (root_layer / "boss_scans", root_layer / "icon_scans")
-        paths = [*folder_list, root_layer / "boss_scans" / "bibliothek.json"]
+        sequence_folder = self.filepath.parent
+        folder_list = (sequence_folder / "boss_scans", sequence_folder / "icon_scans")
+        paths = [*folder_list, sequence_folder / "boss_scans" / "bibliothek.json"]
         for folder in folder_list:
             if folder.is_dir():
                 paths += sorted(folder.glob("*.json"))
@@ -215,7 +215,6 @@ class ScanDetectMixin:
                 "tests": self._boss_test_results,
             },
             "icon": {"open": self.icon_open, "test": self._icon_test_result},
-            "region_target": (list(self._region_target) if self._region_target else None),
             # Was die Aktionen brauchen: die Punkte kennt die Sequenz-Seite der
             # Brücke, die Item-Scan-Namen der Item-Teil. Beides steht hier
             # nochmal, weil der Reiter sonst zwei Kanäle bräuchte.
@@ -305,7 +304,8 @@ class ScanDetectMixin:
         """Welche Erkennungswege überhaupt zur Verfügung stehen.
 
         Fehlende Voraussetzungen blenden nichts aus, sie erklären sich: ohne OpenCV
-        wird die Template-Wahl inaktiv und nennt den pip-Befehl.
+        wird die Template-Wahl inaktiv und nennt den pip-Befehl (ob OpenCV und
+        Pillow da sind, steht oben in der Momentaufnahme, nicht hier).
 
         OCR und LLM stehen als `None`, bis jemand `ocr_check()` bzw. `llm_check()`
         drückt — `import easyocr` zieht Torch nach und dauert Sekunden, das hat in
@@ -313,8 +313,6 @@ class ScanDetectMixin:
         """
         from ...config import CONFIG
         return {
-            "opencv": self._has_opencv(),
-            "pillow": self._has_pillow(),
             "ocr_state": self._ocr_state,
             "ocr_on": bool(CONFIG.ocr_enabled),
             "ocr_backend": CONFIG.ocr_backend or "automatisch",
@@ -322,11 +320,7 @@ class ScanDetectMixin:
             "ocr_min": CONFIG.ocr_min_confidence,
             "llm_on": bool(CONFIG.llm_enabled),
             "llm_endpoint": CONFIG.llm_endpoint,
-            "llm_model": CONFIG.llm_model or "",
             "llm_state": self._llm_state,
-            "boss_learn_global": bool(CONFIG.boss_learn_global),
-            "marker_all": bool(CONFIG.scan_require_all_markers),
-            "marker_required": int(CONFIG.scan_min_markers_required),
             "marker_min_pixel": int(CONFIG.scan_marker_min_pixels),
         }
 

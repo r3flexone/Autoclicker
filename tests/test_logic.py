@@ -4260,8 +4260,9 @@ section("Sequenz-Studio sortiert per Ziehen um - auch ueber Phasengrenzen")
 # falsch wird. Sie lag frueher in der Ansicht und war nur pruefbar, indem der Test
 # die halbe GUI stilllegte; seit sie in der Bruecke liegt, laeuft dieser Abschnitt
 # ohne jede GUI und auf jeder Plattform.
-from autoclicker.editors.sequence_studio.bridge import (
-    StudioBridge as _SB8, TRIGGER_PRESENT as _TDA8, TRIGGER_NONE as _TKEIN8,
+from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB8
+from autoclicker.editors.sequence_studio.bridge_contract import (
+    TRIGGER_PRESENT as _TDA8, TRIGGER_NONE as _TKEIN8,
     TRIGGER_GONE as _TWEG8, trigger_name as _tn8)
 from autoclicker.editors.sequence_studio.model import PalettePoint as _PP8
 from autoclicker.models import Sequence as _SEQ8, LoopPhase as _LP8
@@ -4810,7 +4811,7 @@ check("Ausgangslage: Farbe+Klick mit Trigger",
 _b13.block_set_type({"type": "wait"})
 check("der Chip WARTEN macht daraus einen Warte-Block",
       _b13.snapshot()["block"]["type"] == "wait"
-      and _b13.snapshot()["block"]["wait_only"] is True)
+      and _s13.wait_only is True)
 check("und laesst den Farb-Trigger stehen", _s13.wait_condition is not None)
 
 _b13.block_set_type({"type": "wait_click"})
@@ -5030,7 +5031,7 @@ check("und ein Boss-Watcher ohne Namen ebenfalls erkannt",
 # Jede Scan-Art, die der Dispatcher kennt, muss auch hier stehen - sonst faellt
 # genau die eine wieder bis zum Klick durch.
 from autoclicker.runtime.steps import _SCAN_FIELDS as _sf12
-from autoclicker.editors.sequence_studio.bridge import SCAN_FIELD as _sfeld12
+from autoclicker.editors.sequence_studio.bridge_contract import SCAN_FIELD as _sfeld12
 check("Executor und Studio kennen dieselben Scan-Felder",
       sorted(f for f, _ in _sf12) == sorted(_sfeld12.values()))
 
@@ -5271,7 +5272,7 @@ section("Sequenz-Studio: Uebersicht und Laufstatus")
 # ueber `call()` landete die Antwort in `S`, und ein Blick in die Uebersicht waere
 # ein Datenverlust im Editor.
 import threading as _thr16, time as _time16
-from autoclicker.editors.sequence_studio.bridge import scan_warnings as _sw16
+from autoclicker.editors.sequence_studio.bridge_contract import scan_warnings as _sw16
 from autoclicker.editors.sequence_studio.model import sequence_to_board as _s2b16
 
 _st16 = tempfile.mkdtemp()
@@ -5738,7 +5739,7 @@ try:
     # ELSE ist die Antwort auf eine NICHT ERFUELLTE Bedingung. Ein reiner Klick
     # hat keine: er klickt, und danach geht es weiter. Ein ELSE daran ist eine
     # Zusage, die nichts einloest - deshalb sagt es die Oberflaeche.
-    from autoclicker.editors.sequence_studio.bridge import else_applies as _eg16
+    from autoclicker.editors.sequence_studio.bridge_contract import else_applies as _eg16
     _cases16 = {
         "Klick": (SequenceStep(x=1, y=2, delay_before=0), False),
         "Taste": (SequenceStep(delay_before=0, key_press="a"), False),
@@ -5757,7 +5758,7 @@ try:
     }
     # Die Ausloeser-Liste und die Scan-Felder des Editors sind zwei Listen ueber
     # dieselben Felder - laufen sie auseinander, warnt der Editor am falschen Block.
-    from autoclicker.editors.sequence_studio.bridge import _ELSE_SCANS as _es16
+    from autoclicker.editors.sequence_studio.bridge_contract import _ELSE_SCANS as _es16
     check("die ELSE-Ausloeser sind Scan-Felder, die der Editor kennt",
           set(_es16) < set(_sfeld12.values()))
     check("...und der Boss-Watcher ist bewusst NICHT dabei",
@@ -6299,7 +6300,7 @@ check("optionale Felder sind genau die mit Standard None",
       sorted(_opt17()) == sorted(k for k, v in _defaults17.items() if v is None))
 
 # --- Der Wertvergleich der Bruecke ---
-from autoclicker.editors.sequence_studio.bridge import _same_value as _gw17
+from autoclicker.editors.sequence_studio.bridge_contract import _same_value as _gw17
 
 check("600 und 600.0 sind derselbe Wert", _gw17(600, 600.0))
 check("True ist nicht 1", not _gw17(True, 1))
@@ -6421,7 +6422,7 @@ for _pf17 in sorted((_repo17 / "autoclicker").rglob("*.py")) + [_repo17 / "main.
         continue
     for _nr17, _row17 in enumerate(_pf17.read_text(encoding="utf-8").splitlines(), 1):
         # Nur der State: ein `self.config = ...` in einem Stellvertreter-Objekt
-        # (scans._ConfigOnly) ist kein Austausch der Programm-Config.
+        # (scan_learning._ConfigOnly) ist kein Austausch der Programm-Config.
         if _re13.search(r"^\s*(?:\w+\.)?state\.config\s*=\s*", _row17):
             _assignments17.append(f"{_pf17.name}:{_nr17}: {_row17.strip()}")
 # Ohne Zeilennummer: die waere bei jeder Einfuegung in main.py falsch, und der

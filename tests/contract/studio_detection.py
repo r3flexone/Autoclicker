@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.scans import (
+from autoclicker.editors.sequence_studio.scan_contract import (
     SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODES as _MODI,
     MODES_ALL as _MODI_ALLE, MODE_ACTION as _M_AKTION,
     MODE_REGION as _M_REGION, MODE_CHOICE as _M_WAHL,
@@ -301,7 +301,7 @@ try:
             check("mit Bild und Ziel schaltet das Werkzeug scharf",
                   _z["mode"] == _M_REGION)
             check("und die Bruecke merkt sich, WORAUF es wirkt",
-                  _z["region_target"] == ["icon", "Mission nicht machbar"])
+                  list(_b._region_target or ()) == ["icon", "Mission nicht machbar"])
             _z = _b.scan_click({"x": 300, "y": 200})
             check("die erste Ecke legt noch nichts an",
                   _z["corner"] == [300, 200]
@@ -312,7 +312,7 @@ try:
                   _b.icon_scans["Mission nicht machbar"].scan_region == (300, 200, 340, 240))
             check("und das Werkzeug faellt ins Auswaehlen zurueck", _z["mode"] == _M_WAHL)
             check("das Ziel ist danach weg — es gehoerte zu diesem einen Durchgang",
-                  _z["region_target"] is None)
+                  _b._region_target is None)
 
             # --- Der Ausschnitt zeigt, was der Scan sieht ---
             _ic = [c for c in _z["icon_scans"] if c["name"] == "Mission nicht machbar"][0]

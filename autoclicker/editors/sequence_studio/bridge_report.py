@@ -18,9 +18,11 @@ Der Ertrag ist derselbe Gedanke eine Stufe weiter: `item_found` aus dem Log mal
 Verbindung zwischen den beiden Subsystemen ist eine Datei und bleibt eine.
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
+
+from ...config import CONFIG
+from .bridge_contract import put_repo_on_path
 
 # Wie viele Log-Dateien höchstens gelesen werden, neueste zuerst. `logs/` wächst
 # mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet: ohne Deckel
@@ -75,7 +77,7 @@ class BridgeReportMixin:
 
         return {
             "folder": str(folder.resolve()) if folder else "",
-            "active": bool(self._report_config("session_log_enabled", False)),
+            "active": bool(CONFIG.session_log_enabled),
             "available": True,
             "error": "",
             "selected": self._report_choice,
@@ -92,12 +94,8 @@ class BridgeReportMixin:
 
     # ------------------------------------------------------------ Dateien
 
-    def _report_config(self, field: str, default_value):
-        from ...config import CONFIG
-        return getattr(CONFIG, field, default_value)
-
     def _report_folder(self) -> Optional[Path]:
-        folder = Path(self._report_config("session_log_dir", "logs") or "logs")
+        folder = Path(CONFIG.session_log_dir or "logs")
         return folder if folder.is_dir() else None
 
     @staticmethod
@@ -117,9 +115,7 @@ class BridgeReportMixin:
         Programm, sondern zum Repo. Fehlt es, soll der Reiter das sagen — nicht
         das Fenster beim Start damit umfallen.
         """
-        root_layer = Path(__file__).resolve().parents[3]
-        if str(root_layer) not in sys.path:
-            sys.path.insert(0, str(root_layer))
+        put_repo_on_path()
         try:
             from tools.log_report import evaluate
         except ImportError as e:
@@ -129,7 +125,7 @@ class BridgeReportMixin:
     def _report_empty(self, folder: Optional[Path], error: str) -> dict:
         return {
             "folder": str(folder.resolve()) if folder else "",
-            "active": bool(self._report_config("session_log_enabled", False)),
+            "active": bool(CONFIG.session_log_enabled),
             "available": False,
             "error": error,
             "selected": "",
@@ -198,7 +194,6 @@ class BridgeReportMixin:
             "detected": raw["detected"][:RANK_ROWS],
             # Beide Seiten der Nachprüfung: „12x ohne Wirkung" allein sagt
             # nichts, solange nicht dabeisteht, wie oft es geklappt hat.
-            "verify_ok_total": sum(verify_ok.values()),
             "verify_miss_total": sum(n for _, n in miss),
             "verify_miss": [[name, n, verify_ok.get(name, 0)]
                             for name, n in miss[:RANK_ROWS]],
@@ -227,7 +222,7 @@ class BridgeReportMixin:
         abgelegt hat. Eine FEHLENDE Datei ist keine unlesbare: als „nicht
         lesbar" gemeldet, sucht man einen Defekt, wo nur ein Lauf fehlt.
         """
-        path = str(self._report_config("scan_market_value_file", "") or "")
+        path = str(CONFIG.scan_market_value_file or "")
         if not path or not raw["items"] or not Path(path).exists():
             return None
         from ...runtime.item_scan import load_market_values, market_value

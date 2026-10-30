@@ -1,35 +1,16 @@
 """
-Kompatible Fassade der Web-Brücke des Sequenz-Studios.
+Die Web-Brücke des Sequenz-Studios.
 
-Die öffentliche Klasse bleibt stabil. Darstellung, Dienste und Editor-Kommandos
-sind intern nach Verantwortlichkeiten getrennt.
+Darstellung, Dienste und Editor-Kommandos sind intern nach Verantwortlichkeiten
+getrennt; `StudioBridge` fügt die Teile zusammen. Protokoll und Konstanten
+stehen in `bridge_contract.py`.
 """
 
 from pathlib import Path
 from typing import Optional
 
 from ...models import Sequence
-from .bridge_contract import (
-    ELSE_ACTIONS,
-    SCAN_FIELD,
-    SCAN_MODES,
-    TRIGGER_PRESENT,
-    TRIGGER_NONE,
-    TRIGGER_GONE,
-    TYPE_ORDER,
-    _ELSE_SCANS,
-    _FIELDS,
-    _blocks,
-    _same_value,
-    _hex,
-    _mtime,
-    _rgb,
-    _position,
-    _wait_text,
-    else_applies,
-    scan_warnings,
-    trigger_name,
-)
+from .bridge_contract import _mtime
 from .bridge_report import BridgeReportMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
@@ -38,29 +19,6 @@ from .bridge_view import BridgeViewMixin
 from .bridge_tools import BridgeToolsMixin
 from .model import Lane, PalettePoint, SequenceBoard, palette_from_sequence, sequence_to_board
 from .scans import ScanPart
-
-__all__ = [
-    "ELSE_ACTIONS",
-    "SCAN_FIELD",
-    "SCAN_MODES",
-    "StudioBridge",
-    "TRIGGER_PRESENT",
-    "TRIGGER_NONE",
-    "TRIGGER_GONE",
-    "TYPE_ORDER",
-    "_ELSE_SCANS",
-    "_FIELDS",
-    "_blocks",
-    "_same_value",
-    "_hex",
-    "_mtime",
-    "_rgb",
-    "_position",
-    "_wait_text",
-    "else_applies",
-    "scan_warnings",
-    "trigger_name",
-]
 
 
 class StudioBridge(

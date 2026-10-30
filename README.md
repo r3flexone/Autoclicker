@@ -1374,10 +1374,10 @@ Autoclicker-Idleclans/
 │       ├── sequence_editor/  # Sequenz erstellen/bearbeiten
 │       ├── item_editor/      # Items definieren (inkl. autoscan-Befehl)
 │       ├── sequence_studio/  # pywebview-Studio
-│       │   ├── bridge.py     # stabile StudioBridge-Fassade
+│       │   ├── bridge.py     # StudioBridge (fügt die Mixins zusammen)
 │       │   ├── bridge_contract.py, bridge_view.py
 │       │   ├── bridge_services.py, bridge_editing.py
-│       │   ├── scans.py      # stabile ScanPart-Fassade
+│       │   ├── scans.py      # ScanPart (fügt die Scan-Mixins zusammen)
 │       │   ├── scan_contract.py, scan_state.py
 │       │   ├── scan_interaction.py, scan_learning.py
 │       │   ├── scan_library.py, scan_capture.py, scan_model.py

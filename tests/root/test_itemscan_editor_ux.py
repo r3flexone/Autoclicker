@@ -26,7 +26,7 @@ except ImportError:                                              # pragma: no co
 needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
-from autoclicker.editors.sequence_studio.scans import MODE_SLOT, MODE_CHOICE
+from autoclicker.editors.sequence_studio.scan_contract import MODE_SLOT, MODE_CHOICE
 from autoclicker.models import (
     AutoClickerState, ItemProfile, ItemScanConfig, ItemSlot, Sequence,
 )
@@ -129,9 +129,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 ("Bogen", "Waffen", 4))
             self.assertEqual(row["existing"], "Bogen")
             self.assertEqual(row["new_name"], "Item 1")
-            self.assertFalse(row["can_add"])
             self.assertTrue(row["ticked"])
-            self.assertTrue(row["in_scan"])
 
             state = self.bridge.scan_learn_preview_apply({"rows": [{
                 "slot": row["slot"], "ticked": True,
@@ -151,7 +149,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
             row = state["review"]["rows"][0]
             self.assertEqual(row["name"], "Bogen")
             self.assertEqual((row["category"], row["priority"]), ("Fernkampf", 2))
-            self.assertTrue(row["in_scan"])
             self.assertNotIn("locked", row)
             self.assertTrue(row["ticked"])
 

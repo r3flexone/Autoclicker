@@ -1,5 +1,6 @@
 """Öffentliches Protokoll und reine Helfer der Studio-Brücke."""
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +26,7 @@ from ...models import (
     WaitCondition,
     block_type,
 )
-from .model import BLOCK_LABELS, SequenceBoard, hex_color, rgb_value
+from .model import BLOCK_LABELS, SequenceBoard
 
 # Reihenfolge der Block-Typen in der Typ-Auswahl: erst die drei Klick-Formen,
 # dann Taste, dann die Scans, zuletzt der Screenshot.
@@ -35,10 +36,6 @@ TYPE_ORDER = [
     BLOCK_SCREENSHOT,
 ]
 
-# Farb-Trigger: die drei Zustände, die ein Schritt haben kann. Werte statt
-# Beschriftungen — die Beschriftung steht in der Oberfläche, hier steht das
-# Protokoll. (Beim DPG-Vorgänger waren beide dasselbe, und der Test verglich
-# gegen deutsche Anzeigetexte.)
 # Wie lange ein Griff mit der Maus auf ENTER wartet. **Der Aufruf blockiert die
 # Bruecke so lange** — die Seite kann in dieser Zeit keine Antwort bekommen und
 # muss deshalb selbst sagen, worauf gewartet wird. Damit ihr Countdown nicht
@@ -46,6 +43,10 @@ TYPE_ORDER = [
 # statt in app.js ein zweites Mal zu stehen.
 WAIT_TIMEOUT = 60.0
 
+# Farb-Trigger: die drei Zustände, die ein Schritt haben kann. Werte statt
+# Beschriftungen — die Beschriftung steht in der Oberfläche, hier steht das
+# Protokoll. (Beim DPG-Vorgänger waren beide dasselbe, und der Test verglich
+# gegen deutsche Anzeigetexte.)
 TRIGGER_NONE = "none"
 TRIGGER_PRESENT = "present"
 TRIGGER_GONE = "gone"
@@ -77,16 +78,9 @@ _FIELDS = {
     "icon_scan": lambda v: str(v or ""),
     "boss_scan": lambda v: str(v or ""),
     "boss_watcher": lambda v: str(v or ""),
-    "wait_only": lambda v: bool(v),
     "breakpoint": lambda v: bool(v),
     "mouse_return": lambda v: bool(v),
 }
-
-
-# Die beiden Farbhelfer liegen in `model.py` — der Scans-Reiter braucht sie
-# genauso, und zwei Exemplare wären die Kopie, die irgendwann anders rundet.
-_hex = hex_color
-_rgb = rgb_value
 
 
 def trigger_name(cond: Optional[WaitCondition]) -> str:
@@ -157,9 +151,26 @@ def _mtime(path) -> Optional[float]:
         return None
 
 
+def put_repo_on_path() -> None:
+    """Legt die Repo-Wurzel auf `sys.path`, damit `tools/` importierbar ist.
+
+    `tools/` gehört zum Repo, nicht zum Programm — die Brücke ruft es nur aus
+    einer Methode heraus und in einem `try` (Bericht-Reiter, Katalog-Knopf).
+    """
+    repo_root = str(Path(__file__).resolve().parents[3])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+
 def _blocks(count: int) -> str:
     """„1 Block" / „3 Blöcke" — in der Statusleiste stand vorher „1 Block/Blöcke"."""
     return "1 Block" if count == 1 else f"{count} Blöcke"
+
+
+def scan_name(step: SequenceStep) -> str:
+    """Der Scan-Name eines Scan-Blocks ohne Leerraum — "" ohne Namen oder bei jedem anderen Block."""
+    field = SCAN_FIELD.get(block_type(step))
+    return (getattr(step, field) or "").strip() if field else ""
 
 
 def scan_warnings(board: SequenceBoard) -> list[str]:
@@ -175,7 +186,6 @@ def scan_warnings(board: SequenceBoard) -> list[str]:
     for lane in board.lanes:
         for row, step in enumerate(lane.steps, start=1):
             type_value = block_type(step)
-            field = SCAN_FIELD.get(type_value)
-            if field is not None and not (getattr(step, field) or "").strip():
+            if type_value in SCAN_FIELD and not scan_name(step):
                 out.append(f"{BLOCK_LABELS[type_value]} in '{lane.name}' (Block {row})")
     return out

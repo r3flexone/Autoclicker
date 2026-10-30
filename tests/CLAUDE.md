@@ -209,7 +209,7 @@ einmal einschlägt: **eine Ansicht, die man nur über die Signaturen ihres Fremd
 prüfen kann, ist die falsche Ansicht.**
 
 **Beim Studio stellt sich die Frage deshalb gar nicht.** Seine Oberfläche ist eine
-Webseite. `bridge.py` und `scans.py` bleiben stabile Fassaden; die Logik liegt
+Webseite. `bridge.py` und `scans.py` fügen nur die Mixins zusammen; die Logik liegt
 nach Verantwortung in `bridge_view.py`, `bridge_services.py`,
 `bridge_editing.py` sowie den `scan_*.py`-Modulen — ohne Fenster, ohne
 Fremdpaket, also im Test. Ungeprüft bleibt nur, was wirklich Anzeige ist

@@ -7,14 +7,12 @@ und zurück — verlustfrei. Die Blöcke SIND die originalen SequenceStep-Objekt
 Feld verloren: Wir gruppieren nur um und bauen am Ende wieder dieselbe Sequence
 zusammen.
 
-Dieser Layer hat KEINE GUI-Abhängigkeit und ist isoliert testbar (ast.parse +
-einfacher Round-Trip-Test ohne Dear PyGui).
+Dieser Layer hat KEINE GUI-Abhängigkeit und ist isoliert testbar (der Round-Trip
+läuft ohne Fenster).
 """
 
-import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 from ...models import (
@@ -56,8 +54,7 @@ BLOCK_LABELS = {
     BLOCK_CLICK: "KLICK",
 }
 
-# RGB-Farbe je Block-Typ. Sie sitzt als kleines Quadrat vor der Listenzeile —
-# frueher faerbte sie die Titelzeile einer Node.
+# RGB-Farbe je Block-Typ. Sie färbt die Kopfzeile der Karte und die Typ-Kachel.
 # Neun Typen, neun unterscheidbare Farben. Taste, Item-Scan und Icon-Scan lagen
 # vorher alle im Bereich Orange/Gelb (220,130,50 / 210,180,60 / 210,140,60) — auf
 # einer Karte nebeneinander waren sie nicht auseinanderzuhalten, und genau das ist
@@ -153,7 +150,7 @@ class SequenceBoard:
     next_sequence: str = ""
     next_delay: float = 30.0
 
-    # --- Mutationen (von der Ansicht aufgerufen) ---------------------------------
+    # --- Mutationen (von den Editor-Kommandos der Brücke aufgerufen) ------------
 
     def loop_lanes(self) -> list[Lane]:
         return [ln for ln in self.lanes if ln.is_loop()]
@@ -302,12 +299,12 @@ def sequence_to_board(seq: Sequence) -> SequenceBoard:
     )
 
 
-def board_to_sequence(graph: SequenceBoard) -> Sequence:
+def board_to_sequence(board: SequenceBoard) -> Sequence:
     """Baut aus der Lane-Struktur wieder eine Sequence (verlustfrei)."""
     init_steps: list[SequenceStep] = []
     end_steps: list[SequenceStep] = []
     loop_phases: list[LoopPhase] = []
-    for ln in graph.lanes:
+    for ln in board.lanes:
         if ln.kind == LANE_INIT:
             init_steps = list(ln.steps)
         elif ln.kind == LANE_END:
@@ -320,14 +317,14 @@ def board_to_sequence(graph: SequenceBoard) -> Sequence:
                 scheduled_start=ln.scheduled_start,
             ))
     return Sequence(
-        name=graph.name,
+        name=board.name,
         init_steps=init_steps,
         loop_phases=loop_phases,
         end_steps=end_steps,
-        total_cycles=graph.total_cycles,
-        description=graph.description,
-        next_sequence=graph.next_sequence,
-        next_delay=graph.next_delay,
+        total_cycles=board.total_cycles,
+        description=board.description,
+        next_sequence=board.next_sequence,
+        next_delay=board.next_delay,
     )
 
 
@@ -350,48 +347,13 @@ def palette_to_points(points: list) -> list:
 
 @dataclass
 class PalettePoint:
-    """Ein aufgenommener ClickPoint für die Palette (read-only)."""
+    """Ein Punkt der Sequenz, wie das Studio ihn hält."""
     id: int
     x: int
     y: int
     name: str
     color: Optional[tuple[int, int, int]] = None
     source: str = ""  # Herkunfts-Kommentar, z.B. "Aufnahme"
-
-
-def load_palette_points(sequence_file) -> list[PalettePoint]:
-    """Lädt die Punkte aus der geöffneten ``sequence.json``.
-
-    Eigene schlanke Ladefunktion statt `load_sequence_file()`: gebraucht wird nur das
-    Feld `points`, und der Subprocess soll dafür weder Schritte noch Punkt-Auflösung
-    noch Konsolenmeldungen laden.
-    """
-    points_file = Path(sequence_file)
-    if not points_file.exists():
-        return []
-    try:
-        with open(points_file, "r", encoding="utf-8") as f:
-            data = json.load(f).get("points") or []
-    except (json.JSONDecodeError, IOError, OSError):
-        return []
-    points: list[PalettePoint] = []
-    for i, p in enumerate(data):
-        # Einzelne defekte Einträge (z.B. "color":"rot" oder Nicht-Dict) dürfen
-        # den Editor-Start nicht crashen — solche Einträge werden übersprungen.
-        try:
-            color_raw = p.get("color")
-            color = tuple(int(v) for v in color_raw) if color_raw else None
-            points.append(PalettePoint(
-                id=p.get("id", i + 1),
-                x=p.get("x", 0),
-                y=p.get("y", 0),
-                name=p.get("name", ""),
-                color=color,
-                source=p.get("source", ""),
-            ))
-        except (TypeError, ValueError, AttributeError, KeyError):
-            continue
-    return points
 
 
 # Die Block-Typen, nach denen `scan_mouse_after` greift (`_scan_handler` in

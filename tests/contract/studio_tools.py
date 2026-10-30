@@ -185,6 +185,24 @@ try:
           tuple(_slot["scan_region"]) == (10, 20, 70, 80))
     check("nach dem Anwenden laeuft keine Kalibrierung mehr",
           _b.tool_data()["calibration"] == {})
+    check("und eine lesbare Datei erzeugt keinen Hinweis auf Lesefehler",
+          "nicht neu lesen" not in _res["message"])
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: eine unlesbare Sequenzdatei leert die Punkte nach der Kalibrierung nicht")
+# Hier las `load_palette_points()` die Datei still und gab bei jedem Lesefehler
+# eine leere Liste zurück: das Fenster zeigte danach keinen einzigen Punkt, und
+# der nächste Druck auf Speichern schrieb diese Leere in die Sequenz.
+try:
+    _sandbox, _b = _sandbox_dir()
+    _before = [(p.id, p.x, p.y) for p in _b.points]
+    _b.filepath.write_text("{kaputt", encoding="utf-8")
+    check("die Rückgabe sagt, dass die Datei nicht zu lesen war",
+          _b._after_calibration() is False)
+    check("und die Punkte im Fenster bleiben, wie sie waren",
+          [(p.id, p.x, p.y) for p in _b.points] == _before)
 finally:
     _os.chdir(_cwd)
 
@@ -313,13 +331,18 @@ try:
     check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["usages"]))
     _res = _b.tool_point_delete({"point_id": 1})
     check("ein verwendeter Punkt wird nicht gelöscht",
-          not _res["ok"] and _b._point_with_id(1) is not None)
+          not _res["ok"] and _b._point(1) is not None)
     check("der Löschschutz nennt die Verwendungen", bool(_res.get("usages")))
+    # Eine unlesbare ID kam aus dem Fenster und darf die Brücke nicht umwerfen —
+    # `int("abc")` stand früher in den Editor-Kommandos ungefangen da.
+    check("eine unlesbare Punkt-ID ergibt keinen Punkt statt eines Absturzes",
+          _b._point("abc") is None and _b._point(None) is None
+          and _b._point("1") is _b._point(1))
 
     _b._await_position = lambda: (333, 444, "")
     _b._color_at = staticmethod(lambda x, y: (12, 34, 56))
     _res = _b.tool_point_capture({"name": "Neu"})
-    _new = _b._point_with_id(_res.get("point_id"))
+    _new = _b._point(_res.get("point_id"))
     check("ein freier Punkt lässt sich im Studio aufnehmen",
           _res["ok"] and (_new.x, _new.y) == (333, 444))
     check("die Farbe wird dabei mitgemessen", _new.color == (12, 34, 56))

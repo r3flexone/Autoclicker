@@ -237,8 +237,9 @@ class ScanStateMixin:
         """Hat jemand anders die Dateien angefasst, seit wir sie gelesen haben?
 
         „Jemand anders" ist im Alltag der eigene Hauptprozess: Auto-Lernen im
-        Lauf schreibt `items.json`, der Konsolen-Editor schreibt Scans. Eigene
-        Speicherungen zählen nicht mit — `scan_save()` zieht den Stand nach.
+        Lauf schreibt den Item-Scan (`item_scans/<n>.json`), der Konsolen-Editor
+        ebenso. Eigene Speicherungen zählen nicht mit — `scan_save()` zieht den
+        Stand nach.
         """
         return bool(self._scan_loaded) and self._disk_state() != self._disk
 
@@ -566,8 +567,6 @@ class ScanStateMixin:
             # Spiel sichtbar, welches Fenster dieser Scan erwartet.
             "window_title": cfg.capture_window_title if cfg else None,
             "window_available": bool(self.scan_window_id),
-            "window_reference": (list(cfg.capture_window_rect)
-                                  if cfg and cfg.capture_window_rect else None),
             "steps": self._steps(),
             "open": self.open_scan,
             "choice": {"kind": self.scan_kind, "name": self.scan_name},
@@ -610,8 +609,7 @@ class ScanStateMixin:
         unknown = [n for n, t in match.items() if not t.get("name")]
         return {
             "total": len(slots), "detected": len(detected),
-            "unknown": len(unknown), "detected_slots": detected,
-            "unknown_slots": unknown,
+            "unknown": len(unknown), "unknown_slots": unknown,
         }
 
     def _review_json(self) -> Optional[dict]:
@@ -771,12 +769,6 @@ class ScanStateMixin:
             "learn": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
             "use_catalog": bool(cfg.use_catalog),
-            "window": ({
-                "title": cfg.capture_window_title,
-                "instance": cfg.capture_window_index,
-                "reference": (list(cfg.capture_window_rect)
-                              if cfg.capture_window_rect else None),
-            } if cfg.capture_window_title else None),
             # Namen, die es global nicht mehr gibt: der Scan läuft mit dem Rest
             # weiter, aber man soll es sehen, bevor er es meldet.
             "missing_items": ([n for n in cfg.slot_names if n not in self.slots] +

@@ -15,15 +15,18 @@ from ...persistence import (
 from ...utils import sanitize_filename, unique_name
 from .bridge_contract import (
     _same_value,
-    _hex,
     _mtime,
+    put_repo_on_path,
     scan_warnings,
 )
 from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
+    hex_color,
     ink_color,
+    palette_from_sequence,
+    palette_to_points,
     sequence_to_board,
 )
 
@@ -72,12 +75,12 @@ class BridgeServicesMixin:
         Punkt-Auflösung mitläuft. Nur Kennzahlen, keine Schritte.
         """
         out: list[dict] = []
-        root_layer = Path(self.sequences_dir)
+        sequences_root = Path(self.sequences_dir)
         files = sorted(
-            (folder / "sequence.json" for folder in root_layer.iterdir()
+            (folder / "sequence.json" for folder in sequences_root.iterdir()
              if folder.is_dir() and (folder / "sequence.json").exists()),
             key=lambda path: path.parent.name,
-        ) if root_layer.exists() else []
+        ) if sequences_root.exists() else []
         for path in files:
             saved_name = path.parent.name
             try:
@@ -254,9 +257,9 @@ class BridgeServicesMixin:
         for entry, path in list_available_sequences():
             if entry == name:
                 return Path(path).parent
-        root_layer = Path(self.sequences_dir)
-        if root_layer.is_dir():
-            for folder in root_layer.iterdir():
+        sequences_root = Path(self.sequences_dir)
+        if sequences_root.is_dir():
+            for folder in sequences_root.iterdir():
                 if folder.is_dir() and folder.name == name:
                     return folder
         return None
@@ -350,7 +353,7 @@ class BridgeServicesMixin:
         # Farbe ist die Legende, und sie muss in beiden Ansichten dieselbe sein.
         type_value = state_value.get("block_set_type")
         if type_value in BLOCK_COLORS:
-            state_value["block_color"] = _hex(BLOCK_COLORS[type_value])
+            state_value["block_color"] = hex_color(BLOCK_COLORS[type_value])
             state_value["block_ink"] = ink_color(BLOCK_COLORS[type_value])
             state_value["block_badge"] = BLOCK_LABELS[type_value]
         return state_value
@@ -849,12 +852,9 @@ class BridgeServicesMixin:
         eingetragen hat, bekommt seine Datei aktualisiert und nicht seinen
         Eintrag ueberschrieben.
         """
-        import sys
         from ...config import CONFIG
 
-        root_layer = Path(__file__).resolve().parents[3]
-        if str(root_layer) not in sys.path:
-            sys.path.insert(0, str(root_layer))
+        put_repo_on_path()
         try:
             from tools.catalog import (build_catalog, fetch_game_data,
                                        _summary, DEFAULT_TARGET)
@@ -927,7 +927,6 @@ class BridgeServicesMixin:
         self.filepath = Path(path)
         # Punkte neu einlesen: zwischen zwei Sequenzen kann im Hauptprozess ein
         # Punkt dazugekommen sein.
-        from .model import palette_from_sequence
         self.points = palette_from_sequence(seq)
         self._scan_init()
         self._scan_load()
@@ -1044,7 +1043,6 @@ class BridgeServicesMixin:
         if isinstance(moved, dict):
             return moved
 
-        from .model import palette_to_points
         sequence = board_to_sequence(self.board)
         sequence.points = palette_to_points(self.points)
         if not save_sequence_file(sequence, new):
@@ -1157,7 +1155,6 @@ class BridgeServicesMixin:
             f"{self.filepath.stem}.ungespeichert.json")
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            from .model import palette_to_points
             sequence = board_to_sequence(self.board)
             sequence.points = palette_to_points(self.points)
             if save_sequence_file(sequence, target):

@@ -8,7 +8,7 @@ Begründungen zu diesem Bereich gehören hierher, nicht in die Wurzel.
 ## Module
 
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
-  - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
+  - `bridge.py`: `StudioBridge` fügt die Mixins zusammen und initialisiert.
   - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
   - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
   - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
@@ -16,7 +16,7 @@ Begründungen zu diesem Bereich gehören hierher, nicht in die Wurzel.
   - `bridge_share.py`: Export/Import im Reiter „Teilen".
   - `bridge_tools.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
   - `bridge_report.py`: Session-Logs und Ertrag im Reiter „Bericht".
-  - `scans.py`: stabile `ScanPart`-Fassade.
+  - `scans.py`: `ScanPart` fügt die Scan-Mixins zusammen.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
     Verantwortlichkeiten.
@@ -44,7 +44,7 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 
 | Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
+| `autoclicker/sequence_studio.py` (Prozess-Einstieg; gestartet von `handle_sequence_studio` und `handle_scan_studio` in `handlers.py`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
 
 **Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
 `slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein
@@ -218,8 +218,8 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `load`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanPart`-
-Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanPart`
+in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
 in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
 Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `sequences/<name>/item_scans/<n>.json` — Slots und Items stehen
 darin, es gibt keine globalen Listen daneben — also wieder andere Dateien
@@ -335,9 +335,8 @@ Sechs Regeln, an denen der Reiter hängt:
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`tiny`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
-- **Was ein Klick bedeutet, sagt ein Modus** (`MODES` in `scan_contract.py`,
-  über `scans.py` weiterhin öffentlich importierbar: wählen, neuer
-  Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODES` in `scan_contract.py`:
+  wählen, neuer Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
   seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODES` gegeneinander —
   **Zug um Zug, nicht als Menge**, denn die Reihenfolge ist die Rangfolge:
@@ -1782,7 +1781,7 @@ Regeln beim Erweitern:
   Phasen stehen nebeneinander, ein Bereich quer darüber hätte keine sichtbare
   Reihenfolge. Die Seite zählt `S.selection.count`, nie `rows.length` (das sind
   nur die Zeilen der letzten Phase). Phasen werden an der **Identität** erkannt
-  (`_lane_index()`), nicht mit `lanes.index()`: `Lane` ist eine Dataclass, und
+  (`board.position()`), nicht mit `lanes.index()`: `Lane` ist eine Dataclass, und
   zwei gleich aussehende Phasen fand `index()` immer als die erste.
 - **Die Karte zeigt wenig, der Inspektor alles.** Auf die Karte gehört, was man beim
   Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);

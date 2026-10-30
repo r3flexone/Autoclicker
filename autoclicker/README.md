@@ -62,11 +62,11 @@ abgefangen und als Diagnose gemeldet.
 
 - `editors/sequence_editor/`: Konsoleneditor für Sequenzen.
 - `editors/item_editor/`: Items, Marker, Lernen und Autoscan.
-- `editors/sequence_studio/bridge.py`: stabile `StudioBridge`-Fassade.
+- `editors/sequence_studio/bridge.py`: `StudioBridge`, fügt die Mixins zusammen.
 - `editors/sequence_studio/bridge_contract.py`, `bridge_view.py`,
   `bridge_services.py`, `bridge_editing.py`: Protokoll, Darstellung, Dienste
   und Editor-Kommandos.
-- `editors/sequence_studio/scans.py`: stabile `ScanPart`-Fassade.
+- `editors/sequence_studio/scans.py`: `ScanPart`, fügt die Scan-Mixins zusammen.
 - `editors/sequence_studio/scan_contract.py`, `scan_state.py`,
   `scan_interaction.py`, `scan_learning.py`, `scan_library.py`: getrennte
   Scan-Verantwortlichkeiten.

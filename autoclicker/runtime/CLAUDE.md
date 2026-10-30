@@ -376,8 +376,7 @@ feuert es nie.** Ausgelöst wird es an genau diesen Stellen:
 Ein reiner Klick, eine Taste, ein Warten, ein Screenshot und auch der
 Boss-**Watcher** lösen es nicht aus: der Watcher läuft in seine eigenen Grenzen
 (max. Scans, Timeout) und macht danach weiter. `else_applies()` in
-`bridge_contract.py` (über `bridge.py` weiterhin exportiert) hält
-dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
+`bridge_contract.py` hält dieselbe Liste für die Anzeige: **ohne Auslöser gibt es den ELSE-Abschnitt gar
 nicht** — dieselbe Regel wie beim Farb-Trigger, den es bei Scans und Screenshot
 auch nicht gibt.
 
