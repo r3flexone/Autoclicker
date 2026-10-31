@@ -6,12 +6,13 @@ Tradeoff, damit eine spätere Entscheidung ohne erneute Analyse möglich ist.
 Ist ein Eintrag gebaut, fliegt er hier raus — ein Backlog, das Erledigtes mitführt, verliert
 seinen Zweck. Zuletzt entfallen, weil umgesetzt: *Profile-Export/Import* (`import_export.py`,
 inklusive Config und Koordinaten-Remapping), *Multi-Monitor / DPI-Awareness*
-(`SetProcessDpiAwareness(2)` in `winapi.py`, virtueller Desktop in `imaging.py`),
+(`SetProcessDpiAwareness(2)` in `platforms/windows.py`, virtueller Desktop über
+`winapi.get_virtual_desktop()`),
 *Dry-Run / Simulation* (manueller Modus + Debug-Stufe 2), *Sequenzen-Übersicht*
 und *Live-Run* im Sequenz-Studio (zwei eigene Ansichten; der Live-Run liest
-`.run.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (vierter
-Reiter im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
-*Bericht-Reiter* samt *Ertrag eines Laufs* (achter Reiter; `bridge_report.py`
+`.run.json` und steuert über `mailbox.py` zurück), *Einstellungs-Menü* (Reiter
+im Sequenz-Studio, aus `_CONFIG_SECTIONS` + `config_meta.py` generiert),
+*Bericht-Reiter* samt *Ertrag eines Laufs* (eigener Reiter; `bridge_report.py`
 über `evaluate()` aus `tools/log_report.py`, Stückzahlen mal
 `scan_market_value_file`), *Session-Zeitlimit* (`session_max_hours`, sanftes
 Ende am Zyklus-Rand über `finish_event`), *Live-Ausgabe der Einfüge-Aufnahme*
@@ -58,6 +59,11 @@ Der Weg zur Bank steht in jeder Sequenz, die ihn braucht — als Kopie.
 `execute_item_scan()` macht für jeden Slot eine eigene Bildschirmaufnahme (BitBlt +
 GetDIBits). Bei 5 Slots sind das 5 Aufnahmen, wo eine über das umschliessende Rechteck
 plus Zuschneiden reichen würde.
+
+**Teilweise gebaut:** bei einem fenstergebundenen Scan (`capture_window_title`) wird das
+Fenster einmal aufgenommen und pro Slot zugeschnitten (`_slot_image()` in
+`runtime/item_scan.py`). Offen bleibt der Fall ohne Fensterbindung — dort macht weiter
+jeder Slot seine eigene Aufnahme.
 
 - **Nutzen:** Weniger GDI-Aufrufe pro Scan-Schritt. Nebeneffekt: alle Slots stammen aus
   demselben Frame, der Vergleich zwischen ihnen wird also konsistenter.

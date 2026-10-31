@@ -177,9 +177,11 @@ Regeln beim Erweitern:
   gewinnt immer — `P<ID>` ist der Rückfall, nicht die Vorschrift. Die Herkunft
   steht getrennt davon in `source` („Aufnahme", „Sequenz-Studio"); auch dort ist
   der Sequenzname entfallen, aus demselben Grund.
-- **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` holt sich
-  die Punkte notfalls selbst. Von den neun Aufrufern haben sechs keinen Punkte-Pool zur
-  Hand (Sequenz-Studio, Scan-Studio, Export) — die bekämen sonst lauter Nullen.
+- **Aufgelöst wird beim Laden**, nicht erst vor dem Lauf: `load_sequence_file()` liest die
+  Punkte aus dem Feld `points` derselben Datei und füllt die Arbeitswerte selbst. Ein
+  zweiter Punkte-Pool, den ein Aufrufer mitbringen müsste, existiert nicht — und die gut
+  zwanzig Aufrufer (Hotkey-Handler, Sequenz-Studio, Export, Diagnose, Start-Durchgang)
+  hätten ihn auch nicht zur Hand: sie bekämen sonst lauter Nullen.
 - **Eine fünfte Stelle** trägt man in `resolve()` ein — und in `_step_to_dict`
   /`_parse_steps`. (`_REF_KEYS` in `import_export.py` war der dritte Ort und ist
   gelöscht: seit Punkt-IDs sequenzlokal sind, rechnet der Import keine IDs mehr
@@ -511,7 +513,7 @@ nichts tat. `bool` bleibt dabei ausgenommen: `True` darf nicht als `1.0` durchge
 ein umgekipptes Flag unsichtbar.
 
 **Nur gesetzte Felder werden geschrieben.** Jeder Serializer läuft durch
-`_without_defaults(daten, tabelle)`; die Tabellen (`_ITEM_DEFAULTS`, `_SLOT_DEFAULTS`,
+`_without_defaults(data, defaults)`; die Tabellen (`_ITEM_DEFAULTS`, `_SLOT_DEFAULTS`,
 `_BOSS_DEFAULTS`, `_BOSS_SCAN_DEFAULTS`, `_ICON_SCAN_DEFAULTS`, `_ITEM_SCAN_DEFAULTS`,
 `_STEP_DEFAULTS`) **müssen
 mit den Dataclass-Defaults übereinstimmen** — sonst verschwindet ein Feld beim Speichern
@@ -525,9 +527,9 @@ Dataclasses; beim Ändern eines Defaults immer beide Stellen anfassen.
 Serializer ein Feld weg, das gerade auf dem Config-Wert stand, und beim nächsten Ändern der
 Config kam es mit einem anderen Wert zurück. Zwei Dinge, zwei Namen.
 
-Der Name steht in Name→Eintrag-Dicts nur noch im Schlüssel (`items.json`, `slots.json`,
-Presets). `_item_from_dict(data, name)` und `_slot_from_dict(name, data)` bekommen ihn von
-dort. In Listen (Bosse, wo die Reihenfolge Priorität ist) bleibt `name` im Eintrag.
+Der Name steht in Name→Eintrag-Dicts nur noch im Schlüssel (`slots` und `items` in der
+Item-Scan-Datei, die Presets). `_item_from_dict(data, name)` und `_slot_from_dict(name, data)`
+bekommen ihn von dort. In Listen (Bosse, wo die Reihenfolge Priorität ist) bleibt `name` im Eintrag.
 
 **Weil der Name der Schlüssel ist, darf er nie doppelt vergeben werden.** Ein zweiter
 Eintrag mit demselben Namen ersetzt den ersten kommentarlos — und weil Scans ihre Slots
@@ -540,8 +542,8 @@ machen das vor).
 
 | Helfer | wofür | Beispiel |
 |---|---|---|
-| `next_free_name(praefix, vorhandene)` | durchnummerierte **Serien** — füllt Lücken | `Slot 1`, `Slot 2`, … |
-| `unique_name(basis, vorhandene)` | ein **vorgegebener** Name, der kollidiert | `Beutel oben` → `Beutel oben 2` |
+| `next_free_name(prefix, assigned)` | durchnummerierte **Serien** — füllt Lücken | `Slot 1`, `Slot 2`, … |
+| `unique_name(base_name, assigned)` | ein **vorgegebener** Name, der kollidiert | `Beutel oben` → `Beutel oben 2` |
 
 Für Serien immer den ersten: ein angehängter Zähler ergäbe `Slot 3 2`, und das liest
 niemand gern.

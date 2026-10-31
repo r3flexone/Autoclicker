@@ -43,8 +43,11 @@ Test hält die Tabelle gegen die vorhandenen Dateien, in beide Richtungen.
 python tests/all_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
 python tests/all_tests.py --only contract    # nur die Vertragssuite (schnell)
 python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
-python tests/all_tests.py --mutations      # dazu die Gegenproben (so ruft CI es auf)
+python tests/all_tests.py --mutations      # dazu die Gegenproben
+python tests/all_tests.py --only contract --only root --mutations
+                                # so ruft der Test-Job der CI es auf (Rauchtests: eigener Job)
 python tests/all_tests.py --only smoke --smoke-required  # fehlender Browser = rot
+                                # (so ruft der Rauchtest-Job der CI es auf)
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F,C90 autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
@@ -63,6 +66,8 @@ start.bat                       # Doppelklick-Start unter Windows: richtet beim 
                                 # requirements.txt = der normale Betrieb, ohne OCR
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
+python tools/test_ocr.py            # Standalone-Test der OCR-Backends (nutzt ocr; test = nur Verfügbarkeit,
+                                    # <bild.png>, --region, --bosses, --backend, --languages)
 python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
                                     # (--image slot|background, --model X, --all-models,
                                     #  --two-stage, --votes 3, --reasoning)
@@ -100,7 +105,7 @@ Was man beim Schreiben von Tests wissen muss (Begründungen in `tests/CLAUDE.md`
   `tests/smoke/` und einen Eintrag in `SMOKE_TESTS`; gewartet wird mit
   `settle()` auf die Seite, nicht auf die Uhr.
 - **CI** (`.github/workflows/tests.yml`, Push und PR auf jedem Branch): Ubuntu
-  und Windows, Python 3.14, der Test-Job in drei Achsen (`ohne`/`pillow`/`mit`
+  und Windows, Python 3.14, der Test-Job in drei Paketkonstellationen (`ohne`/`pillow`/`mit`
   Bildpaketen), dazu Rauchtests und `flake8 --select=F,C90`. Jeder Job muss grün
   sein. Wer an `imaging.py` arbeitet, installiert die Bildpakete auch lokal.
 - **`--mutations` prüft die Tests, nicht den Code**: jeder Fall in
@@ -160,12 +165,14 @@ Was im Worker sonst noch gilt (Begründungen in `autoclicker/runtime/CLAUDE.md`)
   `GATE_SKIP` zurück.
 
 ### Hotkey-Flow
-1. `winapi.py` definiert `HOTKEY_*` IDs + `register_hotkeys()` → `RegisterHotKey`.
+1. `platforms/common.py` definiert die `HOTKEY_*`-IDs; `register_hotkeys()` je Backend
+   meldet sie an (Windows: `RegisterHotKey` aus `_HOTKEY_DEFINITIONS`, Linux/X11: die
+   Kombinationen aus `HOTKEY_BINDINGS` über `pynput`), `winapi.py` reicht sie durch.
 2. `main.py` mappt IDs auf `handle_*`-Funktionen aus `handlers.py`.
 3. Handler dispatcht typischerweise zu einem Editor unter `autoclicker/editors/`.
 4. Editoren sind **synchron, blockierend** (Console-Input via `safe_input`). Während ein Editor läuft, ist der Main-Thread blockiert — der Worker kann parallel weiterlaufen.
 
-Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral), Tastencode im jeweiligen Backend (`VK_*` in `platforms/windows.py`) → `register_hotkeys()`-Liste **beider** Backends → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
+Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral) samt Kombination in `HOTKEY_BINDINGS` (die liest das Linux-Backend) → Tastencode (`VK_*`) und Eintrag in `_HOTKEY_DEFINITIONS` in `platforms/windows.py` — beide Backends, sonst fehlt die Taste auf einem → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
 **`CTRL+ALT+<Buchstabe>` ist fast voll.** 22 der 26 Buchstaben sind vergeben; frei sind
 D, M, R (oft vom System belegt) und Y — D und M erst, seit die Aufnahme-Marker auf die
@@ -319,9 +326,10 @@ Details: `autoclicker/CLAUDE.md`.
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
 - `autoclicker/persistence/` — JSON-Persistenz: `schema.py` (Schema-Version: Stempel und Erkennung einer neueren Fassung, s. `persistence/CLAUDE.md`), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von den Savern und vom Start-Durchgang `sweep.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `scan_views.py`, `presets.py`.
-- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `debug.py` (Debug-Stufen, manueller Modus und Gates — `GATE_RUN`/`GATE_SKIP`/`GATE_STOP`), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 - `autoclicker/mailbox.py` — der Briefkasten Studio → Hauptprozess (`.command.json`); `runtime/status.py` ist der Rückweg (`.run.json`). Liegt bewusst nicht unter `runtime/`, damit das Fenster den Worker nicht nachzieht.
+- `autoclicker/sequence_studio.py` — der Einstieg des Studio-Subprozesses (`python -m autoclicker.sequence_studio`): öffnet das Fenster und lädt die zuletzt bearbeitete Sequenz.
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster (pywebview, eigener Prozess); seine Module stehen in seiner `CLAUDE.md`.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_click_window.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
@@ -410,7 +418,7 @@ ist als ein Name und deshalb auf beiden Seiten geändert werden muss:
   `.get("point")`.
 - **Die Seite hängt am DOM**: `t.dataset.view` ist das Attribut `data-view` in
   `index.html`; `S.question` ist zugleich der JSON-Schlüssel, den die Brücke
-  schreibt. Ein Klick, der ins Leere geht, ohne `pageerror` — alle acht
+  schreibt. Ein Klick, der ins Leere geht, ohne `pageerror` — alle
   Rauchtests rot —, ist fast immer dieser Fall.
 - **Tests, die JS-Quelltext als Python-String tragen** (`… in _html18`,
   `page.evaluate(…)` in den Rauchtests) zitieren den Namen wörtlich.

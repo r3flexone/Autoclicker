@@ -2,8 +2,8 @@
 # verhindern still übersprungene Bildtests; Linux bekommt zusätzlich seine X11-
 # Adapter. Die Matrix prüft beide Plattform-Backends mit demselben Testvertrag.
 #
-# Warum das ueberhaupt hier steht: es gab ueber 1.200 Pruefungen und nichts, was sie
-# ausfuehrt. Eine Suite, die nur laeuft, wenn jemand daran denkt, faengt Regressionen
+# Warum das ueberhaupt hier steht: es gab schon ueber tausend Pruefungen und nichts, was
+# sie ausfuehrt. Eine Suite, die nur laeuft, wenn jemand daran denkt, faengt Regressionen
 # genau dann nicht, wenn man in Eile ist.
 name: Tests
 

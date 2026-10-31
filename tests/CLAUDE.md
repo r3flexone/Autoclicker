@@ -106,7 +106,7 @@ Job, weil dort erst ein Browser installiert werden muss.
 
 **Gewartet wird auf den Zustand der Seite, nicht auf die Uhr** (`Window.settle()`).
 Nach jedem Klick und Reiterwechsel stand ein `wait_for_timeout(700)` — ein blinder
-Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen über alle acht Tests:
+Schlaf, egal ob die Seite nach 20 ms fertig war. Gemessen über die damals acht Tests:
 **86 s Laufzeit, davon 70 s Schlaf** in 117 Aufrufen und 6,5 s echte Arbeit. Der
 Prüfstand hat den Brücken-Proxy in der Hand, also zählt er dort, wie viele
 Aufrufe unterwegs sind (`window.__pending`); `settle()` wartet, bis das zwei Frames
@@ -116,9 +116,10 @@ fängt ihr nächstes Glied noch im selben Frame an. `tab()`, `click()` und
 `click_text()` rufen es selbst; ein Test schreibt nach einer eigenen Aktion
 `f.settle()`. Ergebnis: 86 s → 27 s, und die Wartezeit wächst nicht mehr mit der
 Zahl der Klicks, sondern mit dem, was die Seite tut. Ohne den Zähler werden
-alle acht Tests rot — die Bedingung trägt, sie ist kein Schmuck.
+alle Rauchtests rot — die Bedingung trägt, sie ist kein Schmuck.
 
-Fünf feste Wartezeiten bleiben, und jede hängt an einer **Uhr**, die die Seite
+Ein paar feste Wartezeiten bleiben (`wait_for_timeout` in `items.py` und
+`tools.py`), und jede hängt an einer **Uhr**, die die Seite
 selbst stellt: das Auto-Speichern nach 900 ms und der Aufnahme-Wächter. Wer
 eine neue braucht, schreibt dazu, auf welchen Timer sie wartet — sonst ist sie
 in einem Jahr wieder ein „700, das reicht wohl".
@@ -145,7 +146,8 @@ Zahl; ein Test hält sie zusammen.
 **Der Test-Job läuft dreimal: `ohne`, `pillow` und `mit` Bildpaketen.** OpenCV und Pillow sind
 optional, und der Code degradiert sauber ohne sie — nur überspringt die Suite dann
 **über hundert Tests** (Template-Vergleich, Masken, Slot-Erkennung, die
-Grössen-Meldung): 1.154 statt 1.273. Ein Lauf nur ohne Fremdpakete ist also grün,
+Grössen-Meldung) — als das gemessen wurde, waren es 1.154 statt 1.273 Prüfungen.
+Ein Lauf nur ohne Fremdpakete ist also grün,
 während der halbe Bilderkennungs-Teil ungeprüft bleibt — und genau dort ist schon
 einmal eine kaputte Meldung durchgerutscht, weil die Zusicherung dazu lokal gar
 nicht lief. Dieselbe Regel wie bei den Plattform-Stubs: **was das Echte anders macht
@@ -153,7 +155,7 @@ als der Ersatz, wird auf beiden Seiten geprüft.** Wer an `imaging.py` arbeitet,
 installiert sie deshalb auch lokal (`pip install opencv-python-headless pillow numpy`)
 — sonst sagt ein grüner Lauf hier nichts über die Stellen, um die es gerade geht.
 
-**Die dritte Achse (`pillow`) ist eine echte Installation, keine Vollständigkeit
+**Die dritte Konstellation (`pillow`) ist eine echte Installation, keine Vollständigkeit
 um der Vollständigkeit willen.** Pillow ohne OpenCV ist der Zustand, in dem
 Screenshots und Farbmessung gehen, Template-Vergleich aber nicht — und wer nur
 `ohne` und `mit` prüft, sieht genau die Zweige nie, die das eine haben und das

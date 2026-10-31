@@ -193,9 +193,9 @@ python main.py
 
 1. **Punkte aufnehmen** wie oben (für alle Klick-Positionen)
 2. **Item-Scan System einrichten** mit `CTRL+ALT+N`:
-   - **Slots** erstellen (Menü 1) → Bereiche wo Items im Spiel erscheinen können
-   - **Items** lernen (Menü 2) → Welche Items erkannt werden sollen (`learn <Slot-Nr>`)
-   - **Scan** erstellen (Menü 3) → Slots + Items verknüpfen und benennen
+   - **Scan** anlegen (Menü 1, „Item-Scan wählen“ → neuen erstellen) → er besitzt seine Slots und Items
+   - **Slots** erstellen (Menü 2) → Bereiche wo Items im Spiel erscheinen können
+   - **Items** lernen (Menü 3) → Welche Items erkannt werden sollen (`learn <Slot-Nr>`)
 3. **Im Sequenz-Editor** (`CTRL+ALT+E`) den Scan als Schritt einfügen: `scan <Name>`
 4. **Starten** mit `CTRL+ALT+S`
 
@@ -260,11 +260,14 @@ Im Sequenz-Editor:
 ## Item-Scan System (`CTRL+ALT+N`)
 
 Das Item-Scan System bietet ein Menü mit folgenden Optionen:
-- **[1] Slots bearbeiten** - Bereiche wo Items erscheinen können
-- **[2] Items bearbeiten** - Item-Profile für die Erkennung
-- **[3] Scans bearbeiten** - Slots und Items verknüpfen
-- **[4] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
-- **[5] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
+- **[1] Item-Scan wählen** - einen Scan wählen oder neu erstellen; die Menüpunkte 2, 3 und 7 arbeiten auf dem gewählten Scan
+- **[2] Slots bearbeiten** - Bereiche wo Items erscheinen können
+- **[3] Items bearbeiten** - Item-Profile für die Erkennung
+- **[4] Scans bearbeiten** - Slots und Items verknüpfen (öffnet denselben Scan-Editor wie [1])
+- **[5] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
+- **[6] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
+- **[7] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
+- **[8] Import / Export** - Setup als ZIP teilen oder importieren
 
 Im visuellen Scan-Reiter kann ein Spielfenster als dauerhafte Aufnahmequelle
 gewählt werden. Items werden aus dem eingefrorenen Editor-Screenshot gelernt.
@@ -274,32 +277,33 @@ relativ zum Fenster verschoben werden. Nach reinem Verschieben müssen Slots und
 Items nicht neu gelernt werden. Bei einer neuen Fenstergrösse werden die Slots
 proportional angepasst; für dadurch neue Slotgrössen wird einmal eine zusätzliche
 Item-Vorlage gelernt.
-- **[6] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
-- **[7] Import / Export** - Setup als ZIP teilen oder importieren
 
-### Slot-Editor (Menü → 1)
+### Slot-Editor (Menü → 2)
 
-Verwaltet Bereiche wo Items erscheinen können. Arbeitet mit **Presets** - wie beim Sequenz-Editor wird am Anfang nach einem Namen gefragt.
+Verwaltet die Bereiche, in denen Items erscheinen können, und zwar die Slots des
+**gewählten Item-Scans** — ein Scan besitzt seine Slots. Presets sind Vorlagen
+daneben: Slots lassen sich als Preset ablegen und in einen anderen Scan laden.
 
 **Ablauf:**
-1. [0] Neues Preset erstellen → Name eingeben
-2. [1-n] Bestehendes Preset bearbeiten
-3. Slots hinzufügen/bearbeiten/löschen
-4. `done` → Preset wird gespeichert
-5. `cancel` → Änderungen werden verworfen
+1. Slots hinzufügen, bearbeiten, löschen (oder per `auto` erkennen lassen)
+2. `done` → die Slots werden im Scan gespeichert
+3. `cancel` → Änderungen werden verworfen
 
 **Befehle im Editor:**
 
 | Befehl | Beschreibung |
 |--------|--------------|
 | `auto` | Automatische Slot-Erkennung mit OpenCV |
+| `repair` | Alle Slots neu vermessen (Namen bleiben, nur die Koordinaten werden neu gemessen) |
 | `add` | Manuell einen Slot hinzufügen |
-| `del <Nr>` | Slot löschen |
-| `del <Start>-<Ende>` | Mehrere Slots löschen (z.B. `del 1-7`) |
-| `del all` | Alle Slots löschen |
 | `edit <Nr>` | Slot bearbeiten |
+| `del <Nr>` | Slot löschen |
+| `del all` | Alle Slots löschen |
 | `show` | Alle Slots anzeigen |
-| `done` | Preset speichern und Editor verlassen |
+| `save <Name>` | Die Slots als Preset speichern |
+| `load <Name>` | Ein Preset laden |
+| `preset del <Name>` | Ein Preset löschen |
+| `done` | Speichern und Editor verlassen |
 | `cancel` | Änderungen verwerfen und Editor verlassen |
 
 ### Automatische Erkennung
@@ -309,18 +313,17 @@ Mit `auto` werden Slots automatisch per Farbe erkannt:
 2. Screenshot wird erstellt
 3. Hintergrundfarbe des Slots angeben
 4. Slots werden automatisch erkannt und nummeriert
-5. Screenshot und Vorschau werden in `Screenshots/` gespeichert
+5. Screenshot und Vorschau werden in `sequences/<name>/bilder/` gespeichert
 
-### Item-Editor (Menü → 2)
+### Item-Editor (Menü → 3)
 
-Verwaltet Item-Profile für die Erkennung. Arbeitet mit **Presets** - wie beim Sequenz-Editor wird am Anfang nach einem Namen gefragt.
+Verwaltet die Item-Profile des **gewählten Item-Scans** — ein Scan besitzt seine
+Items. Wie beim Slot-Editor sind Presets Vorlagen daneben (`save`, `load`).
 
 **Ablauf:**
-1. [0] Neues Preset erstellen → Name eingeben
-2. [1-n] Bestehendes Preset bearbeiten
-3. Items lernen/hinzufügen/bearbeiten/löschen
-4. `done` → Preset wird gespeichert
-5. `cancel` → Änderungen werden verworfen
+1. Items lernen, hinzufügen, bearbeiten, löschen
+2. `done` → die Items werden im Scan gespeichert
+3. `cancel` → Änderungen werden verworfen
 
 **Befehle im Editor:**
 
@@ -329,16 +332,20 @@ Verwaltet Item-Profile für die Erkennung. Arbeitet mit **Presets** - wie beim S
 | `autoscan` | **Alle Slots automatisch scannen + Items mit Templates + Markern erstellen** (Duplikate werden via Template-Match übersprungen) |
 | `autoscan nocolor` | Auto-Scan nur mit Templates (keine Marker-Farben) |
 | `learn <Nr>` | Item von Slot Nr. lernen (scannt Marker-Farben + Template) |
+| `learn <Nr>-<Nr>` | Mehrere Items auf einmal lernen (Bulk-Learn, siehe unten); mit `simple` ohne Template |
 | `add` | Manuell ein Item hinzufügen |
 | `edit <Nr>` | Item bearbeiten (Priorität, Farben, Bestätigung) |
 | `rename <Nr>` | Item umbenennen (inkl. Template-Datei) |
+| `autoname` | Auto-gelernte „Auto …“-Items per LLM benennen (von Hand, nie im Scan) |
 | `del <Nr>` | Item löschen |
-| `del <Start>-<Ende>` | Mehrere Items löschen (z.B. `del 1-5`) |
 | `del all` | Alle Items löschen |
 | `template <Nr>` | Template für Item setzen/entfernen |
 | `templates` | Verfügbare Templates anzeigen |
 | `show` | Alle Items anzeigen |
-| `done` | Preset speichern und Editor verlassen |
+| `save <Name>` | Die Items als Preset speichern |
+| `load <Name>` | Ein Preset laden |
+| `preset del <Name>` | Ein Preset löschen |
+| `done` | Speichern und Editor verlassen |
 | `cancel` | Änderungen verwerfen und Editor verlassen |
 
 ### Auto-Scan (`autoscan`)
@@ -346,7 +353,7 @@ Verwaltet Item-Profile für die Erkennung. Arbeitet mit **Presets** - wie beim S
 Der schnellste Weg, viele Items auf einmal anzulegen — perfekt für ein vollständiges Inventar:
 
 1. Slots vorab definieren (am besten via `auto` im Slot-Editor)
-2. `autoscan` im Item-Editor (oder Menü-Punkt 5 im Item-Scan-Menü)
+2. `autoscan` im Item-Editor (oder Menü-Punkt 7 im Item-Scan-Menü)
 3. Einmalig konfigurieren: Kategorie, Prioritäts-Modus, Bestätigungs-Punkt, Konfidenz, Marker an/aus
 4. Programm scannt alle Slots und vergleicht gegen bestehende Items. Bereits vollständig
    gelernte Duplikate werden übersprungen; bei demselben Item in einer neuen Slot-Grösse
@@ -451,6 +458,8 @@ Jede Sequenz kann mehrere Loop-Phasen haben, die nacheinander durchlaufen werden
 | `add` | Neue Loop-Phase hinzufügen |
 | `edit <Nr>` | Schritte einer Loop-Phase bearbeiten |
 | `del <Nr>` | Loop-Phase löschen |
+| `del <Nr>-<Nr>` | Mehrere Loop-Phasen löschen (z.B. `del 1-3`) |
+| `del all` | Alle Loop-Phasen löschen |
 | `time <Nr>` | Startzeit für Loop-Phase setzen/entfernen (z.B. `12:30`) |
 | `show` | Alle Loop-Phasen anzeigen |
 | `done` | Weiter zur END-Phase |
@@ -522,9 +531,17 @@ Loops 1 und 2 laufen im Zyklus weiter. Wenn 12:30 erreicht wird, führt der näc
 | `time <Nr> <Zeit>` | Wartezeit eines bestehenden Schritts ändern |
 | `noclick <Nr>` / `click <Nr>` | Schritt auf „nur warten" bzw. wieder auf Klick umstellen |
 | `break <Nr>` | Haltepunkt an/aus: der Lauf hält **vor** diesem Schritt an und fragt (weiter / überspringen / ab hier schrittweise / abbrechen) |
+| `copy <Nr>` | Schritt duplizieren (Kopie direkt dahinter) |
+| `move <Nr> <Ziel>` | Schritt an eine andere Position schieben |
+| `scale <Faktor>` | Alle Wartezeiten der Phase mit einem Faktor multiplizieren (`1.5` = länger) |
+| `test <Nr>` | Schritt einmal sofort ausführen — ein echter Klick, ohne Wartezeit und Trigger |
+| `verify <Nr> <Punkt-Nr> [gone]` | Nachprüfung setzen: nach der Aktion muss die Punkt-Farbe da (bzw. weg) sein; `verify <Nr> off` entfernt sie |
+| `screenshot` / `ss` | Screenshot-Schritt anlegen (Bereich aufziehen; `screenshot full` = Vollbild) |
 | `del <Nr>` | Schritt löschen |
-| `clear` | Alle Schritte löschen |
-| `show` | Aktuelle Schritte anzeigen |
+| `del <Von>-<Bis>` | Mehrere Schritte löschen (z.B. `del 1-5`) |
+| `del all` | Alle Schritte der Phase löschen |
+| `show` | Aktuelle Schritte anzeigen (`show <Nr>` = alle Felder eines Schritts) |
+| `help` / `?` | Kurzübersicht / ausführliche Hilfe |
 | `done` | Phase abschliessen und speichern |
 | `cancel` | Editor abbrechen (ohne Speichern) |
 
@@ -587,7 +604,7 @@ Boss-Scans erkennen einen Boss in einer fest definierten Region und lösen eine 
 Zwei Wege dorthin:
 
 - **Studio** (`CTRL+ALT+V` → SCAN-ART „Bosse“) — Region mit zwei Klicks im Bild, Vorlage per Knopf, Test mit Ergebnis und Konfidenz. Für jede spätere Änderung der kürzere Weg: jedes Feld steht rechts und ist einzeln setzbar.
-- **Konsole** (Item-Scan-Menü → **[4] Boss-Scans bearbeiten**) — der lineare Assistent, unverändert. Beide schreiben dieselben Dateien.
+- **Konsole** (Item-Scan-Menü → **[5] Boss-Scans bearbeiten**) — der lineare Assistent, unverändert. Beide schreiben dieselben Dateien.
 
 ### Boss-Profil
 
@@ -704,7 +721,7 @@ Im Boss-Scan-Editor → SCHRITT 6 (OCR Texterkennung):
 - `ocr_backend: null` (Auto-Detect) oder `"easyocr"` / `"tesseract"`
 - `ocr_languages: "en"` (kommasepariert, z.B. `"en,de"` für English + Deutsch)
 - `ocr_min_confidence: 0.3` (Mindest-Konfidenz 0-1)
-- `ocr_retry_count: 0` (Wiederholungen bei „kein Text erkannt“; 0 = nicht wiederholen)
+- `ocr_retry_count: 3` (Wiederholungen bei „kein Text erkannt“; 0 = nicht wiederholen)
 
 **Standalone-Test**: `python tools/test_ocr.py` testet OCR-Backends und Texterkennung:
 ```bash
@@ -717,7 +734,7 @@ python tools/test_ocr.py --bosses "Dragon,Goblin"   # Gegen Boss-Namen matchen
 
 ## Icon-Scan System
 
-Icon-Scans erkennen ein **einzelnes Symbol/Icon** in einer Region und lösen eine Aktion aus — gedacht für Status-Marker wie ein rotes „!", das z.B. eine nicht machbare Mission kennzeichnet. Im Gegensatz zum Item-Scan wird nichts „eingesammelt": es ist eine reine *erkennen → handeln*-Logik ohne Slots, Kategorien oder LLM. Erstellung über das Item-Scan-Menü → **[5] Icon-Scans bearbeiten**.
+Icon-Scans erkennen ein **einzelnes Symbol/Icon** in einer Region und lösen eine Aktion aus — gedacht für Status-Marker wie ein rotes „!", das z.B. eine nicht machbare Mission kennzeichnet. Im Gegensatz zum Item-Scan wird nichts „eingesammelt": es ist eine reine *erkennen → handeln*-Logik ohne Slots, Kategorien oder LLM. Erstellung über das Item-Scan-Menü → **[6] Icon-Scans bearbeiten**.
 
 Eine `IconScanConfig` definiert:
 
@@ -732,7 +749,7 @@ Eine `IconScanConfig` definiert:
 | `icon <Name>` | Region prüfen. Icon erkannt → Aktion. Nicht erkannt → ELSE-Action oder Schritt überspringen |
 
 **Beispiel** — eine nicht machbare Mission am roten „!" erkennen und ablehnen:
-1. Item-Scan-Menü → **[5] Icon-Scans bearbeiten** → Neuen Icon-Scan erstellen
+1. Item-Scan-Menü → **[6] Icon-Scans bearbeiten** → Neuen Icon-Scan erstellen
 2. Region eng um das „!" wählen, Template aufnehmen (oder Farb-Marker des Rots setzen)
 3. Aktion „Punkt klicken" → auf den „Ablehnen/Abbrechen"-Button
 4. Im Sequenz-Editor: `icon MeinIcon`
@@ -791,7 +808,7 @@ Schreibt jede Aktion in eine CSV-Datei pro Sequenz-Start.
 Pro Session entsteht eine Datei `logs/YYYY-MM-DD_HHMMSS_<Sequenz>.csv` mit Spalten:
 `timestamp, elapsed_sec, event, detail, x, y, extra`
 
-**Geloggte Events**: `session_start`, `session_end`, `click`, `key`, `focus_lost_pause`, `focus_lost_stop`, `focus_restored`, `humanize_break_start`, `humanize_break_end`. Auch unerwartete LLM-Boss-Detections werden als Events sichtbar.
+**Geloggte Events**: nicht nur, *was geklickt* wurde (`click`, `key`), sondern auch, *was gesehen* wurde — `timeout` (welcher Schritt hängt), `item_found`, `detected`, `verify_ok`/`verify_miss` — dazu die Wartezeiten (`wait`, `color_wait`, `pause`), der Fokus (`focus_lost_pause`, `focus_lost_stop`, `focus_restored`), die Humanize-Pausen und der Rahmen der Session. Die vollständige Liste steht im Code (`log_event()`-Aufrufe), ausgewertet wird sie mit `python tools/log_report.py`, das auch meldet, welche Ereignisarten es nicht kennt.
 
 Nützlich für: Items/Stunde-Auswertung, "warum hat der Bot heute weniger gemacht als gestern", Debugging von Sequenz-Aussetzern.
 
@@ -802,7 +819,7 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 ### Export
 
 1. `CTRL+ALT+I` → "Exportieren (alles)" oder "Exportieren (mit Auswahl)"
-2. Bei "mit Auswahl": Pro Bereich (Punkte/Sequenzen/Slots/Items/Item-Scans/Boss-Scans/Icon-Scans/Config) Ja/Nein
+2. Bei "mit Auswahl": zwei Bereiche, je Ja/Nein — die Sequenzordner (samt Punkten, Scans und Vorlagen) und die Config
 3. **Referenz für die Koordinaten-Anpassung**:
    - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Grösse automatisch** als Referenz genommen — kein manuelles Klicken nötig.
    - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
@@ -810,7 +827,7 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
 5. ZIP wird in `exports/` gespeichert
 6. Anleitung für den Empfänger wird angezeigt
 
-Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), alle JSON-Daten, gepackte Template-PNGs, optional die Config (gefiltert).
+Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), die Sequenzordner unter `sequences/<name>/` (Ablauf, Punkte, Scans, Vorlagen, gemerkte Bilder) und optional die Config (gefiltert).
 
 ### Import
 
@@ -824,7 +841,7 @@ Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), al
      - **[2] Manuell** (zwei Punkte klicken, gleiche Stellen wie der Exporter)
      - **[3] 1:1** (gleicher Bildschirm)
    - Sonst (kein Fenster-Rect / Fenster nicht gefunden): **[1] Remapping** (zwei Punkte manuell) oder **[2] 1:1**
-6. Pro Bereich Ja/Nein wählen was importiert werden soll
+6. Ja/Nein wählen, was importiert werden soll — die Sequenzordner und die Config, gefragt wird nur nach dem, was das Bündel enthält
 7. **Merge** (bestehende Daten behalten + ergänzen) oder **Ersetzen**
 
 ### Wie das Remapping funktioniert
@@ -833,7 +850,7 @@ Egal ob fenster-basiert (automatisch) oder per Hand: aus zwei Referenzpunkt-Paar
 - `scale_x = (dst2.x - dst1.x) / (src2.x - src1.x)` (analog für Y)
 - `offset_x = dst1.x - src1.x * scale_x`
 
-Diese Transformation wird auf **alle** Koordinaten angewendet: Klick-Punkte, Scan-Regionen, Boss-Regionen, Wait-Pixel, Confirm-Points, Screenshot-Regionen, Else-Klick-Positionen.
+Diese Transformation wird auf **alle** Koordinaten angewendet. Eine Koordinate steht nur im Punkt der Sequenz — Klick-Ziele, Prüf-Pixel, Bestätigungs-Klicks und ELSE-Klicks verweisen per ID darauf und sind damit mitgerechnet; dazu kommen die Slots (Region und Klickstelle), der Fenster-Anker der Item-Scans, die Regionen der Boss- und Icon-Scans und die Screenshot-Regionen.
 
 **Tipp**: Nutze als Referenzpunkte feste UI-Elemente die auf jedem Bildschirm leicht zu finden sind — z.B. die Ecken des Spielfensters oder feste Buttons.
 
@@ -915,22 +932,22 @@ Wenn ein Farb-Trigger **mehrfach hintereinander** in den Timeout läuft (z.B. we
 **Konfiguration:**
 ```json
 {
-  "max_consecutive_timeouts": 5,
-  "consecutive_timeout_action": "stop"
+  "pixel_max_consecutive_timeouts": 5,
+  "pixel_consecutive_action": "stop"
 }
 ```
 
 | Option | Beschreibung |
 |--------|--------------|
-| `max_consecutive_timeouts` | Nach X Timeouts in Folge → Notbremse (`0` = deaktiviert) |
-| `consecutive_timeout_action` | Was passiert bei Auslösung (siehe unten) |
+| `pixel_max_consecutive_timeouts` | Nach X Timeouts in Folge → Notbremse (`0` = deaktiviert) |
+| `pixel_consecutive_action` | Was passiert bei Auslösung (siehe unten) |
 
 **Eskalationsstufen:**
 
 | Wert | Verhalten |
 |------|-----------|
-| `stop` (Standard) | Sequenz wird gestoppt, Menü bleibt offen |
-| `quit` | Menü wird sauber beendet (END-Phase übersprungen) |
+| `stop` (Standard) | Sequenz wird gestoppt, das Programm läuft weiter |
+| `quit` | Programm wird sauber beendet (END-Phase übersprungen) |
 | `exit` | Python-Prozess wird sofort beendet (`os._exit`), muss manuell neu gestartet werden |
 
 **Verhalten:**
@@ -999,10 +1016,10 @@ Konsole am Ende des Laufs und die Selbstdiagnose (Werkzeuge → prüfen) vorher.
 
 Das Item-Scan System erkennt Items anhand ihrer Marker-Farben oder Templates:
 
-1. **Slots erstellen** (`CTRL+ALT+N` → Menü 1): Bereiche wo Items erscheinen können
-2. **Items lernen** (`CTRL+ALT+N` → Menü 2): Mit `learn <Nr>` Marker-Farben + Template scannen
-3. **Kategorien zuweisen**: Items gruppieren (z.B. "Hosen", "Jacken")
-4. **Scan konfigurieren** (`CTRL+ALT+N` → Menü 3): Slots und Items verknüpfen
+1. **Scan anlegen** (`CTRL+ALT+N` → Menü 1): er besitzt seine Slots und Items
+2. **Slots erstellen** (Menü 2): Bereiche wo Items erscheinen können
+3. **Items lernen** (Menü 3): Mit `learn <Nr>` Marker-Farben + Template scannen
+4. **Kategorien zuweisen**: Items gruppieren (z.B. "Hosen", "Jacken")
 5. **In Sequenz nutzen**: `scan <Name>`, `scan <Name> best` oder `scan <Name> every`
 
 ### Scan-Modi
@@ -1110,76 +1127,11 @@ Desktop belegt sein. Die Pfeiltasten-Navigation nutzt unter Windows in PyCharm
 
 ## Konfiguration (`config.json`)
 
-Wird beim ersten Start automatisch erstellt:
-
-```json
-{
-  "studio_open_on_start": true,
-  "click_per_point": 1,
-  "click_max_total": null,
-  "click_move_delay": 0.01,
-  "click_post_delay": 0.05,
-  "failsafe_enabled": true,
-  "failsafe_x": 5,
-  "failsafe_y": 5,
-  "session_max_hours": 0,
-  "pixel_wait_tolerance": 10,
-  "pixel_wait_timeout": 300,
-  "pixel_timeout_action": "skip_cycle",
-  "pixel_check_interval": 1,
-  "pixel_max_consecutive_timeouts": 5,
-  "pixel_consecutive_action": "stop",
-  "pixel_show_delay": 0.3,
-  "scan_click_immediate": false,
-  "scan_park_mouse": false,
-  "scan_mouse_after": "back",
-  "scan_slot_delay": 0.1,
-  "scan_item_click_delay": 1.0,
-  "scan_marker_count": 5,
-  "scan_require_all_markers": true,
-  "scan_min_markers_required": 2,
-  "scan_marker_min_pixels": 1,
-  "scan_slot_hsv_tolerance": 25,
-  "scan_slot_inset": 10,
-  "scan_slot_color_distance": 25,
-  "scan_min_confidence": 0.8,
-  "scan_confirm_delay": 0.5,
-  "llm_enabled": false,
-  "llm_provider": "lmstudio",
-  "llm_endpoint": null,
-  "llm_model": "google/gemma-4-12b-qat",
-  "llm_timeout": 30,
-  "llm_reasoning": false,
-  "llm_max_tokens": 0,
-  "llm_debug": false,
-  "llm_boss_prompt": null,
-  "llm_watcher_interval": 5.0,
-  "llm_watcher_max_scans": 0,
-  "llm_watcher_timeout": 0,
-  "ocr_enabled": false,
-  "ocr_backend": null,
-  "ocr_languages": "en",
-  "ocr_min_confidence": 0.3,
-  "ocr_retry_count": 0,
-  "window_focus_check": false,
-  "window_focus_title": "Idle Clans",
-  "window_focus_action": "pause",
-  "humanize_enabled": false,
-  "humanize_click_jitter": 0,
-  "humanize_micro_delay_min": 0.0,
-  "humanize_micro_delay_max": 0.0,
-  "humanize_break_interval_min": 0,
-  "humanize_break_duration_min": 0,
-  "humanize_break_duration_max": 0,
-  "session_log_enabled": false,
-  "session_log_dir": "logs",
-  "timing_pause_interval": 0.5,
-  "debug_log": false,
-  "debug_detail": false,
-  "debug_show_pixel_position": false,
-  "debug_save_templates": false
-}
-```
+Die Datei wird beim ersten Start automatisch erstellt; fehlt ihr später ein Feld,
+ergänzt der Start es mit seinem Standardwert. Jedes Feld lässt sich im Studio im
+Reiter „Einstellungen“ ändern — mit Erklärung zu jedem Feld —, oder von Hand in
+der Datei. Wahrheit über Namen und Standardwerte ist `AppConfig` in
+`autoclicker/config.py`; die Tabellen unten beschreiben, was die Felder tun.
 
 `studio_open_on_start` wählt die Startoberfläche. Ist die Option an, startet das
 Sequenz-Studio ohne zusätzlichen TUI-Banner, Anleitung und Bereitschaftsblock; die
@@ -1235,7 +1187,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `scan_marker_min_pixels` | Min. passende Pixel pro Marker-Farbe (Standard 1; höher = robuster gegen einzelne Rausch-Pixel, z.B. für ein rotes „!"-Icon) |
 | `scan_slot_hsv_tolerance` | HSV-Toleranz für automatische Slot-Erkennung |
 | `scan_slot_inset` | Pixel-Einzug vom Slot-Rand für genauere Klick-Position |
-| `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen |
+| `scan_slot_color_distance` | Farbdistanz für Hintergrund-Ausschluss bei Item-Lernen (Standard: 45) |
 | `scan_min_confidence` | Standard-Konfidenz für Template-Matching (Standard: 0.8 = 80%) |
 | `scan_confirm_delay` | Standard-Wartezeit vor Bestätigungs-Klick in Sekunden (Standard: 0.5) |
 
@@ -1247,10 +1199,10 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `llm_provider` | `"ollama"` oder `"lmstudio"` |
 | `llm_endpoint` | API-URL (`null` = Standard: `http://localhost:11434/api/chat` für Ollama, `http://localhost:1234/v1/chat/completions` für LM Studio) |
 | `llm_model` | Modell-Name (Standard `"google/gemma-4-12b-qat"`; Provider-Fallback bei `null`: `"gemma3n:e4b"` für Ollama, `"google/gemma-4-12b-qat"` für LM Studio) |
-| `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 30) |
+| `llm_timeout` | Timeout für LLM-Anfragen in Sekunden (Standard: 60) |
 | `llm_boss_prompt` | Custom-Prompt für Boss-Erkennung (`null` = Standard-Prompt mit bekannten Boss-Namen) |
 | `llm_reasoning` | Reasoning-Modus aktivieren — Ollama: `think: true`, LM Studio: `reasoning_effort: high` (Standard: false) |
-| `llm_max_tokens` | Token-Limit für Antworten (`0` = automatisch: 50 normal / 2048 mit Reasoning) |
+| `llm_max_tokens` | Token-Limit für Antworten (`0` = automatisch: 128 bei Ollama, 50 bei LM Studio, 2048 mit Reasoning) |
 | `llm_debug` | Jede LLM-Anfrage in die Konsole mitschreiben: Modell, Endpunkt, Bildmass, beide Prompts, die **rohe JSON-Antwort** (samt `reasoning_content`, das der Code sonst verwirft) und den daraus gelesenen Text. Der Weg, um eine leere Antwort einzuordnen — ein Modell ohne Bild-Fähigkeit, ein falscher Modellname und ein Reasoning-Modell ohne Token-Reserve sehen von aussen gleich aus. (Standard: false) |
 | `llm_watcher_interval` | Prüf-Intervall des Boss-Watchers in Sekunden (Standard: 5.0) |
 | `llm_watcher_max_scans` | Max. Scans bis Boss-Watcher abbricht (`0` = unbegrenzt) |
@@ -1264,7 +1216,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 | `ocr_backend` | `null` (Auto-Detect), `"easyocr"` oder `"tesseract"` |
 | `ocr_languages` | Sprach-Codes kommasepariert (Standard: `"en"`, z.B. `"en,de"` für Englisch+Deutsch) |
 | `ocr_min_confidence` | Mindest-Konfidenz für OCR-Ergebnisse (0.0-1.0, Standard: 0.3) |
-| `ocr_retry_count` | Wiederholungen bei „kein Text erkannt“ — mit frischem Screenshot, denn im Spiel kann sich inzwischen etwas geändert haben (`0` = nicht wiederholen) |
+| `ocr_retry_count` | Wiederholungen bei „kein Text erkannt“ — mit frischem Screenshot, denn im Spiel kann sich inzwischen etwas geändert haben (Standard: 3; `0` = nicht wiederholen) |
 
 ### Window-Fokus-Check
 
@@ -1290,7 +1242,7 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 
 | Option | Beschreibung |
 |--------|--------------|
-| `verify_retries` | Wie oft die Aktion wiederholt wird, wenn die Nachprüfung nicht greift (Standard: 2) |
+| `verify_retries` | Wie oft die Aktion wiederholt wird, wenn die Nachprüfung nicht greift (Standard: 1) |
 | `verify_timeout` | Wie lange pro Versuch auf die erwartete Farbe gewartet wird (Sekunden) |
 | `verify_interval` | Prüf-Intervall innerhalb eines Versuchs (Sekunden) |
 
@@ -1327,15 +1279,18 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 ## Dateistruktur
 
 ```
-Autoclicker-Idleclans/
+Autoclicker/
 ├── main.py                 # Einstiegspunkt
+├── start.bat               # Doppelklick-Start unter Windows (richtet Python, .venv und Pakete ein)
+├── requirements.txt        # Pakete für den normalen Betrieb
 ├── autoclicker/            # Hauptmodul
 │   ├── __init__.py
-│   ├── config.py           # Konfiguration (Hotkeys, Defaults, AppConfig)
+│   ├── config.py           # Konfiguration (AppConfig, Defaults, Prüfregeln)
 │   ├── models.py           # Datenmodelle (ClickPoint, Sequence, BossScanConfig, etc.)
 │   ├── winapi.py           # Stabile Fassade zur aktuellen Plattform
-│   ├── platforms/          # Windows- und Linux/X11-Backends
+│   ├── platforms/          # Windows- und Linux/X11-Backends (+ common.py: Hotkey-IDs)
 │   ├── imaging.py          # Bildverarbeitung (Screenshots, OpenCV)
+│   ├── catalog.py          # Item-Katalog lesen (Datei aus tools/catalog.py)
 │   ├── llm_vision.py       # LLM Vision (Ollama / LM Studio Boss-Erkennung)
 │   ├── ocr.py              # OCR Texterkennung (EasyOCR / Tesseract Boss-Erkennung)
 │   ├── session_log.py      # CSV-Session-Logger
@@ -1348,11 +1303,12 @@ Autoclicker-Idleclans/
 │   ├── sequence_studio.py  # Einstiegspunkt des Studio-Subprozesses
 │   ├── utils/              # Hilfsfunktionen
 │   │   ├── console.py      # ANSI-Farben, Status-Tags
-│   │   ├── io.py           # safe_input, interactive_select, wait_while_paused
+│   │   ├── io.py           # safe_input, interactive_select, read_command
 │   │   └── parsing.py      # parse_time_input, format_duration, sanitize_filename
 │   ├── persistence/        # Speichern/Laden (JSON)
 │   │   ├── paths.py        # Pfad-Konstanten + init_directories
 │   │   ├── serialization.py  # Dataclass ↔ JSON-Dict Konverter
+│   │   ├── _scan_store.py  # geteiltes Skelett der Item-/Boss-/Icon-Scan-Dateien
 │   │   ├── sequences.py    # Sequenz- + Punkte-Persistenz
 │   │   ├── item_scans.py   # ItemScanConfig-Persistenz
 │   │   ├── boss_scans.py   # BossScanConfig-Persistenz
@@ -1362,7 +1318,7 @@ Autoclicker-Idleclans/
 │   │   ├── schema.py       # Schema-Version: Stempel, Erkennung einer neueren Fassung
 │   │   └── sweep.py        # Bestandsprüfung und Sicherungen
 │   ├── runtime/            # Sequenz-Ausführung (Worker-Thread)
-│   │   ├── actions.py      # safe_click/safe_key, Humanize, Fokus-Check, Else-Aktion
+│   │   ├── actions.py      # safe_click/safe_key, Humanize, Fokus-Check, Else-Aktion, Pause
 │   │   ├── item_scan.py    # Item-Scan-Runtime + _check_profile_match
 │   │   ├── boss_detection.py  # Boss-Scan, OCR/LLM-Erkennung, Async-Pfad
 │   │   ├── steps.py        # Step-Dispatcher (_execute_*_step)
@@ -1385,6 +1341,7 @@ Autoclicker-Idleclans/
 │       │   ├── bridge_share.py, bridge_tools.py, bridge_report.py, model.py
 │       │   └── web/          # HTML, CSS, JavaScript und Logo
 │       ├── scan_services.py  # gemeinsame Slot-Erkennung und Bildgeometrie
+│       ├── _detection_capture.py, _item_fields.py, _click_window.py  # geteilte Abfragen der Editoren
 │       ├── item_scan_editor.py
 │       ├── slot_editor.py
 │       ├── boss_scan_editor.py        # Boss-Scan-Konfiguration + LLM-Aktivierung
@@ -1393,10 +1350,14 @@ Autoclicker-Idleclans/
 │       ├── reclick.py                 # die Klick-Runde (läuft aus dem Maus-Hook)
 │       └── import_export_editor.py    # Wizard für Export/Import + Remapping
 ├── config.json             # Konfiguration (auto-generiert)
-├── CLAUDE.md               # Architektur-Notizen für Claude Code
+├── catalog.json            # Item-/Gegner-Katalog (erzeugt von tools/catalog.py, nicht eingecheckt)
+├── CLAUDE.md               # Architektur-Notizen für Claude Code (dazu je eine in tests/ und den Ordnern von autoclicker/)
 ├── AGENTS.md               # Verweis auf CLAUDE.md (für Codex)
 ├── IDEAS.md                # Feature-Backlog mit Tradeoffs
 ├── README.md               # Diese Datei
+├── .flake8                 # Lint-Regeln (python -m flake8 ohne Argumente)
+├── .github/workflows/      # CI: Tests, Rauchtests, Lint
+├── market_analysis/        # eigenständiges Teilprojekt: Marktpreise und Gold/h (eigene README)
 ├── sequences/              # Jede Sequenz ist eine vollständige Besitzeinheit
 │   └── <name>/
 │       ├── sequence.json   # Ablauf und sequenzlokale Punkte
@@ -1408,6 +1369,7 @@ Autoclicker-Idleclans/
 ├── presets/                # Wiederverwendbare Slot-/Item-Presets
 ├── exports/                # Importier-/Exportier-Bundles (ZIP)
 │   └── *.zip
+├── backups/                # Sicherungen des Start-Durchgangs (Struktur gespiegelt, *.bak)
 ├── logs/                   # Session-Logs als CSV (wenn session_log_enabled=true)
 │   └── YYYY-MM-DD_HHMMSS_<seq>.csv
 ├── screenshots/            # Sequenz-Screenshots (nach Tag gruppiert)
@@ -1435,36 +1397,8 @@ Autoclicker-Idleclans/
 
 ### Architektur
 
-Das Programm ist modular aufgebaut:
-
-```
-main.py                      Einstiegspunkt, Event-Loop
-    │
-    └── autoclicker/
-        ├── config.py            Konstanten, Hotkey-IDs, AppConfig-Dataclass
-        ├── models.py            Datenklassen (ClickPoint, Sequence, BossScanConfig, ...)
-        ├── winapi.py            Stabile Plattform-Fassade
-        ├── platforms/           Windows- und Linux/X11-Backends
-        ├── imaging.py           Screenshots, Farberkennung, OpenCV
-        ├── llm_vision.py        Ollama / LM Studio Integration (+ Reasoning)
-        ├── ocr.py               EasyOCR / Tesseract für Boss-Texterkennung
-        ├── session_log.py       CSV-Logger für Klick-/Key-Events
-        ├── import_export.py     ZIP-Bundle + 2-Punkt-Koordinaten-Remapping
-        ├── handlers.py          Hotkey-Callbacks
-        ├── utils/               Hilfsfunktionen (console, io, parsing)
-        ├── persistence/         JSON-Persistenz, Presets (paths, sequences, items, ...)
-        ├── runtime/             Sequenz-Ausführung (actions, item_scan, boss_detection, steps, worker)
-        └── editors/
-            ├── sequence_editor/          Sequenz erstellen/bearbeiten
-            ├── item_editor/              Items definieren (inkl. autoscan-Befehl)
-            ├── sequence_studio/          pywebview-Studio; Bridge- und Scan-Mixins
-            ├── item_scan_editor.py       Scans konfigurieren (inkl. Auto-Scan)
-            ├── slot_editor.py            Slots definieren
-            ├── boss_scan_editor.py       Boss-Scans + LLM-Vision-Aktivierung
-            └── import_export_editor.py   Wizard für Setup-Export/Import
-```
-
-**Datenfluss:**
+Die Modulübersicht steht oben unter [Dateistruktur](#dateistruktur). Der Weg eines
+Befehls durch das Programm:
 ```
 [Hotkey] → handlers.py → editors/*.py → persistence/ (Speichern)
                       ↘ runtime/actions.py → safe_click/safe_key → winapi.py → platforms/
@@ -1506,18 +1440,6 @@ main.py                      Einstiegspunkt, Event-Loop
                          │  - Stoppt mit stop_event          │
                          └──────────────────────────────────┘
 ```
-
-### Abhängigkeiten
-
-| Paket | Funktion | Erforderlich |
-|-------|----------|--------------|
-| ctypes (builtin) | Windows API, Hotkeys, Maus/Tastatur | Windows |
-| pynput | Globale Eingabe und Hotkeys | Linux/X11 |
-| python-xlib | Fensterliste und Fokusprüfung | Linux/X11 |
-| mss | Bildschirmaufnahme | Linux/X11 |
-| Pillow | Screenshots, Farberkennung | Optional |
-| NumPy | Optimierte Farberkennung | Optional |
-| OpenCV | Template Matching, Slot-Erkennung | Optional |
 
 ### Technologien
 
@@ -1567,7 +1489,7 @@ Im Gesamtlauf läuft die Vertragssuite genau einmal; `--only root` und normale
 Unittest-Discovery behalten den Vertragswrapper. Die PASS-Zahl der Vertragssuite
 zählt einzelne Zusicherungen, nicht unabhängige Testszenarien.
 
-Die CI führt auch `--mutations` aus: Zehn gezielt entfernte Sicherungen müssen
+Die CI führt auch `--mutations` aus: gezielt entfernte Sicherungen müssen
 durch Assertions auffallen, jeweils nach einem grünen unveränderten Kontrolllauf.
 Die Änderungen existieren nur im Speicher separater Prozesse. Ein Importfehler,
 Skip oder Timeout zählt nicht als Erkennung. Einzelne Gegenproben lassen sich mit
@@ -1588,7 +1510,7 @@ gab.
 
 ```bash
 python tools/migrate.py            # zeigt nur an, was passieren würde
-python tools/migrate.py --write    # schreibt (Sicherungen als *.bak)
+python tools/migrate.py --write    # schreibt (Sicherungen als .bak unter backups/)
 ```
 
 - Tote Felder entfernen, die es im Code nicht mehr gibt (das ist inzwischen die

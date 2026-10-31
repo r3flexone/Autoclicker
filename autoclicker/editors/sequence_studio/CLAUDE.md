@@ -259,8 +259,9 @@ Item lernen, Farbe messen), stünde offen. Die Ersatzfläche darf als einzige ü
 100 % hinaus (bis 400 %): sie hat keine Pixel, die man fälschen könnte, und ein
 Inventar von 300 px hinge sonst verloren in einer Ecke.
 
-**Die alten Screenshots unter `slots/Screenshots/` sind kein Ersatz dafür.** Sie
-stammen aus dem Konsolen-Slot-Editor und sind **Ausschnitte** (`take_screenshot(region)`),
+**Die Screenshots des Konsolen-Slot-Editors sind kein Ersatz dafür.** Sie lagen einmal
+unter `slots/Screenshots/`, heute im `bilder/`-Ordner der Sequenz, und sind
+**Ausschnitte** (`take_screenshot(region)`),
 deren Ursprung nirgends steht — als Arbeitsfläche benutzt, läge jeder Slot still
 falsch. Genau der Fehler, gegen den der Ursprung im PNG steht.
 
@@ -1454,7 +1455,7 @@ Fünf Regeln, an denen er hängt:
   Kacheln wie im Werkzeuge-Reiter), Karten sind `share-card`, die Spalten sind
   `section` — eigene Klassen gibt es nur für die Rangzeile und die
   Sitzungsauswahl, und **eine** Rangzeile trägt alle vier Listen plus den Ertrag.
-  Ein achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
+  Ein weiterer Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
   einbringt. Dazu gehört, dass untereinander stehende Blöcke auf **derselben**
   Kante liegen: die Kennzahlen dürfen 880 px, die Karten kamen mit 720 — gestapelt
   waren das zwei rechte Kanten, 160 px auseinander und damit nah genug, dass es wie
@@ -1510,7 +1511,7 @@ und schreibt sie in dasselbe Objekt. Ein laufender Lauf zieht sofort mit — der
 liest `state.config` bei jedem Schritt neu.
 
 **Und der Schreiber lädt sich selbst mit.** `config_write()` ruft
-`apply_config(CONFIG, neu)` auf dem eigenen Prozess — das fehlte, und damit war
+`apply_config(CONFIG, new)` auf dem eigenen Prozess — das fehlte, und damit war
 ausgerechnet das Fenster, das die Datei geschrieben hat, das einzige, das den neuen
 Stand nicht kannte: der Hauptprozess bekam den Briefkasten-Befehl, der Studio-Prozess
 blieb bis zum Neustart auf den Werten vom Programmstart sitzen. Aufgefallen ist es am
@@ -1632,7 +1633,7 @@ rettet, ist schlimmer als keiner — man merkt den Verlust erst beim Laden.
 **Das eigene Symbol braucht zwei Dinge, nicht eins.** Titelleiste und ALT+TAB
 nehmen es aus `WM_SETICON` (`set_window_icon()`) — aber erst, wenn es das
 Fenster gibt: `webview.start(func)` ruft seinen Callback davor auf, deshalb die
-Frist (`warten=`). Die **Taskleiste** ignoriert das Fenstersymbol, solange sie
+Frist (`waiting=`). Die **Taskleiste** ignoriert das Fenstersymbol, solange sie
 das Fenster unter der ausführenden Datei einsortiert, und die heisst `python.exe`;
 dafür gibt es `set_app_id()`, und die muss **vor dem ersten Fenster** laufen.
 Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
@@ -1653,7 +1654,7 @@ Motivs, die beim nächsten Entwurf veralten.
 Rauschen (seine Linien sind dort schmaler als ein Pixel), und das genau dort,
 wo man das Symbol am häufigsten sieht: Browser-Tab und kleines Fenstersymbol.
 `web/sequenz-studio-logo-small.svg` ist dieselbe Kette mit vier statt neun
-Knoten, jede Kante auf dem 16er-Raster. `symbol.logo_path(kante)` wählt: bis
+Knoten, jede Kante auf dem 16er-Raster. `symbol.logo_path(edge)` wählt: bis
 `SMALL_UP_TO` (24) das kleine, darüber das grosse. Ab 32 px ist das grosse
 lesbar genug, und der Nutzer will dort das Original sehen — das kleine springt
 nur ein, wo vom grossen nichts übrig bleibt, nicht darüber hinaus.
@@ -1668,11 +1669,11 @@ stach die dickere Linie seitlich aus ihr heraus), und es ist **höher als die
 
 | wer | wozu |
 |---|---|
-| `winapi._icon_bits()` | ICO-Bits für `WM_SETICON` (16 klein, 32 gross) |
+| `platforms/windows.py` (`_icon_bits()`) | ICO-Bits für `WM_SETICON` (16 klein, 32 gross) |
 | `tools/symbol.py` | PNG-Dateien und eine `.ico` für Verknüpfungen |
 | `web/index.html` | Favicon (klein) und Kopf (gross, 30 CSS-Pixel) |
 
-Alle gehen über `symbol.pixel_rows(kante)` bzw. die Datei selbst; Tests halten
+Alle gehen über `symbol.pixel_rows(edge)` bzw. die Datei selbst; Tests halten
 fest, welche Grösse welche Datei nimmt, dass Favicon und Kopf die richtige
 nennen, dass beide dieselbe Farbe tragen, und dass jedes SVG nur die Befehle
 benutzt, die `_path_polygons()` lesen kann — ein `A` aus einem CAD-Export fiele
@@ -1750,7 +1751,7 @@ Regeln beim Erweitern:
   und keins davon ändert die Regel:
 
   - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`point_others`,
-    `_point_usages(…, ausser=step)`) — als offener `hint`, denn das ist
+    `_point_usages(…, except_step=step)`) — als offener `hint`, denn das ist
     Zustand; das Warum bleibt im ⓘ. **Gebündelt, nicht aufgezählt**
     (`_point_usage_groups()`): eine Zeile je Phase, jeder Block einmal,
     Folgen ab drei als Bereich („Blöcke 1–5, 7–24"), und eine Rolle nur, wenn
