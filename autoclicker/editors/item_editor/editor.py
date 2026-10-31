@@ -1,7 +1,7 @@
 """
 Hauptschleife des Item-Editors: interaktive Befehls-Verarbeitung.
 
-run_global_item_editor zeigt die Übersicht, sammelt User-Befehle und dispatcht
+run_item_editor zeigt die Übersicht, sammelt User-Befehle und dispatcht
 an die passenden Handler in items.py, autoscan.py, learn.py, commands.py.
 Backup-Snapshot bei Editor-Start, Restore bei Cancel/Strg+C.
 """
@@ -12,7 +12,7 @@ from ...imaging import PILLOW_AVAILABLE
 from ...models import AutoClickerState
 from ...persistence import (
     delete_item_preset, list_item_presets, load_item_preset,
-    save_global_items, save_item_preset,
+    save_scan_items, save_item_preset,
 )
 from ...utils import (
     breadcrumb, cancel_hint, cmd_hint, col, confirm, err, header, hint,
@@ -39,7 +39,7 @@ class _ItemTransaction:
             cfg = state.item_scans.get(self.name)
             if cfg is None:
                 raise ValueError("Bitte zuerst einen Item-Scan wählen.")
-            self.scan_items = copy.deepcopy(cfg.items)
+            self.items_before = copy.deepcopy(cfg.items)
             self.file = (sequence_dir(cfg.owner_sequence) / "item_scans"
                           / f"{sanitize_filename(cfg.name)}.json")
         self.folder = active_templates_dir(state)
@@ -60,9 +60,9 @@ class _ItemTransaction:
         with state.lock:
             cfg = state.item_scans.get(self.name)
             if cfg is not None:
-                cfg.items = copy.deepcopy(self.scan_items)
+                cfg.items = copy.deepcopy(self.items_before)
                 # Die Arbeitsansicht muss dieselben Objekte wie der Scan sehen.
-                state.global_items = {item.name: item for item in cfg.items}
+                state.scan_items = {item.name: item for item in cfg.items}
 
 
 def _cancel(state, transaction) -> bool:
@@ -75,7 +75,7 @@ def _cancel(state, transaction) -> bool:
     return True
 
 
-def run_global_item_editor(state: AutoClickerState) -> None:
+def run_item_editor(state: AutoClickerState) -> None:
     """Interaktiver Editor für die Items des gewählten Item-Scans."""
     print(header("ITEM-EDITOR (gewählter Item-Scan)"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Items')}")
@@ -112,12 +112,12 @@ _KNOWN = ["autoscan", "learn", "add", "edit", "rename", "autoname", "del", "show
 def _editor_step(state: AutoClickerState, transaction: _ItemTransaction) -> bool:
     """Eine Eingabe des Item-Editors. True = der Editor ist beendet."""
     with state.lock:
-        item_count = len(state.global_items)
+        item_count = len(state.scan_items)
     user_input = safe_input(f"[ITEMS: {item_count}] > ").strip()
     cmd = user_input.lower()
 
     if cmd in ("done", "d"):
-        if not save_global_items(state):
+        if not save_scan_items(state):
             print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
             return False
         print(ok("Item-Editor beendet."))
@@ -133,7 +133,7 @@ def _editor_step(state: AutoClickerState, transaction: _ItemTransaction) -> bool
 def _print_editor_overview(state: AutoClickerState) -> None:
     """Druckt den Status-Block beim Editor-Start (Items, Slots, Presets)."""
     with state.lock:
-        current_items = list(state.global_items.items())
+        current_items = list(state.scan_items.items())
 
     if current_items:
         print(f"\nAktuelle Items ({len(current_items)}):")
@@ -143,7 +143,7 @@ def _print_editor_overview(state: AutoClickerState) -> None:
         print("\n  (Keine Items vorhanden)")
 
     with state.lock:
-        slots = dict(state.global_slots)
+        slots = dict(state.scan_slots)
     if slots:
         print(f"\nVerfügbare Slots für Item-Lernen ({len(slots)}):")
         for i, (name, slot) in enumerate(slots.items()):
@@ -220,12 +220,12 @@ def _cmd_help_full(state, cmd, user_input) -> None:
 
 def _cmd_show(state, cmd, user_input) -> None:
     with state.lock:
-        if not state.global_items:
+        if not state.scan_items:
             print("  (Keine Items)")
             return
-        print(f"\nItems ({len(state.global_items)}):")
+        print(f"\nItems ({len(state.scan_items)}):")
         # Alle Nummernbefehle verwenden dieselbe Einfügereihenfolge.
-        for i, item in enumerate(state.global_items.values()):
+        for i, item in enumerate(state.scan_items.values()):
             print(f"  {i+1}. {item}")
 
 
@@ -241,7 +241,7 @@ def _cmd_add(state, cmd, user_input) -> None:
     item = create_item(state)
     if item:
         with state.lock:
-            state.global_items[item.name] = item
+            state.scan_items[item.name] = item
         print(f"  + Item '{item.name}' hinzugefügt")
 
 
@@ -323,7 +323,7 @@ def _handle_edit(state: AutoClickerState, cmd: str) -> None:
     try:
         edit_num = int(cmd[5:])
         with state.lock:
-            item_list = list(state.global_items.items())
+            item_list = list(state.scan_items.items())
             if not (1 <= edit_num <= len(item_list)):
                 print(f"  -> Ungültig! Verfügbar: 1-{len(item_list)}")
                 return
@@ -332,15 +332,15 @@ def _handle_edit(state: AutoClickerState, cmd: str) -> None:
         new_item = edit_item(state, item)
         if new_item:
             with state.lock:
-                collision = new_item.name != name and new_item.name in state.global_items
+                collision = new_item.name != name and new_item.name in state.scan_items
             if collision and not confirm(f"  '{new_item.name}' existiert bereits. Überschreiben?"):
                 print(col("[ABBRUCH]", "yellow") + " Item unverändert.")
                 return
             with state.lock:
                 # Falls Name geändert wurde, alten Eintrag entfernen
                 if new_item.name != name:
-                    state.global_items.pop(name, None)
-                state.global_items[new_item.name] = new_item
+                    state.scan_items.pop(name, None)
+                state.scan_items[new_item.name] = new_item
             print(f"  + Item '{new_item.name}' aktualisiert")
     except ValueError:
         print("  -> Format: edit <Nr>")
@@ -349,13 +349,13 @@ def _handle_edit(state: AutoClickerState, cmd: str) -> None:
 def _handle_delete_all(state: AutoClickerState) -> None:
     """`del all` — alle Items mit Bestätigung löschen."""
     with state.lock:
-        if not state.global_items:
+        if not state.scan_items:
             print("  -> Keine Items vorhanden!")
             return
-        count = len(state.global_items)
+        count = len(state.scan_items)
     if confirm(f"  {count} Item(s) wirklich löschen?"):
         with state.lock:
-            state.global_items.clear()
+            state.scan_items.clear()
         print(f"  + {count} Item(s) gelöscht!")
     else:
         print("  -> Abgebrochen")
@@ -366,10 +366,10 @@ def _handle_delete_single(state: AutoClickerState, cmd: str) -> None:
     try:
         del_num = int(cmd[4:])
         with state.lock:
-            item_list = list(state.global_items.keys())
+            item_list = list(state.scan_items.keys())
             if 1 <= del_num <= len(item_list):
                 name = item_list[del_num - 1]
-                del state.global_items[name]
+                del state.scan_items[name]
                 print(f"  + Item '{name}' gelöscht")
             else:
                 print(f"  -> Ungültig! Verfügbar: 1-{len(item_list)}")

@@ -68,7 +68,7 @@ class _Run:
                 list(self.detected), _BGR()),
             "OPENCV_AVAILABLE": self.opencv,
             "NUMPY_AVAILABLE": self.opencv,
-            "save_global_slots": lambda state: self.calls.append("gespeichert") or self.saves,
+            "save_scan_slots": lambda state: self.calls.append("gespeichert") or self.saves,
             "time": _Clock(),
         }
 
@@ -140,10 +140,10 @@ check("neuer Slot: getippter Name, 'skip' ohne Farbe, 'center' = Mitte",
 _r = _Run(inputs=["cancel"])
 check("neuer Slot: 'cancel' beim Namen", _r(_SE.create_slot) is None)
 _r = _Run(inputs=["A"], answers=[False])
-_r.state.global_slots = {"A": _slot("A")}
+_r.state.scan_slots = {"A": _slot("A")}
 check("neuer Slot: ein vergebener Name ohne Zustimmung bricht ab", _r(_SE.create_slot) is None)
 _r = _Run(inputs=["A", "", ""], answers=[True])
-_r.state.global_slots = {"A": _slot("A")}
+_r.state.scan_slots = {"A": _slot("A")}
 check("neuer Slot: mit Zustimmung geht es weiter", _r(_SE.create_slot).name == "A")
 _r = _Run(inputs=[""], region=None)
 check("neuer Slot: ohne Region kein Slot", _r(_SE.create_slot) is None)
@@ -211,7 +211,7 @@ else:
 
     _r = _Run(inputs=[""], detected=[(0, 0, 20, 20), (30, 0, 20, 20)], answers=[True])
     _r.state.config.scan_slot_inset = 2
-    _r.state.global_slots = {"Slot 1": _slot("Slot 1")}
+    _r.state.scan_slots = {"Slot 1": _slot("Slot 1")}
     _orig_detect = _Run.stubs
 
     def _stubs_with_array(self):
@@ -226,12 +226,12 @@ else:
     finally:
         _Run.stubs = _orig_detect
     check("automatisch: erkannte Slots kommen mit freien Namen dazu",
-          _ok is True and list(_r.state.global_slots) == ["Slot 1", "Slot 2", "Slot 3"])
+          _ok is True and list(_r.state.scan_slots) == ["Slot 1", "Slot 2", "Slot 3"])
     check("automatisch: Region um den Einzug verkleinert, Klick in der Mitte",
-          (_r.state.global_slots["Slot 2"].scan_region,
-           _r.state.global_slots["Slot 2"].click_pos) == ((102, 202, 118, 218), (110, 210)))
+          (_r.state.scan_slots["Slot 2"].scan_region,
+           _r.state.scan_slots["Slot 2"].click_pos) == ((102, 202, 118, 218), (110, 210)))
     check("automatisch: die Farbe unter der Maus wird die Slot-Farbe",
-          _r.state.global_slots["Slot 3"].slot_color == (1, 2, 3))
+          _r.state.scan_slots["Slot 3"].slot_color == (1, 2, 3))
     check("automatisch: auf Wunsch werden Items aus demselben Bild gelernt",
           ("lernen", 2, (100, 200)) in _r.calls)
     check("automatisch: Screenshot und Vorschau landen unter bilder/",
@@ -242,7 +242,7 @@ else:
 def _repair_run(old_regions, detected, answers=(), **kw):
     run = _Run(inputs=[""], detected=detected, answers=list(answers), **kw)
     run.state.config.scan_slot_inset = 0
-    run.state.global_slots = {f"S{i}": _slot(f"S{i}", reg) for i, reg in enumerate(old_regions)}
+    run.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg) for i, reg in enumerate(old_regions)}
     return run
 
 
@@ -258,13 +258,13 @@ _old = [(100, 200, 110, 210), (120, 200, 130, 210)]
 _found = [(5, 5, 10, 10), (25, 5, 10, 10)]
 _r = _repair_run(_old, _found, answers=[False])
 check("repair: ohne Zustimmung wird nichts geändert",
-      _r(_SE.slot_repair) is False and _r.state.global_slots["S0"].scan_region == _old[0]
+      _r(_SE.slot_repair) is False and _r.state.scan_slots["S0"].scan_region == _old[0]
       and "VORSCHAU" in _r.output and "+5 X, +5 Y" in _r.output)
 _r = _repair_run(_old, _found, answers=[True, False])
 check("repair: mit Zustimmung neu vermessen, gesichert und gespeichert",
       _r(_SE.slot_repair) is True
-      and _r.state.global_slots["S0"].scan_region == (105, 205, 115, 215)
-      and _r.state.global_slots["S1"].click_pos == (130, 210)
+      and _r.state.scan_slots["S0"].scan_region == (105, 205, 115, 215)
+      and _r.state.scan_slots["S1"].click_pos == (130, 210)
       and _r.calls[:2] == ["sicherung", "gespeichert"])
 _r = _repair_run(_old, _found, answers=[True, True, True])
 _r(_SE.slot_repair)
@@ -286,10 +286,10 @@ check("repair: scheitert das Speichern, wird es gesagt",
       _r(_SE.slot_repair) is True and "NICHT gespeichert" in _r.output)
 _r = _Run(inputs=[""], detected=_found, answers=[False], pixel=(7, 7, 7))
 _r.state.config.scan_slot_inset = 0
-_r.state.global_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
+_r.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
 _r(_SE.slot_repair)
 check("repair: ohne gespeicherte Farbe wird einmal gepickt",
       "bitte einmalig picken" in _r.output and "VORSCHAU" in _r.output)
 _r = _Run(inputs=[""], detected=_found, pixel=None)
-_r.state.global_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
+_r.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
 check("repair: unlesbare Farbe bricht ab", _r(_SE.slot_repair) is False)

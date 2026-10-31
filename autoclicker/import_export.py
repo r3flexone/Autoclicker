@@ -740,7 +740,7 @@ def import_bundle(state: 'AutoClickerState', filepath: str,
             # Scan-Ordner im Wurzelverzeichnis). Sie war nicht nur Altlast,
             # sondern **kaputt**: Vorlagen landeten in `items/templates/`, wo
             # seit dem Umzug auf Besitzeinheiten keine Sequenz mehr nachsieht,
-            # und `_imp_items` schrieb ueber `save_global_items()`, das ohne
+            # und `_imp_items` schrieb ueber `save_scan_items()`, das ohne
             # aktiven Item-Scan folgenlos zurueckkehrt. Ein Import, der meldet
             # "hat geklappt" und nichts Brauchbares hinterlaesst, ist schlechter
             # als eine Absage.

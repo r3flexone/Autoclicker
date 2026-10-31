@@ -769,7 +769,7 @@ class ScanStateMixin:
             "learn": bool(cfg.learn_unknown),
             "reverse": bool(cfg.reverse),
             "use_catalog": bool(cfg.use_catalog),
-            # Namen, die es global nicht mehr gibt: der Scan läuft mit dem Rest
+            # Namen, die es im Bestand nicht mehr gibt: der Scan läuft mit dem Rest
             # weiter, aber man soll es sehen, bevor er es meldet.
             "missing_items": ([n for n in cfg.slot_names if n not in self.slots] +
                         [n for n in cfg.item_names if n not in self.items]),

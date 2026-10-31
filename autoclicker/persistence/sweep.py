@@ -163,7 +163,7 @@ def _sequence_folder_files(folder: Path) -> list[tuple[Path, RoundTrip]]:
             continue
         for file in sorted(d.glob("*.json")):
             # Die Boss-Bibliothek liegt als `bibliothek.json` zwischen den
-            # Scan-Konfigurationen (s. `_global_bosses_file`) und ist eine
+            # Scan-Konfigurationen (s. `_boss_library_file`) und ist eine
             # Liste, kein Scan - mit dem Scan-Loader gelesen waere sie
             # unlesbar und wuerde als "uebersprungen" gemeldet.
             if below == "boss_scans" and file.name == "bibliothek.json":

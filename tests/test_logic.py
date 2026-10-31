@@ -673,21 +673,21 @@ _st5.active_sequence = _seq5
 _items5 = {"Kohle": _IP(name="Kohle", confirm_point_id=1),
            "Erz": _IP(name="Erz"),
            "Tot": _IP(name="Tot", confirm_point_id=99)}
-_st5.global_items = _items5
+_st5.scan_items = _items5
 _st5.item_scans = {"Inventar": ItemScanConfig(
     name="Inventar", items=list(_items5.values()), owner_sequence="Scanfolge")}
-_st5.global_bosses = [BossProfile(name="Drache", action="click", action_point_id=2)]
+_st5.boss_library = [BossProfile(name="Drache", action="click", action_point_id=2)]
 _ic5 = _ISC2(name="I", action="click", action_point_id=3)
 _st5.icon_scans = {"I": _ic5}
 _report5 = _rkr(_st5)
 
 check("Bestaetigungsklick kommt aus dem Punkt",
-      (_st5.global_items["Kohle"].confirm_point.x,
-       _st5.global_items["Kohle"].confirm_point.y) == (10, 20))
+      (_st5.scan_items["Kohle"].confirm_point.x,
+       _st5.scan_items["Kohle"].confirm_point.y) == (10, 20))
 check("Item ohne Referenz hat keinen Bestaetigungsklick",
-      _st5.global_items["Erz"].confirm_point is None)
+      _st5.scan_items["Erz"].confirm_point is None)
 check("Boss-Klick kommt aus dem Punkt",
-      (_st5.global_bosses[0].action_x, _st5.global_bosses[0].action_y) == (30, 40))
+      (_st5.boss_library[0].action_x, _st5.boss_library[0].action_y) == (30, 40))
 check("Icon-Klick kommt aus dem Punkt", (_ic5.action_x, _ic5.action_y) == (50, 60))
 
 # Punkt verschieben -> alle drei ziehen mit. Das ist der ganze Zweck.
@@ -696,19 +696,19 @@ for _p in _st5.points:
     _p.y += 9
 _rkr(_st5)
 check("verschobener Punkt zieht den Bestaetigungsklick mit",
-      (_st5.global_items["Kohle"].confirm_point.x,
-       _st5.global_items["Kohle"].confirm_point.y) == (17, 29))
+      (_st5.scan_items["Kohle"].confirm_point.x,
+       _st5.scan_items["Kohle"].confirm_point.y) == (17, 29))
 check("verschobener Punkt zieht den Boss-Klick mit",
-      (_st5.global_bosses[0].action_x, _st5.global_bosses[0].action_y) == (37, 49))
+      (_st5.boss_library[0].action_x, _st5.boss_library[0].action_y) == (37, 49))
 check("verschobener Punkt zieht den Icon-Klick mit",
       (_ic5.action_x, _ic5.action_y) == (57, 69))
 
 check("tote Referenz wird gemeldet",
       any("#99" in m and "nicht mehr gibt" in m for m in _report5))
 check("tote Referenz laesst den Klick weg statt auf (0,0) zu zielen",
-      _st5.global_items["Tot"].confirm_point is None)
+      _st5.scan_items["Tot"].confirm_point is None)
 
-# Boss-Profile INNERHALB eines Scans zaehlen mit, nicht nur die globalen
+# Boss-Profile INNERHALB eines Scans zaehlen mit, nicht nur die der Bibliothek
 _bp6 = BossProfile(name="Lokal", action="click", action_point_id=1)
 _st5.boss_scans = {"B": _BSC2(name="B", bosses=[_bp6])}
 _rkr(_st5)
@@ -716,8 +716,8 @@ check("auch Bosse in einem Scan werden aufgeloest", (_bp6.action_x, _bp6.action_
 
 # Und die Datei traegt nur die ID
 check("gespeichert wird nur die Referenz",
-      "confirm_point" not in _item_to_dict(_st5.global_items["Kohle"])
-      and _item_to_dict(_st5.global_items["Kohle"]).get("confirm_point_id") == 1)
+      "confirm_point" not in _item_to_dict(_st5.scan_items["Kohle"])
+      and _item_to_dict(_st5.scan_items["Kohle"]).get("confirm_point_id") == 1)
 check("Icon-Scan speichert keine Klick-Koordinate",
       "action_x" not in _icon_scan_to_dict(_ic5)
       and _icon_scan_to_dict(_ic5).get("action_point_id") == 3)
@@ -2082,7 +2082,7 @@ check("unique_name bleibt fuer vorgegebene Namen zustaendig",
 
 # --- Und niemand rechnet den Namen wieder selbst aus ---
 # Die Regel stand nur in CLAUDE.md, und drei Editoren hielten sich nicht daran:
-# `len(state.global_items) + 1` als Vorschlag schlug nach dem ersten Loeschen einen
+# `len(state.scan_items) + 1` als Vorschlag schlug nach dem ersten Loeschen einen
 # Namen vor, den es schon gab - worauf der Editor nach dem Ueberschreiben fragte,
 # obwohl man nur "der naechste, bitte" gemeint hatte. Gesucht statt aufgezaehlt: eine
 # Liste von drei Stellen prueft nur das, woran ohnehin jemand gedacht hat.
@@ -2093,7 +2093,7 @@ for _pf_nf in sorted((_repo_nf / "autoclicker").rglob("*.py")):
     for _i_nf, _z_nf in enumerate(_pf_nf.read_text(encoding="utf-8").splitlines(), 1):
         # Ein Zaehler, der aus der GROESSE eines Namens-Verzeichnisses kommt. Genau das
         # ist der Fehler; `len(...) + 1` fuer eine Position oder Prioritaet nicht.
-        if _re_nf.search(r"len\(\s*[\w.]*(global_items|global_slots|self\.items|"
+        if _re_nf.search(r"len\(\s*[\w.]*(scan_items|scan_slots|self\.items|"
                          r"self\.slots|loop_phases)\s*\)\s*\+\s*1", _z_nf):
             _selbstgerechnet.append(f"{_pf_nf.relative_to(_repo_nf).as_posix()}:{_i_nf}")
 check("kein Editor rechnet einen Namensvorschlag aus der Bestandsgroesse",
@@ -2138,7 +2138,7 @@ def _calib_state():
                _KCP(x=300, y=400, name="Popup", id=3),
                _KCP(x=700, y=750, name="Drache", id=4),
                _KCP(x=60, y=65, name="Icon", id=5),
-               _KCP(x=11, y=22, name="Global", id=6),
+               _KCP(x=11, y=22, name="Bibliothek", id=6),
                _KCP(x=640, y=480, name="Pixel", id=7, color=(1, 2, 3)),
                _KCP(x=900, y=950, name="Ausweich", id=8)]
     _slots = {"Slot 1": _KIS(name="Slot 1", scan_region=(10, 20, 60, 70),
@@ -2148,8 +2148,8 @@ def _calib_state():
                  items=list(_items.values()),
                  owner_sequence="Seq")
     s.item_scans = {"Inventar": _scan}
-    s.global_slots = _slots
-    s.global_items = _items
+    s.scan_slots = _slots
+    s.scan_items = _items
     s.boss_scans = {"B": _KBSC(name="B", scan_region=(0, 0, 100, 100),
                                bosses=[_KBP(name="Drache", action="click",
                                             action_point_id=4)],
@@ -2157,7 +2157,7 @@ def _calib_state():
     _icon = _KISC(name="I", scan_region=(5, 5, 55, 55), owner_sequence="Seq",
                   action="click", action_point_id=5)
     s.icon_scans = {"I": _icon}
-    s.global_bosses = [_KBP(name="Global", action="click", action_point_id=6)]
+    s.boss_library = [_KBP(name="Bibliothek", action="click", action_point_id=6)]
     _step_local = _KSS(x=100, y=200, delay_before=0, name="klick", point_id=1)
     _trig = _KSS(x=0, y=0, delay_before=0, name="trigger",
                  wait_condition=_KWC(point_id=7),
@@ -2199,15 +2199,15 @@ try:
     for _was, _actual, _expected_value in [
         ("Punkt (der Referenzpunkt selbst)", (_st.points[0].x, _st.points[0].y), (140, 175)),
         ("Punkt (ein anderer)", (_st.points[1].x, _st.points[1].y), (540, 775)),
-        ("Slot-Scanregion", _st.global_slots["Slot 1"].scan_region, (50, -5, 100, 45)),
-        ("Slot-Klickposition", _st.global_slots["Slot 1"].click_pos, (75, 20)),
-        ("Item-Bestaetigungsklick", (_st.global_items["Erz"].confirm_point.x,
-                                     _st.global_items["Erz"].confirm_point.y), (340, 375)),
+        ("Slot-Scanregion", _st.scan_slots["Slot 1"].scan_region, (50, -5, 100, 45)),
+        ("Slot-Klickposition", _st.scan_slots["Slot 1"].click_pos, (75, 20)),
+        ("Item-Bestaetigungsklick", (_st.scan_items["Erz"].confirm_point.x,
+                                     _st.scan_items["Erz"].confirm_point.y), (340, 375)),
         ("Boss-Scanregion", _st.boss_scans["B"].scan_region, (40, -25, 140, 75)),
         ("Boss-Klickaktion", (_st.boss_scans["B"].bosses[0].action_x,
                               _st.boss_scans["B"].bosses[0].action_y), (740, 725)),
-        ("globaler Boss", (_st.global_bosses[0].action_x,
-                           _st.global_bosses[0].action_y), (51, -3)),
+        ("Boss der Bibliothek", (_st.boss_library[0].action_x,
+                           _st.boss_library[0].action_y), (51, -3)),
         ("Icon-Scanregion", _st.icon_scans["I"].scan_region, (45, -20, 95, 30)),
         ("Icon-Klickaktion", (_st.icon_scans["I"].action_x,
                               _st.icon_scans["I"].action_y), (100, 40)),
@@ -2234,7 +2234,7 @@ try:
     check("nur Punkte: Punkt wandert",
           (_st2.points[0].x, _st2.points[0].y) == (140, 175))
     check("nur Punkte: Slot bleibt unberuehrt",
-          _st2.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
+          _st2.scan_slots["Slot 1"].scan_region == (10, 20, 60, 70))
     check("nur Punkte: Sequenz-Schritt bleibt unberuehrt",
           (_step2.x, _step2.y) == (100, 200))
 
@@ -2246,16 +2246,16 @@ try:
         _z4 = _IE.calibrate_inventory(_st4, _t, with_scans=True, with_sequences=True,
                                      with_slots=False)
     check("ohne Slots: Slot-Region bleibt exakt stehen",
-          _st4.global_slots["Slot 1"].scan_region == (10, 20, 60, 70))
+          _st4.scan_slots["Slot 1"].scan_region == (10, 20, 60, 70))
     check("ohne Slots: Slot-Klickposition bleibt stehen",
-          _st4.global_slots["Slot 1"].click_pos == (35, 45))
+          _st4.scan_slots["Slot 1"].click_pos == (35, 45))
     check("ohne Slots: die Zaehlung meldet keine Slots", _z4["slots"] == 0)
     check("ohne Slots: Boss-Scan wandert trotzdem",
           _st4.boss_scans["B"].scan_region == (40, -25, 140, 75))
     _rkr(_st4)
     check("ohne Slots: Item-Bestaetigungsklick wandert trotzdem (mit seinem Punkt)",
-          (_st4.global_items["Erz"].confirm_point.x,
-           _st4.global_items["Erz"].confirm_point.y) == (340, 375))
+          (_st4.scan_items["Erz"].confirm_point.x,
+           _st4.scan_items["Erz"].confirm_point.y) == (340, 375))
     # Der Schritt haengt am Punkt, und der ist umgerechnet - er landet also richtig,
     # ohne dass die Kalibrierung ihn selbst anfassen musste.
     _IE_resolve(_st4, _st4.active_sequence)

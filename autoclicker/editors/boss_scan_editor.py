@@ -30,7 +30,7 @@ from ..winapi import get_cursor_pos
 from ..imaging import PILLOW_AVAILABLE, take_screenshot
 from ..persistence import (
     save_boss_scan, list_available_boss_scans, load_boss_scan_file,
-    list_available_item_scans, save_global_bosses,
+    list_available_item_scans, save_boss_library,
 )
 from ._detection_capture import (
     DETECT_MARKERS, DETECT_TEMPLATE, ask_action_details, ask_min_confidence,
@@ -91,11 +91,11 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         available_scans = list_available_boss_scans(owner)
         loaded_scans = []
         with state.lock:
-            num_global = len(state.global_bosses)
-        learn_target = "Bibliothek (global)" if state.config.boss_learn_global else "jeweiliger Scan"
+            num_library = len(state.boss_library)
+        learn_target = "Bibliothek" if state.config.boss_learn_global else "jeweiliger Scan"
         menu_options = [
             "Neuen Boss-Scan erstellen",
-            f"Boss-Bibliothek verwalten ({num_global} globale Bosse)",
+            f"Boss-Bibliothek verwalten ({num_library} Bosse)",
             f"Auto-Lernen neuer Bosse → {learn_target} [umschalten]",
         ]
         num_fixed = len(menu_options)
@@ -115,7 +115,7 @@ def run_boss_scan_editor(state: AutoClickerState) -> None:
         elif choice == 0:
             edit_boss_scan(state, None)
         elif choice == 1:
-            edit_global_bosses(state)
+            edit_boss_library(state)
         elif choice == 2:
             _toggle_learn_target(state)
         elif num_fixed <= choice < len(menu_options):
@@ -127,7 +127,7 @@ def _toggle_learn_target(state: AutoClickerState) -> None:
     state.config.boss_learn_global = not state.config.boss_learn_global
     saved = save_config(state.config)
     if state.config.boss_learn_global:
-        print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der globalen Bibliothek."))
+        print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt in der Bibliothek."))
     else:
         print(ok("Neu entdeckte Bosse (LLM/OCR) landen jetzt im jeweiligen Scan."))
     if not saved:
@@ -276,7 +276,7 @@ def _edit_boss_list(state: AutoClickerState, bosses: list, allow_empty: bool) ->
     """Interaktiver add/edit/del-Loop für eine BossProfile-Liste (mutiert in-place).
 
     allow_empty: 'done' mit leerer Liste zulassen (Bibliothek / Scan mit
-    globalen Bossen) oder nicht.
+    Bibliotheks-Bossen) oder nicht.
 
     Returns:
         True bei 'done', False bei Abbruch (cancel/ESC/Strg+C).
@@ -386,19 +386,19 @@ def _boss_show(state, bosses, argument) -> None:
     _print_bosses(bosses)
 
 
-def edit_global_bosses(state: AutoClickerState) -> None:
-    """Verwaltet die globale Boss-Bibliothek (gilt zusätzlich in jedem Boss-Scan)."""
-    print(header("BOSS-BIBLIOTHEK (globale Bosse)"))
+def edit_boss_library(state: AutoClickerState) -> None:
+    """Verwaltet die Boss-Bibliothek (gilt zusätzlich in jedem Boss-Scan)."""
+    print(header("BOSS-BIBLIOTHEK"))
     print("  Diese Bosse gelten automatisch in JEDEM Boss-Scan.")
     print(f"  {col('Hinweis:', 'cyan')} Lokale Bosse eines Scans haben bei gleichem Namen Vorrang.")
 
     with state.lock:
-        bosses = list(state.global_bosses)
+        bosses = list(state.boss_library)
 
     if _edit_boss_list(state, bosses, allow_empty=True):
         with state.lock:
-            state.global_bosses = bosses
-        save_global_bosses(state)
+            state.boss_library = bosses
+        save_boss_library(state)
     else:
         print(f"  {col('[ABBRUCH]', 'yellow')} Änderungen verworfen.")
 
@@ -475,13 +475,13 @@ def _boss_step_bosses(state: AutoClickerState, draft: _BossDraft) -> bool:
     """SCHRITT 2: die Boss-Liste. Leer erlaubt, wenn die Bibliothek Bosse hat."""
     print(header("SCHRITT 2: BOSSE DEFINIEREN"))
     with state.lock:
-        num_global = len(state.global_bosses)
-    if num_global:
-        print(f"\n  {info(f'{num_global} globale(r) Boss(e) aus der Bibliothek gelten zusätzlich.')}")
-    if not _edit_boss_list(state, draft.bosses, allow_empty=num_global > 0):
+        num_library = len(state.boss_library)
+    if num_library:
+        print(f"\n  {info(f'{num_library} Boss(e) aus der Bibliothek gelten zusätzlich.')}")
+    if not _edit_boss_list(state, draft.bosses, allow_empty=num_library > 0):
         return False
-    if not draft.bosses and num_global:
-        print(f"  {info(f'Keine lokalen Bosse — der Scan nutzt die {num_global} globalen.')}")
+    if not draft.bosses and num_library:
+        print(f"  {info(f'Keine lokalen Bosse — der Scan nutzt die {num_library} aus der Bibliothek.')}")
     return True
 
 

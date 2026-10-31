@@ -1237,7 +1237,7 @@ Acht Regeln, an denen der Teil hängt:
 - **Die Bibliothek gilt zusätzlich in JEDEM Boss-Scan**, lokale Bosse gewinnen bei
   Namensgleichheit (so merged auch `execute_boss_scan`). Deshalb testet
   „alle testen" die **gemergte** Liste, deshalb kollidiert ein neuer Boss-Name
-  gegen beide Mengen, und deshalb steht ein verdeckter globaler Boss blass in der
+  gegen beide Mengen, und deshalb steht ein verdeckter Boss aus der Bibliothek blass in der
   Liste statt so zu tun, als würde er benutzt. Angezeigt wird sie als Kartenraster
   an der Stelle der Bühne — sie ist kein Rechteck auf dem Bild, sondern eine
   Sammlung.

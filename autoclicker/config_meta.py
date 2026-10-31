@@ -343,9 +343,9 @@ META: dict = {
         "Zeitgrenze für den Watcher.", unit="s", empty="unbegrenzt",
         dep="llm_enabled"),
     "boss_learn_global": M(
-        "Neue Bosse global lernen", CONTROL_BOOL,
+        "Neue Bosse in der Bibliothek lernen", CONTROL_BOOL,
         "Ein von OCR oder LLM entdeckter unbekannter Boss landet in der "
-        "globalen Bibliothek statt nur in diesem einen Scan. Gilt für beide "
+        "Boss-Bibliothek statt nur in diesem einen Scan. Gilt für beide "
         "Erkenner."),
 
     # === OCR ===

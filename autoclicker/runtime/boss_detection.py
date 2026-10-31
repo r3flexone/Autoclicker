@@ -100,13 +100,13 @@ def _boss_scan_snapshot(state: AutoClickerState, config_name: str) -> Optional[_
         if config is None:
             print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
             return None
-        # Lokale Bosse + globale Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
+        # Lokale Bosse + Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
         local_names = {b.name for b in config.bosses}
         bosses = list(config.bosses) + [
-            b for b in state.global_bosses if b.name not in local_names
+            b for b in state.boss_library if b.name not in local_names
         ]
         if not bosses:
-            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine globalen)!"))
+            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine aus der Bibliothek)!"))
             return None
         # Erkennungs-Flags im selben Lock-Snapshot einfrieren — sonst kann ein
         # Editor sie zwischen mehreren frischen Reads toggeln und das LLM läuft
@@ -157,24 +157,24 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
     Returns:
         Das neu angelegte BossProfile, oder None wenn der Name bereits bekannt/vorgemerkt ist.
     """
-    from ..persistence import save_boss_scan, save_global_bosses
+    from ..persistence import save_boss_scan, save_boss_library
 
-    learn_global = state.config.boss_learn_global
+    learn_to_library = state.config.boss_learn_global
 
     # Check und Append atomar im selben Lock-Block — sonst kann zwischen Prüfung
     # und Mutation ein paralleler Pfad (Sync-Scan + Async-Watcher) denselben Boss
     # doppelt anhängen (TOCTOU).
     with state.lock:
         existing_names = ({b.name for b in config.bosses}
-                          | {b.name for b in state.global_bosses})
+                          | {b.name for b in state.boss_library})
         already_pending = any(n == name for _, n, _ in state.pending_new_bosses)
         if name in existing_names or already_pending:
             return None
 
         new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
-        if learn_global:
-            state.global_bosses.append(new_boss)
-            target = "Bibliothek (global)"
+        if learn_to_library:
+            state.boss_library.append(new_boss)
+            target = "Bibliothek"
         else:
             config.bosses.append(new_boss)
             state.boss_scans[config.name] = config
@@ -182,8 +182,8 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
         state.pending_new_bosses.append((target, name, source))
 
     print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — gespeichert in {target}", "green"))
-    if learn_global:
-        save_global_bosses(state)
+    if learn_to_library:
+        save_boss_library(state)
     else:
         save_boss_scan(config)
 
@@ -409,12 +409,12 @@ def _llm_boss(run: _DetectionRun, name: str, is_new: bool, attempt: int) -> Opti
     if new_boss is not None:
         return new_boss
     # Falls _handle_new_boss None zurückgab (Name schon bekannt oder vorgemerkt),
-    # das Profil trotzdem liefern. Auch aus der globalen Bibliothek: mit
+    # das Profil trotzdem liefern. Auch aus der Bibliothek: mit
     # boss_learn_global landen neue Bosse dort und NICHT in config.bosses —
     # die Suche allein in config.bosses ging in dem Fall ins Leere und der
     # Scan meldete "kein Boss", obwohl er den Namen gerade erkannt hatte.
     with run.state.lock:
-        candidates = list(run.config.bosses) + list(run.state.global_bosses)
+        candidates = list(run.config.bosses) + list(run.state.boss_library)
     return next((boss for boss in candidates if boss.name == name), None)
 
 

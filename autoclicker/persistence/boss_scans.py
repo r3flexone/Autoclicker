@@ -69,19 +69,19 @@ def load_boss_scan_file(filepath: Path, owner: str = "") -> Optional[BossScanCon
         return None
 
 
-def _global_bosses_file(owner: str) -> Path:
+def _boss_library_file(owner: str) -> Path:
     # Reservierter Dateiname; die Scan-Auswahl schliesst ihn aus.
     return _boss_scans_dir(owner) / "bibliothek.json"
 
 
-def save_global_bosses(state: AutoClickerState, owner: str = "") -> bool:
-    """Speichert die globale Boss-Bibliothek (crash-sicher)."""
+def save_boss_library(state: AutoClickerState, owner: str = "") -> bool:
+    """Speichert die Boss-Bibliothek der Sequenz (crash-sicher)."""
     with state.lock:
-        data = [_boss_profile_to_dict(b) for b in state.global_bosses]
+        data = [_boss_profile_to_dict(b) for b in state.boss_library]
     owner = owner or (state.active_sequence.name if state.active_sequence else "")
     if not owner:
         return False
-    filepath = _global_bosses_file(owner)
+    filepath = _boss_library_file(owner)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     try:
         atomic_write(filepath, compact_json(data))
@@ -92,14 +92,14 @@ def save_global_bosses(state: AutoClickerState, owner: str = "") -> bool:
         return False
 
 
-def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
-    """Lädt die globale Boss-Bibliothek (fehlende Datei = leere Bibliothek)."""
+def load_boss_library(state: AutoClickerState, owner: str = "") -> None:
+    """Lädt die Boss-Bibliothek der Sequenz (fehlende Datei = leere Bibliothek)."""
     with state.lock:
         owner = owner or (state.active_sequence.name if state.active_sequence else "")
-        state.global_bosses = []
+        state.boss_library = []
     if not owner:
         return
-    filepath = _global_bosses_file(owner)
+    filepath = _boss_library_file(owner)
     if not filepath.exists():
         return
     try:
@@ -109,9 +109,9 @@ def load_global_bosses(state: AutoClickerState, owner: str = "") -> None:
             raise TypeError("Boss-Bibliothek muss eine JSON-Liste sein")
         loaded = [_boss_profile_from_dict(b) for b in data]
         with state.lock:
-            state.global_bosses = loaded
-            count = len(state.global_bosses)
-        print(load_tag(f"{count} globale(r) Boss(e) geladen"))
+            state.boss_library = loaded
+            count = len(state.boss_library)
+        print(load_tag(f"{count} Boss(e) der Bibliothek geladen"))
     except LOAD_EXCEPTIONS as e:
         print(warn(f"Boss-Bibliothek konnte nicht geladen werden: {e}"))
         logger.error(f"Konnte {filepath} nicht laden: {e}")

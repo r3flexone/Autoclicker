@@ -1,4 +1,4 @@
-"""Konsolen-Slot-Editor (`run_global_slot_editor`), per Tastenfolge.
+"""Konsolen-Slot-Editor (`run_slot_editor`), per Tastenfolge.
 
 Geschrieben, BEVOR der Editor in Stufen zerlegt wurde: 203 Zeilen und
 Komplexität 44 — nach dem Loop-Phasen-Editor die verzweigteste Funktion des
@@ -29,13 +29,13 @@ class _Run:
     def __init__(self, inputs, slots=(), answers=(), saves=(), created=None,
                  edited=None, repaired=False, pillow=True, interrupt_after=None):
         self.inputs, self.answers = list(inputs), list(answers)
-        self.saves = list(saves)            # Rückgabewerte von save_global_slots, der Reihe nach
+        self.saves = list(saves)            # Rückgabewerte von save_scan_slots, der Reihe nach
         self.created, self.edited, self.repaired = created, edited, repaired
         self.pillow, self.interrupt_after = pillow, interrupt_after
         self.saved_states = []              # Namen der Slots bei jedem Speichern
         self.calls = []
         self.state = _ST()
-        self.state.global_slots = {s.name: s for s in slots}
+        self.state.scan_slots = {s.name: s for s in slots}
         self.output = ""
 
     def _input(self, _prompt=""):
@@ -44,20 +44,20 @@ class _Run:
         return self.inputs.pop(0) if self.inputs else "cancel"
 
     def _save(self, state):
-        self.saved_states.append(list(state.global_slots))
+        self.saved_states.append(list(state.scan_slots))
         return self.saves.pop(0) if self.saves else True
 
     def _repair(self, state):
         self.calls.append("repair")
         if self.repaired:
-            state.global_slots["Repariert"] = _slot("Repariert", 90)
+            state.scan_slots["Repariert"] = _slot("Repariert", 90)
         return self.repaired
 
     def run(self):
         stubs = {
             "safe_input": self._input,
             "confirm": lambda _q, *a, **k: self.answers.pop(0) if self.answers else False,
-            "save_global_slots": self._save,
+            "save_scan_slots": self._save,
             "PILLOW_AVAILABLE": self.pillow,
             "list_slot_presets": lambda: [],
             "create_slot": lambda state: self.created,
@@ -75,7 +75,7 @@ class _Run:
         buffer = _io.StringIO()
         try:
             with _cl.redirect_stdout(buffer):
-                _SE.run_global_slot_editor(self.state)
+                _SE.run_slot_editor(self.state)
         finally:
             for name, value in old.items():
                 setattr(_SE, name, value)
@@ -84,7 +84,7 @@ class _Run:
 
     @property
     def names(self):
-        return list(self.state.global_slots)
+        return list(self.state.scan_slots)
 
 
 # --- Ohne Pillow ---
@@ -121,9 +121,9 @@ check("edit mit neuem Namen ersetzt den alten Eintrag", _r.names == ["A", "B2"])
 _r = _Run(["edit 1", "done"], slots=[_slot("A")],
           edited=lambda s: _SLOT("A", (1, 1, 9, 9), s.click_pos)).run()
 check("edit mit gleichem Namen ändert den Slot",
-      _r.state.global_slots["A"].scan_region == (1, 1, 9, 9))
+      _r.state.scan_slots["A"].scan_region == (1, 1, 9, 9))
 _r = _Run(["edit 1", "done"], slots=[_slot("A")], edited=None).run()
-check("ein abgebrochenes edit ändert nichts", _r.state.global_slots["A"].scan_region == (0, 0, 8, 8))
+check("ein abgebrochenes edit ändert nichts", _r.state.scan_slots["A"].scan_region == (0, 0, 8, 8))
 _r = _Run(["edit 3", "edit x", "done"], slots=[_slot("A")]).run()
 check("edit ausserhalb bzw. mit Buchstaben wird gesagt",
       "Ungültig! Verfügbar: 1-1" in _r.output and "Format: edit <Nr>" in _r.output)

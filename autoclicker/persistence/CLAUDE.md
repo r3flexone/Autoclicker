@@ -225,6 +225,18 @@ Rest-Helfer aus der Zeit des globalen Bestands (`sync_names()` als No-op,
 `update_item_in_scans()` mit festem `(0, 0)`, die Weiterleitung
 `resolve_scan_references()`) sind ersatzlos gelöscht.
 
+**Die Konsolen-Ansichten heissen nach dem, was sie sind.** `state.scan_slots`
+und `state.scan_items` sind Dicts auf die Slots und Items des Scans
+`state.active_item_scan`: `bind_item_scan_context()` bindet sie,
+`flush_item_scan_context()` schreibt sie zurück, `save_scan_slots()` und
+`save_scan_items()` (`persistence/scan_views.py`) speichern sie. Bis zum
+31.10.2026 hiessen sie `global_slots`/`global_items` (und das Modul, das sie
+speichert, `globals`) — ein Name aus der Zeit des globalen Bestands, der eine
+Liste versprach, die es nicht mehr gibt. Dasselbe galt für die Boss-Bibliothek einer Sequenz
+(`global_bosses`, heute `state.boss_library`): sie gilt in jedem Boss-Scan
+**dieser** Sequenz, nicht programmweit. Der Config-Schlüssel `boss_learn_global`
+bleibt, wie er ist — er steht in gespeicherten Dateien.
+
 Beim Sequenzwechsel werden die geladenen Scan-Dictionaries vollständig ersetzt.
 Eine fehlende Boss-Bibliothek bedeutet eine leere Liste. Der Dateiname
 `bibliothek.json` ist für die Bibliothek reserviert und darf keinem Boss-Scan

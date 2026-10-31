@@ -269,7 +269,7 @@ try:
     _st.active_sequence = _SEQ(name="S", points=_st.points, loop_phases=[_LP(name="L", steps=[
         _SS(x=70, y=80, point_id=None),
         _SS(x=10, y=10, point_id=1, else_config=_EC("click", point_id=1, x=10, y=10))])])
-    _st.global_bosses = [_BP(name="Drache", action="click", action_point_id=1,
+    _st.boss_library = [_BP(name="Drache", action="click", action_point_id=1,
                               action_x=10, action_y=10)]
     _labels = [lb for lb, _, _ in collect_click_positions(_st)]
     check("es steht genau der Punkt da - nichts, was an ihm haengt",

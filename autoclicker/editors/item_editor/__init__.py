@@ -2,7 +2,7 @@
 Item-Editor-Subpaket.
 
 Modul-Aufteilung:
-    editor.py     run_global_item_editor + Befehls-Dispatch + Hilfe-Text
+    editor.py     run_item_editor + Befehls-Dispatch + Hilfe-Text
     items.py      create_item, edit_item, select_category
     markers.py    Marker-Farben-Sammlung + Duplikat-Erkennung
     autoscan.py   item_autoscan_command (ALLE Slots automatisch)
@@ -10,15 +10,15 @@ Modul-Aufteilung:
     commands.py   rename/template/templates-Befehle
 
 Externer Konsument: editors/item_scan_editor.py braucht
-run_global_item_editor, select_category und item_autoscan_command.
+run_item_editor, select_category und item_autoscan_command.
 """
 
 from .autoscan import item_autoscan_command
-from .editor import run_global_item_editor
+from .editor import run_item_editor
 from .items import select_category
 
 __all__ = [
-    'run_global_item_editor',
+    'run_item_editor',
     'select_category',
     'item_autoscan_command',
 ]

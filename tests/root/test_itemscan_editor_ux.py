@@ -567,7 +567,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         capture.assert_called_once_with(99)
         self.assertEqual(seen_sizes, [(20, 20)])
         self.assertEqual(result[0][0], (320, 230))
-        # Die global gespeicherten Slots bleiben unangetastet; die Anpassung gilt
+        # Die gespeicherten Slots bleiben unangetastet; die Anpassung gilt
         # in der Runtime nur für diesen Lauf.
         self.assertEqual(slot.click_pos, (120, 130))
 

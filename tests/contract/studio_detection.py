@@ -108,7 +108,7 @@ try:
 
     _z = _b.scan_data()
     check("ohne Bestand ist die Boss-Liste leer", _z["boss_scans"] == [])
-    check("und die Bibliothek auch", _z["global_bosses"] == [])
+    check("und die Bibliothek auch", _z["boss_library"] == [])
     check("die Aktionskacheln kommen aus models.py — Bosse",
           {a["value"] for a in _z["actions"]["boss"]} == _V_BOSS)
     check("die Aktionskacheln kommen aus models.py — Icons",
@@ -189,18 +189,18 @@ try:
 
     # --- Bibliothek ---
     _b.boss_select({"name": "Ancient Dragon"})
-    _b.boss_move_global({})
+    _b.boss_move_library({})
     check("verschoben liegt er in der Bibliothek",
-          [x.name for x in _b.global_bosses] == ["Ancient Dragon"])
+          [x.name for x in _b.boss_library] == ["Ancient Dragon"])
     check("und nicht mehr im Scan", _b.boss_scans["Bossfarm"].bosses == [])
     check("die Wahl wandert mit — sonst zeigt die rechte Spalte ins Leere",
-          _b.boss_choice_global is True)
+          _b.boss_choice_in_library is True)
     check("er gilt trotzdem in diesem Scan",
           [x.name for x in _b._merged_bosses(_b.boss_scans["Bossfarm"])]
           == ["Ancient Dragon"])
     # Ein lokaler gleichen Namens gewinnt — so merged auch `execute_boss_scan`.
     _b.boss_scans["Bossfarm"].bosses.append(
-        type(_b.global_bosses[0])(name="Ancient Dragon", min_confidence=0.5))
+        type(_b.boss_library[0])(name="Ancient Dragon", min_confidence=0.5))
     _gemergt = _b._merged_bosses(_b.boss_scans["Bossfarm"])
     check("bei Namensgleichheit gewinnt der lokale",
           len(_gemergt) == 1 and _gemergt[0].min_confidence == 0.5)
@@ -430,9 +430,9 @@ try:
             check("samt Icon-Scans",
                   {c["name"] for c in _z2["icon_scans"]} == {"Mission nicht machbar"})
             check("samt Bibliothek",
-                  [b["name"] for b in _z2["global_bosses"]] == ["Ancient Dragon"])
-            check("und die Bibliothek ist als global markiert",
-                  _z2["global_bosses"][0]["global"] is True)
+                  [b["name"] for b in _z2["boss_library"]] == ["Ancient Dragon"])
+            check("und ihre Bosse sind als aus der Bibliothek markiert",
+                  _z2["boss_library"][0]["in_library"] is True)
 
             # --- Fremdaenderung ---
             # Der Konsolen-Editor bleibt der zweite Weg, und ein Lauf legt per

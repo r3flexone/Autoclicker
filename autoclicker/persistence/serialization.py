@@ -307,7 +307,7 @@ _BOSS_SCAN_DEFAULTS = {
 
 
 def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
-    """Serialisiert eine BossScanConfig zu einem Dict (ohne globale Bosse)."""
+    """Serialisiert eine BossScanConfig zu einem Dict (ohne die Boss-Bibliothek)."""
     return _without_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),

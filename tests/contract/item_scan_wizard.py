@@ -47,9 +47,9 @@ class _Wizard:
         with _cl.redirect_stdout(_io.StringIO()):
             activate_sequence(self.state, _SEQ("Scan", points=[]))
         if slots:
-            self.state.global_slots = _slots()
+            self.state.scan_slots = _slots()
         if items:
-            self.state.global_items = {"A": _IP("A", []), "B": _IP("B", [])}
+            self.state.scan_items = {"A": _IP("A", []), "B": _IP("B", [])}
         self.output = ""
 
     def _input(self, _prompt=""):
@@ -75,7 +75,7 @@ class _Wizard:
             (_ISE, "select_category", lambda state: "Waffen"),
             (_ISE, "ask_priority", lambda state, category: 2),
             (_ISE, "ask_confirm_click", lambda state, delay, prompt="": (None, 0.5)),
-            (_ISE, "save_global_items", lambda state: True),
+            (_ISE, "save_scan_items", lambda state: True),
             (_ISE, "save_item_scan", self._save),
             (_ISE, "list_slot_presets", lambda: list(self.slot_presets)),
             (_ISE, "list_item_presets", lambda: list(self.item_presets)),
@@ -216,7 +216,7 @@ try:
     # =========================================================================
     _r = _Wizard(["X", "1", "done", "new 2", "Schwert", "80", "done", ""],
                  confirms=[False, False, False]).run()
-    _new = _r.state.global_items.get("Schwert")
+    _new = _r.state.scan_items.get("Schwert")
     check("new <Slot>: Item mit Vorlage, Kategorie, Priorität und Konfidenz",
           _new is not None and _new.category == "Waffen" and _new.priority == 2
           and abs(_new.min_confidence - 0.8) < 1e-9 and _new.confirm_delay == 0.5
@@ -224,11 +224,11 @@ try:
     check("und gleich im Scan", "Schwert" in _r.config().item_names)
     _r = _Wizard(["X", "1", "done", "new", "3", "", "", "done", ""], confirms=[False, False, False]).run()
     check("new ohne Nummer fragt nach dem Slot; ohne Namen: Item <n>",
-          "Item 1" in _r.state.global_items and "Von welchem Slot" in _r.output)
+          "Item 1" in _r.state.scan_items and "Von welchem Slot" in _r.output)
     _r = _Wizard(["X", "1", "done", "new 9", "new x", "abc", "done", ""], confirms=[False, False, False]).run()
     check("new: falscher Slot und unlesbare Nummer",
           "Ungültiger Slot" in _r.output and "Ungültige Eingabe" in _r.output
-          and set(_r.state.global_items) == {"A", "B"})
+          and set(_r.state.scan_items) == {"A", "B"})
     _r = _Wizard(["X", "1", "done", "new 1", "done", ""], confirms=[False, False, False], opencv=False).run()
     check("new ohne OpenCV", "OpenCV nicht installiert" in _r.output)
     _r = _Wizard(["X", "1", "done", "new 1", "done", ""], confirms=[False, False, False],
@@ -236,10 +236,10 @@ try:
     check("new: Screenshot scheitert", "Screenshot fehlgeschlagen" in _r.output)
     _r = _Wizard(["X", "1", "done", "new 1", "A", "done", ""], confirms=[False, False, False, False]).run()
     check("new mit vergebenem Namen, Überschreiben verneint: nichts angelegt",
-          "Abgebrochen" in _r.output and _r.state.global_items["A"].category is None)
+          "Abgebrochen" in _r.output and _r.state.scan_items["A"].category is None)
     _r = _Wizard(["X", "1", "done", "new 1", "Dolch", "x", "done", ""],
                  confirms=[False, False, False]).run()
     check("new: unlesbare Konfidenz behält den Standard",
-          "ungültig — behalte" in _r.output and "Dolch" in _r.state.global_items)
+          "ungültig — behalte" in _r.output and "Dolch" in _r.state.scan_items)
 finally:
     _os.chdir(_cwd)

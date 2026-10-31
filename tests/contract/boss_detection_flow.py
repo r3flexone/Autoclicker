@@ -42,13 +42,13 @@ def _quiet(fn, *args, **kwargs):
 
 
 def _state(bosses=("Drache",), use_ocr=False, ocr_fb=True, use_llm=False, llm_fb=True,
-           global_bosses=(), ocr=True, llm=True):
+           boss_library=(), ocr=True, llm=True):
     st = _ST()
     st.config.ocr_enabled, st.config.llm_enabled = ocr, llm
     st.boss_scans["B"] = _BSC("B", bosses=[_BP(n) for n in bosses],
                               use_ocr=use_ocr, ocr_fallback=ocr_fb,
                               use_llm=use_llm, llm_fallback=llm_fb)
-    st.global_bosses = [_BP(n) for n in global_bosses]
+    st.boss_library = [_BP(n) for n in boss_library]
     return st
 
 
@@ -82,7 +82,7 @@ def _order(st, hits=()):
 _r, _out = _quiet(_BD.execute_boss_scan, _ST(), "fehlt")
 check("ein unbekannter Scan wird gesagt", _r == (False, None) and "nicht gefunden" in _out)
 _r, _out = _quiet(_BD.execute_boss_scan, _state(bosses=()), "B")
-check("ein Scan ohne Bosse (auch ohne globale) wird gesagt",
+check("ein Scan ohne Bosse (auch ohne Bibliothek) wird gesagt",
       _r == (False, None) and "keine Bosse" in _out)
 with _patched((_BD, "take_screenshot", lambda region: None)):
     check("ohne Screenshot nichts", _quiet(_BD.execute_boss_scan, _state(), "B")[0] == (False, None))
@@ -96,9 +96,9 @@ _calls, _r = _order(_state(use_ocr=True, use_llm=True, ocr=False, llm=False))
 check("global ausgeschaltet läuft keiner der beiden", _calls == ["tpl:Drache"])
 _calls, _r = _order(_state(use_ocr=True, ocr_fb=False, use_llm=True, llm_fb=False), hits=("ocr",))
 check("der erste Treffer gewinnt", _calls == ["ocr"] and _r[0] is True and _r[1].name == "Drache")
-_calls, _r = _order(_state(bosses=("Drache", "Wolf"), global_bosses=("Wolf", "Riese")),
+_calls, _r = _order(_state(bosses=("Drache", "Wolf"), boss_library=("Wolf", "Riese")),
                     hits=("tpl:Riese",))
-check("lokale Bosse vor globalen, gleichnamige globale entfallen",
+check("lokale Bosse vor denen der Bibliothek, gleichnamige aus der Bibliothek entfallen",
       _calls == ["tpl:Drache", "tpl:Wolf", "tpl:Riese"] and _r[1].name == "Riese")
 
 
@@ -153,8 +153,8 @@ check("ist er schon vorgemerkt, wird nicht weiter versucht", _boss is None and l
 # =============================================================================
 section("Boss-Scan: LLM mit Wiederholungen und Aufwärmen")
 # =============================================================================
-def _llm_run(answers, matches=(), retry=1, new_boss=None, global_bosses=(), learn_global=False):
-    st = _state(bosses=("Drache",), global_bosses=global_bosses)
+def _llm_run(answers, matches=(), retry=1, new_boss=None, boss_library=(), learn_to_library=False):
+    st = _state(bosses=("Drache",), boss_library=boss_library)
     st.config.llm_retry_count, st.config.llm_timeout = retry, 30
     timeouts, matched, shots = [], list(matches), []
 
@@ -172,7 +172,7 @@ def _llm_run(answers, matches=(), retry=1, new_boss=None, global_bosses=(), lear
                   (_BD, "take_screenshot", _shot),
                   (_BD, "_handle_new_boss", lambda *a: new_boss)):
         cfg = st.boss_scans["B"]
-        snapshot = list(cfg.bosses) + list(st.global_bosses)
+        snapshot = list(cfg.bosses) + list(st.boss_library)
         boss, _out = _quiet(_BD._execute_llm_boss_detection, st, cfg, object(), False, snapshot)
     return boss, timeouts, shots
 
@@ -197,8 +197,8 @@ check("„kein Boss“ wiederholt mit neuem Screenshot",
 _hydra = _BP("Hydra")
 _boss, _, _ = _llm_run([(True, "Hydra", 1.0)], matches=[("Hydra", True)], new_boss=_hydra)
 check("ein neuer Name wird ein neuer Boss", _boss is _hydra)
-_boss, _, _ = _llm_run([(True, "Riese", 1.0)], matches=[("Riese", True)], global_bosses=("Riese",))
-check("ist er schon bekannt (auch global), wird das Profil geliefert",
+_boss, _, _ = _llm_run([(True, "Riese", 1.0)], matches=[("Riese", True)], boss_library=("Riese",))
+check("ist er schon bekannt (auch aus der Bibliothek), wird das Profil geliefert",
       _boss is not None and _boss.name == "Riese")
 _boss, _, _ = _llm_run([(True, "Geist", 1.0)], matches=[("Geist", True)])
 check("ist er weder neu noch auffindbar, nichts", _boss is None)

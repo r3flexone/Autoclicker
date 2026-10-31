@@ -206,7 +206,7 @@ class AppConfig:
     llm_watcher_interval: float = 5.0               # Boss-Watcher Prüf-Intervall in Sekunden
     llm_watcher_max_scans: int = 0                  # Boss-Watcher: max. Scans (0 = unbegrenzt)
     llm_watcher_timeout: float = 0                  # Boss-Watcher: Timeout in Sekunden (0 = unbegrenzt)
-    boss_learn_global: bool = False                 # Neu entdeckte Bosse (LLM/OCR) in die globale Bibliothek statt in den Scan lernen
+    boss_learn_global: bool = False                 # Neu entdeckte Bosse (LLM/OCR) in die Boss-Bibliothek statt in den Scan lernen
 
     # === OCR (Texterkennung) ===
     ocr_enabled: bool = False                        # OCR-Texterkennung aktivieren

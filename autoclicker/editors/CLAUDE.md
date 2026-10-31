@@ -70,7 +70,7 @@ etwas rot wird. Bei der Klick-Runde wurde nichts rot — „die Farbe zieht nur
 mit, wenn der Punkt schon eine hatte“ stand im Code und hier, aber in keiner
 Prüfung.
 
-**Erledigt: die Befehlsschleife des Slot-Editors** (`run_global_slot_editor`,
+**Erledigt: die Befehlsschleife des Slot-Editors** (`run_slot_editor`,
 Komplexität 44, `tests/contract/slot_editor.py` mit 26 Prüfungen vorher). Der
 Snapshot für `cancel` lebt in `_SlotSession` — der Teil, der beim Zerlegen am
 leichtesten verloren geht: `repair` schreibt sofort und zieht den Snapshot

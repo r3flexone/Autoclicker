@@ -514,7 +514,7 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_auto_lernen_schreibt_in_den_laufenden_scan_nicht_in_die_arbeitsansicht(self):
         """Zwei Item-Scans in einer Sequenz: gelernt wird in dem, der LAEUFT.
 
-        `state.global_items` ist nur die Konsolen-Ansicht auf `active_item_scan`
+        `state.scan_items` ist nur die Konsolen-Ansicht auf `active_item_scan`
         (hier: Scan A). Laeuft Scan B mit `learn_unknown`, landete das Item vorher
         in A — und wurde gegen die Items von A dedupliziert. Dazu gehoert: das
         gelernte Item ist GEPARKT (enabled=False), also wird es im naechsten
@@ -549,7 +549,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertEqual(scan_b.items[0].category, "Auto")
         save.assert_called_once_with(scan_b)
         # Die Konsolen-Ansicht zeigt weiter auf A und bleibt unberuehrt.
-        self.assertEqual(list(state.global_items), ["Bogen"])
+        self.assertEqual(list(state.scan_items), ["Bogen"])
 
     def test_auto_lernen_haelt_die_arbeitsansicht_desselben_scans_aktuell(self):
         """Zeigt die Konsolen-Ansicht auf den laufenden Scan, sieht sie das Item.
@@ -577,7 +577,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch("autoclicker.persistence.save_item_scan"):
             item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
 
-        self.assertIn("Auto Slot 1", state.global_items)
+        self.assertIn("Auto Slot 1", state.scan_items)
         flush_item_scan_context(state)
         self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
 

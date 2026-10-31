@@ -11,7 +11,7 @@ from collections import Counter
 from ...config import CONFIG
 from ...imaging import OPENCV_AVAILABLE, take_screenshot
 from ...models import ItemProfile, AutoClickerState
-from ...persistence import save_global_items, active_templates_dir, free_template_file
+from ...persistence import save_scan_items, active_templates_dir, free_template_file
 from ...utils import (
     col, confirm, err, header, hint, safe_input, unique_name,
 )
@@ -33,7 +33,7 @@ def item_autoscan_command(state: AutoClickerState, user_input: str) -> None:
         autoscan nocolor  - Nur Templates, keine Marker-Farben
     """
     with state.lock:
-        slot_list = list(state.global_slots.values())
+        slot_list = list(state.scan_slots.values())
 
     if not slot_list:
         print(f"  -> {err('Keine Slots vorhanden!')} Erst Slots mit 'auto' im Slot-Editor erstellen.")
@@ -152,7 +152,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
     # Bestehende Items mit Templates sammeln (für Duplikat-Erkennung)
     with state.lock:
         existing_templates = [
-            (name, item) for name, item in state.global_items.items()
+            (name, item) for name, item in state.scan_items.items()
             if item.template_names()
         ]
     if existing_templates:
@@ -176,7 +176,7 @@ def _run_autoscan(state: AutoClickerState, slot_list: list, settings: dict,
         created_names.append(item.name)
 
     if created_names or counts["variant"]:
-        save_global_items(state)
+        save_scan_items(state)
     _print_autoscan_summary(len(created_names), counts)
     _offer_llm_names(state, created_names)
 
@@ -215,7 +215,7 @@ def _known_slot(state: AutoClickerState, img, existing: list, min_confidence: fl
     if not matched:
         return None
     with state.lock:
-        item = state.global_items.get(matched)
+        item = state.scan_items.get(matched)
     if item is None or _item_has_compatible_template(item, img, folder):
         print(f"BEREITS VORHANDEN -> '{matched}' (übersprungen)")
         return "duplicate"
@@ -232,7 +232,7 @@ def _new_autoscan_item(state: AutoClickerState, slot, img, slot_num: int,
     """Legt für einen unbekannten Slot-Inhalt ein Item samt Vorlage an."""
     priority = slot_num if settings["auto_priority"] else 1
     with state.lock:
-        item_name = unique_name(f"{slot.name} Item", state.global_items)
+        item_name = unique_name(f"{slot.name} Item", state.scan_items)
     template_file = _store_template(state, img, item_name)
     marker_colors = (_collect_markers_silent(img, slot.slot_color)
                      if settings["use_markers"] else [])
@@ -247,7 +247,7 @@ def _new_autoscan_item(state: AutoClickerState, slot, img, slot_num: int,
         min_confidence=settings["min_confidence"],
     )
     with state.lock:
-        state.global_items[item_name] = item
+        state.scan_items[item_name] = item
     marker_str = f" + {len(marker_colors)} Marker" if marker_colors else ""
     print(f"NEU -> '{item_name}' (P{priority}){marker_str}")
     return item
@@ -277,9 +277,9 @@ def _offer_llm_names(state: AutoClickerState, created_names: list) -> None:
         return
     from .commands import llm_name_items
     with state.lock:
-        targets = [(n, state.global_items[n].template) for n in created_names
-                   if n in state.global_items and state.global_items[n].template]
+        targets = [(n, state.scan_items[n].template) for n in created_names
+                   if n in state.scan_items and state.scan_items[n].template]
     renamed = llm_name_items(state, targets)
     if renamed:
-        save_global_items(state)
+        save_scan_items(state)
     print(f"  -> {renamed} Item(s) benannt.")

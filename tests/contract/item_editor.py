@@ -2,7 +2,7 @@
 
 Geschrieben, BEVOR die neun Funktionen über der Komplexitätsgrenze zerlegt
 wurden (`_learn_single` 26, `_dispatch_command` 23, `edit_item` 21,
-`_run_autoscan` 18, `_capture_template_for_item` 16, `run_global_item_editor`
+`_run_autoscan` 18, `_capture_template_for_item` 16, `run_item_editor`
 15, `llm_name_items` 13, `collect_marker_colors` 12, `create_item` 12).
 
 Die Stellvertreter setzt `_stubs()` in JEDEM Modul des Pakets, das den Namen
@@ -80,7 +80,7 @@ class _Run:
         self.tpl = _Path(f"tpl{_RUNS[0]}")
 
     def _save_items(self, state):
-        self.calls.append(("gespeichert", list(state.global_items)))
+        self.calls.append(("gespeichert", list(state.scan_items)))
         return self.saves.pop(0) if self.saves else True
 
     def stubs(self):
@@ -94,7 +94,7 @@ class _Run:
             "OPENCV_AVAILABLE": self.opencv,
             "PILLOW_AVAILABLE": self.pillow,
             "get_existing_categories": lambda state: list(self.categories),
-            "save_global_items": self._save_items,
+            "save_scan_items": self._save_items,
             "save_item_preset": lambda state, name: self.calls.append(("save", name)),
             "load_item_preset": lambda state, name: self.calls.append(("load", name)),
             "delete_item_preset": lambda name: self.calls.append(("preset del", name)),
@@ -137,16 +137,16 @@ def _editor(inputs, items=("A", "B"), **kw):
     config = _ISC("Inv", owner_sequence="farm", items=[_item(n) for n in items])
     run.state.item_scans["Inv"] = config
     run.state.active_item_scan = "Inv"
-    run.state.global_items = {it.name: it for it in config.items}
-    run(_ED.run_global_item_editor)
+    run.state.scan_items = {it.name: it for it in config.items}
+    run(_ED.run_item_editor)
     return run
 
 
 _r = _Run(inputs=["done"], pillow=False)
-_r(_ED.run_global_item_editor)
+_r(_ED.run_item_editor)
 check("Hauptschleife: ohne Pillow öffnet der Editor nicht", "Pillow nicht installiert" in _r.output)
 _r = _Run(inputs=["done"])
-_r(_ED.run_global_item_editor)
+_r(_ED.run_item_editor)
 check("Hauptschleife: ohne gewählten Scan wird es gesagt", "nicht vorbereitet" in _r.output)
 _r = _editor(["done"])
 check("Hauptschleife: 'done' speichert und beendet",
@@ -156,7 +156,7 @@ check("Hauptschleife: scheitert das Speichern, bleibt sie offen",
       "bleibt offen" in _r.output and len(_r.calls) == 2)
 _r = _editor(["del 1", "cancel"])
 check("Hauptschleife: 'cancel' stellt die Items vom Start wieder her",
-      list(_r.state.global_items) == ["A", "B"] and "[ABBRUCH]" in _r.output)
+      list(_r.state.scan_items) == ["A", "B"] and "[ABBRUCH]" in _r.output)
 _r = _editor(["", "quatsch", "save", "done"])
 check("Hauptschleife: leer fragt weiter, Unbekanntes wird gesagt",
       _r.output.count("Unbekannter Befehl") == 2)
@@ -181,28 +181,28 @@ check("Hauptschleife: Preset-Namen behalten ihre Schreibweise",
       == [("save", "Mein Set"), ("load", "Altes"), ("preset del", "Weg")])
 
 _r = _editor(["add", "add", "done"], create_item=lambda st: _item("Neu"))
-check("Hauptschleife: add übernimmt das neue Item", list(_r.state.global_items)[-1] == "Neu")
+check("Hauptschleife: add übernimmt das neue Item", list(_r.state.scan_items)[-1] == "Neu")
 _r = _editor(["add", "done"], create_item=lambda st: None)
-check("Hauptschleife: ein abgebrochenes add ändert nichts", list(_r.state.global_items) == ["A", "B"])
+check("Hauptschleife: ein abgebrochenes add ändert nichts", list(_r.state.scan_items) == ["A", "B"])
 _r = _editor(["edit 2", "done"], edit_item=lambda st, it: _item("B2"))
 check("Hauptschleife: edit mit neuem Namen ersetzt den Eintrag",
-      list(_r.state.global_items) == ["A", "B2"])
+      list(_r.state.scan_items) == ["A", "B2"])
 _r = _editor(["edit 2", "done"], answers=[False], edit_item=lambda st, it: _item("A"))
 check("Hauptschleife: edit auf einen vergebenen Namen fragt — ohne Zustimmung bleibt alles",
-      list(_r.state.global_items) == ["A", "B"] and "unverändert" in _r.output)
+      list(_r.state.scan_items) == ["A", "B"] and "unverändert" in _r.output)
 _r = _editor(["edit 2", "done"], answers=[True], edit_item=lambda st, it: _item("A", priority=7))
 check("Hauptschleife: mit Zustimmung wird überschrieben",
-      list(_r.state.global_items) == ["A"] and _r.state.global_items["A"].priority == 7)
+      list(_r.state.scan_items) == ["A"] and _r.state.scan_items["A"].priority == 7)
 _r = _editor(["edit 9", "edit x", "done"])
 check("Hauptschleife: edit ausserhalb bzw. mit Buchstaben",
       "Ungültig! Verfügbar: 1-2" in _r.output and "Format: edit <Nr>" in _r.output)
 _r = _editor(["del 1", "del 9", "del x", "done"])
-check("Hauptschleife: del", list(_r.state.global_items) == ["B"]
+check("Hauptschleife: del", list(_r.state.scan_items) == ["B"]
       and "Ungültig! Verfügbar: 1-1" in _r.output and "Format: del <Nr>" in _r.output)
 _r = _editor(["del all", "done"], answers=[True])
-check("Hauptschleife: del all nach Rückfrage", _r.state.global_items == {})
+check("Hauptschleife: del all nach Rückfrage", _r.state.scan_items == {})
 _r = _editor(["del all", "done"], answers=[False])
-check("Hauptschleife: del all ohne Zustimmung", len(_r.state.global_items) == 2)
+check("Hauptschleife: del all ohne Zustimmung", len(_r.state.scan_items) == 2)
 _r = _editor(["del all", "done"], items=())
 check("Hauptschleife: del all ohne Items", "Keine Items vorhanden" in _r.output)
 _r = _editor(["show", "done"])
@@ -223,7 +223,7 @@ def _interrupt(*_a):
 
 
 _r = _editor(["del 1", "templates"], handle_templates_command=_interrupt)
-check("Hauptschleife: Strg+C verwirft", list(_r.state.global_items) == ["A", "B"]
+check("Hauptschleife: Strg+C verwirft", list(_r.state.scan_items) == ["A", "B"]
       and "[ABBRUCH]" in _r.output)
 
 # ============================================================ create_item
@@ -249,10 +249,10 @@ check("anlegen: ohne OpenCV kein Template und gesagt",
 _r = _Run(inputs=["cancel"])
 check("anlegen: 'cancel' beim Namen", _r(_IT.create_item) is None)
 _r = _Run(inputs=["A"], answers=[False])
-_r.state.global_items = {"A": _item("A")}
+_r.state.scan_items = {"A": _item("A")}
 check("anlegen: vergebener Name ohne Zustimmung", _r(_IT.create_item) is None)
 _r = _Run(inputs=["A", "skip", "", "", ""], answers=[True])
-_r.state.global_items = {"A": _item("A")}
+_r.state.scan_items = {"A": _item("A")}
 check("anlegen: mit Zustimmung wird überschrieben",
       _r(_IT.create_item).name == "A" and "überschrieben" in _r.output)
 _r = _Run(inputs=["X", "skip", "7", "", ""], categories=["Helme"])
@@ -272,7 +272,7 @@ check("bearbeiten: Marker, Varianten und Schalter bleiben",
 check("bearbeiten: die Varianten-Liste ist eine Kopie",
       _new.template_variants is not _old.template_variants)
 _r = _Run(inputs=["B", "x", "0"], choices=[0, 2, 2, 5])
-_r.state.global_items = {"Alt": _old, "B": _item("B")}
+_r.state.scan_items = {"Alt": _old, "B": _item("B")}
 _new = _r(_IT.edit_item, _old)
 check("bearbeiten: ein vergebener Name wird abgelehnt",
       _new.name == "Alt" and "bereits vergeben" in _r.output)
@@ -287,7 +287,7 @@ check("bearbeiten: Template ohne Region bleibt", _r(_IT.edit_item, _old).templat
 # ============================================================ learn
 def _learn(cmd, inputs=(), slots=3, markers=((1, 2, 3),), **kw):
     run = _Run(inputs=inputs, collect_marker_colors=lambda region, color: list(markers), **kw)
-    run.state.global_slots = {s.name: s for s in _slots(slots)}
+    run.state.scan_slots = {s.name: s for s in _slots(slots)}
     run(_LE.item_learn_command, cmd)
     return run
 
@@ -295,37 +295,37 @@ def _learn(cmd, inputs=(), slots=3, markers=((1, 2, 3),), **kw):
 _r = _learn("learn 1", slots=0)
 check("lernen: ohne Slots wird es gesagt", "Keine Slots vorhanden" in _r.output)
 _r = _learn("learn 2", inputs=["", "", "", ""])
-_new = _r.state.global_items.get("Item 1")
+_new = _r.state.scan_items.get("Item 1")
 check("lernen: ein Item aus Slot 2 mit Markern und Template",
       _new is not None and _new.marker_colors == [(1, 2, 3)] and _new.template == "item_1.png")
 check("lernen: die vorläufige Vorlage ist umbenannt",
       (_r.tpl / "item_1.png").exists() and not (_r.tpl / "_learn_temp_2.png").exists())
 _r = _learn("learn", inputs=["2", "Kiste", "", "", ""])
-check("lernen: ohne Nummer wird nach dem Slot gefragt", "Kiste" in _r.state.global_items)
+check("lernen: ohne Nummer wird nach dem Slot gefragt", "Kiste" in _r.state.scan_items)
 _r = _learn("learn", inputs=["x"])
 check("lernen: eine falsche Slot-Eingabe wird gesagt", "Ungültige Eingabe" in _r.output)
 _r = _learn("learn 9")
 check("lernen: ein Slot ausserhalb wird gesagt", "Ungültiger Slot" in _r.output)
 _r = _learn("learn 1", markers=())
-check("lernen: ohne Farben kein Item", "Keine Farben" in _r.output and not _r.state.global_items)
+check("lernen: ohne Farben kein Item", "Keine Farben" in _r.output and not _r.state.scan_items)
 for _label, _seq in (("Name", ["cancel"]), ("Priorität", ["", "", "cancel"]),
                      ("Bestätigung", ["", "", "", "cancel"])):
     _r = _learn("learn 1", inputs=_seq)
     check(f"lernen: Abbruch bei {_label} räumt die vorläufige Vorlage weg",
-          not _r.state.global_items and not (_r.tpl / "_learn_temp_1.png").exists())
+          not _r.state.scan_items and not (_r.tpl / "_learn_temp_1.png").exists())
 _r = _Run(inputs=["A"], answers=[False], collect_marker_colors=lambda r, c: [(1, 2, 3)])
-_r.state.global_slots = {s.name: s for s in _slots(1)}
-_r.state.global_items = {"A": _item("A")}
+_r.state.scan_slots = {s.name: s for s in _slots(1)}
+_r.state.scan_items = {"A": _item("A")}
 _r(_LE.item_learn_command, "learn 1")
 check("lernen: vergebener Name ohne Zustimmung räumt auf",
       not (_r.tpl / "_learn_temp_1.png").exists() and "Abgebrochen" in _r.output)
 _r = _learn("learn 1-2", inputs=["Helme", ""])
 check("lernen in Serie: je Slot ein Item mit Template und steigender Priorität",
-      [(n, it.priority, it.template, it.category) for n, it in _r.state.global_items.items()]
+      [(n, it.priority, it.template, it.category) for n, it in _r.state.scan_items.items()]
       == [("S0 Item", 1, "s0_item.png", "Helme"), ("S1 Item", 2, "s1_item.png", "Helme")])
 _r = _learn("learn 2-3 simple", inputs=["", ""])
 check("lernen in Serie: 'simple' ohne Template, Priorität ab 1",
-      [(n, it.priority, it.template) for n, it in _r.state.global_items.items()]
+      [(n, it.priority, it.template) for n, it in _r.state.scan_items.items()]
       == [("S1 Item", 1, None), ("S2 Item", 2, None)])
 _r = _learn("learn 2-9")
 check("lernen in Serie: ein Bereich ausserhalb", "Ungültiger Bereich" in _r.output)
@@ -349,8 +349,8 @@ def _autoscan(cmd="autoscan", inputs=("", "", "", ""), answers=(True,), slots=3,
     if pictures is not None:
         run.image = None
         run.extra["take_screenshot"] = lambda region: pictures.pop(0) if pictures else None
-    run.state.global_slots = {s.name: s for s in _slots(slots)}
-    run.state.global_items = {it.name: it for it in items}
+    run.state.scan_slots = {s.name: s for s in _slots(slots)}
+    run.state.scan_items = {it.name: it for it in items}
     run(_AU.item_autoscan_command, cmd)
     run.found_roots = found
     return run
@@ -361,31 +361,31 @@ check("autoscan: ohne Slots wird es gesagt", "Keine Slots" in _r.output)
 _r = _autoscan(opencv=False)
 check("autoscan: ohne OpenCV wird es gesagt", "OpenCV nicht installiert" in _r.output)
 _r = _autoscan(answers=(False,))
-check("autoscan: ohne Zustimmung nichts", not _r.state.global_items and "Abgebrochen" in _r.output)
+check("autoscan: ohne Zustimmung nichts", not _r.state.scan_items and "Abgebrochen" in _r.output)
 _r = _autoscan(inputs=("Erze", "2", "", "80"))
 check("autoscan: je Slot ein Item, alle P1 bei Wahl 2, mit Markern",
       [(n, it.priority, it.category, it.marker_colors, round(it.min_confidence, 2))
-       for n, it in _r.state.global_items.items()]
+       for n, it in _r.state.scan_items.items()]
       == [(f"S{i} Item", 1, "Erze", [(7, 7, 7)], 0.8) for i in range(3)])
 check("autoscan: gespeichert wird einmal am Ende", [c[0] for c in _r.calls] == ["gespeichert"])
 _r = _autoscan(cmd="autoscan nocolor")
 check("autoscan nocolor: ohne Marker, Priorität nach Slot",
-      [(it.priority, it.marker_colors) for it in _r.state.global_items.values()]
+      [(it.priority, it.marker_colors) for it in _r.state.scan_items.values()]
       == [(1, []), (2, []), (3, [])])
 _r = _autoscan(items=[_item("S0 Item")], slots=1)
 check("autoscan: ein vergebener Name bekommt einen Zähler",
-      list(_r.state.global_items) == ["S0 Item", "S0 Item 2"])
+      list(_r.state.scan_items) == ["S0 Item", "S0 Item 2"])
 _old_item = _item("Alt", template="alt.png")
 _r = _autoscan(shots=[None, _Img(), _Img((6, 6))], items=[_old_item],
                match=lambda img: "Alt", compatible=True)
 check("autoscan: Fehlschlag und Duplikat werden gezählt, nichts neu",
-      list(_r.state.global_items) == ["Alt"]
+      list(_r.state.scan_items) == ["Alt"]
       and "0 neu erstellt, 2 Duplikat(e) übersprungen, 1 fehlgeschlagen" in _r.output
       and _r.calls == [])
 _r = _autoscan(slots=1, items=[_item("Alt", template="alt.png")],
                match=lambda img: "Alt", compatible=False)
 check("autoscan: ein Treffer in anderer Grösse wird eine Variante",
-      _r.state.global_items["Alt"].template_variants == ["alt_4x2.png"]
+      _r.state.scan_items["Alt"].template_variants == ["alt_4x2.png"]
       and "1 Grössenvariante(n) ergänzt" in _r.output and _r.calls)
 _r = _autoscan(slots=2)
 check("autoscan: die Duplikatprüfung sieht den Vorlagenordner der Sequenz",
@@ -396,7 +396,7 @@ _r = _Run(inputs=["", "", "", ""], answers=[True, True],
           _collect_markers_silent=lambda img, color: [],
           llm_name_items=lambda st, targets: _named.append(targets) or 1)
 _r.state.config.llm_enabled = True
-_r.state.global_slots = {s.name: s for s in _slots(1)}
+_r.state.scan_slots = {s.name: s for s in _slots(1)}
 _r(_AU.item_autoscan_command, "autoscan")
 check("autoscan: mit LLM werden die neuen Items zum Benennen angeboten",
       _named == [[("S0 Item", "s0_item.png")]] and len(_r.calls) == 2)
@@ -406,15 +406,15 @@ _r = _Run(inputs=["", "", "", ""], answers=[True],
           crop_screen_region=lambda img, region, origin: _Img())
 _r(_AU.item_autoscan_from_image, _slots(2), object(), (100, 200))
 check("autoscan aus einem Bild: geschnitten statt neu aufgenommen",
-      list(_r.state.global_items) == ["S0 Item", "S1 Item"])
+      list(_r.state.scan_items) == ["S0 Item", "S1 Item"])
 
 # ============================================================ Vorlagen
 def _template(cmd, inputs, item=None, slots=2, sizes=None, **kw):
     item = item or _item("Bogen")
     run = _Run(inputs=list(inputs),
                template_size=lambda name, root=None: (sizes or {}).get(name), **kw)
-    run.state.global_slots = {s.name: s for s in _slots(slots)}
-    run.state.global_items = {"Bogen": item}
+    run.state.scan_slots = {s.name: s for s in _slots(slots)}
+    run.state.scan_items = {"Bogen": item}
     run(_CO.handle_template_command, cmd)
     run.item = item
     return run
@@ -482,14 +482,14 @@ else:
     # das Umbenennen danach mit WinError 32, und `autoname` benannte dort kein
     # einziges Item mit Vorlage um. Unter Linux fällt es nicht auf; deshalb
     # steht der Fall hier und läuft in der Windows-Matrix der CI mit.
-    _r.state.global_items = {n: _item(n, template=t) for n, t in
+    _r.state.scan_items = {n: _item(n, template=t) for n, t in
                              (("Auto 1", "a.png"), ("Auto 2", "b.png"), ("Auto 3", "c.png"),
                               ("Auto 4", "fehlt.png"), ("Auto 5", "kaputt.png"))}
-    _count = _r(_CO.llm_name_items, [(n, it.template) for n, it in _r.state.global_items.items()])
+    _count = _r(_CO.llm_name_items, [(n, it.template) for n, it in _r.state.scan_items.items()])
     check("LLM-Benennung: benannt, der zweite gleiche Name bekommt einen Zähler",
-          _count == 2 and list(_r.state.global_items)[-2:] == ["Godlike Bow", "Godlike Bow 2"])
+          _count == 2 and list(_r.state.scan_items)[-2:] == ["Godlike Bow", "Godlike Bow 2"])
     check("LLM-Benennung: ohne Vorschlag, fehlende und kaputte Vorlage bleiben",
-          {"Auto 3", "Auto 4", "Auto 5"} <= set(_r.state.global_items)
+          {"Auto 3", "Auto 4", "Auto 5"} <= set(_r.state.scan_items)
           and "kein Name vom LLM" in _r.output and "Template fehlt" in _r.output
           and "nicht lesbar" in _r.output)
 

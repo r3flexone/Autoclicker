@@ -104,7 +104,7 @@ def _check_templates(state: AutoClickerState, report: CheckReport) -> None:
                          _scan_target("boss", scan.name))
                         for b in scan.bosses]
         sources += [(f"Boss '{b.name}' (Bibliothek)", b.template, _scan_target("boss", ""))
-                    for b in state.global_bosses]
+                    for b in state.boss_library]
         sources += [(f"Icon-Scan '{c.name}'", c.template, _scan_target("icon", c.name))
                     for c in state.icon_scans.values()]
 
@@ -130,7 +130,7 @@ def _check_detection(state: AutoClickerState, report: CheckReport) -> None:
             candidates += [(f"Boss '{b.name}' (Scan '{scan.name}')", b,
                             _scan_target("boss", scan.name)) for b in scan.bosses]
         candidates += [(f"Boss '{b.name}' (Bibliothek)", b, _scan_target("boss", ""))
-                       for b in state.global_bosses]
+                       for b in state.boss_library]
         candidates += [(f"Icon-Scan '{c.name}'", c, _scan_target("icon", c.name))
                        for c in state.icon_scans.values()]
         items = [(f"Item '{i.name}' (Scan '{scan.name}')", i, _scan_target("item", scan.name))

@@ -26,7 +26,7 @@ def setup():
     b.boss_new({"name": "Ancient Dragon"})
     b.marker_measure({"kind": "boss"})
     b.boss_set({"field": "action", "value": "item_scan"})
-    b.boss_new({"name": "Hydra", "global": True})
+    b.boss_new({"name": "Hydra", "in_library": True})
     b.icon_scan_new({"name": "Mission nicht machbar"})
     b.scan_screenshot({"kind": "icon"})
     b.icon_set({"field": "region", "value": list(region)})

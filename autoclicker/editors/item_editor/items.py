@@ -66,7 +66,7 @@ def ask_new_item_name(state: AutoClickerState, prompt_extra: str = "",
     die Rueckfrage nach dem Ueberschreiben. `next_free_name()` fuellt Luecken.
     """
     with state.lock:
-        proposal = next_free_name("Item", state.global_items)
+        proposal = next_free_name("Item", state.scan_items)
     item_name = safe_input(f"  Item-Name (Enter = '{proposal}'{prompt_extra}): ").strip()
     if is_cancel(item_name):
         if cancel_message:
@@ -75,7 +75,7 @@ def ask_new_item_name(state: AutoClickerState, prompt_extra: str = "",
     item_name = item_name or proposal
 
     with state.lock:
-        name_exists = item_name in state.global_items
+        name_exists = item_name in state.scan_items
     if name_exists:
         if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
             print("  -> Abgebrochen")
@@ -190,7 +190,7 @@ def _edit_item_name(state: AutoClickerState, item: ItemProfile, draft: ItemProfi
     if not name_input:
         return
     with state.lock:
-        collision = name_input != item.name and name_input in state.global_items
+        collision = name_input != item.name and name_input in state.scan_items
     if collision:
         print("  -> Name bereits vergeben. Bitte einen anderen Namen wählen.")
         return

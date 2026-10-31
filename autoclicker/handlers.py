@@ -177,8 +177,8 @@ def handle_reset(state: AutoClickerState) -> None:
 
     with state.lock:
         num_points = len(state.points)
-        num_slots = len(state.global_slots)
-        num_items = len(state.global_items)
+        num_slots = len(state.scan_slots)
+        num_items = len(state.scan_items)
         num_item_scans = len(state.item_scans)
         num_boss_scans = len(state.boss_scans)
         num_icon_scans = len(state.icon_scans)
@@ -206,8 +206,8 @@ def handle_reset(state: AutoClickerState) -> None:
         with state.lock:
             state.points.clear()
             state.active_sequence = None
-            state.global_slots.clear()
-            state.global_items.clear()
+            state.scan_slots.clear()
+            state.scan_items.clear()
             state.item_scans.clear()
             state.boss_scans.clear()
             state.icon_scans.clear()
@@ -1017,10 +1017,10 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
             state.item_scans.clear()
             state.boss_scans.clear()
             state.icon_scans.clear()
-            state.global_slots.clear()
-            state.global_items.clear()
+            state.scan_slots.clear()
+            state.scan_items.clear()
     with state.lock:
-        count = (len(state.global_slots), len(state.global_items),
+        count = (len(state.scan_slots), len(state.scan_items),
                   len(state.item_scans), len(state.points))
     print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
           f"{count[0]} Slot(s), {count[1]} Item(s), {count[2]} Item-Scan(s), "

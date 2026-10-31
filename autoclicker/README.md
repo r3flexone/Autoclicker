@@ -38,7 +38,7 @@ sondern müssen über `runtime.actions.safe_click` bzw. `safe_key` laufen.
 - `paths.py`, `serialization.py`, `_scan_store.py`: gemeinsame Grundlagen.
 - `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`: Dateien der
   jeweiligen Domäne.
-- `globals.py`, `presets.py`: globale Slots/Items und Presets.
+- `scan_views.py`, `presets.py`: Arbeitsansichten auf die Slots/Items des gewählten Scans, dazu Presets.
 - `schema.py`, `sweep.py`: Schema-Version (Stempel, Erkennung einer neueren Fassung),
   Start-Durchgang mit Sicherungen und Bestandsprüfung.
 

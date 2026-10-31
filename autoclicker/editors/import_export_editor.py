@@ -65,8 +65,8 @@ def _show_data_overview(state: AutoClickerState) -> None:
     with state.lock:
         print(f"\n  {col('Geladen im Arbeitsspeicher (der Export liest die Platte):', 'bold')}")
         print(f"    Punkte:      {len(state.points)}")
-        print(f"    Slots:       {len(state.global_slots)}")
-        print(f"    Items:       {len(state.global_items)}")
+        print(f"    Slots:       {len(state.scan_slots)}")
+        print(f"    Items:       {len(state.scan_items)}")
         print(f"    Item-Scans:  {len(state.item_scans)}")
         print(f"    Boss-Scans:  {len(state.boss_scans)}")
         print(f"    Icon-Scans:  {len(state.icon_scans)}")
@@ -530,7 +530,7 @@ def run_calibration(state: AutoClickerState) -> None:
     _print_calibration_preview(state, transform)
 
     with state.lock:
-        slot_count = len(state.global_slots)
+        slot_count = len(state.scan_slots)
     if slot_count:
         _warn_slots_are_approximate(slot_count)
     extent = _ask_calibration_extent()
@@ -645,7 +645,7 @@ _CALIBRATION_CAPTION = {
     "points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
     "item_scans": "Item-Scan-Fensteranker",
     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-    "bosses": "globale Bosse", "sequences": "Sequenzdateien",
+    "sequences": "Sequenzdateien",
 }
 
 

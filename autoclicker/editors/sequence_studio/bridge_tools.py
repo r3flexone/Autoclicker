@@ -126,7 +126,7 @@ class BridgeToolsMixin:
             for boss in cfg.bosses:
                 if boss.action_point_id == point_id:
                     out.append((f"Boss '{boss.name}' in '{name}'", "Aktion"))
-        for boss in self.global_bosses:
+        for boss in self.boss_library:
             if boss.action_point_id == point_id:
                 out.append((f"Boss '{boss.name}' aus Bibliothek", "Aktion"))
         for name, cfg in self.icon_scans.items():

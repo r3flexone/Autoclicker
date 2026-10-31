@@ -11,7 +11,7 @@ Modul-Aufteilung:
     boss_scans.py     BossScanConfig + Boss-Bibliothek
     icon_scans.py     IconScanConfig
     _scan_store.py    geteiltes Skelett der drei Scan-Arten (+ LOAD_EXCEPTIONS)
-    globals.py        Slot-/Item-Arbeitsansicht der TUI zurück in den Scan, Kategorien
+    scan_views.py     Slot-/Item-Arbeitsansicht der TUI zurück in den Scan, Kategorien
     presets.py        Slot- und Item-Presets
     sweep.py          schickt beim Programmstart ALLE Dateien in einem Durchgang durch
                       Loader und Serializer (gleiche Logik nutzt tools/migrate.py)
@@ -23,15 +23,15 @@ holen; alles andere importiert man aus dem Untermodul.
 from .boss_scans import (
     save_boss_scan, load_boss_scan_file,
     list_available_boss_scans,
-    save_global_bosses, load_global_bosses,
+    save_boss_library, load_boss_library,
 )
 from .sweep import sweep_on_start
 from .icon_scans import (
     save_icon_scan, load_icon_scan_file,
     list_available_icon_scans,
 )
-from .globals import (
-    save_global_slots, save_global_items,
+from .scan_views import (
+    save_scan_slots, save_scan_items,
     get_existing_categories, shift_category_priorities,
 )
 from .item_scans import (
@@ -76,12 +76,12 @@ __all__ = [
     # boss_scans
     'save_boss_scan', 'load_boss_scan_file',
     'list_available_boss_scans',
-    'save_global_bosses', 'load_global_bosses',
+    'save_boss_library', 'load_boss_library',
     # icon_scans
     'save_icon_scan', 'load_icon_scan_file',
     'list_available_icon_scans',
-    # globals
-    'save_global_slots', 'save_global_items',
+    # scan_views
+    'save_scan_slots', 'save_scan_items',
     'get_existing_categories', 'shift_category_priorities',
     # presets
     'list_slot_presets', 'save_slot_preset', 'load_slot_preset', 'delete_slot_preset',

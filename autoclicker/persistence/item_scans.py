@@ -70,8 +70,8 @@ def load_all_item_scans(state: AutoClickerState) -> None:
         if state.active_item_scan not in state.item_scans:
             state.active_item_scan = next(iter(state.item_scans), "")
         cfg = loaded.get(state.active_item_scan)
-        state.global_slots = {s.name: s for s in cfg.slots} if cfg else {}
-        state.global_items = {i.name: i for i in cfg.items} if cfg else {}
+        state.scan_slots = {s.name: s for s in cfg.slots} if cfg else {}
+        state.scan_items = {i.name: i for i in cfg.items} if cfg else {}
 
 
 def bind_item_scan_context(state: AutoClickerState, name: str) -> bool:
@@ -79,8 +79,8 @@ def bind_item_scan_context(state: AutoClickerState, name: str) -> bool:
     with state.lock:
         cfg = state.item_scans.get(name)
         state.active_item_scan = name if cfg else ""
-        state.global_slots = ({slot.name: slot for slot in cfg.slots} if cfg else {})
-        state.global_items = ({item.name: item for item in cfg.items} if cfg else {})
+        state.scan_slots = ({slot.name: slot for slot in cfg.slots} if cfg else {})
+        state.scan_items = ({item.name: item for item in cfg.items} if cfg else {})
     return cfg is not None
 
 
@@ -90,8 +90,8 @@ def flush_item_scan_context(state: AutoClickerState) -> Optional[ItemScanConfig]
         cfg = state.item_scans.get(state.active_item_scan)
         if cfg is None:
             return None
-        cfg.slots = list(state.global_slots.values())
-        cfg.items = list(state.global_items.values())
+        cfg.slots = list(state.scan_slots.values())
+        cfg.items = list(state.scan_items.values())
         return cfg
 
 
@@ -112,7 +112,7 @@ def resolve_click_references(state: AutoClickerState, sequence=None) -> list[str
         seq = sequence or state.active_sequence
         points = {p.id: p for p in (seq.points if seq else [])}
         items = [item for cfg in state.item_scans.values() for item in cfg.items]
-        bosses = list(state.global_bosses)
+        bosses = list(state.boss_library)
         for cfg in state.boss_scans.values():
             bosses += list(cfg.bosses)
         icons = list(state.icon_scans.values())

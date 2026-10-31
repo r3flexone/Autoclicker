@@ -85,15 +85,15 @@ _SCAN_MODES_TEXT = (
 class _LibraryState:
     """Ein `AutoClickerState`-Stellvertreter für die Boss-Bibliothek.
 
-    `save_global_bosses()`/`load_global_bosses()` nehmen einen State, benutzen
-    davon aber nur `lock` und `global_bosses`. Diesen Prozess einen echten State
+    `save_boss_library()`/`load_boss_library()` nehmen einen State, benutzen
+    davon aber nur `lock` und `boss_library`. Diesen Prozess einen echten State
     bauen zu lassen hiesse, den halben Hauptprozess mitzuziehen — für eine
     Liste. Dieselbe Entscheidung wie bei `_ConfigOnly` in `scan_learning.py`.
     """
 
     def __init__(self, bosses=None):
         self.lock = threading.Lock()
-        self.global_bosses = list(bosses or [])
+        self.boss_library = list(bosses or [])
 
 
 class ScanDetectMixin:
@@ -105,12 +105,12 @@ class ScanDetectMixin:
         """Wird aus `_scan_init()` gerufen."""
         self.boss_scans: dict = {}
         self.icon_scans: dict = {}
-        self.global_bosses: list = []
+        self.boss_library: list = []
         # Der offene Scan ist der Zusammenhang, die Wahl das bearbeitete Ding —
         # dieselbe Trennung wie `open_scan` neben `scan_name` bei den Items.
         self.boss_open: str = ""
         self.boss_choice: str = ""
-        self.boss_choice_global: bool = False
+        self.boss_choice_in_library: bool = False
         self.icon_open: str = ""
         # Worauf das Region- bzw. Aktions-Werkzeug wirkt: ("boss"|"icon", Name).
         # Der Modus allein reicht nicht — dieselbe Geste setzt je nach Art eine
@@ -135,7 +135,7 @@ class ScanDetectMixin:
             list_available_boss_scans,
             list_available_icon_scans,
             load_boss_scan_file,
-            load_global_bosses,
+            load_boss_library,
             load_icon_scan_file,
         )
         self.boss_scans = {}
@@ -149,13 +149,13 @@ class ScanDetectMixin:
             if cfg is not None:
                 self.icon_scans[cfg.name or name] = cfg
         stand_in = _LibraryState()
-        load_global_bosses(stand_in, self.board.name)
-        self.global_bosses = stand_in.global_bosses
+        load_boss_library(stand_in, self.board.name)
+        self.boss_library = stand_in.boss_library
         if self.boss_open not in self.boss_scans:
             self.boss_open = next(iter(self.boss_scans), "")
         if self.icon_open not in self.icon_scans:
             self.icon_open = next(iter(self.icon_scans), "")
-        self.boss_choice, self.boss_choice_global = "", False
+        self.boss_choice, self.boss_choice_in_library = "", False
 
     def _detection_paths(self) -> list:
         """Was der Reiter an Boss-/Icon-Dateien liest — für den Fremd-Vergleich.
@@ -180,20 +180,20 @@ class ScanDetectMixin:
         return {
             "boss_scans": copy.deepcopy(self.boss_scans),
             "icon_scans": copy.deepcopy(self.icon_scans),
-            "global_bosses": copy.deepcopy(self.global_bosses),
+            "boss_library": copy.deepcopy(self.boss_library),
             "boss_open": self.boss_open,
             "boss_choice": self.boss_choice,
-            "boss_choice_global": self.boss_choice_global,
+            "boss_choice_in_library": self.boss_choice_in_library,
             "icon_open": self.icon_open,
         }
 
     def _detection_undo(self, stamp: dict) -> None:
         self.boss_scans = stamp.get("boss_scans", {})
         self.icon_scans = stamp.get("icon_scans", {})
-        self.global_bosses = stamp.get("global_bosses", [])
+        self.boss_library = stamp.get("boss_library", [])
         self.boss_open = stamp.get("boss_open", "")
         self.boss_choice = stamp.get("boss_choice", "")
-        self.boss_choice_global = stamp.get("boss_choice_global", False)
+        self.boss_choice_in_library = stamp.get("boss_choice_in_library", False)
         self.icon_open = stamp.get("icon_open", "")
         # Ein Testergebnis gehört zu dem Stand, in dem es gemessen wurde.
         self._boss_test_result = self._icon_test_result = None
@@ -206,11 +206,11 @@ class ScanDetectMixin:
         return {
             "boss_scans": [self._boss_scan_json(c) for c in self.boss_scans.values()],
             "icon_scans": [self._icon_scan_json(c) for c in self.icon_scans.values()],
-            "global_bosses": [self._boss_json(b, True) for b in self.global_bosses],
+            "boss_library": [self._boss_json(b, True) for b in self.boss_library],
             "boss": {
                 "open": self.boss_open,
                 "choice": self.boss_choice,
-                "choice_global": self.boss_choice_global,
+                "choice_in_library": self.boss_choice_in_library,
                 "test": self._boss_test_result,
                 "tests": self._boss_test_results,
             },
@@ -252,7 +252,7 @@ class ScanDetectMixin:
     def _boss_json(self, b: BossProfile, from_library: bool) -> dict:
         return {
             "name": b.name,
-            "global": from_library,
+            "in_library": from_library,
             "template": b.template,
             "preview": self._template_url(b.template) if b.template else "",
             "confidence": b.min_confidence,
@@ -345,7 +345,7 @@ class ScanDetectMixin:
         name = str((data or {}).get("name") or "")
         if name and name not in self.boss_scans:
             return self._scan_report(f"Boss-Scan '{name}' gibt es nicht.", "err")
-        self.boss_open, self.boss_choice, self.boss_choice_global = name, "", False
+        self.boss_open, self.boss_choice, self.boss_choice_in_library = name, "", False
         self._boss_test_result, self._boss_test_results = None, {}
         self._region_target = None
         if not name:
@@ -427,23 +427,23 @@ class ScanDetectMixin:
         self._scan_load()
         data = data or {}
         name = str(data.get("name") or "")
-        from_library = bool(data.get("global"))
+        from_library = bool(data.get("in_library"))
         if name and self._boss_find(name, from_library) is None:
             return self._scan_report(f"Boss '{name}' gibt es nicht.", "err")
-        self.boss_choice, self.boss_choice_global = name, from_library
+        self.boss_choice, self.boss_choice_in_library = name, from_library
         self._region_target = None
         return self.scan_data()
 
     def _boss_find(self, name: str, from_library: bool) -> Optional[BossProfile]:
         if from_library:
-            return next((b for b in self.global_bosses if b.name == name), None)
+            return next((b for b in self.boss_library if b.name == name), None)
         cfg = self.boss_scans.get(self.boss_open)
         if cfg is None:
             return None
         return next((b for b in cfg.bosses if b.name == name), None)
 
     def _boss_selected(self) -> Optional[BossProfile]:
-        return (self._boss_find(self.boss_choice, self.boss_choice_global)
+        return (self._boss_find(self.boss_choice, self.boss_choice_in_library)
                 if self.boss_choice else None)
 
     def _boss_names(self) -> list:
@@ -456,13 +456,13 @@ class ScanDetectMixin:
         """
         cfg = self.boss_scans.get(self.boss_open)
         names = [b.name for b in (cfg.bosses if cfg else [])]
-        return names + [b.name for b in self.global_bosses]
+        return names + [b.name for b in self.boss_library]
 
     def boss_new(self, data: Optional[dict] = None) -> dict:
         """Legt einen Boss an — im offenen Scan oder in der Bibliothek."""
         self._scan_load()
         data = data or {}
-        in_library = bool(data.get("global"))
+        in_library = bool(data.get("in_library"))
         cfg = self.boss_scans.get(self.boss_open)
         if cfg is None and not in_library:
             return self._scan_report("Erst einen Boss-Scan anlegen oder öffnen.", "warn")
@@ -470,10 +470,10 @@ class ScanDetectMixin:
         self._remember(f"Boss '{name}' angelegt")
         boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
         if in_library:
-            self.global_bosses.append(boss)
+            self.boss_library.append(boss)
         else:
             cfg.bosses.append(boss)
-        self.boss_choice, self.boss_choice_global = name, in_library
+        self.boss_choice, self.boss_choice_in_library = name, in_library
         return self._scan_changed(
             f"Boss '{name}' angelegt — jetzt Vorlage aufnehmen oder Marker messen.")
 
@@ -482,7 +482,7 @@ class ScanDetectMixin:
         self._scan_load()
         data = data or {}
         name = str(data.get("name") or self.boss_choice)
-        from_library = bool(data.get("global", self.boss_choice_global))
+        from_library = bool(data.get("in_library", self.boss_choice_in_library))
         boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
@@ -522,13 +522,13 @@ class ScanDetectMixin:
         self._scan_load()
         data = data or {}
         name = str(data.get("name") or self.boss_choice)
-        from_library = bool(data.get("global", self.boss_choice_global))
+        from_library = bool(data.get("in_library", self.boss_choice_in_library))
         boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
         self._remember(f"Boss '{name}' gelöscht")
         if from_library:
-            self.global_bosses = [b for b in self.global_bosses if b is not boss]
+            self.boss_library = [b for b in self.boss_library if b is not boss]
         else:
             cfg = self.boss_scans[self.boss_open]
             cfg.bosses = [b for b in cfg.bosses if b is not boss]
@@ -540,7 +540,7 @@ class ScanDetectMixin:
         # ist der stille Datenverlust, den es hier nicht gibt.
         return self._scan_changed(f"Boss '{name}' entfernt (Vorlage bleibt liegen).", "warn")
 
-    def boss_move_global(self, data: Optional[dict] = None) -> dict:
+    def boss_move_library(self, data: Optional[dict] = None) -> dict:
         """Schiebt einen Boss zwischen Scan und Bibliothek hin und her.
 
         **Die Bibliothek gilt zusätzlich in JEDEM Boss-Scan.** Wer denselben
@@ -550,7 +550,7 @@ class ScanDetectMixin:
         self._scan_load()
         data = data or {}
         name = str(data.get("name") or self.boss_choice)
-        from_library = bool(data.get("global", self.boss_choice_global))
+        from_library = bool(data.get("in_library", self.boss_choice_in_library))
         boss = self._boss_find(name, from_library)
         if boss is None:
             return self._scan_report("Kein Boss gewählt.", "warn")
@@ -559,14 +559,14 @@ class ScanDetectMixin:
             return self._scan_report("Erst einen Boss-Scan öffnen.", "warn")
         self._remember(f"Boss '{name}' verschoben")
         if from_library:
-            self.global_bosses = [b for b in self.global_bosses if b is not boss]
+            self.boss_library = [b for b in self.boss_library if b is not boss]
             cfg.bosses.append(boss)
-            self.boss_choice_global = False
+            self.boss_choice_in_library = False
             text = f"'{name}' gilt jetzt nur noch in '{cfg.name}'."
         else:
             cfg.bosses = [b for b in cfg.bosses if b is not boss]
-            self.global_bosses.append(boss)
-            self.boss_choice_global = True
+            self.boss_library.append(boss)
+            self.boss_choice_in_library = True
             text = f"'{name}' liegt jetzt in der Bibliothek und gilt in jedem Boss-Scan."
         return self._scan_changed(text)
 
@@ -997,7 +997,7 @@ class ScanDetectMixin:
         if cfg is None:
             return None, None
         boss = self._boss_find(str(data.get("name") or self.boss_choice),
-                                 bool(data.get("global", self.boss_choice_global)))
+                                 bool(data.get("in_library", self.boss_choice_in_library)))
         return boss, cfg
 
     # ---------------------------------------------------------------- Tests
@@ -1025,7 +1025,7 @@ class ScanDetectMixin:
         """Hält jeden Boss des Scans gegen dieses Bild — lokal plus Bibliothek.
 
         Getestet wird die **gemergte** Liste, denn genau die sieht der Lauf
-        (`execute_boss_scan` merged lokal + global, lokale gewinnen bei
+        (`execute_boss_scan` merged lokal + Bibliothek, lokale gewinnen bei
         Namensgleichheit). Nur die lokalen zu prüfen hiesse, die Hälfte der
         Erkennung zu verschweigen.
         """
@@ -1052,7 +1052,7 @@ class ScanDetectMixin:
     def _merged_bosses(self, cfg: BossScanConfig) -> list:
         """Lokale Bosse plus Bibliothek — lokale gewinnen bei Namensgleichheit."""
         names = {b.name for b in cfg.bosses}
-        return list(cfg.bosses) + [b for b in self.global_bosses if b.name not in names]
+        return list(cfg.bosses) + [b for b in self.boss_library if b.name not in names]
 
     def icon_test(self, data: Optional[dict] = None) -> dict:
         """Hält den offenen Icon-Scan gegen das Bild — samt Vorschlag, was hilft.
@@ -1227,11 +1227,11 @@ class ScanDetectMixin:
 
     def _detection_save(self) -> list:
         """Schreibt Boss-Scans, Icon-Scans und die Bibliothek. Fehler als Liste."""
-        from ...persistence import save_boss_scan, save_global_bosses, save_icon_scan
+        from ...persistence import save_boss_scan, save_boss_library, save_icon_scan
         error = (self._detection_save_each(self.boss_scans, save_boss_scan, "boss_scans")
                  + self._detection_save_each(self.icon_scans, save_icon_scan, "icon_scans"))
         try:
-            if not save_global_bosses(_LibraryState(self.global_bosses), self.board.name):
+            if not save_boss_library(_LibraryState(self.boss_library), self.board.name):
                 error.append("boss_scans/bibliothek.json")
         except OSError:
             error.append("boss_scans/bibliothek.json")

@@ -3833,7 +3833,7 @@ function scanListBlock(tabs, filter, target) {
     // verlieren, an dem alles haengt.
     for (const [key, text, number] of [["bosses", "Bosse", detBosses().length],
                                      ["library", "Bibliothek",
-                                      SC.global_bosses.length]]) {
+                                      SC.boss_library.length]]) {
       on(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
         onclick: () => { scanList = key; renderScans(); }}, text + " " + number));
     }
@@ -5260,20 +5260,20 @@ function detScan() {
 /** Die Bosse, die dieser Scan sieht: seine eigenen plus die Bibliothek.
  *
  * Genau diese Liste sieht auch der Lauf (`execute_boss_scan` merged lokal +
- * global, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
+ * Bibliothek, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
  * hiesse, die Haelfte der Erkennung zu verschweigen — und man sucht dann, warum
  * ein Boss erkannt wird, der gar nicht in der Liste steht. */
 function detBosses() {
   const c = detScan();
   const local = c ? c.bosses : [];
   const names = new Set(local.map((b) => b.name));
-  return local.concat(SC.global_bosses.filter((b) => !names.has(b.name)));
+  return local.concat(SC.boss_library.filter((b) => !names.has(b.name)));
 }
 
 /** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
 function detBoss() {
   if (!SC || scanKind !== "boss" || !SC.boss.choice) return null;
-  const listEl = SC.boss.choice_global ? SC.global_bosses : ((detScan() || {}).bosses || []);
+  const listEl = SC.boss.choice_in_library ? SC.boss_library : ((detScan() || {}).bosses || []);
   return listEl.find((b) => b.name === SC.boss.choice) || null;
 }
 
@@ -5462,10 +5462,10 @@ function detRegionStep(c) {
 /** Schritt 3 (Boss): die Bosse dieses Scans. */
 function detBossesStep(c) {
   const local = c.bosses.length;
-  const global = SC.global_bosses.length;
-  return detCard(3, "Bosse", local || global
-    ? local + " lokal · " + global + " global"
-    : "Noch kein Boss · die Bibliothek ist leer", local > 0 || global > 0, [
+  const library = SC.boss_library.length;
+  return detCard(3, "Bosse", local || library
+    ? local + " lokal · " + library + " aus der Bibliothek"
+    : "Noch kein Boss · die Bibliothek ist leer", local > 0 || library > 0, [
     el("p", {class: "hint"}, "Jeder Boss hat eine eigene Erkennung und eine "
       + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
     el("button", {class: "btn primary scan-wizard-main",
@@ -5735,35 +5735,35 @@ function detListBosses(target) {
     return;
   }
   const local = c.bosses;
-  if (!local.length && !SC.global_bosses.length) {
+  if (!local.length && !SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
       + "Aktion dahinter."));
   }
   for (const b of local) target.appendChild(detBossRow(b, false));
-  if (SC.global_bosses.length) {
+  if (SC.boss_library.length) {
     target.appendChild(el("div", {class: "scan-category-header"},
       "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
     const names = new Set(local.map((x) => x.name));
-    for (const b of SC.global_bosses) {
-      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
-      // hier blass, statt so zu tun, als wuerde er benutzt.
+    for (const b of SC.boss_library) {
+      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der aus der
+      // Bibliothek hier blass, statt so zu tun, als wuerde er benutzt.
       target.appendChild(detBossRow(b, true, names.has(b.name)));
     }
   }
   target.appendChild(el("button", {class: "empty-zone",
     onclick: () => { scanList = "library"; renderScans(); }},
-    "Boss-Bibliothek (global) · " + SC.global_bosses.length));
+    "Boss-Bibliothek · " + SC.boss_library.length));
 }
 
-function detBossRow(b, global, covered) {
+function detBossRow(b, inLibrary, covered) {
   const test = SC.boss.tests[b.name];
-  const selected = SC.boss.choice === b.name && SC.boss.choice_global === !!global;
+  const selected = SC.boss.choice === b.name && SC.boss.choice_in_library === !!inLibrary;
   return el("button", {
     class: "scan-row" + (selected ? " on" : ""),
     style: covered ? "opacity:.5" : null,
     title: covered ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
-    onclick: () => callScan("boss_select", {name: b.name, global: !!global}),
+    onclick: () => callScan("boss_select", {name: b.name, in_library: !!inLibrary}),
   },
     b.preview ? el("img", {class: "mini", src: b.preview})
                : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
@@ -5813,13 +5813,13 @@ function detListLibrary(target) {
   target.appendChild(el("p", {class: "hint"},
     "Diese Bosse gelten zusätzlich in JEDEM Boss-Scan. Ein lokaler Boss mit "
     + "gleichem Namen hat Vorrang."));
-  if (!SC.global_bosses.length) {
+  if (!SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Noch leer. Rechts einen anlegen — oder einen Boss aus einem Scan "
       + "hierher verschieben."));
     return;
   }
-  for (const b of SC.global_bosses) target.appendChild(detBossRow(b, true));
+  for (const b of SC.boss_library) target.appendChild(detBossRow(b, true));
 }
 
 /* ---------------------------------------------- Bibliothek als Kartenraster */
@@ -5837,13 +5837,13 @@ function detRenderLibrary() {
   $("scan-no-image").hidden = show || !SC.photo || photoPresent();
   if (!show) return;
   target.replaceChildren();
-  if (!SC.global_bosses.length) {
+  if (!SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Die Bibliothek ist leer. Wer denselben Boss in mehreren Scans braucht, "
       + "pflegt ihn sonst mehrfach — und ändert beim nächsten Mal nur die Hälfte."));
     return;
   }
-  for (const b of SC.global_bosses) target.appendChild(detLibraryCard(b));
+  for (const b of SC.boss_library) target.appendChild(detLibraryCard(b));
 }
 
 function detLibraryCard(b) {
@@ -5877,10 +5877,10 @@ function detLibraryCard(b) {
   cardEl.appendChild(el("div", {class: "button-pair"},
     el("button", {class: open ? "btn primary" : "btn quiet",
       onclick: () => { scanList = "bosses";
-                       callScan("boss_select", {name: b.name, global: true}); }},
+                       callScan("boss_select", {name: b.name, in_library: true}); }},
       open ? "Aktion zuweisen" : "bearbeiten"),
     el("button", {class: "btn quiet",
-      onclick: () => callScan("boss_delete", {name: b.name, global: true})}, "löschen")));
+      onclick: () => callScan("boss_delete", {name: b.name, in_library: true})}, "löschen")));
   return cardEl;
 }
 
@@ -5948,8 +5948,8 @@ function detInspBoss(target, c, b) {
   target.appendChild(heading("BOSS", "Der Name ist zugleich das, was OCR und "
     + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "boss-name"));
   target.appendChild(field("Name", b.name, (v) => callScan("boss_set",
-    {name: b.name, global: b.global, field: "name", value: v})));
-  if (b.global) {
+    {name: b.name, in_library: b.in_library, field: "name", value: v})));
+  if (b.in_library) {
     target.appendChild(el("p", {class: "hint"},
       "Aus der Bibliothek — Änderungen gelten in jedem Boss-Scan."));
   }
@@ -5960,14 +5960,14 @@ function detInspBoss(target, c, b) {
   target.appendChild(heading("AKTION BEI TREFFER",
     "Was passiert, wenn genau dieser Boss erkannt wird.", "boss-action"));
   target.appendChild(detActionTiles(SC.actions.boss, b.action,
-    (v) => callScan("boss_set", {name: b.name, global: b.global,
+    (v) => callScan("boss_set", {name: b.name, in_library: b.in_library,
                                    field: "action", value: v})));
   for (const part of detActionFields(b, "boss", b.name))
     if (part) target.appendChild(part);
   target.appendChild(el("button", {class: "btn quiet", style: "margin-top:14px",
     title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
-    onclick: () => callScan("boss_move_global", {name: b.name, global: b.global})},
-    b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
+    onclick: () => callScan("boss_move_library", {name: b.name, in_library: b.in_library})},
+    b.in_library ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
 }
 
 function detInspIcon(target, c) {
@@ -6013,11 +6013,11 @@ function detInspLibrary(target) {
     "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
     + "hat Vorrang.", "boss-library"));
   target.appendChild(el("p", {class: "hint"},
-    SC.global_bosses.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
+    SC.boss_library.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
     + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
     + "Scan, der sie gefunden hat."));
   target.appendChild(el("button", {class: "btn primary",
-    onclick: () => callScan("boss_new", {global: true})}, "+ Boss anlegen"));
+    onclick: () => callScan("boss_new", {in_library: true})}, "+ Boss anlegen"));
   target.appendChild(el("button", {class: "btn quiet",
     onclick: () => { scanList = "bosses"; renderScans(); }}, "zurück zum Scan"));
 }

@@ -511,7 +511,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     """Lernt einen unbekannten Slot-Inhalt als neues Item des LAUFENDEN Scans (opt-in).
 
     **In den Scan, der gerade laeuft — nicht in die Arbeitsansicht der Konsole.**
-    Hier stand `state.global_items`, und das ist seit dem Umzug auf
+    Hier stand `state.global_items` (heute `state.scan_items`), und das ist seit dem Umzug auf
     Besitzeinheiten nur noch die Ansicht auf `state.active_item_scan`, also den
     Scan, den der Konsolen-Editor zuletzt offen hatte. Mit zwei Item-Scans in
     einer Sequenz landete ein aus Scan B gelerntes Item damit in Scan A — samt
@@ -674,7 +674,7 @@ def _reserve_learned_item(state: AutoClickerState, config, slot, marker_colors,
         # das Item auch sehen — sonst schriebe ihr naechstes `done` die Liste
         # ohne das Item zurueck (flush_item_scan_context ersetzt cfg.items).
         if state.active_item_scan == config.name:
-            state.global_items[name] = item
+            state.scan_items[name] = item
     return item
 
 
@@ -690,7 +690,7 @@ def _store_learned_template(state: AutoClickerState, config, item, masked,
         with state.lock:
             config.items = [it for it in config.items if it is not item]
             if state.active_item_scan == config.name:
-                state.global_items.pop(item.name, None)
+                state.scan_items.pop(item.name, None)
         print(warn(f"Auto-Lernen: Template für '{item.name}' konnte nicht gespeichert werden: {e}"))
         return False
 

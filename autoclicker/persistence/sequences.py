@@ -348,7 +348,7 @@ def activate_sequence(state: AutoClickerState, seq: Sequence) -> list[str]:
     nicht zeigen will, laesst sie liegen — der Worker meldet sie vor dem Lauf
     ohnehin noch einmal.
     """
-    from .boss_scans import load_all_boss_scans, load_global_bosses
+    from .boss_scans import load_all_boss_scans, load_boss_library
     from .icon_scans import load_all_icon_scans
     from .item_scans import load_all_item_scans, resolve_click_references
     with state.lock:
@@ -356,7 +356,7 @@ def activate_sequence(state: AutoClickerState, seq: Sequence) -> list[str]:
         state.points = seq.points
     load_all_item_scans(state)
     load_all_boss_scans(state)
-    load_global_bosses(state)
+    load_boss_library(state)
     load_all_icon_scans(state)
     return resolve_point_references(state, seq) + resolve_click_references(state, seq)
 

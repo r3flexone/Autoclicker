@@ -98,7 +98,7 @@ _pre_cwd = _os.getcwd()
 _os.chdir(_pre_tmp)
 try:
     _stp = _ST_P()
-    _stp.global_slots = {"Slot 1": _SL_P(name="Slot 1", scan_region=(1, 2, 3, 4),
+    _stp.scan_slots = {"Slot 1": _SL_P(name="Slot 1", scan_region=(1, 2, 3, 4),
                                          click_pos=(2, 3), slot_color=(9, 8, 7))}
     check("Preset wird geschrieben", _pp.save_slot_preset(_stp, "Spiel A") is True)
     # Der Dateiname wird entschaerft (`sanitize_filename`), und die Liste nennt den
@@ -113,8 +113,8 @@ try:
     _stp2 = _ST_P()
     check("Preset laedt zurueck", _pp.load_slot_preset(_stp2, "Spiel A") is True)
     check("und die Werte kommen unveraendert an",
-          _stp2.global_slots["Slot 1"].scan_region == (1, 2, 3, 4)
-          and _stp2.global_slots["Slot 1"].slot_color == (9, 8, 7))
+          _stp2.scan_slots["Slot 1"].scan_region == (1, 2, 3, 4)
+          and _stp2.scan_slots["Slot 1"].slot_color == (9, 8, 7))
 
     check("ein Preset, das es nicht gibt, wird gemeldet",
           _pp.load_slot_preset(_ST_P(), "gibt es nicht") is False)
@@ -130,7 +130,7 @@ section("TUI und Studio lesen denselben vollständigen Item-Scan")
 from autoclicker.models import (
     ItemProfile as _IP_R, ItemScanConfig as _ISC_R, Sequence as _SEQ_R,
 )
-import autoclicker.persistence.globals as _gl
+import autoclicker.persistence.scan_views as _views
 from autoclicker.persistence import (
     bind_item_scan_context as _bind_r, load_all_item_scans as _load_scans_r,
     load_item_scan_file as _load_scan_r, save_item_scan as _save_scan_r,
@@ -146,15 +146,15 @@ try:
     _scan_r = _ISC_R(name="Inventar", owner_sequence="Farm")
     _st_r.item_scans["Inventar"] = _scan_r
     _bind_r(_st_r, "Inventar")
-    _st_r.global_slots["Beutel"] = _SL_P(
+    _st_r.scan_slots["Beutel"] = _SL_P(
         name="Beutel", scan_region=(10, 20, 70, 80), click_pos=(40, 50),
         slot_color=(1, 2, 3))
-    _st_r.global_items["Kohle"] = _IP_R(
+    _st_r.scan_items["Kohle"] = _IP_R(
         name="Kohle", marker_colors=[(4, 5, 6)], category="Erz", priority=7,
         min_confidence=0.9)
     with _cl2.redirect_stdout(_io2.StringIO()):
-        _gl.save_global_slots(_st_r)
-        _gl.save_global_items(_st_r)
+        _views.save_scan_slots(_st_r)
+        _views.save_scan_items(_st_r)
     _path_r = Path("sequences/farm/item_scans/inventar.json")
     _studio_scan = _load_scan_r(_path_r, "Farm")
     _studio_slots = {s.name: s for s in _studio_scan.slots}
@@ -177,9 +177,9 @@ try:
     with _cl2.redirect_stdout(_io2.StringIO()):
         _load_scans_r(_st_back)
     check("der Hauptprozess liest zurueck, was das Studio geschrieben hat",
-          _st_back.global_slots["Beutel"].scan_region == (10, 20, 70, 80)
-          and _st_back.global_items["Kohle"].category == "Erz"
-          and _st_back.global_items["Kohle"].priority == 3)
+          _st_back.scan_slots["Beutel"].scan_region == (10, 20, 70, 80)
+          and _st_back.scan_items["Kohle"].category == "Erz"
+          and _st_back.scan_items["Kohle"].priority == 3)
     check("globale slots.json/items.json entstehen dabei nicht",
           not Path("slots/slots.json").exists() and not Path("items/items.json").exists())
 finally:

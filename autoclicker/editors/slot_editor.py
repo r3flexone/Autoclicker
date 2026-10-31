@@ -16,7 +16,7 @@ from ..imaging import (
     take_screenshot, get_pixel_color, select_region, get_color_name
 )
 from ..persistence import (
-    save_global_slots, list_slot_presets, save_slot_preset,
+    save_scan_slots, list_slot_presets, save_slot_preset,
     load_slot_preset, delete_slot_preset, active_sequence_dir
 )
 from .scan_services import detect_slots_in_image
@@ -27,7 +27,7 @@ _SLOT_KNOWN = ["auto", "repair", "add", "edit", "del", "show", "save", "load", "
                "help", "done", "cancel"]
 
 
-def run_global_slot_editor(state: AutoClickerState) -> None:
+def run_slot_editor(state: AutoClickerState) -> None:
     """Interaktiver Editor für die Slots des gewählten Item-Scans.
 
     Eine Befehlsschleife wie der Loop-Phasen-Editor: `_slot_editor_step()` liest
@@ -70,24 +70,24 @@ class _SlotSession:
 
     def refresh(self, state: AutoClickerState) -> None:
         with state.lock:
-            self.backup = copy.deepcopy(state.global_slots)
+            self.backup = copy.deepcopy(state.scan_slots)
 
     def discard(self, state: AutoClickerState, prefix: str = "") -> None:
         with state.lock:
-            state.global_slots = self.backup
-        save_global_slots(state)
+            state.scan_slots = self.backup
+        save_scan_slots(state)
         print(prefix + col("[ABBRUCH]", "yellow") + " Änderungen verworfen.")
 
 
 def _slot_editor_step(state: AutoClickerState, session: _SlotSession) -> bool:
     """Eine Eingabe des Slot-Editors. True = der Editor ist beendet."""
     with state.lock:
-        slot_count = len(state.global_slots)
+        slot_count = len(state.scan_slots)
     user_input = safe_input(f"[SLOTS: {slot_count}] > ").strip()
     cmd = user_input.lower()
 
     if cmd in ("done", "d"):
-        if not save_global_slots(state):
+        if not save_scan_slots(state):
             print(err("Speichern fehlgeschlagen — der Editor bleibt offen."))
             return False
         print(ok("Slot-Editor beendet."))
@@ -127,7 +127,7 @@ def _slot_command(cmd: str, user_input: str):
 
 def _print_slot_overview(state: AutoClickerState) -> None:
     with state.lock:
-        current_slots = list(state.global_slots.values())
+        current_slots = list(state.scan_slots.values())
     if current_slots:
         print(f"\nAktuelle Slots ({len(current_slots)}):")
         for i, slot in enumerate(current_slots):
@@ -174,11 +174,11 @@ def _slot_help(state, session, argument) -> None:
 
 def _slot_show(state, session, argument) -> None:
     with state.lock:
-        if not state.global_slots:
+        if not state.scan_slots:
             print("  (Keine Slots)")
             return
-        print(f"\nSlots ({len(state.global_slots)}):")
-        for i, slot in enumerate(state.global_slots.values()):
+        print(f"\nSlots ({len(state.scan_slots)}):")
+        for i, slot in enumerate(state.scan_slots.values()):
             print(f"  {i+1}. {slot}")
 
 
@@ -200,7 +200,7 @@ def _slot_add(state, session, argument) -> None:
     slot = create_slot(state)
     if slot:
         with state.lock:
-            state.global_slots[slot.name] = slot
+            state.scan_slots[slot.name] = slot
         print(f"  + Slot '{slot.name}' hinzugefügt")
 
 
@@ -211,7 +211,7 @@ def _slot_edit(state, session, argument) -> None:
     # Unter Lock nur Slot/Namen auflösen — edit_slot blockiert auf Input und
     # läuft daher AUSSERHALB des Locks.
     with state.lock:
-        slot_list = list(state.global_slots.items())
+        slot_list = list(state.scan_slots.items())
     if not 1 <= number <= len(slot_list):
         print(f"  -> Ungültig! Verfügbar: 1-{len(slot_list)}")
         return
@@ -220,20 +220,20 @@ def _slot_edit(state, session, argument) -> None:
     if new_slot:
         with state.lock:
             if new_slot.name != name:      # umbenannt: alter Schlüssel weg
-                del state.global_slots[name]
-            state.global_slots[new_slot.name] = new_slot
+                del state.scan_slots[name]
+            state.scan_slots[new_slot.name] = new_slot
         print(f"  + Slot '{new_slot.name}' aktualisiert")
 
 
 def _slot_delete_all(state, session, argument) -> None:
     with state.lock:
-        count = len(state.global_slots)
+        count = len(state.scan_slots)
     if not count:
         print("  -> Keine Slots vorhanden!")
         return
     if confirm(f"  {count} Slot(s) wirklich löschen?"):
         with state.lock:
-            state.global_slots.clear()
+            state.scan_slots.clear()
         print(f"  + {count} Slot(s) gelöscht!")
     else:
         print("  -> Abgebrochen")
@@ -244,10 +244,10 @@ def _slot_delete_one(state, session, argument) -> None:
     if number is None:
         return
     with state.lock:
-        slot_names = list(state.global_slots.keys())
+        slot_names = list(state.scan_slots.keys())
         name = (slot_names[number - 1] if 1 <= number <= len(slot_names) else None)
         if name is not None:
-            del state.global_slots[name]
+            del state.scan_slots[name]
     if name is None:
         print(f"  -> Ungültig! Verfügbar: 1-{len(slot_names)}")
         return
@@ -344,7 +344,7 @@ def _ask_new_slot_name(state: AutoClickerState) -> Optional[str]:
     Luecken und ist genau dafuer da (dieselbe Funktion nutzt `slot_auto_detect`).
     """
     with state.lock:
-        proposal = next_free_name("Slot", state.global_slots)
+        proposal = next_free_name("Slot", state.scan_slots)
     slot_name = safe_input(f"  Slot-Name (Enter = '{proposal}', 'cancel'): ").strip()
     if is_cancel(slot_name):
         print(_CREATE_CANCELLED)
@@ -353,7 +353,7 @@ def _ask_new_slot_name(state: AutoClickerState) -> Optional[str]:
 
     # Slots sind per Name indexiert — ein doppelter Name überschriebe still.
     with state.lock:
-        name_exists = slot_name in state.global_slots
+        name_exists = slot_name in state.scan_slots
     if name_exists and not confirm(f"  '{slot_name}' existiert bereits. Überschreiben?"):
         print(_CREATE_CANCELLED)
         return None
@@ -595,10 +595,10 @@ def _add_detected_slots(state: AutoClickerState, detected: list, offset: tuple[i
         # Namen, und das Dict überschreibt ihn kommentarlos. 'add' und der
         # Item-Lernpfad sichern das längst ab — hier fehlte es.
         with state.lock:
-            slot_name = next_free_name("Slot", state.global_slots)
+            slot_name = next_free_name("Slot", state.scan_slots)
             new_slot = ItemSlot(name=slot_name, scan_region=scan_region,
                                 click_pos=click_pos, slot_color=slot_color)
-            state.global_slots[slot_name] = new_slot
+            state.scan_slots[slot_name] = new_slot
         created.append(new_slot)
         print(f"    + {slot_name}: {scan_region}")
     return created
@@ -729,7 +729,7 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {err('OpenCV/NumPy nicht installiert!')} pip install opencv-python numpy")
         return False
     with state.lock:
-        old_slots = list(state.global_slots.values())
+        old_slots = list(state.scan_slots.values())
     if not old_slots:
         print(f"  {err('Keine Slots gespeichert — es gibt nichts zu reparieren.')}")
         return False
@@ -829,7 +829,7 @@ def _apply_repair(state: AutoClickerState, pairs: list, slot_color) -> None:
             slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
-    if save_global_slots(state):
+    if save_scan_slots(state):
         print(f"  {ok(f'{len(pairs)} Slot(s) neu vermessen.')}")
     else:
         # Die Slots sind im Speicher umgezogen, die Datei nicht — beim Kalibrieren

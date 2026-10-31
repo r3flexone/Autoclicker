@@ -188,24 +188,24 @@ try:
     _st_r2.active_sequence = _seq_r2
     Path("sequences/s/templates").mkdir(parents=True)
     Path("sequences/s/templates/alt.png").write_bytes(b"PNG")
-    _st_r2.global_items = {"Alt": _IPR(name="Alt", template="alt.png",
+    _st_r2.scan_items = {"Alt": _IPR(name="Alt", template="alt.png",
                                         marker_colors=[(1, 2, 3)])}
     _st_r2.item_scans["Inventar"] = _ISCR(
-        name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
+        name="Inventar", owner_sequence="S", items=list(_st_r2.scan_items.values()))
     with _cl2.redirect_stdout(_io2.StringIO()):
         _success = _air(_st_r2, "Alt", "Neu")
 
     check("das Umbenennen meldet Erfolg", _success is True)
     check("der Eintrag heisst neu",
-          "Neu" in _st_r2.global_items and "Alt" not in _st_r2.global_items)
+          "Neu" in _st_r2.scan_items and "Alt" not in _st_r2.scan_items)
     check("das Item traegt seinen neuen Namen auch im Objekt",
-          _st_r2.global_items["Neu"].name == "Neu")
+          _st_r2.scan_items["Neu"].name == "Neu")
     # Die DATEI wandert mit - sonst zeigt das Profil auf einen Namen, den es nicht gibt.
     check("die Template-Datei wandert mit",
           Path("sequences/s/templates/neu.png").exists()
           and not Path("sequences/s/templates/alt.png").exists())
     check("und das Profil zeigt auf den neuen Dateinamen",
-          _st_r2.global_items["Neu"].template == "neu.png")
+          _st_r2.scan_items["Neu"].template == "neu.png")
     check("das Item im Scan heisst mit — es ist dasselbe Objekt",
           [i.name for i in _st_r2.item_scans["Inventar"].items] == ["Neu"])
     check("ein Item, das es nicht gibt, meldet False",
@@ -332,7 +332,7 @@ import autoclicker.editors.item_editor.commands as _CMD
 from autoclicker.models import AutoClickerState as _ST_t, ItemProfile as _IP_t
 
 _st_t = _ST_t()
-_st_t.global_items["Bogen"] = _IP_t(name="Bogen")
+_st_t.scan_items["Bogen"] = _IP_t(name="Bogen")
 _captured = []
 
 
@@ -366,7 +366,7 @@ finally:
 # Frischer State: mit dem alten Code hielte der blockierte Thread oben den Lock
 # noch — und dieser Teil hinge dann mit, statt oben sauber rot zu werden.
 _st_t2 = _ST_t()
-_st_t2.global_items["Bogen"] = _IP_t(name="Bogen", template="bogen.png")
+_st_t2.scan_items["Bogen"] = _IP_t(name="Bogen", template="bogen.png")
 _CMD.safe_input = lambda _p="": "remove"
 _CMD.active_templates_dir = lambda st: Path(tempfile.gettempdir()) / "gibtsnicht_templates"
 try:
@@ -374,7 +374,7 @@ try:
         _CMD.handle_template_command(_st_t2, "template 1")
         _CMD.handle_template_command(_st_t2, "template 9")
         _CMD.handle_template_command(_st_t2, "template x")
-    check("`remove` leert die Vorlagen", _st_t2.global_items["Bogen"].template is None)
+    check("`remove` leert die Vorlagen", _st_t2.scan_items["Bogen"].template is None)
 finally:
     _CMD.safe_input = _old_input
     _CMD.active_templates_dir = _old_dir

@@ -98,7 +98,7 @@ _cfg = _ISC("inv", items=[_IP("Alt", [])])
 _learned = _IP("Auto S1", [], template="auto_s1.png")
 _cfg.items.append(_learned)
 _st.active_item_scan = "inv"
-_st.global_items = {"Alt": _cfg.items[0], "Auto S1": _learned}
+_st.scan_items = {"Alt": _cfg.items[0], "Auto S1": _learned}
 import tempfile as _tmp
 from pathlib import Path as _Path
 with _patched():
@@ -106,7 +106,7 @@ with _patched():
                                         _Path(_tmp.mkdtemp(prefix="lernen_")))
 check("das reservierte Item fällt wieder heraus",
       _kept is False and [it.name for it in _cfg.items] == ["Alt"])
-check("auch aus der Arbeitsansicht der Konsole", "Auto S1" not in _st.global_items)
+check("auch aus der Arbeitsansicht der Konsole", "Auto S1" not in _st.scan_items)
 
 # =============================================================================
 section("Punkte-Durchgang: 'n' setzt und geht zum nächsten Punkt")

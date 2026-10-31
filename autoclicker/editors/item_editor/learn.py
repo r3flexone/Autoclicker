@@ -27,7 +27,7 @@ from .markers import collect_marker_colors
 def item_learn_command(state: AutoClickerState, user_input: str) -> None:
     """Verarbeitet den learn-Befehl (Bulk und Single)."""
     with state.lock:
-        slot_list = list(state.global_slots.values())
+        slot_list = list(state.scan_slots.values())
 
     if not slot_list:
         print("  -> Keine Slots vorhanden! Erst Slots mit 'auto' im Slot-Editor erstellen.")
@@ -76,7 +76,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> Non
         for slot_idx in range(start_slot - 1, end_slot):
             slot = slot_list[slot_idx]
             with state.lock:
-                item_name = unique_name(f"{slot.name} Item", state.global_items)
+                item_name = unique_name(f"{slot.name} Item", state.scan_items)
 
             priority = slot_idx - start_slot + 2
 
@@ -99,7 +99,7 @@ def _learn_bulk(state: AutoClickerState, slot_list: list, learn_arg: str) -> Non
                     item.template = template_file
 
             with state.lock:
-                state.global_items[item_name] = item
+                state.scan_items[item_name] = item
             created_count += 1
 
             template_str = f" + {item.template}" if item.template else ""
@@ -143,7 +143,7 @@ def _learn_single(state: AutoClickerState, slot_list: list, user_input: str) -> 
                        confirm_point_id=confirm_point_id, confirm_delay=confirm_delay)
     item.template = pending.adopt(state, item_name)
     with state.lock:
-        state.global_items[item_name] = item
+        state.scan_items[item_name] = item
 
     confirm_str = f" -> Punkt #{confirm_point_id} nach {confirm_delay}s" if confirm_point_id else ""
     template_str = " + Template" if item.template else ""

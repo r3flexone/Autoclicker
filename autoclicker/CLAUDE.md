@@ -320,7 +320,7 @@ es die Marker-Farben.
   Meldungstabelle, dazu `_remap_point_ids`/`_referenzierte_punkte` für die
   ID-Kollisionen, die es damals geben konnte. Sie war nicht nur Altlast, sondern
   **kaputt**: Vorlagen landeten in `items/templates/`, wo seit dem Umzug keine
-  Sequenz mehr nachsieht, und `_imp_items` schrieb über `save_global_items()`,
+  Sequenz mehr nachsieht, und `_imp_items` schrieb über `save_scan_items()`,
   das ohne aktiven Item-Scan folgenlos zurückkehrt. Ein Import, der „hat
   geklappt" meldet und nichts Brauchbares hinterlässt, ist schlechter als eine
   Absage — deshalb wird ein Bündel ohne `layout`-Feld heute abgelehnt, mit dem

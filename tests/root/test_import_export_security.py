@@ -248,7 +248,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         sequence = Sequence(name="Farm")
         state.active_sequence = sequence
         slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
-        state.global_slots[slot.name] = slot
+        state.scan_slots[slot.name] = slot
         state.item_scans["Live"] = ItemScanConfig(
             name="Live", slots=[slot], capture_window_title="Mein Spiel",
             capture_window_rect=(0, 0, 100, 100), owner_sequence="Farm",

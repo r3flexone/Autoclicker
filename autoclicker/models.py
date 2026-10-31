@@ -876,21 +876,22 @@ class AutoClickerState:
     # geaendert hatte. Es gibt EINE geladene Sequenz — `active_sequence` —,
     # alles andere steht auf der Platte und wird von dort gelesen.
 
-    # Globale Slots und Items (wiederverwendbar)
-    global_slots: dict[str, ItemSlot] = field(default_factory=dict)
-    global_items: dict[str, ItemProfile] = field(default_factory=dict)
+    # Arbeitsansichten der Konsole auf die Slots und Items des Item-Scans
+    # `active_item_scan` — der Scan besitzt sie, hier liegt keine zweite Liste.
+    scan_slots: dict[str, ItemSlot] = field(default_factory=dict)
+    scan_items: dict[str, ItemProfile] = field(default_factory=dict)
 
     # Item-Scan Konfigurationen (verknüpft Slots + Items)
     item_scans: dict[str, ItemScanConfig] = field(default_factory=dict)
-    # TUI-Arbeitskontext. `global_slots/items` sind nur Ansichten auf diesen Scan.
+    # TUI-Arbeitskontext: der Scan, auf den `scan_slots`/`scan_items` zeigen.
     active_item_scan: str = ""
 
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
 
-    # Globale Boss-Bibliothek: gilt zusätzlich in JEDEM Boss-Scan.
+    # Boss-Bibliothek der aktiven Sequenz: gilt zusätzlich in JEDEM Boss-Scan.
     # Lokale Bosse eines Scans haben bei Namensgleichheit Vorrang.
-    global_bosses: list[BossProfile] = field(default_factory=list)
+    boss_library: list[BossProfile] = field(default_factory=list)
 
     # Icon-Scan Konfigurationen (Symbol/Icon erkennen → Aktion)
     icon_scans: dict[str, IconScanConfig] = field(default_factory=dict)
