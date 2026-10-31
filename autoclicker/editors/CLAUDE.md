@@ -513,6 +513,16 @@ Regeln:
 
 - **`with_slots` steht getrennt von `with_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
+- **Der Fenster-Anker eines Item-Scans wandert nur MIT seinen Slots.** Die Laufzeit
+  rechnet die Slots vom Anker (`capture_window_rect`) auf die heutige Fensterlage um
+  (`_slots_in_window`) — ein Scan am Fenster folgt ihm also von selbst. Bis zum
+  31.10.2026 wanderte der Anker auch ohne die Slots, und zwar mit der Voreinstellung
+  des Studios (`with_slots` aus): die Laufzeit hielt die alten Slots dann für schon
+  verschoben, und jeder lag um den Versatz daneben — am Bestand des Nutzers ein Scan
+  mit 26 Slots am Spielfenster. Die Reparatur setzt den Anker des neu vermessenen
+  Scans deshalb selbst (`_reanchor_after_repair()`: heutige Fensterlage, sonst der
+  gemessene Versatz); vorher erledigte das nur die Kalibrierung danach, wenn man ihr
+  Angebot annahm, und dann auch bei jedem Scan, der gar nicht vermessen war.
 - **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
   zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`
   und `_remap_sequence_data` rechnen deshalb nur noch die Screenshot-Region; ihre

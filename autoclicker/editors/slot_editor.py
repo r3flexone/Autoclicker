@@ -10,7 +10,7 @@ from typing import Optional
 from ..models import ItemSlot, AutoClickerState
 from ..config import CONFIG
 from ..utils import safe_input, sanitize_filename, next_free_name, is_cancel, confirm, interactive_select, col, ok, err, warn, info, hint, header, breadcrumb, suggest_command, coord_context, cancel_hint
-from ..winapi import get_cursor_pos
+from ..winapi import get_cursor_pos, resolve_window
 from ..imaging import (
     PILLOW_AVAILABLE, OPENCV_AVAILABLE, NUMPY_AVAILABLE,
     take_screenshot, get_pixel_color, select_region, get_color_name
@@ -768,7 +768,7 @@ def slot_repair(state: AutoClickerState) -> bool:
         print(f"  {info('[ABBRUCH] Nichts geaendert.')}")
         return False
 
-    _apply_repair(state, pairs, slot_color)
+    _apply_repair(state, pairs, slot_color, offset)
     _offer_offset_for_rest(state, offset)
     return True
 
@@ -814,7 +814,39 @@ def _print_repair_preview(pairs: list, offset: tuple[int, int]) -> None:
     print(f"  Versatz durchgaengig: {col(f'{offset[0]:+} X, {offset[1]:+} Y', 'yellow')}")
 
 
-def _apply_repair(state: AutoClickerState, pairs: list, slot_color) -> None:
+def _reanchor_after_repair(state: AutoClickerState, offset: tuple[int, int]) -> str:
+    """Der Fenster-Anker eines fenstergebundenen Scans folgt den neu vermessenen Slots.
+
+    Die Slots stehen danach in den Bildschirm-Koordinaten von JETZT, und die
+    Laufzeit rechnet sie vom Anker auf die heutige Fensterlage um
+    (`_slots_in_window`). Mit dem alten Anker käme der Fensterversatz ein zweites
+    Mal dazu. Hier stand nichts: den Anker zog nur die Kalibrierung danach mit,
+    und nur, wenn man ihr Angebot annahm — und dann auch bei jedem anderen Scan,
+    dessen Slots gar nicht neu vermessen waren.
+
+    Gibt zurück, wie verankert wurde ("" = kein Fenster-Scan).
+    """
+    with state.lock:
+        cfg = state.item_scans.get(state.active_item_scan)
+        if cfg is None or not cfg.capture_window_rect:
+            return ""
+        title, index = cfg.capture_window_title, cfg.capture_window_index
+        old = tuple(cfg.capture_window_rect)
+    window = resolve_window(title, index, old) if title else None
+    if window is not None:
+        new, how = tuple(int(v) for v in window[1]), "an die heutige Fensterlage"
+    else:
+        # Kein Fenster zu finden: die Slots liegen darin, also ist es mit ihnen umgezogen.
+        dx, dy = offset
+        new = (old[0] + dx, old[1] + dy, old[2] + dx, old[3] + dy)
+        how = "um den gemessenen Versatz (Fenster gerade nicht gefunden)"
+    with state.lock:
+        cfg.capture_window_rect = new
+    return how
+
+
+def _apply_repair(state: AutoClickerState, pairs: list, slot_color,
+                  offset: tuple[int, int]) -> None:
     """Sichern, die neuen Regionen übernehmen, speichern — und Scheitern sagen."""
     from ..import_export import backup_before_calibration
     backup = backup_before_calibration(state)
@@ -829,6 +861,9 @@ def _apply_repair(state: AutoClickerState, pairs: list, slot_color) -> None:
             slot.click_pos = ((new[0] + new[2]) // 2, (new[1] + new[3]) // 2)
             if not slot.slot_color:
                 slot.slot_color = slot_color
+    anchored = _reanchor_after_repair(state, offset)
+    if anchored:
+        print(f"  {info('Fenster-Anker neu gesetzt ' + anchored + '.')}")
     if save_scan_slots(state):
         print(f"  {ok(f'{len(pairs)} Slot(s) neu vermessen.')}")
     else:

@@ -2374,21 +2374,25 @@ try:
         _IE.calibrate_inventory(_st3, _t, with_scans=True, with_sequences=True,
                                with_slots=False)
     _d, _di, _db = _sq_read()
-    check("mit with_scans: Boss-Region und Fenster-Anker der fremden Sequenz wandern",
-          _db["scan_region"] == [140, 175, 340, 375]
-          and _di["capture_window_rect"] == [140, 175, 340, 375])
-    check("ohne with_slots bleiben ihre Slots stehen",
+    check("mit with_scans: die Boss-Region der fremden Sequenz wandert",
+          _db["scan_region"] == [140, 175, 340, 375])
+    # Slots und Fenster-Anker sind ein Paar: die Laufzeit rechnet die Slots vom
+    # Anker auf die heutige Fensterlage um. Wanderte nur der Anker, hielt sie die
+    # alten Slots für schon verschoben.
+    check("ohne with_slots bleiben ihre Slots stehen - und ihr Fenster-Anker mit",
           _di["slots"]["S1"]["scan_region"] == [100, 200, 160, 260]
-          and _di["slots"]["S1"]["click_pos"] == [130, 230])
+          and _di["slots"]["S1"]["click_pos"] == [130, 230]
+          and _di["capture_window_rect"] == [100, 200, 300, 400])
     check("die Boss-Bibliothek traegt nur Punkt-IDs und bleibt unberuehrt",
           _sq_lib.read_text(encoding="utf-8") == _lib_before)
     with _cl2.redirect_stdout(_io2.StringIO()):
         _IE.calibrate_inventory(_st3, _IE.transform_from_offset((140, 175), (100, 200)),
                                with_scans=True, with_sequences=True, with_slots=True)
     _d, _di, _db = _sq_read()
-    check("mit with_slots wandern auch ihre Slots - samt Klickstelle",
+    check("mit with_slots wandern auch ihre Slots - samt Klickstelle und Anker",
           _di["slots"]["S1"]["scan_region"] == [60, 225, 120, 285]
-          and _di["slots"]["S1"]["click_pos"] == [90, 255])
+          and _di["slots"]["S1"]["click_pos"] == [90, 255]
+          and _di["capture_window_rect"] == [60, 225, 260, 425])
 
     # Eine unlesbare Datei im Ordner bricht ab, BEVOR etwas geschrieben ist.
     _sq_boss.write_text("{kaputt", encoding="utf-8")

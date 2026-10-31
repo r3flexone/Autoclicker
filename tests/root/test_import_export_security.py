@@ -265,6 +265,27 @@ class ImportExportSecurityTest(unittest.TestCase):
             state.item_scans["Live"].capture_window_rect, (50, -10, 150, 90))
         self.assertEqual(counts["item_scans"], 1)
 
+    def test_ohne_slots_bleibt_auch_der_fenster_anker_stehen(self):
+        # Die Laufzeit rechnet die Slots vom Anker auf die heutige Fensterlage um.
+        # Wanderte der Anker allein (die Voreinstellung im Studio), hielt sie die
+        # alten Slots für schon verschoben: jeder lag um den Versatz daneben.
+        state = AutoClickerState()
+        state.active_sequence = Sequence(name="Farm")
+        slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
+        state.scan_slots[slot.name] = slot
+        state.item_scans["Live"] = ItemScanConfig(
+            name="Live", slots=[slot], capture_window_title="Mein Spiel",
+            capture_window_rect=(0, 0, 100, 100), owner_sequence="Farm",
+        )
+        transform = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 50, "offset_y": -10}
+
+        counts = calibrate_inventory(
+            state, transform, with_scans=True, with_sequences=False, with_slots=False)
+
+        self.assertEqual(slot.scan_region, (10, 20, 30, 40))
+        self.assertEqual(state.item_scans["Live"].capture_window_rect, (0, 0, 100, 100))
+        self.assertEqual(counts["item_scans"], 0)
+
     # Die folgenden fünf hielten bis zum Zerlegen von `import_export.py` keine
     # Prüfung: man konnte die Sicherung herausnehmen, und alles blieb grün.
 

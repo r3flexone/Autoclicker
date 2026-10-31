@@ -18,7 +18,7 @@ import autoclicker.editors.slot_editor as _SE
 import autoclicker.editors.item_editor.autoscan as _AS
 import autoclicker.editors.import_export_editor as _IEE
 import autoclicker.import_export as _IE
-from autoclicker.models import AutoClickerState as _ST, ItemSlot as _SLOT
+from autoclicker.models import AutoClickerState as _ST, ItemSlot as _SLOT, ItemScanConfig as _ISC
 
 
 class _Image:
@@ -45,10 +45,11 @@ class _Pixels:
 class _Run:
     def __init__(self, inputs=(), choices=(), answers=(), region=(100, 200, 160, 260),
                  shot=True, cursor=((5, 6),), pixel=(1, 2, 3), detected=(), opencv=True,
-                 saves=True):
+                 saves=True, window=None):
         self.inputs, self.choices, self.answers = list(inputs), list(choices), list(answers)
         self.region, self.cursor, self.pixel = region, list(cursor), pixel
         self.detected, self.opencv, self.saves = list(detected), opencv, saves
+        self.window = window
         self.image = _Image() if shot else None
         self.state = _ST()
         self.calls = []
@@ -69,6 +70,7 @@ class _Run:
             "OPENCV_AVAILABLE": self.opencv,
             "NUMPY_AVAILABLE": self.opencv,
             "save_scan_slots": lambda state: self.calls.append("gespeichert") or self.saves,
+            "resolve_window": lambda title, index, ref: self.window,
             "time": _Clock(),
         }
 
@@ -293,3 +295,28 @@ check("repair: ohne gespeicherte Farbe wird einmal gepickt",
 _r = _Run(inputs=[""], detected=_found, pixel=None)
 _r.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
 check("repair: unlesbare Farbe bricht ab", _r(_SE.slot_repair) is False)
+
+
+# Ein Scan am Fenster: die Laufzeit rechnet seine Slots vom Anker auf die heutige
+# Fensterlage um. Nach dem Neuvermessen stehen sie in den Koordinaten von JETZT —
+# mit dem alten Anker käme der Fensterversatz ein zweites Mal dazu.
+def _window_repair(window):
+    run = _repair_run(_old, _found, answers=[True, False], window=window)
+    run.state.item_scans["Inv"] = _ISC(
+        name="Inv", slots=list(run.state.scan_slots.values()), owner_sequence="s",
+        capture_window_title="Spiel", capture_window_rect=(0, 0, 400, 300))
+    run.state.active_item_scan = "Inv"
+    run(_SE.slot_repair)
+    return run, run.state.item_scans["Inv"].capture_window_rect
+
+
+_r, _anchor = _window_repair(("Spiel", (7, 9, 407, 309), 42))
+check("repair: der Fenster-Anker folgt der heutigen Fensterlage",
+      _anchor == (7, 9, 407, 309) and "Fenster-Anker neu gesetzt" in _r.output)
+_r, _anchor = _window_repair(None)
+check("repair: ohne gefundenes Fenster wandert der Anker um den gemessenen Versatz",
+      _anchor == (5, 5, 405, 305))
+_r = _repair_run(_old, _found, answers=[True, False])
+_r(_SE.slot_repair)
+check("repair: ein Scan ohne Fenster bekommt keinen Anker",
+      "Fenster-Anker" not in _r.output)

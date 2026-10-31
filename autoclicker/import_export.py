@@ -252,14 +252,18 @@ def _remap_item_scans(state: 'AutoClickerState', transform: dict, with_slots: bo
                       owner: Optional[str], number: dict) -> None:
     for cfg in state.item_scans.values():
         _own(cfg, owner)
-        if with_slots:
-            for slot in cfg.slots:
-                slot.scan_region = remap_region(slot.scan_region, transform)
-                slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
-                number["slots"] += 1
-        # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar.
-        # Wird nur eine Hälfte transformiert, würde die Runtime beim
-        # nächsten Lauf ein zweites, falsches Remapping anwenden.
+        if not with_slots:
+            continue
+        for slot in cfg.slots:
+            slot.scan_region = remap_region(slot.scan_region, transform)
+            slot.click_pos = remap_point(slot.click_pos[0], slot.click_pos[1], transform)
+            number["slots"] += 1
+        # Die Slot-Koordinaten und ihr Fenster-Anker bilden ein Paar: die Laufzeit
+        # rechnet die Slots vom Anker auf die heutige Fensterlage um
+        # (`_slots_in_window`). Beide wandern oder keiner — ein Scan am Fenster folgt
+        # ihm auch von selbst. Hier wanderte der Anker auch OHNE die Slots, also mit
+        # der Voreinstellung des Studios: die Laufzeit hielt die alten Slots dann für
+        # schon verschoben, und jeder Slot lag um den Versatz daneben.
         if cfg.capture_window_rect:
             cfg.capture_window_rect = remap_region(cfg.capture_window_rect, transform)
             number["item_scans"] += 1
@@ -633,14 +637,15 @@ def _remap_key(data: dict, key: str, transform: dict) -> None:
 def _remap_item_scan_data(data: dict, transform: dict, with_slots: bool = True) -> None:
     """Slots (Region und Klickstelle) und der Fenster-Anker eines Item-Scans.
 
-    Ohne `with_slots` nur der Anker — genau wie `_remap_item_scans()` es mit der
-    geladenen Sequenz tut.
+    Ohne `with_slots` gar nichts: Slots und Anker sind ein Paar, genau wie in
+    `_remap_item_scans()` für die geladene Sequenz.
     """
-    if with_slots:
-        for slot in (data.get("slots") or {}).values():
-            _remap_key(slot, "scan_region", transform)
-            if slot.get("click_pos"):
-                slot["click_pos"] = list(remap_point(*slot["click_pos"], transform))
+    if not with_slots:
+        return
+    for slot in (data.get("slots") or {}).values():
+        _remap_key(slot, "scan_region", transform)
+        if slot.get("click_pos"):
+            slot["click_pos"] = list(remap_point(*slot["click_pos"], transform))
     _remap_key(data, "capture_window_rect", transform)
 
 
