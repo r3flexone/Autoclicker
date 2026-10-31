@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test_support import install_platform_stubs
+from test_support import Image, install_platform_stubs, needs_pillow
 
 install_platform_stubs()
 
@@ -14,19 +14,8 @@ install_platform_stubs()
 # Runner startet die Wurzelmodule in einem eigenen Ordner (`root_tests.main`).
 REPO = Path(__file__).resolve().parents[2]
 
-# Pillow ist optional (s. test_scan_services.py): der Import stand hier oben und
-# ohne Pillow starb das Modul beim LADEN.
-try:
-    from PIL import Image
-    PILLOW = True
-except ImportError:                                              # pragma: no cover
-    Image = None
-    PILLOW = False
-
-needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
-
 from autoclicker.editors.sequence_studio.bridge import StudioBridge
-from autoclicker.editors.sequence_studio.scans import MODE_SLOT, MODE_CHOICE
+from autoclicker.editors.sequence_studio.scan_contract import MODE_SLOT, MODE_CHOICE
 from autoclicker.models import (
     AutoClickerState, ItemProfile, ItemScanConfig, ItemSlot, Sequence,
 )
@@ -62,11 +51,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
     def tearDown(self):
         os.chdir(self.old_cwd)
         self.temp.cleanup()
-
-    def test_membership_api_is_removed(self):
-        self.assertFalse(hasattr(self.bridge, "scan_mitglied"))
-        self.assertFalse(hasattr(self.bridge, "scan_alle"))
-        self.assertFalse(hasattr(self.bridge, "scan_auswahl_mitglied"))
 
     def test_invalid_tolerance_is_reported_without_mutation(self):
         cfg = self.bridge.scans["Inventar"]
@@ -129,9 +113,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
                 ("Bogen", "Waffen", 4))
             self.assertEqual(row["existing"], "Bogen")
             self.assertEqual(row["new_name"], "Item 1")
-            self.assertFalse(row["can_add"])
             self.assertTrue(row["ticked"])
-            self.assertTrue(row["in_scan"])
 
             state = self.bridge.scan_learn_preview_apply({"rows": [{
                 "slot": row["slot"], "ticked": True,
@@ -151,7 +133,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
             row = state["review"]["rows"][0]
             self.assertEqual(row["name"], "Bogen")
             self.assertEqual((row["category"], row["priority"]), ("Fernkampf", 2))
-            self.assertTrue(row["in_scan"])
             self.assertNotIn("locked", row)
             self.assertTrue(row["ticked"])
 
@@ -448,7 +429,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         # eigener Knopf in `prioritaetsfeld()`, den seit dem Masken-Umbau
         # niemand mehr rief: der Text war da, das Bedienelement nicht.
         self.assertIn("0 = ganz nach vorn", js)
-        self.assertNotIn("function prioritaetsfeld", js)
         self.assertIn('"P" + i.priority', js)
         # Gelesen wird über Klassen, nicht über Positionen: `inputs[3]` verschob
         # sich still, sobald ein Feld dazwischen kam oder ein <input> zu einem
@@ -467,7 +447,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         html = (REPO /
                 "autoclicker/editors/sequence_studio/web/index.html").read_text(
                     encoding="utf-8")
-        self.assertNotIn(".scans.guided.has-image #ab-bild{display:none}", html)
         self.assertIn("SCAN EINRICHTEN", html)
         # Die Erklaerung dazu steht weiterhin da, aber im ⓘ statt als Absatz:
         # sie gilt immer und aendert sich nie, also stand sie bei jedem Blick
@@ -480,8 +459,6 @@ class ItemscanEditorUxTest(unittest.TestCase):
         self.assertIn('$("scan-photo-info")', js)
         self.assertIn('id="scan-photo-info"', html)
         self.assertIn('id="scan-size"', html)
-        self.assertNotIn('id="scan-bar-foto"', html)
-        self.assertNotIn('id="scan-bar-lernen"', html)
 
     def test_window_source_moves_editor_slots_with_the_game(self):
         old_rect = (0, 0, 120, 80)
@@ -590,7 +567,7 @@ class ItemscanEditorUxTest(unittest.TestCase):
         capture.assert_called_once_with(99)
         self.assertEqual(seen_sizes, [(20, 20)])
         self.assertEqual(result[0][0], (320, 230))
-        # Die global gespeicherten Slots bleiben unangetastet; die Anpassung gilt
+        # Die gespeicherten Slots bleiben unangetastet; die Anpassung gilt
         # in der Runtime nur für diesen Lauf.
         self.assertEqual(slot.click_pos, (120, 130))
 

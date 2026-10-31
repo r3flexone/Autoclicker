@@ -24,7 +24,6 @@ _COLORS_ENABLED = True
 _C = {
     "reset":   "\033[0m",
     "bold":    "\033[1m",
-    "dim":     "\033[2m",
     "green":   "\033[32m",
     "red":     "\033[31m",
     "yellow":  "\033[33m",
@@ -32,16 +31,13 @@ _C = {
     "cyan":    "\033[36m",
     "magenta": "\033[35m",
     "gray":    "\033[90m",
-    "white":   "\033[97m",
-    "bg_green": "\033[42m",
-    "bg_red":   "\033[41m",
 }
 
 
 def col(text: str, color: str) -> str:
     """Färbt Text mit ANSI-Escape-Codes.
 
-    Farben: green, red, yellow, blue, cyan, magenta, gray, bold, dim
+    Farben: green, red, yellow, blue, cyan, magenta, gray, bold
     """
     if not _COLORS_ENABLED:
         return text

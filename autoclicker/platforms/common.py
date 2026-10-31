@@ -1,4 +1,4 @@
-"""Betriebssystemunabhängige Tasten- und Hotkey-Definitionen."""
+"""Betriebssystemunabhängige Tasten- und Hotkey-Definitionen und Rechenregeln."""
 
 APP_ID = "Autoclicker.SequenzStudio"
 
@@ -26,7 +26,7 @@ HOTKEY_IMPORT_EXPORT = 17
 HOTKEY_RECORD_SEQ = 18
 HOTKEY_RECORD_PAUSE = 19
 HOTKEY_SEQUENCE_STUDIO = 20
-HOTKEY_SCAN_STUDIO = 21
+HOTKEY_STUDIO_SCANS = 21
 HOTKEY_HELP = 22
 HOTKEY_RECORD_COLOR = 23
 HOTKEY_RECORD_SCREENSHOT = 24
@@ -34,6 +34,16 @@ HOTKEY_REC_PHASE = 25
 HOTKEY_REC_REGION = 26
 HOTKEY_REC_WATCH = 27
 HOTKEY_SKIP_STEP = 28
+
+
+def desktop_origin(desktop) -> tuple[int, int]:
+    """Linke/obere Kante eines Desktop-Rechtecks `(l, t, r, b)`; ohne Rechteck `(0, 0)`.
+
+    Die eine Regel hinter `winapi.get_virtual_origin()` und dem Rückfall der
+    Bildschirmaufnahme im Windows-Backend.
+    """
+    return (desktop[0], desktop[1]) if desktop else (0, 0)
+
 
 KEY_NAMES = frozenset({
     "enter", "return", "tab", "space", "leertaste", "escape", "esc",
@@ -65,7 +75,7 @@ HOTKEY_BINDINGS = {
     HOTKEY_RECORD_SEQ: "<ctrl>+<alt>+j",
     HOTKEY_RECORD_PAUSE: "<ctrl>+<alt>+h",
     HOTKEY_SEQUENCE_STUDIO: "<ctrl>+<alt>+b",
-    HOTKEY_SCAN_STUDIO: "<ctrl>+<alt>+v",
+    HOTKEY_STUDIO_SCANS: "<ctrl>+<alt>+v",
     HOTKEY_HELP: "<ctrl>+<alt>+o",
     # CTRL+ALT+SHIFT ist die Ebene, die nur waehrend eines laufenden Vorgangs
     # wirkt: die Aufnahme-Marker waehrend einer Aufnahme, das Ueberspringen

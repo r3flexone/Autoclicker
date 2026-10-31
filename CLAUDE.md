@@ -43,8 +43,11 @@ Test hält die Tabelle gegen die vorhandenen Dateien, in beide Richtungen.
 python tests/all_tests.py      # ALLE Tests, ein Aufruf — das vor einem Commit
 python tests/all_tests.py --only contract    # nur die Vertragssuite (schnell)
 python tests/all_tests.py --only smoke --smoke-test tools   # eine Ansicht
-python tests/all_tests.py --mutations      # dazu die Gegenproben (so ruft CI es auf)
+python tests/all_tests.py --mutations      # dazu die Gegenproben
+python tests/all_tests.py --only contract --only root --mutations
+                                # so ruft der Test-Job der CI es auf (Rauchtests: eigener Job)
 python tests/all_tests.py --only smoke --smoke-required  # fehlender Browser = rot
+                                # (so ruft der Rauchtest-Job der CI es auf)
 python -m flake8                # Linter — Regeln stehen in `.flake8`, kein Argument noetig
 python -m flake8 --select=F,C90 autoclicker/ market_analysis/ main.py tools/ tests/
                                 # dasselbe ausgeschrieben (so ruft CI es auf)
@@ -58,8 +61,13 @@ python tools/catalog.py         # Item-/Gegner-Katalog aus der Spiel-API holen
                                 # (--show = nur anzeigen, --target = anderer Pfad)
 
 python main.py                  # Startet die App auf Windows oder Linux/X11
+start.bat                       # Doppelklick-Start unter Windows: richtet beim ersten Mal
+                                # Python 3.14 (winget), .venv und requirements.txt ein
+                                # requirements.txt = der normale Betrieb, ohne OCR
 python tools/test_llm.py            # Standalone-Verbindungstest für Ollama/LM Studio (nutzt llm_vision)
 python tools/test_llm.py screenshot # LLM-Screenshot-Test ohne Editor-Setup
+python tools/test_ocr.py            # Standalone-Test der OCR-Backends (nutzt ocr; test = nur Verfügbarkeit,
+                                    # <bild.png>, --region, --bosses, --backend, --languages)
 python tools/llm_bench.py           # Misst die LLM-Benennung gegen den eigenen Bestand
                                     # (--image slot|background, --model X, --all-models,
                                     #  --two-stage, --votes 3, --reasoning)
@@ -97,7 +105,7 @@ Was man beim Schreiben von Tests wissen muss (Begründungen in `tests/CLAUDE.md`
   `tests/smoke/` und einen Eintrag in `SMOKE_TESTS`; gewartet wird mit
   `settle()` auf die Seite, nicht auf die Uhr.
 - **CI** (`.github/workflows/tests.yml`, Push und PR auf jedem Branch): Ubuntu
-  und Windows, Python 3.14, der Test-Job in drei Achsen (`ohne`/`pillow`/`mit`
+  und Windows, Python 3.14, der Test-Job in drei Paketkonstellationen (`ohne`/`pillow`/`mit`
   Bildpaketen), dazu Rauchtests und `flake8 --select=F,C90`. Jeder Job muss grün
   sein. Wer an `imaging.py` arbeitet, installiert die Bildpakete auch lokal.
 - **`--mutations` prüft die Tests, nicht den Code**: jeder Fall in
@@ -127,7 +135,7 @@ Regeln beim Erweitern:
 - **Worker-Thread**: `sequence_worker()` in `autoclicker/runtime/worker.py` — führt die aktive Sequenz aus.
 - **Geteilter State**: `AutoClickerState` (in `models.py`) mit `state.lock` (threading.Lock) und mehreren Events (`stop_event`, `pause_event`, `skip_event`, `restart_event`, `skip_cycle_event`, `quit_event`, `finish_event`).
 
-**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.global_items`, `state.global_slots`, `state.boss_scans`, `state.item_scans`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
+**Pattern für State-Mutationen**: Jede Lese-/Schreib-Operation auf `state.scan_items`, `state.scan_slots`, `state.boss_scans`, `state.item_scans`, `state.points`, `state.clicked_categories`, Zähler etc. **muss** unter `with state.lock:` laufen. Persistenz-Funktionen in `autoclicker/persistence/` machen einen Snapshot unter Lock und schreiben die Datei ausserhalb. Datei-Saves laufen crash-sicher über `atomic_write()` (Temp-Datei + `os.replace`, in `utils/parsing.py`) — bei Absturz bleibt die alte Datei intakt statt korrupt.
 
 ### Aktions-Wrapper (zentral)
 Alle Klicks und Tastendrücke im Worker laufen über `safe_click(state, x, y, label)` und `safe_key(state, key, label)` in `autoclicker/runtime/actions.py`. Diese bündeln:
@@ -157,22 +165,26 @@ Was im Worker sonst noch gilt (Begründungen in `autoclicker/runtime/CLAUDE.md`)
   `GATE_SKIP` zurück.
 
 ### Hotkey-Flow
-1. `winapi.py` definiert `HOTKEY_*` IDs + `register_hotkeys()` → `RegisterHotKey`.
+1. `platforms/common.py` definiert die `HOTKEY_*`-IDs; `register_hotkeys()` je Backend
+   meldet sie an (Windows: `RegisterHotKey` aus `_HOTKEY_DEFINITIONS`, Linux/X11: die
+   Kombinationen aus `HOTKEY_BINDINGS` über `pynput`), `winapi.py` reicht sie durch.
 2. `main.py` mappt IDs auf `handle_*`-Funktionen aus `handlers.py`.
 3. Handler dispatcht typischerweise zu einem Editor unter `autoclicker/editors/`.
 4. Editoren sind **synchron, blockierend** (Console-Input via `safe_input`). Während ein Editor läuft, ist der Main-Thread blockiert — der Worker kann parallel weiterlaufen.
 
-Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral), Tastencode im jeweiligen Backend (`VK_*` in `platforms/windows.py`) → `register_hotkeys()`-Liste **beider** Backends → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
+Neuen Hotkey hinzufügen: ID in `platforms/common.py` (`HOTKEY_*`, betriebssystemneutral) samt Kombination in `HOTKEY_BINDINGS` (die liest das Linux-Backend) → Tastencode (`VK_*`) und Eintrag in `_HOTKEY_DEFINITIONS` in `platforms/windows.py` — beide Backends, sonst fehlt die Taste auf einem → Handler in `handlers.py` → `hotkey_handlers` dict in `main.py` → Hilfetext in `print_help()` von `main.py`.
 
-**`CTRL+ALT+<Buchstabe>` ist voll.** 24 der 26 Buchstaben sind vergeben, frei blieben
-nur R (oft vom System belegt) und Y. Wer eine neue Taste braucht, nimmt **nicht** die
-letzten zwei, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
+**`CTRL+ALT+<Buchstabe>` ist fast voll.** 22 der 26 Buchstaben sind vergeben; frei sind
+D, M, R (oft vom System belegt) und Y — D und M erst, seit die Aufnahme-Marker auf die
+SHIFT-Ebene gezogen sind. Wer eine neue Taste braucht, nimmt **nicht** die letzten
+vier, sondern eine Ebene mit `MOD_SHIFT`. Dafür gibt es `MOD_REC`
 (`CTRL+ALT+SHIFT+…`), und die trägt eine Bedeutung: **was dort liegt, wirkt nur während
 eines laufenden Vorgangs** — die Marker während einer Aufnahme, `SHIFT+K` während
 eines Laufs. Der Buchstabe darf derselbe bleiben wie in der Basis-Ebene,
-solange die Bedeutung verwandt ist — `M`/`SHIFT+M` sind beide „warte auf eine Farbe",
-`D`/`SHIFT+D` beide „Screenshot", `K`/`SHIFT+K` beide „überspringen" (die Wartezeit
-bzw. den ganzen Block). Der Block-Skip hatte vorher nur den Studio-Knopf und den
+solange die Bedeutung verwandt ist — `K`/`SHIFT+K` sind beide „überspringen" (die
+Wartezeit bzw. den ganzen Block), und `SHIFT+M` („warte auf eine Farbe") und `SHIFT+D`
+(„Screenshot") tragen die Buchstaben, die diese beiden früher in der Basis-Ebene hatten.
+Der Block-Skip hatte vorher nur den Studio-Knopf und den
 Briefkasten-Befehl `skip_step`; wer aus der Konsole lief, konnte einen hängenden
 Block nur mit dem ganzen Lauf abbrechen. Der Hotkey ruft **denselben**
 `handle_skip_step()` wie der Knopf — ein Ereignis, zwei Wege.
@@ -268,7 +280,12 @@ Die Regeln dazu (Begründungen in `autoclicker/persistence/CLAUDE.md`):
   Dataclass-Defaults übereinstimmen), nur Referenzen, nie Kopien.
 - **Der Start-Durchgang** (`persistence/sweep.py`) bringt alle Dateien über
   Loader + Serializer auf den heutigen Stand: still, wenn nichts zu tun ist,
-  `.bak` unter `backups/` vor der ersten Änderung.
+  `.bak` unter `backups/` vor der ersten Änderung. Eine Datei aus einer
+  **neueren** Fassung (höheres `schema_version`) lässt er, wie sie ist. Umgerechnet
+  wird nichts: es gibt keine Migrationsschritte und keine Schleuse dafür.
+- **Ein Schritt trägt keine Koordinate, auch nicht ersatzweise**: der Loader liest
+  `x/y`, Prüf-Pixel, Else-Koordinaten und `recorded_color` nicht, der Serializer
+  schreibt sie nicht. Ohne `point_id` hat ein Schritt keine Stelle.
 - **Ein Name, der Schlüssel ist, wird nie doppelt vergeben**: `next_free_name()`
   für Serien, `unique_name()` für einen kollidierenden Namen. Bei Sequenzen ist
   der Schlüssel der **Ordner** — `sanitize_filename()` gehört an den Pfad, nie
@@ -308,10 +325,11 @@ Details: `autoclicker/CLAUDE.md`.
 - `autoclicker/catalog.py` — liest den Item-Katalog, den `tools/catalog.py` aus der Spiel-API holt (Verbindung über eine Datei, kein Import).
 - `autoclicker/import_export.py` — ZIP-Bundle Export/Import + Koordinaten-Remapping (2-Punkt-Affine: scale + offset). Referenzpunkte automatisch aus der Spielfenster-Client-Grösse (`winapi.get_client_rect_by_title`, Manifest-Feld `source_window`), Fallback = manuelle 2 Punkte.
 - `autoclicker/utils/` — Hilfsfunktionen: `console.py` (ANSI, Tags), `io.py` (safe_input, interactive_select), `parsing.py` (Zeit, Dateinamen).
-- `autoclicker/persistence/` — JSON-Persistenz: `migration.py` (Schema-Versionierung, s. `persistence/CLAUDE.md`), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von Savern UND `import_export.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `globals.py`, `presets.py`.
-- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `status.py` (Laufstatus für
+- `autoclicker/persistence/` — JSON-Persistenz: `schema.py` (Schema-Version: Stempel und Erkennung einer neueren Fassung, s. `persistence/CLAUDE.md`), `paths.py` (Pfade), `serialization.py` (Dataclass↔Dict; `_*_to_dict`/`_*_from_dict` sind die EINE Quelle der Wahrheit fürs Dateiformat — von den Savern und vom Start-Durchgang `sweep.py` genutzt, damit beide dasselbe schreiben), `_scan_store.py` (geteiltes Skelett für item/boss/icon-Scans: ensure_dir/write/list/load_all + `LOAD_EXCEPTIONS`), `sequences.py`, `item_scans.py`, `boss_scans.py`, `icon_scans.py`, `scan_views.py`, `presets.py`.
+- `autoclicker/runtime/` — Sequenz-Ausführung: `actions.py` (safe_click/safe_key, Humanize, `execute_else_action`), `item_scan.py` (inkl. `execute_icon_scan`), `boss_detection.py` (inkl. `_execute_detection_action` — geteilte Aktions-Ausführung für Boss + Icon), `steps.py` (Step-Dispatcher), `worker.py` (sequence_worker), `debug.py` (Debug-Stufen, manueller Modus und Gates — `GATE_RUN`/`GATE_SKIP`/`GATE_STOP`), `status.py` (Laufstatus für
   Beobachter ausserhalb des Prozesses).
 - `autoclicker/mailbox.py` — der Briefkasten Studio → Hauptprozess (`.command.json`); `runtime/status.py` ist der Rückweg (`.run.json`). Liegt bewusst nicht unter `runtime/`, damit das Fenster den Worker nicht nachzieht.
+- `autoclicker/sequence_studio.py` — der Einstieg des Studio-Subprozesses (`python -m autoclicker.sequence_studio`): öffnet das Fenster und lädt die zuletzt bearbeitete Sequenz.
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster (pywebview, eigener Prozess); seine Module stehen in seiner `CLAUDE.md`.
 - Editor-Capture-Helfer: `editors/_detection_capture.py` (`capture_markers`, geteilt von Boss- und Icon-Editor). `editors/_click_window.py` (`clicked_window`, geteilt von Aufnahme und Klick-Runde — den beiden Editoren, die aus dem Maus-Hook laufen). Aktions-Konstanten zentral in `models.py` (`ACTION_*`), Familien-Namen (`ELSE_*`/`BOSS_ACTION_*`/`ICON_ACTION_*`) sind Aliase.
 - `autoclicker/handlers.py` — Hotkey-Handler (Glue-Code zwischen Hotkey und Editor/Action).
@@ -319,19 +337,39 @@ Details: `autoclicker/CLAUDE.md`.
 - `market_analysis/` — **eigenständiges Subsystem, nicht Teil des Autoclickers.** Zieht Marktpreise und Rezepte aus der Idle-Clans-API und rechnet Gold/h pro Item (`analysis.py`, `verify.py`, `apicheck.py`, `config.py`). Importiert **nichts** aus `autoclicker/`, braucht kein Windows, hat eigene Abhängigkeiten (pandas/requests/openpyxl) und ein eigenes `market_analysis/README.md` — das ist dort die Wahrheit, nicht diese Datei. Generiertes landet in `market_analysis/output/` (gitignored). Wer am Autoclicker arbeitet, fasst den Ordner nicht an; wer an der Analyse arbeitet, umgekehrt.
 
   **Die eine Verbindung ist eine Datei, kein Import.** `export_market_values()` schreibt
-  `output/marktwert.json` (Item-Name → Gold pro Stück); trägt man den Pfad in der
-  `config.json` des Autoclickers unter `scan_market_value_file` ein, sortiert der
+  `output/marktwert.json` (Item-Name → Verkaufswert je Stück, `sale_values()`; beide in
+  `market_analysis/pricing.py`, also ohne pandas — der Schreib-Test steht deshalb in
+  `tests/root/test_market_analysis.py`). `scan_market_value_file` in der `config.json` des
+  Autoclickers zeigt **von Haus aus** dorthin (`market_analysis/output/marktwert.json`,
+  relativ zum Arbeitsverzeichnis wie alle Pfade der App); liegt die Datei da, sortiert der
   Item-Scan seine Klicks danach statt nach der von Hand getippten `priority`
   (`load_market_values()` in `runtime/item_scan.py`, zwischengespeichert am mtime — eine
   neu gerechnete Analyse greift ohne Neustart). Zwei Tests messen die Trennung im
-  **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt).
+  **Import-Baum** (nicht im Text: in Kommentaren darf stehen, woher die Datei kommt), ein
+  dritter, dass der Standard auf `MARKET_VALUE_PATH` der Analyse zeigt.
+
+  Bis zum 04.10.2026 war das Feld leer und der Pfad von Hand einzutragen — der einzige
+  Schritt zwischen „Analyse gelaufen" und „Scan sortiert danach", für eine Datei, die
+  im Normalfall im selben Repo liegt. **Eine `config.json` von davor trägt noch `""`**
+  (gespeichert werden alle Felder, nicht nur geänderte) und bleibt damit aus; im
+  Einstellungen-Reiter holt „Standard" den Pfad zurück. Ob die Datei wirklich da ist,
+  sagt die Zeile unter dem Feld (`_market_state()`), nicht der Pfad; der Bericht-Reiter
+  behandelt eine fehlende Datei wie gar keine, nicht als „nicht lesbar".
+
+  **Nachgeschlagen wird mit `market_value()`, nie mit `.get()`.** Die Analyse schreibt
+  die Namen der Spiel-API (`oak_log`), der Autoclicker kennt dasselbe Item als
+  `Oak Log`; `market_key()` vergleicht ohne Gross-/Kleinschreibung, Unterstrich gleich
+  Leerzeichen. Bis zum 04.10.2026 stand in der Datei die Marge der Rohdaten unter dem
+  Rezeptnamen (`oak`, `titanium_platebody: -2430`) und wurde exakt verglichen — sie
+  traf kein Item, und hätte sie getroffen, wären die wertvollsten zuletzt geklickt
+  worden.
 
   Zwei Eigenschaften, die man kennen muss: die gespeicherte `item.priority` wird
-  **nicht** überschrieben — die Sortierung gilt nur für den Lauf, `items.json` bleibt
-  unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
+  **nicht** überschrieben — die Sortierung gilt nur für den Lauf, die Item-Scan-Datei
+  bleibt unberührt. Und **jedes Item mit Marktwert gewinnt gegen jedes ohne**, weil der Wert
   negiert einsortiert wird. Das ist gewollt (ein gemessener Wert schlägt eine getippte
   Zahl), heisst aber: was nicht in der Tabelle steht, rutscht nach hinten. Wer das nicht
-  will, lässt `scan_market_value_file` leer — dann ändert sich gar nichts.
+  will, leert `scan_market_value_file` — dann ändert sich gar nichts.
 
 ### Sequenz-Studio (Kurzfassung)
 
@@ -380,7 +418,7 @@ ist als ein Name und deshalb auf beiden Seiten geändert werden muss:
   `.get("point")`.
 - **Die Seite hängt am DOM**: `t.dataset.view` ist das Attribut `data-view` in
   `index.html`; `S.question` ist zugleich der JSON-Schlüssel, den die Brücke
-  schreibt. Ein Klick, der ins Leere geht, ohne `pageerror` — alle acht
+  schreibt. Ein Klick, der ins Leere geht, ohne `pageerror` — alle
   Rauchtests rot —, ist fast immer dieser Fall.
 - **Tests, die JS-Quelltext als Python-String tragen** (`… in _html18`,
   `page.evaluate(…)` in den Rauchtests) zitieren den Namen wörtlich.
@@ -436,14 +474,19 @@ ist: **die allgemeine Regel, von der jene die Sonderfälle sind.**
 
 - Migration: „Das Modul soll schrumpfen, nicht wachsen." Ein Schritt wird
   **ersatzlos gelöscht**, sobald keine Altbestände mehr existieren — samt dem
-  Alt-Code, den er ersetzt hat. **Das ist einmal vollständig passiert:** die
-  Sequenz-Kette ist leer, und mit ihren vier Schritten fielen `_sichere_neue_punkte`,
-  `_punkte_schreibfertig`, `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` sowie rund
-  vierzig Tests weg. Die Regel ist also nicht nur aufgeschrieben, sondern eingelöst.
+  Alt-Code, den er ersetzt hat. **Das ist vollständig passiert:** die vier Schritte
+  der Sequenz-Kette fielen samt `_sichere_neue_punkte`, `_punkte_schreibfertig`,
+  `_als_dicts`, `_STELLEN`, `_DEAD_STEP_KEYS` und rund vierzig Tests weg — und danach
+  auch die leere Schleuse (`migrate()`, `_CHAINS`, die `KIND_*`-Konstanten), die
+  „für die nächste Umstellung" stehengeblieben war. Aus `migration.py` wurde
+  `schema.py`: es heisst nach dem, was es noch tut. Die Regel ist nicht nur
+  aufgeschrieben, sondern eingelöst.
 - Serializer: „Speichern wird geschrieben, als gäbe es keine Altbestände."
 - `tools/sync_json.py` wurde gelöscht statt gepflegt; die Normalisierer der
   Migration, `_FIELD_MIGRATION` der Config, `reload_points`, `_REF_KEYS`, die
-  sieben Import-Flags und das Mausrad sind ihm gefolgt.
+  sieben Import-Flags und das Mausrad sind ihm gefolgt — ebenso die Inline-Koordinaten
+  an Schritten (samt dem Befehl `link` im Sequenz-Editor), die Altlayout-Ordner
+  des Factory-Resets (`items/`, `slots/`, `item_scans/` …) und `_legacy_reported`.
 
 Drei Sorten Altlast, die auffallen sollen:
 
@@ -451,15 +494,15 @@ Drei Sorten Altlast, die auffallen sollen:
 |---|---|---|
 | **Weiterleitung ohne Inhalt** | `execution.py` — reiner Re-Export, Docstring sagte selbst „damit main.py und handlers.py ihre Imports unverändert lassen können" | eine Datei, deren einziger Zweck ist, zwei Zeilen nicht anzufassen |
 | **Name eines Paradigmas, das es nicht mehr gibt** | `node_editor`, `node_canvas`, `BlockGraph`, `rebuild_canvas` nach dem Umbau auf Listen | ein Name, der etwas Falsches verspricht, ist dieselbe Sorte Fehler wie eine Oberfläche, die es tut — er führt den nächsten Leser in die Irre |
-| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt | Pflegeaufwand für etwas, das nie passiert |
+| **Totes Feld / toter Zweig** | `_sichere_neue_punkte()` nach dem Löschen der Migrationskette — es wartete auf ein Ereignis, das nicht mehr eintritt; ebenso die `point_id is None`-Zweige der Kalibrierung, die nur Schritte mit Inline-Koordinate bedienten | Pflegeaufwand für etwas, das nie passiert |
 
 Zwei Einschränkungen, damit daraus keine Zerstörungswut wird:
 
 - **Daten dürfen einen Default bekommen, aber nicht den Loader werfen.** Früher
   stand hier „Bestandsdateien werden über die Migration gehoben, nicht
-  fallengelassen". Das gilt nur noch für das, was schon eine Migration hat: für
-  Neues ist ein Migrationsschritt ausdrücklich **nicht** mehr nötig (s. o. bei
-  der Persistenz). Ein Feld, das eine alte Datei nicht kennt, bekommt seinen
+  fallengelassen". Das gilt nicht mehr: es gibt keine Migration, und ein
+  Migrationsschritt ist ausdrücklich **nicht** mehr nötig (s. o. bei der
+  Persistenz). Ein Feld, das eine alte Datei nicht kennt, bekommt seinen
   Standardwert — einen Scan im Studio neu zu bauen ist billiger als ein
   Migrationsschritt. Kaputtgehen darf trotzdem nichts: unlesbar ist ein Fehler,
   auf dem Standardwert ist keiner.

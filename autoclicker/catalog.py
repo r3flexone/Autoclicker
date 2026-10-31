@@ -1,9 +1,10 @@
-"""Der Item-/Gegner-Katalog aus der offiziellen Idle-Clans-API.
+"""Der Item-Katalog aus der offiziellen Idle-Clans-API.
 
-Geschrieben wird die Datei von `tools/catalog.py`, gelesen hier. Wie bei
-`marktwert.json` ist die Verbindung **eine Datei, kein Import**: das Werkzeug
-weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug. Fehlt die
-Datei, laeuft alles wie vorher — der Katalog ist Zusatz, nie Voraussetzung.
+Geschrieben wird die Datei von `tools/catalog.py`, gelesen hier — die Items; die
+Gegnernamen, die das Werkzeug mit ablegt, liest nur das Studio fuer seine Anzeige.
+Wie bei `marktwert.json` ist die Verbindung **eine Datei, kein Import**: das
+Werkzeug weiss nichts vom Autoclicker, der Autoclicker nichts vom Werkzeug. Fehlt
+die Datei, laeuft alles wie vorher — der Katalog ist Zusatz, nie Voraussetzung.
 
 Er beantwortet zwei Fragen:
 
@@ -19,7 +20,7 @@ schaltet nur den einen der beiden Wege zum Namen frei.
 
 Warum hier und nicht in `runtime/`: der Katalog wird vor allem beim Bearbeiten
 gebraucht (Scan-Studio, Item-Editor), und `runtime/__init__` zieht den Worker
-samt `imaging` und `winapi` nach. Dieselbe Ueberlegung wie bei `command.py`.
+samt `imaging` und `winapi` nach. Dieselbe Ueberlegung wie bei `mailbox.py`.
 """
 
 import json
@@ -29,7 +30,7 @@ from typing import Optional
 
 logger = logging.getLogger("autoclicker")
 
-# Pfad -> {"stand": (mtime, groesse), "katalog": Katalog}. Wie beim Marktwert
+# Pfad -> {"signature": (mtime, Groesse), "catalog": Catalog}. Wie beim Marktwert
 # ohne Lock: Dict-Zugriffe sind unter dem GIL atomar, und die Datei wird nur
 # gelesen. Der Schluessel haengt am Dateistand, ein neu geschriebener Katalog
 # greift also ohne Neustart.
@@ -37,7 +38,7 @@ _cache: dict = {}
 
 
 class Catalog:
-    """Name -> Kategorie und Wert, plus die Gegnerliste.
+    """Name -> Kategorie und Wert.
 
     Nachgeschlagen wird ohne Ruecksicht auf Gross-/Kleinschreibung: ein Modell
     antwortet mal `Godlike Bow`, mal `godlike bow`, und beides meint dasselbe.
@@ -45,14 +46,12 @@ class Catalog:
     ueber `_category_normalize` zwei Kategorien mit demselben Wort.
     """
 
-    def __init__(self, items: Optional[dict] = None,
-                 enemy: Optional[list] = None) -> None:
+    def __init__(self, items: Optional[dict] = None) -> None:
         self.items: dict = items or {}
-        self.enemy: list = list(enemy or [])
         self._index = {name.casefold(): name for name in self.items}
 
     def __bool__(self) -> bool:
-        return bool(self.items or self.enemy)
+        return bool(self.items)
 
     def __len__(self) -> int:
         return len(self.items)
@@ -99,15 +98,15 @@ def load_catalog(path: str) -> Catalog:
         st = os.stat(path)
     except OSError:
         return EMPTY
-    stand = (st.st_mtime, st.st_size)
+    signature = (st.st_mtime, st.st_size)
     entry = _cache.get(path)
-    if entry is not None and entry["stand"] == stand:
+    if entry is not None and entry["signature"] == signature:
         return entry["catalog"]
     raw = _read_catalog_file(path)
     if raw is None:
         return EMPTY
     catalog = _catalog_from_dict(raw)
-    _cache[path] = {"stand": stand, "catalog": catalog}
+    _cache[path] = {"signature": signature, "catalog": catalog}
     return catalog
 
 
@@ -138,8 +137,7 @@ def _catalog_from_dict(raw: dict) -> Catalog:
             value = 0.0
         items[str(name)] = {"kategorie": str(category) if category else None,
                             "wert": value}
-    enemy = [str(g) for g in (raw.get("gegner") or []) if g]
-    return Catalog(items, enemy)
+    return Catalog(items)
 
 
 def ranks(names_and_values: list) -> dict:

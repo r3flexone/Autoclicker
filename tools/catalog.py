@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Schreibt den Item-/Gegner-Katalog aus der offiziellen Idle-Clans-API.
 
-    python tools/catalog.py            # schreibt katalog.json
+    python tools/catalog.py            # schreibt catalog.json
     python tools/catalog.py --target X   # anderer Pfad
     python tools/catalog.py --show    # nur anzeigen, nichts schreiben
 

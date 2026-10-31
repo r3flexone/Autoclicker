@@ -14,19 +14,18 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import AppConfig, CONFIG_FILE, SEQUENCES_DIR, apply_config
-from .models import AutoClickerState, ClickPoint
+from .models import AutoClickerState, ClickPoint, GATE_COMMANDS
 from .utils import safe_input, format_duration, parse_time_input, is_cancel, cancel_hint, interactive_select, col, ok, err, warn, info, header, hint, coord_context, dbg, describe_color, init_logging
-from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel, post_quit
+from .winapi import get_cursor_pos, set_cursor_pos, get_screen_pixel
 from .persistence import (
     save_points, ensure_sequences_dir, list_available_sequences, sequence_file,
     load_sequence_file, locate_step, find_sequence_path,
     get_next_point_id, get_point_by_id, print_points,
     activate_sequence,
-    ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR, BOSS_SCANS_DIR, ICON_SCANS_DIR,
     init_directories
 )
 from .runtime import sequence_worker, print_status
-from .runtime.actions import is_verbose_debug
+from .runtime.debug import is_log_debug
 from .imaging import run_color_analyzer
 
 
@@ -178,8 +177,8 @@ def handle_reset(state: AutoClickerState) -> None:
 
     with state.lock:
         num_points = len(state.points)
-        num_slots = len(state.global_slots)
-        num_items = len(state.global_items)
+        num_slots = len(state.scan_slots)
+        num_items = len(state.scan_items)
         num_item_scans = len(state.item_scans)
         num_boss_scans = len(state.boss_scans)
         num_icon_scans = len(state.icon_scans)
@@ -207,20 +206,19 @@ def handle_reset(state: AutoClickerState) -> None:
         with state.lock:
             state.points.clear()
             state.active_sequence = None
-            state.global_slots.clear()
-            state.global_items.clear()
+            state.scan_slots.clear()
+            state.scan_items.clear()
             state.item_scans.clear()
             state.boss_scans.clear()
             state.icon_scans.clear()
 
-        # Alle Ordner löschen
-        folders_to_delete = [SEQUENCES_DIR, ITEMS_DIR, SLOTS_DIR, ITEM_SCANS_DIR,
-                             BOSS_SCANS_DIR, ICON_SCANS_DIR]
-        for folder in folders_to_delete:
-            folder_path = Path(folder)
-            if folder_path.exists():
-                _rmtree_robust(folder_path)
-                print(f"  {col('-', 'red')} {folder}/ {col('gelöscht', 'red')}")
+        # Alle Sequenzen löschen — mit ihnen gehen Punkte, Scans, Vorlagen und gemerkte
+        # Bilder, denn die liegen in den Sequenzordnern. Eigene Ordner im Wurzelverzeichnis
+        # (items/, slots/, item_scans/ …) gibt es seit den Besitzeinheiten nicht mehr.
+        folder_path = Path(SEQUENCES_DIR)
+        if folder_path.exists():
+            _rmtree_robust(folder_path)
+            print(f"  {col('-', 'red')} {SEQUENCES_DIR}/ {col('gelöscht', 'red')}")
 
         # Config löschen
         config_path = Path(CONFIG_FILE)
@@ -233,7 +231,7 @@ def handle_reset(state: AutoClickerState) -> None:
         init_directories()
 
         # Config auf Standard zurücksetzen — hineinschreiben, nicht austauschen
-        # (s. config.uebernehmen: state.config IST das Modul-CONFIG).
+        # (s. config.apply_config: state.config IST das Modul-CONFIG).
         with state.lock:
             apply_config(state.config, AppConfig())
 
@@ -285,7 +283,7 @@ def handle_load(state: AutoClickerState) -> None:
 
 
 def handle_step_mode(state: AutoClickerState) -> None:
-    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manuell').
+    """Schaltet den manuellen Modus um (Punkte-Menü -> 'manual').
 
     Bewusst kein eigener Hotkey: CTRL+ALT+<Buchstabe> ist auf Windows häufig von anderen
     Programmen belegt, und gebraucht wird der Schalter ohnehin nur vor dem Start. Zurück
@@ -793,7 +791,6 @@ def command_manual_action(state: AutoClickerState, arguments: dict) -> None:
     Haltepunkt hält einen Lauf an, der sonst gar nicht manuell ist, und seine
     Tafel im Live-Run schickt dieselben Befehle.
     """
-    from .runtime.debug import GATE_COMMANDS
     action = str(arguments.get("action") or "")
     if action not in GATE_COMMANDS:
         print(f"\n{err('Unbekannte manuelle Aktion — ignoriert.')}")
@@ -1020,10 +1017,10 @@ def command_data(state: AutoClickerState, arguments: dict) -> None:
             state.item_scans.clear()
             state.boss_scans.clear()
             state.icon_scans.clear()
-            state.global_slots.clear()
-            state.global_items.clear()
+            state.scan_slots.clear()
+            state.scan_items.clear()
     with state.lock:
-        count = (len(state.global_slots), len(state.global_items),
+        count = (len(state.scan_slots), len(state.scan_items),
                   len(state.item_scans), len(state.points))
     print(f"\n{col('[STUDIO]', 'cyan')} Neu geladen: "
           f"{count[0]} Slot(s), {count[1]} Item(s), {count[2]} Item-Scan(s), "
@@ -1044,7 +1041,7 @@ def reload_if_pending(state: AutoClickerState) -> None:
 
 
 def command_reclick(state: AutoClickerState, arguments: dict) -> None:
-    """Startet die Klick-Runde — der Studio-Knopf statt `click` im Punkte-Menü.
+    """Startet die Klick-Runde — der Studio-Knopf statt `reclick` im Punkte-Menü.
 
     Das eine Werkzeug, das der Studio-Prozess nicht selbst kann: es braucht einen
     systemweiten Maus-Hook, und der gehoert dem Prozess, der auch die Hotkeys
@@ -1131,8 +1128,7 @@ def command_record_from(state: AutoClickerState, arguments: dict) -> None:
 
 def command_quit(state: AutoClickerState, arguments: dict) -> None:
     """Das automatisch gestartete Studio wurde geschlossen — Hauptprozess mit."""
-    import threading
-    handle_quit(state, threading.get_ident())
+    handle_quit(state)
 
 
 # Warum die Runde verworfen wurde. Der Aufrufer weiss es, der Handler nicht —
@@ -1395,7 +1391,7 @@ def _ask_schedule(state: AutoClickerState, seq_name: str) -> None:
         print(col("[ABBRUCH]", "yellow"))
         return
     seconds, desc, target_timestamp = parse_time_input(time_input)
-    if is_verbose_debug(state):
+    if is_log_debug(state):
         print(dbg(f"Eingabe: '{time_input}' -> seconds={seconds}, desc='{desc}', "
                   f"target_timestamp={target_timestamp}"))
     if seconds < 0:
@@ -1499,7 +1495,7 @@ def handle_rec_watch(state: AutoClickerState) -> None:
 
 
 def handle_rec_phase(state: AutoClickerState) -> None:
-    """Setzt während der Aufnahme eine Phasengrenze (INIT | LOOP | END)."""
+    """Setzt während der Aufnahme eine Phasengrenze: ab hier die nächste Loop-Phase."""
     from .editors.sequence_recorder import mark_phase
     mark_phase(state)
 
@@ -1519,7 +1515,7 @@ def handle_sequence_studio(state: AutoClickerState,
 
     args = [sys.executable, "-m", "autoclicker.sequence_studio"]
     if quit_with_window:
-        args.append("--beenden-mit-fenster")
+        args.append("--quit-with-window")
 
     try:
         subprocess.Popen(args)
@@ -1527,14 +1523,14 @@ def handle_sequence_studio(state: AutoClickerState,
         print(f"\n{err(f'Konnte Sequenz-Studio nicht starten: {e}')}")
         return False
 
-    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Visueller Editor geöffnet "
+    print(f"\n{col('[SEQUENZ-STUDIO]', 'cyan')} Sequenz-Studio geöffnet "
           "(zuletzt geöffnet/gespeichert).")
     print("     Starten geht dort auch — der Hauptprozess führt es aus.")
     print(f"     Nach dem Speichern ohne Start mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
     return True
 
 
-def handle_scan_studio(state: AutoClickerState) -> None:
+def handle_studio_scans(state: AutoClickerState) -> None:
     """Öffnet das Sequenz-Studio auf dem Reiter „Scans".
 
     Derselbe Subprozess wie CTRL+ALT+B, nur mit vorgewähltem Reiter. Bis zum
@@ -1556,8 +1552,8 @@ def handle_scan_studio(state: AutoClickerState) -> None:
     print(f"     Danach im Hauptprozess mit {col('CTRL+ALT+L', 'yellow')} neu laden.")
 
 
-def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
-    """Beendet das Programm."""
+def handle_quit(state: AutoClickerState) -> None:
+    """Beendet das Programm: `quit_event` verlässt die Hauptschleife in `main.py`."""
     print(f"\n{col('[QUIT]', 'red')} Beende Programm...")
 
     # Falls noch eine Aufnahme läuft, BEIDE Hooks sauber entfernen — ein liegen
@@ -1580,5 +1576,3 @@ def handle_quit(state: AutoClickerState, main_thread_id: int) -> None:
 
     state.stop_event.set()
     state.quit_event.set()
-
-    post_quit(main_thread_id)

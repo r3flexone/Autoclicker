@@ -10,6 +10,8 @@ import logging
 import re
 import socket
 import time
+import urllib.error
+import urllib.request
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,14 +19,6 @@ if TYPE_CHECKING:
 
 # Logger
 logger = logging.getLogger("autoclicker")
-
-# HTTP-Bibliothek (eingebaut in Python)
-try:
-    import urllib.request
-    import urllib.error
-    HTTP_AVAILABLE = True
-except ImportError:
-    HTTP_AVAILABLE = False
 
 
 # =============================================================================
@@ -54,9 +48,30 @@ def chat_endpoint(provider: str) -> str:
     return DEFAULT_CHAT_ENDPOINT.get(provider, DEFAULT_CHAT_ENDPOINT[PROVIDER_LMSTUDIO])
 
 
-def test_endpoint_for(provider: str) -> str:
-    """Endpunkt fuer den Verbindungstest (Modell-Liste statt Chat)."""
-    return DEFAULT_TEST_ENDPOINT.get(provider, DEFAULT_TEST_ENDPOINT[PROVIDER_LMSTUDIO])
+# Wo die Modell-Liste neben dem Chat liegt: derselbe Server, derselbe Pfad-Anfang.
+_CHAT_TO_LIST = {
+    PROVIDER_OLLAMA: ("/api/chat", "/api/tags"),
+    PROVIDER_LMSTUDIO: ("/chat/completions", "/models"),
+}
+
+
+def test_endpoint_for(provider: str, chat: Optional[str] = None) -> str:
+    """Endpunkt fuer den Verbindungstest (Modell-Liste statt Chat).
+
+    `chat` ist der eingestellte `llm_endpoint` — die Adresse des CHATS, an die
+    gepostet wird. Die Modell-Liste liegt daneben; ein GET auf den Chat selbst
+    antwortet mit 405 bzw. 404. Hier wurde der Chat-Endpunkt unverändert
+    abgefragt, und mit einem eingetragenen Endpunkt stand die Lampe immer auf
+    „nicht erreichbar", während der Server lief. Endet die Adresse nicht auf dem
+    Chat-Pfad, ist sie schon die gemeinte und bleibt, wie sie ist.
+    """
+    if not chat:
+        return DEFAULT_TEST_ENDPOINT.get(provider, DEFAULT_TEST_ENDPOINT[PROVIDER_LMSTUDIO])
+    chat_path, list_path = _CHAT_TO_LIST.get(provider, _CHAT_TO_LIST[PROVIDER_LMSTUDIO])
+    base = chat.rstrip("/")
+    if base.endswith(chat_path):
+        return base[:-len(chat_path)] + list_path
+    return chat
 VALID_PROVIDERS = {PROVIDER_OLLAMA, PROVIDER_LMSTUDIO}
 
 
@@ -332,9 +347,6 @@ def analyze_image(
     Returns:
         (success: bool, response_text: str, duration_ms: float)
     """
-    if not HTTP_AVAILABLE:
-        return False, "HTTP-Bibliothek nicht verfügbar", 0.0
-
     # Defaults
     if provider not in VALID_PROVIDERS:
         return False, f"Unbekannter Provider: {provider}. Erlaubt: {VALID_PROVIDERS}", 0.0
@@ -680,8 +692,8 @@ def _model_known(model: str, models: list) -> bool:
         return True
     target = model.casefold()
     for existing in models:
-        da = str(existing or "").casefold()
-        if da == target or da.split(":", 1)[0] == target:
+        listed = str(existing or "").casefold()
+        if listed == target or listed.split(":", 1)[0] == target:
             return True
     return False
 
@@ -700,17 +712,14 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
     Erfolg**: die Frage hinter dieser Pruefung ist nicht „antwortet da wer",
     sondern „kann ich das LLM jetzt benutzen".
 
+    `endpoint` ist der eingestellte Chat-Endpunkt (`llm_endpoint`, leer = Standard);
+    gefragt wird die Modell-Liste daneben (`test_endpoint_for`).
+
     Returns:
         (success: bool, message: str)
     """
-    if not HTTP_AVAILABLE:
-        return False, "HTTP-Bibliothek nicht verfügbar"
-
-    if endpoint is None:
-        endpoint = test_endpoint_for(provider)
-
     try:
-        req = urllib.request.Request(endpoint, method="GET")
+        req = urllib.request.Request(test_endpoint_for(provider, endpoint), method="GET")
         with urllib.request.urlopen(req, timeout=5) as response:
             result = json.loads(response.read().decode("utf-8"))
         return _connection_verdict(provider, model, _listed_models(result, provider))

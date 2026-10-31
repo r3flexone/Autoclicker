@@ -17,11 +17,13 @@ from ..persistence import (
     save_item_scan, list_available_item_scans, load_item_scan_file,
     bind_item_scan_context,
     list_slot_presets, load_slot_preset, list_item_presets, load_item_preset,
-    save_global_items, active_templates_dir, free_template_file
+    save_scan_items, active_templates_dir, free_template_file
 )
+from ._detection_capture import ask_min_confidence, ask_tolerance
 from ._item_fields import ask_confirm_click, ask_priority
-from .slot_editor import run_global_slot_editor
-from .item_editor import run_global_item_editor, select_category
+from .scan_services import save_template
+from .slot_editor import run_slot_editor
+from .item_editor import run_item_editor, select_category
 from .boss_scan_editor import run_boss_scan_editor
 from .icon_scan_editor import run_icon_scan_editor
 
@@ -178,8 +180,8 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan')}")
 
     with state.lock:
-        slot_count = len(state.global_slots)
-        item_count = len(state.global_items)
+        slot_count = len(state.scan_slots)
+        item_count = len(state.scan_items)
         scan_count = len(state.item_scans)
         boss_count = len(state.boss_scans)
         icon_count = len(state.icon_scans)
@@ -192,7 +194,7 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         f"Scans bearbeiten     ({scan_count} vorhanden)",
         f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
         f"Icon-Scans bearbeiten ({icon_count} vorhanden)",
-        "Auto-Scan (Slots scannen + Items + Scan in einem Schritt)",
+        "Auto-Scan (Items aus allen Slots des Scans lernen)",
         "Import / Export (Setup teilen oder importieren)",
     ]
 
@@ -204,9 +206,9 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         print(f"\n{info('Zuerst einen Item-Scan wählen oder erstellen.')}" )
         run_item_scan_editor(state)
     elif choice == 1:
-        run_global_slot_editor(state)
+        run_slot_editor(state)
     elif choice == 2:
-        run_global_item_editor(state)
+        run_item_editor(state)
     elif choice == 3:
         run_item_scan_editor(state)
     elif choice == 4:
@@ -244,9 +246,6 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         else:
             print(warn(f"Item-Scan '{name}' ({path.name}) konnte nicht geladen werden — fehlt im Menü!"))
 
-    if available_scans:
-        print("  (Tipp: 'del <Nr>' im Textmodus zum Löschen)")
-
     choice = interactive_select(menu_options, title="\nWas möchtest du tun?")
 
     if choice == -1:
@@ -272,7 +271,7 @@ def run_item_scan_editor(state: AutoClickerState) -> None:
         else:
             print(f"\n{ok(f'Item-Scan {scan_name!r} angelegt.')} ")
         print("         Lege jetzt seine Slots und danach seine Items an.")
-        run_global_slot_editor(state)
+        run_slot_editor(state)
     elif 1 <= choice < len(menu_options):
         config = loaded_scans[choice - 1]
         with state.lock:
@@ -293,8 +292,8 @@ def _step_presets(state: AutoClickerState) -> bool:
 
     print(header("PRESETS AUSWÄHLEN"))
     with state.lock:
-        cur_slots = len(state.global_slots)
-        cur_items = len(state.global_items)
+        cur_slots = len(state.scan_slots)
+        cur_items = len(state.scan_items)
 
     for presets, title, current, load in (
         (slot_presets, "Slot-Presets", cur_slots, load_slot_preset),
@@ -359,13 +358,11 @@ def _new_item_from_template(state: AutoClickerState, user_input: str,
         return None
 
     template_file = free_template_file(active_templates_dir(state), item_name)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    template_img.save(template_path)
+    save_template(state, template_img, template_file)
 
     category = select_category(state)      # zuerst: die Prioritaets-Verschiebung braucht sie
     priority = ask_priority(state, category)
-    min_confidence = _ask_template_confidence(state.config.scan_min_confidence)
+    min_confidence = ask_min_confidence(state.config.scan_min_confidence)
     confirm_point_id, confirm_delay = ask_confirm_click(
         state, CONFIG.scan_confirm_delay,
         prompt="  Bestätigungs-Punkt-ID (Enter = keiner): ")
@@ -376,8 +373,8 @@ def _new_item_from_template(state: AutoClickerState, user_input: str,
         template=template_file, min_confidence=min_confidence,
     )
     with state.lock:
-        state.global_items[item_name] = new_item
-    save_global_items(state)
+        state.scan_items[item_name] = new_item
+    save_scan_items(state)
     available_items[item_name] = new_item
 
     cat_str = f" [{category}]" if category else ""
@@ -422,32 +419,12 @@ def _ask_template_item_name(available_items: dict) -> Optional[str]:
     return item_name
 
 
-def _ask_template_confidence(min_confidence: float) -> float:
-    """Min. Konfidenz in Prozent; eine Fehleingabe behält den Vorschlag."""
-    conf_input = ""
-    try:
-        conf_input = safe_input(
-            f"  Min. Konfidenz % (Enter={int(min_confidence * 100)}): ").strip()
-        if conf_input:
-            min_confidence = max(0.1, min(1.0, float(conf_input) / 100))
-    except ValueError:
-        print(f"  -> '{conf_input}' ungültig — behalte {int(min_confidence * 100)}")
-    return min_confidence
-
-
 def _step_tolerance(tolerance: int) -> int:
     """Schritt 3: Farbtoleranz. Fehleingabe behaelt den alten Wert."""
     print(header("SCHRITT 3: FARBTOLERANZ"))
     print(f"\nAktuelle Toleranz: {tolerance}")
     print("(Höher = mehr Farben werden als 'gleich' erkannt)")
-    tol_input = ""
-    try:
-        tol_input = safe_input(f"Neue Toleranz (Enter = {tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except ValueError:
-        print(f"  -> '{tol_input}' ungültig — behalte {tolerance}")
-    return tolerance
+    return ask_tolerance(f"Neue Toleranz (Enter = {tolerance}): ", tolerance)
 
 
 def _step_auto_learn(learn_unknown: bool) -> bool:
@@ -560,7 +537,7 @@ def _step_items(state: AutoClickerState, available_slots: dict, draft: _ScanDraf
     print(header("SCHRITT 2: ITEMS AUSWÄHLEN / ERSTELLEN"))
     _print_templates(active_templates_dir(state))
     with state.lock:
-        available_items = dict(state.global_items)
+        available_items = dict(state.scan_items)
     item_list = list(available_items.keys())
 
     print("\nVerfügbare Items:")
@@ -610,7 +587,7 @@ def _print_templates(templates_dir) -> None:
 
 
 def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) -> None:
-    """Bearbeitet eine Item-Scan-Konfiguration (verknüpft globale Slots + Items).
+    """Bearbeitet eine Item-Scan-Konfiguration (Slots + Items des gewählten Scans).
 
     Ein Assistent in Stufen: Presets → Entwurf (`_scan_draft`) → Slots →
     Items → Toleranz, Auto-Lernen, Richtung, Katalog → speichern. Jede Stufe
@@ -620,8 +597,8 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
     if not _step_presets(state):
         return
     with state.lock:
-        available_slots = dict(state.global_slots)
-        has_items = bool(state.global_items)
+        available_slots = dict(state.scan_slots)
+        has_items = bool(state.scan_items)
     if not available_slots:
         print(f"\n{err('Keine Slots im gewählten Preset!')}")
         print("         Erstelle zuerst Slots im Slot-Editor (Option 1)")
@@ -642,11 +619,11 @@ def edit_item_scan(state: AutoClickerState, existing: Optional[ItemScanConfig]) 
         # Alle Slot-Geometrien bleiben Eigentum dieses Scans. Die Auswahl
         # schaltet sie für den Lauf ein oder aus, statt die abgewählten samt
         # Fläche und ID aus der Datei zu löschen.
-        slots = list(state.global_slots.values())
+        slots = list(state.scan_slots.values())
         active = set(draft.slot_names)
         for slot in slots:
             slot.enabled = slot.name in active
-        items = [state.global_items[n] for n in draft.item_names if n in state.global_items]
+        items = [state.scan_items[n] for n in draft.item_names if n in state.scan_items]
 
     # **Jedes Feld muss hier stehen.** Der Editor baut die Config NEU auf,
     # statt die vorhandene zu ändern — ein vergessenes Feld ist beim Bearbeiten
@@ -670,8 +647,8 @@ def _store_item_scan(state: AutoClickerState, config: ItemScanConfig) -> None:
     with state.lock:
         state.item_scans[config.name] = config
         state.active_item_scan = config.name
-        state.global_slots = {slot.name: slot for slot in config.slots}
-        state.global_items = {item.name: item for item in config.items}
+        state.scan_slots = {slot.name: slot for slot in config.slots}
+        state.scan_items = {item.name: item for item in config.items}
     if not save_item_scan(config):
         print(err("Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
         return
@@ -682,78 +659,30 @@ def _store_item_scan(state: AutoClickerState, config: ItemScanConfig) -> None:
 
 
 def run_auto_scan_workflow(state: AutoClickerState) -> None:
-    """Kompletter Auto-Scan Workflow: Alle Slots scannen, Items erstellen, Scan-Config speichern."""
-    print(header("AUTO-SCAN WORKFLOW"))
+    """Auto-Scan: lernt die Items aus allen Slots des gewählten Item-Scans.
+
+    Hier entstand danach ein ZWEITER Scan aus denselben Slot- und Item-Objekten
+    („Slots + Items + Scan in einem Schritt") — aus der Zeit des globalen
+    Bestands, als ein Scan nur eine Auswahl daraus war. Seit ein Scan seine Slots
+    und Items besitzt, teilten sich damit zwei Scans dieselben Objekte, ein
+    vorhandener Name (Vorgabe „AutoScan") wurde ohne Rückfrage überschrieben, und
+    der Name des gewählten Scans ersetzte ihn durch eine Kopie ohne Fensterbindung,
+    Katalog und Richtung. Gelernt wird jetzt in den gewählten Scan; gespeichert
+    wird dort, wie beim Befehl `autoscan` im Item-Editor (`save_scan_items`).
+    """
+    print(header("AUTO-SCAN"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Auto-Scan')}")
-    print("\n  Scannt automatisch alle Slots, erstellt Items und eine Scan-Konfiguration.")
+    with state.lock:
+        scan_name = state.active_item_scan
+    print(f"\n  Lernt die Items aus allen Slots von {scan_name!r}.")
 
     if not PILLOW_AVAILABLE:
         print(f"\n{err('Pillow nicht installiert!')}")
         return
-
-    if not OPENCV_AVAILABLE:
-        print(f"\n{err('OpenCV nicht installiert!')} (pip install opencv-python)")
-        return
-
-    with state.lock:
-        slot_count = len(state.global_slots)
-
-    if slot_count == 0:
-        print(f"\n{err('Keine Slots vorhanden!')}")
-        print("         Erstelle zuerst Slots mit dem Slot-Editor (Option 1, dann 'auto')")
-        return
-
-    # Items automatisch erstellen via item_editor
+    # Slots und OpenCV prüft `item_autoscan_command` selbst.
     from .item_editor import item_autoscan_command
     item_autoscan_command(state, "autoscan")
-
-    # Prüfen ob Items erstellt wurden
     with state.lock:
-        item_count = len(state.global_items)
-
-    if item_count == 0:
-        print(f"\n{err('Keine Items erstellt - Scan-Konfiguration wird nicht erstellt.')}")
-        return
-
-    # Scan-Config erstellen
-    print(header("SCAN-KONFIGURATION ERSTELLEN"))
-
-    scan_name = safe_input("\nName für den Scan (Enter = 'AutoScan'): ").strip()
-    if is_cancel(scan_name):
-        print("  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
-        return
-    if not scan_name:
-        scan_name = "AutoScan"
-
-    # Toleranz
-    tolerance = ItemScanConfig.color_tolerance
-    try:
-        tol_input = safe_input(f"Farbtoleranz (Enter = {tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except ValueError:
-        pass
-
-    # Alle Slots und Items verwenden
-    with state.lock:
-        slots = list(state.global_slots.values())
-        items = list(state.global_items.values())
-
-    config = ItemScanConfig(
-        name=scan_name,
-        slots=slots,
-        items=items,
-        color_tolerance=tolerance,
-        owner_sequence=(state.active_sequence.name if state.active_sequence else ""),
-    )
-
-    with state.lock:
-        state.item_scans[scan_name] = config
-
-    if not save_item_scan(config):
-        print(err("Auto-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
-        return
-
-    print(f"\n{ok(f'Auto-Scan komplett!')}")
-    print(f"         Scan '{scan_name}': {len(slots)} Slots, {len(items)} Items")
+        slot_count, item_count = len(state.scan_slots), len(state.scan_items)
+    print(f"         Scan '{scan_name}': {slot_count} Slots, {item_count} Items")
     print(f"         Nutze im Sequenz-Editor: 'scan {scan_name}'")

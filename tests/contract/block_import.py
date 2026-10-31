@@ -113,3 +113,9 @@ check("die Seite erklaert sich dem Browser als dunkel",
 check("Eintraege einer Klappliste haben eigene Flaeche UND Schrift",
       _re.search(r"option[^{]*\{[^}]*background:var\(--panel\)[^}]*color:var\(--text\)",
                  _web) is not None)
+# Dasselbe bei den Bildlaufleisten: wer `::-webkit-scrollbar` gestaltet, muss
+# auch die Ecke gestalten, in der sich beide treffen — sonst steht dort ein
+# weisses Quadrat, sobald eine Flaeche in beide Richtungen scrollt.
+check("die Ecke zwischen zwei Bildlaufleisten ist nicht weiss",
+      _re.search(r"::-webkit-scrollbar-corner\s*\{[^}]*background:var\(--bg\)",
+                 _web) is not None)

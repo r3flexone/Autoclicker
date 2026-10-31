@@ -4,7 +4,6 @@
 
 const $ = (id) => document.getElementById(id);
 
-/** Kleiner DOM-Bauer: el("div", {class:"x", onclick:f}, kind, "text") */
 /* HTML-Attribute, die allein durch ihr DASEIN wirken: `disabled="0"` sperrt
  * genauso wie `disabled="1"`. Ein falsy Wert muss sie deshalb weglassen, sonst
  * bewirkt eine Zahl das Gegenteil dessen, was dasteht.
@@ -17,6 +16,7 @@ const $ = (id) => document.getElementById(id);
 const PRESENCE_ONLY = new Set(["disabled", "checked", "hidden", "readonly",
                             "required", "selected", "multiple", "open"]);
 
+/** Kleiner DOM-Bauer: el("div", {class:"x", onclick:f}, kind, "text") */
 function el(tag, attrs, ...children) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -54,7 +54,6 @@ const ICONS = {
   check: '<path d="M3 8.5l3.5 3.5L13 4.5"/>',
   warn: '<path d="M8 2.5l6 11H2z"/><path d="M8 7v3"/><circle cx="8" cy="12.2" r=".5" fill="currentColor"/>',
   cross: '<path d="M4 4l8 8M12 4l-8 8"/>',
-  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.5v4"/><circle cx="8" cy="5" r=".5" fill="currentColor"/>',
   arrow: '<path d="M3 8h10M9 4l4 4-4 4"/>',
   drop: '<path d="M8 2v9M4.5 7.5L8 11l3.5-3.5"/><path d="M3 13.5h10"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
@@ -81,10 +80,6 @@ function icon(name, size) {
   return n;
 }
 
-/** Zahlenfeld, das seinen Wert erst beim Verlassen meldet.
- *
- * `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein Neuaufbau
- * mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird. */
 /* Welche Erklaerungen aufgeklappt sind — als Schluessel, nicht als DOM-Verweis:
  * der Inspektor wird bei jeder Aenderung neu gebaut. */
 const openHelps = new Set();
@@ -150,6 +145,11 @@ function labeled(text, help, key) {
   return help ? el("span", {class: "with-info"}, text, info(help, key)) : text;
 }
 
+/** Eingabefeld (auch als Zahlenfeld, s. `numberField`), das seinen Wert erst
+ * beim Verlassen meldet.
+ *
+ * `change` und nicht `input`: jede Meldung baut die Ansicht neu, und ein Neuaufbau
+ * mitten in der Eingabe nimmt das Feld weg, in das gerade getippt wird. */
 function field(caption, value, onSet, extra, help, key) {
   const inputEl = el("input", Object.assign({value: value === null || value === undefined ? "" : value,
                                              autocomplete: "off"}, extra || {}));
@@ -569,7 +569,7 @@ let selectedPhase = null;
 const openSpecialPhases = new Set(); // leere Start-/Abschlussphasen auf Wunsch
 
 // Einfüge-Aufnahme ("Ab hier aufnehmen"): reiner Oberflächenzustand wie
-// wzRecordingStarted — die Brücke weiss nur ueber die Datei RECORD_STATUS_FILE
+// toolsRecordingStarted — die Brücke weiss nur ueber die Datei RECORD_STATUS_FILE
 // (poll_record_status), dass ueberhaupt aufgenommen wird, nicht WOFUER.
 let insertRecordingActive = false;
 let insertRecordingLabel = "";
@@ -579,7 +579,7 @@ let insertRecordingPoll = 0;
 // die Auswahl (`select_range`), so wie nach dem Duplizieren.
 let insertRecordingTarget = null;
 // Die Live-Ausgabe der Einfüge-Aufnahme — dieselben Daten und dieselbe
-// Zeichenfunktion wie im Werkzeuge-Reiter (`wzFillRecordingOutput`), nur ein
+// Zeichenfunktion wie im Werkzeuge-Reiter (`toolsFillRecordingOutput`), nur ein
 // zweiter Einbauort. Ohne sie sagte die Tafel nur „läuft", und ob der Hook
 // wirklich mitschreibt, sah man erst nach dem Stoppen.
 let insertRecordingLive = {active: false, paused: false, count: 0, events: []};
@@ -630,7 +630,7 @@ async function call(name, data) {
 async function goTo(t) {
   if (!t || !t.view) return;
   // Ein Feld in den Einstellungen: hinscrollen, kurz aufleuchten, Fokus hinein.
-  // Leere Zustände anderer Reiter („Marktwert-Datei eintragen") schicken
+  // Leere Zustände anderer Reiter („Marktwert-Datei prüfen") schicken
   // hierher, statt den Config-Schlüssel zu nennen und einen suchen zu lassen.
   if (t.view === "settings") {
     setView("settings", true);
@@ -1188,8 +1188,8 @@ function renderPhase(phase) {
     {phase: phase.index, field: "name", value: name.value}));
   // Kein „×N" als Marke daneben: bei einer Loop-Phase stünde der Wert damit
   // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
-  // sich nicht ändern lässt. Die zugehörige Klasse `.zaehler` ist damit
-  // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.zahl`).
+  // sich nicht ändern lässt. Die zugehörige Klasse `.counter` ist damit
+  // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.num`).
   head.appendChild(el("div", {class: "row"}, name,
     el("span", {class: "small mono"}, phase.blocks.length + " Schritte")));
 
@@ -1214,7 +1214,7 @@ function renderPhase(phase) {
     // der Phase.
     //
     // **Beide Zeilen liegen auf DEMSELBEN Raster** (`auto-fit`, min. 118 px —
-    // dieselbe Regel wie `knopfpaar` darunter). Vorher war das hier ein
+    // dieselbe Regel wie `button-pair` darunter). Vorher war das hier ein
     // `flex` mit fest getippten 70 und 74 px: die Zeile hörte bei rund 60 % auf,
     // während die Knopfzeile darunter über die volle Breite ging. Zwei Zeilen
     // mit verschiedenen Kanten übereinander lesen sich als Versehen, und die
@@ -1238,7 +1238,7 @@ function renderPhase(phase) {
     // mehrere Phasen reichen, und eine ganz gewählte Phase muss nicht die sein,
     // in der zuletzt geklickt wurde.
     const all = phase.blocks.every((b) => b.selected);
-    // `knopfpaar`, nicht `series` mit `wachse`: für „mehrere Knöpfe teilen sich
+    // `button-pair`, nicht `row` mit `grow`: für „mehrere Knöpfe teilen sich
     // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
     // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
     const bulk = el("div", {class: "button-pair phase-all"},
@@ -1411,7 +1411,7 @@ function renderCard(phase, block) {
           goTo({view: "editor", phase: phase.index, row: block.row,
                 focus: 'select[data-key="scan"]'}); }},
         block.warning, " →") : null,
-      el("span", {class: "card-nr"}, String(block.row + 1).padStart(2, "0"))),
+      el("span", {class: "card-nr"}, pad2(block.row + 1))),
     body);
 }
 
@@ -1427,7 +1427,7 @@ function startCard() {
         el("div", {class: "start-way-title"}, icon("record"), el("b", {}, "Aufnehmen")),
         el("span", {}, "Einmal im Spiel vorspielen. Klicks, Tasten und Wartezeiten " +
                        "werden zu Blöcken; STRG+ALT+SHIFT+P schneidet Phasen."),
-        el("button", {class: "btn primary", onclick: () => wzOpen("recording")},
+        el("button", {class: "btn primary", onclick: () => toolsOpen("recording")},
           icon("record"), "Aufnahme starten")),
       el("div", {class: "start-way"},
         el("div", {class: "start-way-title"}, icon("plus"), el("b", {}, "Von Hand bauen")),
@@ -1450,9 +1450,8 @@ function startCard() {
 function timestamp(seconds) {
   if (!seconds) return "—";
   const d = new Date(seconds * 1000);
-  const zz = (n) => String(n).padStart(2, "0");
-  return zz(d.getDate()) + "." + zz(d.getMonth() + 1) + "." + d.getFullYear() +
-         " " + zz(d.getHours()) + ":" + zz(d.getMinutes());
+  return pad2(d.getDate()) + "." + pad2(d.getMonth() + 1) + "." + d.getFullYear() +
+         " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
 }
 
 /** Eine Phasenfarbe aus dem Stylesheet (`--init` / `--loop` / `--end`).
@@ -1609,7 +1608,7 @@ function seqCard(s) {
               run.timeouts ? run.timeouts + "× Timeout" : "ohne Timeout"))
         : el("span", {class: "small"}, "kein Session-Log")]));
 
-  // Zwei Knöpfe teilen sich gleiche Spalten (`knopfpaar`): „Öffnen" und
+  // Zwei Knöpfe teilen sich gleiche Spalten (`button-pair`): „Öffnen" und
   // „Löschen" sind verschieden lang, und zwei verschieden breite Knöpfe
   // nebeneinander lesen sich als zwei Rangstufen. Bei einer defekten Datei
   // bleibt die erste Spalte leer statt zu verschwinden — sonst säße das
@@ -1750,13 +1749,22 @@ function edgePulse() {
   }, 2000);
 }
 
-/** Sekunden als „2:05“ bzw. „1:23:45“. */
+/** Zwei Stellen, vorn mit Null aufgefüllt: 5 → „05“. */
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+/** Ganze Sekunden als „2:05“ bzw. „1:23:45“. Gerundet wird beim Aufrufer: eine
+ *  laufende Uhr rundet ab (`duration`), eine Summe aus dem Log rundet
+ *  (`repDuration`) — dieselbe Form, zwei Rundungen. */
+function clockText(whole) {
+  const h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60), s = whole % 60;
+  return h ? h + ":" + pad2(m) + ":" + pad2(s) : m + ":" + pad2(s);
+}
+
+/** Sekunden als „2:05“ bzw. „1:23:45“, abgerundet — wie eine laufende Uhr. */
 function duration(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
-  const zz = (n) => String(n).padStart(2, "0");
-  const std = Math.floor(s / 3600);
-  return (std ? std + ":" + zz(Math.floor(s / 60) % 60) : String(Math.floor(s / 60))) +
-         ":" + zz(s % 60);
+  return clockText(Math.max(0, Math.floor(seconds)));
 }
 
 /** Restzeit knapp: unter zehn Sekunden mit Zehntel, darüber ganze Sekunden. */
@@ -1766,8 +1774,8 @@ function remainingTime(seconds) {
 }
 
 function hexColor(rgb) {
-  return "#" + rgb.map((n) => Math.max(0, Math.min(255, Math.round(n)))
-                              .toString(16).padStart(2, "0")).join("");
+  return "#" + rgb.map((n) => pad2(Math.max(0, Math.min(255, Math.round(n)))
+                                   .toString(16))).join("");
 }
 
 /** Ein Farbfeld mit Beschriftung — schraffiert, wenn nichts gemessen wurde. */
@@ -2164,7 +2172,7 @@ function manualControls(m) {
  *
  * Die Knöpfe führen nichts aus — dieses Fenster hat keinen Zugriff auf
  * `state.stop_event`. Sie legen einen Befehl ab, den der Hauptprozess in
- * derselben Schleife abholt wie seine Hotkeys (`command.py`). Deshalb steht das
+ * derselben Schleife abholt wie seine Hotkeys (`mailbox.py`). Deshalb steht das
  * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
  */
 function controls(running, stamp) {
@@ -2279,7 +2287,7 @@ function renderPhaseInspector(target, phase) {
     "START läuft einmal vor allen Zyklen, ABSCHLUSS einmal nach dem letzten — beide " +
     "gibt es genau einmal. Umstellen nimmt alle Blöcke mit. Ist START bzw. " +
     "ABSCHLUSS schon belegt, ist die Kachel gesperrt: zwei Blockfolgen " +
-    "zusammenzulegen hiesse zu raten, welche zuerst läuft.", "phasekind"));
+    "zusammenzulegen hiesse zu raten, welche zuerst läuft.", "phase-type"));
   target.appendChild(el("div", {class: "grid3"}, kinds.map((kind) => {
     const current = kind.key === phase.kind;
     const other = S.phases.find((p) => p.kind === kind.key);
@@ -2418,7 +2426,7 @@ function renderInspector() {
 
   const phase = S.phases[b.phase];
   $("insp-point").style.background = b.color;
-  $("insp-title").textContent = "BLOCK " + String(b.row + 1).padStart(2, "0") +
+  $("insp-title").textContent = "BLOCK " + pad2(b.row + 1) +
                                 " · " + phase.name.toUpperCase();
 
   // --- Typ ---
@@ -2429,7 +2437,7 @@ function renderInspector() {
   // andersherum raeumte die Kurzform die Farbe wieder weg.
   target.appendChild(heading("BLOCK-TYP",
     "Die Farbe der Kachel wiederholt sich auf der Karte im Board — das Raster " +
-    "ist zugleich die Legende dazu.", "blocktyp"));
+    "ist zugleich die Legende dazu.", "block-type"));
   target.appendChild(el("div", {class: "grid3"}, S.types.map((t) =>
     el("button", {
       class: "type-chip",
@@ -2524,17 +2532,17 @@ function buildProbe(target, b) {
   // teilen sich Maus- und Tastatur-Hook nur EINEN Vorgang (`_block_if_recording`
   // auf der Hauptprozess-Seite lehnt eine zweite ab). Testen und Starten
   // wuerden ausserdem echte Klicks mitten in die Aufnahme setzen.
-  const recording = insertRecordingActive || wzRecordingStarted;
+  const recording = insertRecordingActive || toolsRecordingStarted;
   if (insertRecordingActive) {
-    footer.appendChild(el("div", {class: "wz-recording-state running"},
-      el("span", {class: "wz-rec-point"}),
+    footer.appendChild(el("div", {class: "tools-recording-state running"},
+      el("span", {class: "tools-rec-point"}),
       el("div", {}, el("b", {}, "Aufnahme läuft"),
         el("span", {}, insertRecordingLabel)),
       el("button", {class: "btn danger", onclick: blockRecordStop},
         icon("stop"), "Stoppen")));
-    const output = el("div", {class: "wz-recording-output", id: "insert-recording-output"});
+    const output = el("div", {class: "tools-recording-output", id: "insert-recording-output"});
     footer.appendChild(output);
-    wzFillRecordingOutput(output, insertRecordingLive, true);
+    toolsFillRecordingOutput(output, insertRecordingLive, true);
   }
   footer.appendChild(el("button", {
     class: "btn wide",
@@ -2560,7 +2568,7 @@ function buildProbe(target, b) {
   if (!insertRecordingActive) {
     footer.appendChild(el("button", {
       class: "btn wide",
-      disabled: wzRecordingStarted,
+      disabled: toolsRecordingStarted,
       title: "Nimmt weitere Klicks, Tasten und Marker auf und fügt sie direkt hinter "
         + "diesem Block ein — vor dem, der als Nächstes kommt",
       onclick: blockRecordStart,
@@ -2670,7 +2678,7 @@ function watchInsertRecording(quick) {
     if (status && status.active) {
       seen = true;
       insertRecordingLive = status;
-      wzFillRecordingOutput($("insert-recording-output"), insertRecordingLive, true);
+      toolsFillRecordingOutput($("insert-recording-output"), insertRecordingLive, true);
       return void setTimeout(poll, quick ? 300 : 500);
     }
     // Gestoppt, aber noch nicht geschrieben: jetzt neu zu laden hiesse, die
@@ -2789,11 +2797,11 @@ function buildPosition(target, b) {
     target.appendChild(field("Name des Punkts", b.name,
       (v) => call("point_set", {point: b.point_id, field: "name", value: v}), null,
       "Der Name gehört dem Punkt, nicht diesem Block: er ändert sich überall, " +
-      "wo derselbe Punkt benutzt wird.", "punktname"));
+      "wo derselbe Punkt benutzt wird.", "point-name"));
     target.appendChild(color_swatch("Farbe des Punkts", p && p.color,
       (hex) => call("point_set", {point: b.point_id, field: "color", value: hex}),
       "Beim Aufnehmen gemessen. Ein Farb-Trigger prüft GENAU diese Farbe — wer " +
-      "sie hier ändert, ändert mit, worauf gewartet wird.", "punktfarbe"));
+      "sie hier ändert, ändert mit, worauf gewartet wird.", "point-color"));
     // Zustand, kein ⓘ: WER den Punkt sonst noch benutzt, sieht man sonst erst,
     // wenn ein anderer Block woanders hinklickt. Und der Rueckweg steht dabei:
     // ein eigener Punkt fuer diesen Block, die anderen bleiben, wo sie sind.
@@ -2947,7 +2955,7 @@ function buildTrigger(target, b, withTrigger) {
       ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
       : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
         "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
-    "trigger-an"));
+    "color-trigger"));
   if (!(withoutOff && b.trigger === "none")) {
     target.appendChild(segment(withoutOff ? DIRECTIONS : [DIRECTION_OFF].concat(DIRECTIONS),
       b.trigger, (w) => call("block_trigger", {choice: w})));
@@ -3177,8 +3185,8 @@ async function proceed(discard) {
 /* ------------------------------------------------------------ Ansicht: Scans */
 
 /* Slots, Items und Item-Scans auf einem eingefrorenen Screenshot. Eigener
- * Zustand neben `S`: der Reiter bearbeitet andere Dateien (slots.json,
- * items.json, item_scans/).
+ * Zustand neben `S`: der Reiter bearbeitet andere Dateien (die Item-Scans
+ * unter `item_scans/`, Slots und Items stehen darin).
  *
  * Gezeichnet wird ein <img> mit einem <svg> darueber; dessen viewBox steht in
  * BILD-Pixeln, also muessen nur Strichstaerken und Schriftgroessen gegen den
@@ -3239,10 +3247,6 @@ let scanDragDone = false;
  * Rueckgaengig-Stapel (`counts`). */
 let scanNudgeTime = 0;
 
-/* Die Reihenfolge ist die Rangfolge und dieselbe wie in `MODI` (ein Test haelt
- * beide Zug um Zug gegeneinander). „Slots finden" steht direkt hinter
- * „Auswaehlen", weil das Automatische der Normalfall ist und das Aufziehen von
- * Hand der Ausweichweg. */
 /* Die Zustandsfarben aus dem Stylesheet, damit SVG-Text und Listen dieselbe
  * Quelle benutzen wie Umriss und Fuellung. `fill` im SVG nimmt kein
  * `var(--x)` aus einer fremden Regel entgegen, also einmal auslesen. */
@@ -3252,6 +3256,10 @@ const SLOT_COLOR = (() => {
           empty: s.getPropertyValue("--slot-empty").trim()};
 })();
 
+/* Die Reihenfolge ist die Rangfolge und dieselbe wie in `MODES` (`scan_contract.py`;
+ * ein Test haelt beide Zug um Zug gegeneinander). „Slots finden" steht direkt
+ * hinter „Auswaehlen", weil das Automatische der Normalfall ist und das Aufziehen
+ * von Hand der Ausweichweg. */
 const SCAN_MODES = [
   {key: "choice", text: "Auswählen", shortcut: "V", primary: true,
    help: "Slot anklicken — daneben zieht ein Rechteck um mehrere"},
@@ -3385,7 +3393,6 @@ function scanCanvasTools() {
   const ready = scanConfigOpen();
   const viewName = $("view-scans");
   viewName.classList.toggle("guided", scanGuided);
-  viewName.classList.toggle("has-image", photoPresent());
   $("scan-free").textContent = scanGuided ? "Alle Werkzeuge" : "Nur Assistent";
   document.querySelectorAll("[data-scan-tool]").forEach((button) => {
     button.classList.toggle("on", SC.mode === button.dataset.scanTool);
@@ -3526,13 +3533,13 @@ async function scanMaintainImage() {
 
 function scanFit() {
   if (!SC || !SC.photo) return;
-  const slotNr = $("scan-stage").clientWidth - 24;
+  const stageWidth = $("scan-stage").clientWidth - 24;
   // Ein Bild wird nie vergroessert — jedes Pixel darueber waere erfunden, und
   // gemessen wird ohnehin im Original. Die aus den Slots gerechnete Flaeche hat
   // keine Pixel, die man faelschen koennte: sie darf die Buehne fuellen, sonst
   // haengt ein Inventar von 300 px verloren in einer Ecke.
   const limit = photoPresent() ? 1 : 4;
-  scanZoom = Math.max(0.05, Math.min(limit, slotNr / SC.photo.width));
+  scanZoom = Math.max(0.05, Math.min(limit, stageWidth / SC.photo.width));
   scanZoomManual = false;
   scanApplyZoom();
 }
@@ -3826,7 +3833,7 @@ function scanListBlock(tabs, filter, target) {
     // verlieren, an dem alles haengt.
     for (const [key, text, number] of [["bosses", "Bosse", detBosses().length],
                                      ["library", "Bibliothek",
-                                      SC.global_bosses.length]]) {
+                                      SC.boss_library.length]]) {
       on(tabs, el("button", {class: "tab" + (open === key ? " on" : ""),
         onclick: () => { scanList = key; renderScans(); }}, text + " " + number));
     }
@@ -4405,7 +4412,7 @@ function scanOverlay() {
     const [x1, y1] = scanToImage(s.region[0] + v[0], s.region[1] + v[1]);
     const [x2, y2] = scanToImage(s.region[2] + v[0], s.region[3] + v[1]);
     // Gewaehlt ist, was in der Auswahl steht — bei einem Rechteck sind das
-    // dreissig. `SC.wahl` bleibt der eine, den der Inspektor bearbeitet.
+    // dreissig. `SC.choice` bleibt der eine, den der Inspektor bearbeitet.
     const selected = SC.selection.includes(s.name)
       || (SC.choice.kind === "slot" && SC.choice.name === s.name);
     // Gruen = hier liegt ein Item, das der Scan kennt; Rot = nichts erkannt,
@@ -4879,7 +4886,7 @@ function scanReview(target) {
         name, el("div", {class: "scan-review-order"}, cat,
           el("label", {class: "scan-review-prio"}, el("span", {}, "Priorität"), rank)),
         switched));
-    row._reviewSynchronisieren = sync;
+    row._reviewSync = sync;
     const setSameChoice = () => {
       if (!existingName || asOther) {
         sync();
@@ -4892,7 +4899,7 @@ function scanReview(target) {
             other.dataset.asOther === "true") continue;
         const otherCheckbox = other.querySelector('input[type="checkbox"]');
         if (otherCheckbox) otherCheckbox.checked = checkbox.checked;
-        if (other._reviewSynchronisieren) other._reviewSynchronisieren();
+        if (other._reviewSync) other._reviewSync();
       }
     };
     checkbox.addEventListener("change", setSameChoice);
@@ -4969,20 +4976,20 @@ function scanSlotDetails(target, s) {
     el("summary", {}, "Koordinaten und Hintergrund"));
   advanced.appendChild(heading("FLÄCHE",
     "In Bildschirm-Koordinaten. Bequemer: Modus „Neuer Slot“ und zwei Ecken " +
-    "im Bild anklicken — oder den Slot im Bild ziehen.", "flaeche"));
+    "im Bild anklicken — oder den Slot im Bild ziehen.", "area"));
   advanced.appendChild(el("div", {class: "grid2"},
     numberField("Links", s.region[0], (v) => setter("x1", v)),
     numberField("Oben", s.region[1], (v) => setter("y1", v)),
     numberField("Rechts", s.region[2], (v) => setter("x2", v)),
     numberField("Unten", s.region[3], (v) => setter("y2", v))));
   advanced.appendChild(heading("KLICKPUNKT",
-    "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "klickpunkt"));
+    "Wohin geklickt wird, wenn in diesem Slot ein gesuchtes Item liegt.", "click-point"));
   advanced.appendChild(el("div", {class: "grid2"},
     numberField("X", s.click_pos[0], (v) => setter("kx", v)),
     numberField("Y", s.click_pos[1], (v) => setter("ky", v))));
   advanced.appendChild(color_swatch("Hintergrund", s.color, (v) => setter("color", v),
     "Die Farbe des leeren Slots. Sie wird beim Item-Lernen abgezogen, damit " +
-    "nicht der Rahmen als Merkmal gelernt wird.", "hintergrund"));
+    "nicht der Rahmen als Merkmal gelernt wird.", "background"));
   target.appendChild(advanced);
 
   target.appendChild(el("div", {class: "button-pair"},
@@ -4993,7 +5000,7 @@ function scanSlotDetails(target, s) {
        "löschen")));
   if (photoPresent()) {
     // „Alle" heisst: alle Slots des offenen Scans, nicht des ganzen Bestands
-    // (`_scan_slots()` in scans.py). Das steht im Knopf, weil es vorher
+    // (`_scan_slots()` in scan_state.py). Das steht im Knopf, weil es vorher
     // stillschweigend anders war — und die Meldung danach ratlos machte.
     target.appendChild(el("button", {class: "btn quiet",
       title: SC.open ? "Alle Slots aus „" + SC.open + "“ — nicht der ganze Bestand"
@@ -5029,13 +5036,13 @@ function scanInspSelection(target) {
     "Verschieben: im Bild ziehen oder Pfeiltasten (SHIFT = 10 px) — der " +
     "Klickpunkt geht mit. Angleichen zieht alle auf die MITTLERE Grösse, um " +
     "ihre Mitte herum: ein einzelner Verklicker soll nicht alle anderen " +
-    "verbiegen.", "auswahl-lage"));
+    "verbiegen.", "selection-position"));
   target.appendChild(el("button", {class: "btn wide",
     onclick: () => callScan("scan_align_size")}, "Grösse angleichen"));
 
   target.appendChild(heading("HINTERGRUND UND ITEMS",
     "Gemessen wird jeder Slot an sich selbst — eine gemeinsame Farbe für alle " +
-    "wäre an jedem einzelnen ein bisschen falsch.", "auswahl-lernen"));
+    "wäre an jedem einzelnen ein bisschen falsch.", "selection-learn"));
   target.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
     onclick: () => callScan("scan_selection_color")}, "Hintergrund neu messen"));
   target.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
@@ -5069,7 +5076,7 @@ function scanItemDetails(target, i) {
     el("summary", {}, "Erweiterte Erkennungseinstellungen"));
   advanced.appendChild(numberField("Konfidenz", i.confidence, (v) => setter("confidence", v),
       {min: 0, max: 1, step: "any"},
-      "Wie gut das Template passen muss (0–1).", "konf"));
+      "Wie gut das Template passen muss (0–1).", "item-confidence"));
   advanced.appendChild(el("p", {class: "hint"},
     (i.template_sizes || []).length
       ? "Gelernte Slot-Größen: " + i.template_sizes.map((g) => g[0] + "×" + g[1]).join(", ")
@@ -5157,7 +5164,7 @@ function scanItemConfirmation(i) {
     boxEl.appendChild(numberField("Wartezeit (s)", i.confirmation_delay,
       (v) => setter("confirmation_delay", v), {min: 0, step: "any"},
       "Zeit zwischen dem Item-Klick und der Bestätigung — das Popup braucht "
-      + "einen Moment, bis es da ist.", "bestaetigungszeit"));
+      + "einen Moment, bis es da ist.", "confirmation-delay"));
   }
   return boxEl;
 }
@@ -5170,7 +5177,7 @@ function scanScanDetails(target, c) {
     "Welche Slots nach welchen Items durchsucht werden, steht in den Reitern "
     + "daneben: der Haken vor jeder Maske heisst „gehört zu diesem Scan“. Hier "
       + "steht, WIE gesucht wird. Ein Block vom Typ ITEM-SCAN verweist per Name "
-      + "auf diesen Scan.", "itemscan"));
+      + "auf diesen Scan.", "item-scan"));
 
   target.appendChild(numberField("Farb-Toleranz", c.tolerance, (v) => setter("tolerance", v),
     {min: 0, step: 1},
@@ -5213,7 +5220,7 @@ function scanScanDetails(target, c) {
  *
  * Welche Art offen ist, ist reiner Oberflaechenzustand wie `view` und
  * `scanList` — die Bruecke bekommt bei jedem Befehl gesagt, worauf er wirkt
- * (`{art: "boss"}`). */
+ * (`{kind: "boss"}`). */
 let scanKind = "item";
 /* Welcher Assistent-Schritt der Erkennungs-Arten offen ist. Eigene Variable
  * neben `scanWizardStep`: die Arten haben verschieden viele Schritte, und
@@ -5253,20 +5260,20 @@ function detScan() {
 /** Die Bosse, die dieser Scan sieht: seine eigenen plus die Bibliothek.
  *
  * Genau diese Liste sieht auch der Lauf (`execute_boss_scan` merged lokal +
- * global, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
+ * Bibliothek, lokale gewinnen bei Namensgleichheit). Nur die lokalen zu zeigen
  * hiesse, die Haelfte der Erkennung zu verschweigen — und man sucht dann, warum
  * ein Boss erkannt wird, der gar nicht in der Liste steht. */
 function detBosses() {
   const c = detScan();
   const local = c ? c.bosses : [];
   const names = new Set(local.map((b) => b.name));
-  return local.concat(SC.global_bosses.filter((b) => !names.has(b.name)));
+  return local.concat(SC.boss_library.filter((b) => !names.has(b.name)));
 }
 
 /** Der gewaehlte Boss — der eine, den die rechte Spalte bearbeitet. */
 function detBoss() {
   if (!SC || scanKind !== "boss" || !SC.boss.choice) return null;
-  const listEl = SC.boss.choice_global ? SC.global_bosses : ((detScan() || {}).bosses || []);
+  const listEl = SC.boss.choice_in_library ? SC.boss_library : ((detScan() || {}).bosses || []);
   return listEl.find((b) => b.name === SC.boss.choice) || null;
 }
 
@@ -5353,7 +5360,7 @@ function detRenderChoice() {
 /** Woran ein Scan erkennt — als Wort, nicht als Schluessel. */
 function detHowText(how) {
   return {template: "per Vorlage", marker: "per Farben",
-          keine: "ohne Erkennung"}[how] || how;
+          none: "ohne Erkennung"}[how] || how;
 }
 
 /** Eine Schrittkarte des Assistenten — dieselbe Gestalt wie beim Item-Scan. */
@@ -5455,10 +5462,10 @@ function detRegionStep(c) {
 /** Schritt 3 (Boss): die Bosse dieses Scans. */
 function detBossesStep(c) {
   const local = c.bosses.length;
-  const global = SC.global_bosses.length;
-  return detCard(3, "Bosse", local || global
-    ? local + " lokal · " + global + " global"
-    : "Noch kein Boss · die Bibliothek ist leer", local > 0 || global > 0, [
+  const library = SC.boss_library.length;
+  return detCard(3, "Bosse", local || library
+    ? local + " lokal · " + library + " aus der Bibliothek"
+    : "Noch kein Boss · die Bibliothek ist leer", local > 0 || library > 0, [
     el("p", {class: "hint"}, "Jeder Boss hat eine eigene Erkennung und eine "
       + "eigene Aktion. Die Reihenfolge ist die Priorität: der erste Treffer gewinnt."),
     el("button", {class: "btn primary scan-wizard-main",
@@ -5604,7 +5611,7 @@ function detDetectionFields(obj, kind, name) {
     !template ? el("div", {class: "grid2"},
       numberField("Toleranz", obj.tolerance === undefined ? 30 : obj.tolerance,
         (v) => setter("tolerance", v), {min: 0, step: 1},
-        "Wie weit eine Marker-Farbe abweichen darf.", "erktoleranz"),
+        "Wie weit eine Marker-Farbe abweichen darf.", "detection-tolerance"),
       el("div", {class: "field-quiet"}, "gemessen",
         el("span", {class: "mono"}, obj.marker.length + " Farben"))) : null,
     !template ? el("button", {class: "btn scan-wizard-main", disabled: !photoPresent(),
@@ -5728,35 +5735,35 @@ function detListBosses(target) {
     return;
   }
   const local = c.bosses;
-  if (!local.length && !SC.global_bosses.length) {
+  if (!local.length && !SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Noch kein Boss. Ein Boss ist eine Vorlage (oder ein paar Farben) und eine "
       + "Aktion dahinter."));
   }
   for (const b of local) target.appendChild(detBossRow(b, false));
-  if (SC.global_bosses.length) {
+  if (SC.boss_library.length) {
     target.appendChild(el("div", {class: "scan-category-header"},
       "AUS DER BIBLIOTHEK · GILT ZUSÄTZLICH"));
     const names = new Set(local.map((x) => x.name));
-    for (const b of SC.global_bosses) {
-      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der globale
-      // hier blass, statt so zu tun, als wuerde er benutzt.
+    for (const b of SC.boss_library) {
+      // Ein lokaler Boss gleichen Namens hat Vorrang — dann steht der aus der
+      // Bibliothek hier blass, statt so zu tun, als wuerde er benutzt.
       target.appendChild(detBossRow(b, true, names.has(b.name)));
     }
   }
   target.appendChild(el("button", {class: "empty-zone",
     onclick: () => { scanList = "library"; renderScans(); }},
-    "Boss-Bibliothek (global) · " + SC.global_bosses.length));
+    "Boss-Bibliothek · " + SC.boss_library.length));
 }
 
-function detBossRow(b, global, covered) {
+function detBossRow(b, inLibrary, covered) {
   const test = SC.boss.tests[b.name];
-  const selected = SC.boss.choice === b.name && SC.boss.choice_global === !!global;
+  const selected = SC.boss.choice === b.name && SC.boss.choice_in_library === !!inLibrary;
   return el("button", {
     class: "scan-row" + (selected ? " on" : ""),
     style: covered ? "opacity:.5" : null,
     title: covered ? "Ein lokaler Boss gleichen Namens hat Vorrang" : "",
-    onclick: () => callScan("boss_select", {name: b.name, global: !!global}),
+    onclick: () => callScan("boss_select", {name: b.name, in_library: !!inLibrary}),
   },
     b.preview ? el("img", {class: "mini", src: b.preview})
                : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
@@ -5806,13 +5813,13 @@ function detListLibrary(target) {
   target.appendChild(el("p", {class: "hint"},
     "Diese Bosse gelten zusätzlich in JEDEM Boss-Scan. Ein lokaler Boss mit "
     + "gleichem Namen hat Vorrang."));
-  if (!SC.global_bosses.length) {
+  if (!SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Noch leer. Rechts einen anlegen — oder einen Boss aus einem Scan "
       + "hierher verschieben."));
     return;
   }
-  for (const b of SC.global_bosses) target.appendChild(detBossRow(b, true));
+  for (const b of SC.boss_library) target.appendChild(detBossRow(b, true));
 }
 
 /* ---------------------------------------------- Bibliothek als Kartenraster */
@@ -5830,13 +5837,13 @@ function detRenderLibrary() {
   $("scan-no-image").hidden = show || !SC.photo || photoPresent();
   if (!show) return;
   target.replaceChildren();
-  if (!SC.global_bosses.length) {
+  if (!SC.boss_library.length) {
     target.appendChild(el("p", {class: "hint"},
       "Die Bibliothek ist leer. Wer denselben Boss in mehreren Scans braucht, "
       + "pflegt ihn sonst mehrfach — und ändert beim nächsten Mal nur die Hälfte."));
     return;
   }
-  for (const b of SC.global_bosses) target.appendChild(detLibraryCard(b));
+  for (const b of SC.boss_library) target.appendChild(detLibraryCard(b));
 }
 
 function detLibraryCard(b) {
@@ -5850,7 +5857,7 @@ function detLibraryCard(b) {
                  : el("span", {class: "dot" + (b.marker.length ? "" : " without"),
                                style: b.marker.length ? "background:" + b.marker[0] : ""}),
       el("b", {class: "grow"}, b.name),
-      el("span", {class: "num"}, open ? "neu vom LLM" : b.detection)));
+      el("span", {class: "num"}, open ? "neu vom LLM" : detHowText(b.detection))));
   if (b.marker.length) {
     cardEl.appendChild(el("div", {class: "scan-marker"},
       b.marker.map((h) => el("span", {class: "scan-color-swatch", style: "background:" + h}))));
@@ -5870,10 +5877,10 @@ function detLibraryCard(b) {
   cardEl.appendChild(el("div", {class: "button-pair"},
     el("button", {class: open ? "btn primary" : "btn quiet",
       onclick: () => { scanList = "bosses";
-                       callScan("boss_select", {name: b.name, global: true}); }},
+                       callScan("boss_select", {name: b.name, in_library: true}); }},
       open ? "Aktion zuweisen" : "bearbeiten"),
     el("button", {class: "btn quiet",
-      onclick: () => callScan("boss_delete", {name: b.name, global: true})}, "löschen")));
+      onclick: () => callScan("boss_delete", {name: b.name, in_library: true})}, "löschen")));
   return cardEl;
 }
 
@@ -5897,12 +5904,12 @@ function detInspector(target) {
 function detInspBossScan(target, c) {
   target.appendChild(heading("BOSS-SCAN „" + c.name + "“",
     "Ein Block vom Typ BOSS-SCAN oder BOSS-WATCHER verweist per Name hierauf. "
-    + "Umbenennen: oben links.", "bossscan"));
+    + "Umbenennen: oben links.", "boss-scan"));
   target.appendChild(numberField("Farb-Toleranz", c.tolerance,
     (v) => detField("tolerance", v), {min: 0, step: 1},
-    "Gilt für die Marker-Farben aller Bosse dieses Scans.", "bosstoleranz"));
+    "Gilt für die Marker-Farben aller Bosse dieses Scans.", "boss-tolerance"));
   target.appendChild(heading("WENN KEIN BOSS ERKANNT",
-    "Greift auch dann, wenn OCR und LLM nichts finden.", "bossfallback"));
+    "Greift auch dann, wenn OCR und LLM nichts finden.", "boss-fallback"));
   target.appendChild(detActionTiles(SC.actions.boss_default, c.default_action,
     (v) => detField("default_action", v)));
   if (c.default_action === "item_scan") {
@@ -5912,7 +5919,7 @@ function detInspBossScan(target, c) {
   }
   if (Object.keys(SC.boss.tests).length) {
     target.appendChild(heading("ALLE BOSSE GEGEN DIESES BILD",
-      "Was jeder einzelne ergeben hat — und woran es lag.", "bosstests"));
+      "Was jeder einzelne ergeben hat — und woran es lag.", "boss-tests"));
     for (const [name, t] of Object.entries(SC.boss.tests)) {
       target.appendChild(el("div", {class: "scan-result-row" + (t.ok ? " ok" : "")},
         el("span", {}, name),
@@ -5939,28 +5946,28 @@ function detInspBoss(target, c, b) {
   target.appendChild(el("button", {class: "btn primary", disabled: !photoPresent(),
     onclick: () => callScan("boss_test")}, "Diesen Boss testen"));
   target.appendChild(heading("BOSS", "Der Name ist zugleich das, was OCR und "
-    + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "bossname"));
+    + "LLM im Bild suchen — er sollte also der Name im Spiel sein.", "boss-name"));
   target.appendChild(field("Name", b.name, (v) => callScan("boss_set",
-    {name: b.name, global: b.global, field: "name", value: v})));
-  if (b.global) {
+    {name: b.name, in_library: b.in_library, field: "name", value: v})));
+  if (b.in_library) {
     target.appendChild(el("p", {class: "hint"},
       "Aus der Bibliothek — Änderungen gelten in jedem Boss-Scan."));
   }
   target.appendChild(heading("ERKENNUNG", "Template ODER Farb-Marker. Beides "
-    + "gesetzt heisst: beides muss stimmen.", "bosserkennung"));
+    + "gesetzt heisst: beides muss stimmen.", "boss-detection"));
   for (const part of detDetectionFields(b, "boss", b.name))
     if (part) target.appendChild(part);
   target.appendChild(heading("AKTION BEI TREFFER",
-    "Was passiert, wenn genau dieser Boss erkannt wird.", "bossaktion"));
+    "Was passiert, wenn genau dieser Boss erkannt wird.", "boss-action"));
   target.appendChild(detActionTiles(SC.actions.boss, b.action,
-    (v) => callScan("boss_set", {name: b.name, global: b.global,
+    (v) => callScan("boss_set", {name: b.name, in_library: b.in_library,
                                    field: "action", value: v})));
   for (const part of detActionFields(b, "boss", b.name))
     if (part) target.appendChild(part);
   target.appendChild(el("button", {class: "btn quiet", style: "margin-top:14px",
     title: "Bosse der Bibliothek gelten in jedem Boss-Scan",
-    onclick: () => callScan("boss_move_global", {name: b.name, global: b.global})},
-    b.global ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
+    onclick: () => callScan("boss_move_library", {name: b.name, in_library: b.in_library})},
+    b.in_library ? "In diesen Scan holen" : "In die Bibliothek verschieben"));
 }
 
 function detInspIcon(target, c) {
@@ -5968,7 +5975,7 @@ function detInspIcon(target, c) {
     onclick: () => callScan("icon_test")}, "Icon-Scan testen"));
   target.appendChild(heading("ICON-SCAN „" + c.name + "“",
     "Erkennt EIN Symbol in einer Region und tut dann etwas. Ein Block vom Typ "
-    + "ICON-SCAN verweist per Name hierauf.", "iconscan"));
+    + "ICON-SCAN verweist per Name hierauf.", "icon-scan"));
   // **Der Ausschnitt zeigt, was der Scan sieht.** Vier Zahlen sagen nicht, ob
   // die Region sitzt; ein Bild von 104 px sagt es in einer Sekunde.
   target.appendChild(c.crop_image
@@ -5982,7 +5989,7 @@ function detInspIcon(target, c) {
     onclick: () => callScan("region_mode", {kind: "icon", mode: "region"})},
     "Region neu aufziehen"));
   target.appendChild(heading("AKTION BEI FUND",
-    "Was passiert, wenn das Symbol da ist.", "iconaktion"));
+    "Was passiert, wenn das Symbol da ist.", "icon-action"));
   target.appendChild(detActionTiles(SC.actions.icon, c.action,
     (v) => detField("action", v)));
   for (const part of detActionFields(c, "icon"))
@@ -5993,7 +6000,7 @@ function detInspIcon(target, c) {
   // Item- und Boss-Scans steht.
   target.appendChild(heading("WENN NICHTS ERKANNT",
     "Die Ersatzaktion gehört dem Block in der Sequenz, nicht dem Scan — dort "
-    + "steht sie für alle drei Scan-Arten an derselben Stelle.", "iconelse"));
+    + "steht sie für alle drei Scan-Arten an derselben Stelle.", "icon-else"));
   target.appendChild(el("p", {class: "hint"},
     "Im Sequenz-Editor am Block einstellen. Als Befehl im Konsolen-Editor: "
     + "icon " + c.name + " else skip"));
@@ -6004,13 +6011,13 @@ function detInspIcon(target, c) {
 function detInspLibrary(target) {
   target.appendChild(heading("BOSS-BIBLIOTHEK",
     "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
-    + "hat Vorrang.", "bossbib"));
+    + "hat Vorrang.", "boss-library"));
   target.appendChild(el("p", {class: "hint"},
-    SC.global_bosses.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
+    SC.boss_library.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
     + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
     + "Scan, der sie gefunden hat."));
   target.appendChild(el("button", {class: "btn primary",
-    onclick: () => callScan("boss_new", {global: true})}, "+ Boss anlegen"));
+    onclick: () => callScan("boss_new", {in_library: true})}, "+ Boss anlegen"));
   target.appendChild(el("button", {class: "btn quiet",
     onclick: () => { scanList = "bosses"; renderScans(); }}, "zurück zum Scan"));
 }
@@ -6188,8 +6195,8 @@ function shareRenderImport() {
   const head = el("div", {class: "section"},
     heading("IMPORTIEREN",
       "Liest ein Bündel ein und rechnet die Koordinaten um.", "import"),
-    // EIN Knopf ueber die volle Breite heisst `btn breit` — `wachse` in einer
-    // `series` war dasselbe mit einer zweiten Schreibweise.
+    // EIN Knopf ueber die volle Breite heisst `btn wide` — `grow` in einer
+    // `row` war dasselbe mit einer zweiten Schreibweise.
     el("button", {class: "btn wide", onclick: () => callShare("file_choose")},
       "Datei wählen …"),
     field("oder Pfad", i ? i.path : "",
@@ -6208,7 +6215,7 @@ function shareRenderImport() {
   shareCheckbox(bodyEl, shareImport, i.content);
 
   bodyEl.appendChild(heading("KOORDINATEN",
-    "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "importkoord"));
+    "Wie die Stellen des Absenders auf deinen Bildschirm kommen.", "import-coordinates"));
   // Ohne beidseitig bekanntes Fenster gibt es nichts zu wählen — eine Kachel,
   // die nichts tut, ist schlechter als keine.
   const modesList = (i.auto ? [{value: "auto", text: "aus Fenstergrösse"}] : [])
@@ -6239,7 +6246,7 @@ function shareRenderImport() {
  * geoeffnete Sequenz.
  *
  * Gezeichnet wird mit denselben Bausteinen wie der Werkzeuge-Reiter
- * (`wz-metrics`, `wz-subheader`, `abschnitt`) statt mit eigenen. Ein
+ * (`tools-metrics`, `tools-subheader`, `section`) statt mit eigenen. Ein
  * achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
  * einbringt — und die Kennzahlen-Kacheln koennen genau das schon: gleiche
  * Spalten ueber `auto-fit`, gleiche Hoehe, gleiche Schrift. */
@@ -6257,12 +6264,9 @@ async function renderReport(data) {
   restoreFocus(memo);
 }
 
-/** Sekunden als h:mm:ss — dieselbe Form wie in `tools/log_report.py`. */
+/** Sekunden als h:mm:ss, gerundet — dieselbe Form wie in `tools/log_report.py`. */
 function repDuration(sec) {
-  const whole = Math.max(0, Math.round(sec || 0));
-  const h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60), s = whole % 60;
-  const two = (n) => String(n).padStart(2, "0");
-  return h ? h + ":" + two(m) + ":" + two(s) : m + ":" + two(s);
+  return clockText(Math.max(0, Math.round(sec || 0)));
 }
 
 /** Beginn einer Sitzung kurz: „20.09.26 20:15“ statt des vollen Stempels
@@ -6323,7 +6327,7 @@ function repWaitSplit(w, sessions) {
       + "selbst in der Hand. Auf Farbe ist die Zeit, bis ein Farb-Trigger "
       + "aufging: die bestimmt das Spiel, und ein grosser Anteil heisst meist, "
       + "dass ein Block auf etwas wartet, das lange nicht kommt. Pausen sind aus "
-      + "beiden herausgerechnet.", "ber-warten"));
+      + "beiden herausgerechnet.", "report-waits"));
   if (!w || !w.measured_sessions) {
     boxEl.appendChild(el("p", {class: "hint"},
       "Keine Messung: diese Logs stammen von vor der Wartezeit-Erfassung. Der "
@@ -6343,7 +6347,7 @@ function repWaitSplit(w, sessions) {
         title: label + ": " + repDuration(seconds[key])}));
     legend.appendChild(el("div", {class: "rep-split-row"},
       el("span", {class: "rep-split-swatch wait-" + key}),
-      el("span", {class: "rep-split-label", title: what}, label),
+      el("span", {title: what}, label),
       el("span", {class: "mono"}, repDuration(seconds[key])),
       el("span", {class: "mono rep-split-share"},
         span ? Math.round(share * 100) + " %" : "—")));
@@ -6400,7 +6404,7 @@ function reportRenderLeft() {
     heading("SITZUNGEN",
       "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
       + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
-      + "nicht ueber eine einzelne Datei.", "ber-sitzungen"));
+      + "nicht ueber eine einzelne Datei.", "report-sessions"));
   // **Ein Leerzustand nennt den Handgriff, nicht den Config-Schlüssel.** Hier
   // stand „session_log_enabled ist aus" — richtig, aber ein Satz, mit dem man
   // erst in den Einstellungen suchen geht. Der Knopf schaltet es direkt ein.
@@ -6484,13 +6488,13 @@ function reportRenderMiddle() {
     return;
   }
 
-  target.appendChild(el("div", {class: "wz-metrics"},
-    wzMetric(repDuration(b.duration), "Laufzeit", "neutral"),
-    wzMetric(repNumber(b.clicks), "Klicks", "neutral"),
-    wzMetric(repNumber(b.items_total), "Items", "neutral"),
-    wzMetric(repNumber(b.timeouts_total), "Timeouts",
+  target.appendChild(el("div", {class: "tools-metrics"},
+    toolsMetric(repDuration(b.duration), "Laufzeit", "neutral"),
+    toolsMetric(repNumber(b.clicks), "Klicks", "neutral"),
+    toolsMetric(repNumber(b.items_total), "Items", "neutral"),
+    toolsMetric(repNumber(b.timeouts_total), "Timeouts",
       b.timeouts_total ? "hint" : "neutral"),
-    wzMetric(repNumber(b.verify_miss_total), "ohne Wirkung",
+    toolsMetric(repNumber(b.verify_miss_total), "ohne Wirkung",
       b.verify_miss_total ? "error" : "neutral")));
 
   // DIE Frage, fuer die es den Reiter gibt — deshalb steht sie oben und nicht
@@ -6498,13 +6502,13 @@ function reportRenderMiddle() {
   if (b.timeouts.length) {
     target.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HAENGT",
       "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
-      + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "ber-timeout",
+      + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "report-timeouts",
       // Welcher Block das ist, sagt `targets` (gegen die offene Sequenz
       // aufgeloest) — die Rangzeile oeffnet ihn, statt ihn nur zu nennen.
       b.timeouts.map(([name, n]) => ({name: name, value: n, kind: "warn",
                                       target: (B.targets || {})[name]}))));
   } else {
-    target.appendChild(el("div", {class: "wz-success"}, wzIcon("ok"),
+    target.appendChild(el("div", {class: "tools-success"}, toolsIcon("ok"),
       el("div", {}, el("b", {}, "Keine Timeouts"),
         el("span", {}, "Jede Farb-Bedingung ist aufgegangen."))));
   }
@@ -6513,19 +6517,19 @@ function reportRenderMiddle() {
   if (b.color_waits && b.color_waits.length) {
     target.appendChild(repWaitList("AUF FARBE GEWARTET — NACH BLOCK",
       "Summe je Block, laengste zuerst. Ein Timeout zaehlt mit seiner vollen "
-      + "Wartezeit.", "ber-farbe", b.color_waits, "color-wait"));
+      + "Wartezeit.", "report-color-waits", b.color_waits, "color-wait"));
   }
   if (b.planned_waits && b.planned_waits.length) {
     target.appendChild(repWaitList("GEPLANTE WARTEZEIT — NACH BLOCK",
       "Was die eingestellten Wartezeiten zusammen gekostet haben. Hier "
       + "verkuerzen heisst: der Lauf wird schneller, ohne dass das Spiel "
-      + "mitreden muss.", "ber-geplant", b.planned_waits, "planned-wait"));
+      + "mitreden muss.", "report-planned-waits", b.planned_waits, "planned-wait"));
   }
 
   if (b.verify_miss.length) {
     target.appendChild(repList("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
       "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
-      + "Spiel braucht laenger als verify_timeout.", "ber-verify",
+      + "Spiel braucht laenger als verify_timeout.", "report-verify",
       b.verify_miss.map(([name, n, good]) => ({
         name: name, value: n, kind: "error",
         extra: "bestätigt " + good + "/" + (good + n),
@@ -6533,17 +6537,17 @@ function reportRenderMiddle() {
   }
 
   if (b.items.length) {
-    target.appendChild(repList("GEFUNDENE ITEMS", "", "ber-items",
+    target.appendChild(repList("GEFUNDENE ITEMS", "", "report-items",
       b.items.map(([name, n]) => ({name: name, value: n}))));
   }
   if (b.detected.length) {
-    target.appendChild(repList("ERKANNT (BOSS/ICON)", "", "ber-erkannt",
+    target.appendChild(repList("ERKANNT (BOSS/ICON)", "", "report-detected",
       b.detected.map(([name, n]) => ({name: name, value: n}))));
   }
   if (b.disturbances.length) {
     target.appendChild(repList("UNTERBRECHUNGEN",
       "Fokusverluste und Humanize-Pausen. Eine Haeufung heisst, dass das "
-      + "Spielfenster oft nicht vorn war.", "ber-stoer",
+      + "Spielfenster oft nicht vorn war.", "report-disturbances",
       b.disturbances.map(([name, n]) => ({name: name, value: n}))));
   }
 
@@ -6567,20 +6571,22 @@ function reportRenderRight() {
     heading("ERTRAG",
       "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
       + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
-      + "Marktanalyse selbst laeuft getrennt.", "ber-ertrag"));
+      + "Marktanalyse selbst laeuft getrennt.", "report-yield"));
   target.replaceChildren(head);
 
   const bodyEl = el("div", {class: "section growing"});
   const e = B.yield_value;
   if (!e) {
     bodyEl.appendChild(el("p", {class: "hint"},
-      "Noch keine Bewertung: dafür braucht es eine Marktwert-Datei "
-      + "(marktwert.json aus der Marktanalyse) und Läufe, die Items gefunden "
-      + "haben. Dann steht hier, was ein Lauf eingebracht hat."));
+      "Noch keine Bewertung: dafür braucht es die Marktwert-Datei, die die "
+      + "Marktanalyse schreibt (python market_analysis/analysis.py), und Läufe, "
+      + "die Items gefunden haben. Dann steht hier, was ein Lauf eingebracht hat."));
+    // Der Pfad ist voreingestellt — fehlt die Bewertung, fehlt meist der Lauf
+    // der Analyse, nicht ein Eintrag. Unter dem Feld steht, was dahinter liegt.
     bodyEl.appendChild(el("button", {class: "btn wide",
-      title: "Öffnet die Einstellung „scan_market_value_file“",
+      title: "Zeigt Pfad und Stand der Marktwert-Datei („scan_market_value_file“)",
       onclick: () => goTo({view: "settings", key: "scan_market_value_file"})},
-      "Marktwert-Datei eintragen", icon("arrow")));
+      "Marktwert-Datei prüfen", icon("arrow")));
     target.appendChild(bodyEl);
     return;
   }
@@ -6591,9 +6597,9 @@ function reportRenderRight() {
     return;
   }
 
-  bodyEl.appendChild(el("div", {class: "wz-metrics"},
-    wzMetric(repNumber(e.gold), "Gold gesamt", "neutral"),
-    wzMetric(e.per_hour === null ? "—" : repNumber(e.per_hour), "Gold/h",
+  bodyEl.appendChild(el("div", {class: "tools-metrics"},
+    toolsMetric(repNumber(e.gold), "Gold gesamt", "neutral"),
+    toolsMetric(e.per_hour === null ? "—" : repNumber(e.per_hour), "Gold/h",
       "neutral")));
   // **Obergrenze, keine Abrechnung.** `item_found` heisst „erkannt", nicht
   // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
@@ -6623,40 +6629,40 @@ function reportRenderRight() {
 /* --------------------------------------------------------------- Werkzeuge
  *
  * Was bisher nur im Punkte-Menue der Konsole ging: pruefen (`check`),
- * kalibrieren (`fix`) und Nachklicken (`klick`). Eigener Zustand neben `S`,
+ * kalibrieren (`fix`) und Nachklicken (`reclick`). Eigener Zustand neben `S`,
  * wie bei Einstellungen und Teilen — der Reiter arbeitet auf `sequence.json` und
  * dem ganzen Bestand, nicht auf der geoeffneten Sequenz.
  *
- * `wzOpenTool` ist reiner Oberflaechenzustand (welches Werkzeug in der Mitte
- * steht), `W` die Antwort der Bruecke, `wzReport` das Ergebnis der letzten
+ * `toolsOpenKey` ist reiner Oberflaechenzustand (welches Werkzeug in der Mitte
+ * steht), `W` die Antwort der Bruecke, `toolsReport` das Ergebnis der letzten
  * Pruefung. Die Pruefung steht bewusst NICHT in `W`: sie kostet einen Durchlauf
  * ueber den ganzen Bestand, und den will man auf Knopfdruck, nicht bei jedem
  * Neuzeichnen. */
 let W = null;
-let wzOpenTool = "check";
-let wzReport = null;
-let wzScopeState = {};
+let toolsOpenKey = "check";
+let toolsReport = null;
+let toolsScopeState = {};
 // Der Hauptprozess besitzt die Aufnahme. Dieser Merker sagt nicht mehr als das,
 // was das Studio sicher weiss: der Startauftrag wurde erfolgreich abgelegt.
-let wzRecordingStarted = false;
-let wzRecordingName = "";
-let wzRecordingCycles = 0;
-let wzRecordingDescription = "";
-let wzRecordingPoll = 0;
-let wzRecordingLivePoll = 0;
-let wzRecordingLive = {active: false, paused: false, count: 0, events: []};
+let toolsRecordingStarted = false;
+let toolsRecordingName = "";
+let toolsRecordingCycles = 0;
+let toolsRecordingDescription = "";
+let toolsRecordingPoll = 0;
+let toolsRecordingLivePoll = 0;
+let toolsRecordingLive = {active: false, paused: false, count: 0, events: []};
 /* Der Live-Stand der Klick-Runde. Sie laeuft im HAUPTPROZESS (dort haengt der
  * Maus-Hook), also weiss dieses Fenster von sich aus nichts ueber sie — der
  * Stand kommt ueber `.reclick.json`. Ohne ihn stand hier nur „gestartet",
  * waehrend die Konsole jeden Schritt einzeln meldete. */
-let wzReclickPoll = 0;
-let wzReclickLive = {active: false, index: 0, total: 0, history: [], point: {}};
+let toolsReclickPoll = 0;
+let toolsReclickLive = {active: false, index: 0, total: 0, history: [], point: {}};
 /* Eine offene Farb-Rueckfrage: die Stelle ist angefahren, aber die Farbe dort
  * weicht von der gespeicherten ab. Bis das jemand bestaetigt, ist NICHTS gesetzt
  * - der Zustand lebt nur hier, nicht in der Bruecke. */
-let wzColorQuestion = null;
-let wzPointId = null;
-let wzColorAnalysis = null;
+let toolsColorQuestion = null;
+let toolsPointId = null;
+let toolsColorAnalysis = null;
 
 /* Jedes Werkzeug sagt, WORAUF es wirkt. Ein einzelner Sequenzname oben im Reiter
  * waere fuer zwei davon schlicht falsch: Pruefen und Kalibrieren gehen ueber
@@ -6863,14 +6869,14 @@ async function withWait(kind, name, data) {
 /* `command` steht nur, wo es in der Konsole wirklich einen gleichnamigen
  * Befehl gibt (Punkte-Menü: check, fix, reclick). Hier standen auch „rec",
  * „points" und „color" — Wörter, die die Konsole gar nicht kennt. */
-const WZ_TOOLS = [
+const TOOLS = [
   {key: "recording", name: "Sequenz aufnehmen", scopeKind: "new",
    short: "Echtes Spielen als neue Sequenz aufzeichnen"},
   {key: "check", name: "Bestand prüfen", command: "check", scopeKind: "inventory",
    short: "Fehler und unvollständige Verknüpfungen finden"},
   {key: "points", name: "Punkte verwalten", scopeKind: "sequence",
    short: "Aufnehmen, nachmessen, umbenennen und sicher löschen"},
-  // `nichts` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
+  // `none` ist kein fehlender Wert, sondern eine eigene Aussage: dieses
   // Werkzeug MISST nur den Bildschirm und schreibt nirgends hin. Es stand hier
   // auf „bestand" und war damit schlicht falsch — und die Zeile wurde als
   // einzige gar nicht erst gezeichnet, womit die Unwahrheit nicht auffiel.
@@ -6884,7 +6890,7 @@ const WZ_TOOLS = [
 
 /** Kleine, lokale Linien-Icons. Keine Schriftzeichen und keine externe Datei:
  *  dadurch bleiben Strichstärke und Ausrichtung in jedem System identisch. */
-function wzIcon(kind) {
+function toolsIcon(kind) {
   const paths = {
     recording: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18", "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"],
     check: ["M9 11l2 2 4-5", "M12 3a9 9 0 1 0 9 9", "M16 4l5-1-1 5"],
@@ -6898,7 +6904,7 @@ function wzIcon(kind) {
     hint: ["M12 3L2 21h20z", "M12 9v5M12 18h.01"],
     folder: ["M3 6h7l2 2h9v11H3z"],
   };
-  const svg = svgEl("svg", {class: "wz-symbol", viewBox: "0 0 24 24",
+  const svg = svgEl("svg", {class: "tools-symbol", viewBox: "0 0 24 24",
     fill: "none", stroke: "currentColor", "stroke-width": "1.8",
     "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true"});
   for (const d of paths[kind] || paths.info) svg.appendChild(svgEl("path", {d}));
@@ -6909,18 +6915,18 @@ function wzIcon(kind) {
  * Liste stand „Bestand prüfen", rechts darüber „Setup prüfen" — und
  * „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Man fragt sich dann,
  * ob man im richtigen Werkzeug gelandet ist. Der Name kommt deshalb aus
- * `WZ_TOOLS`, derselben Zeile, aus der die Liste ihn liest. */
-function wzHeader(key, text) {
-  const tool = WZ_TOOLS.find((w) => w.key === key) || {name: key};
-  return el("section", {class: "wz-hero " + key},
-    el("div", {class: "wz-hero-icon"}, wzIcon(key)),
-    el("div", {class: "wz-hero-copy"},
-      el("div", {class: "wz-kicker"}, "WERKZEUG"),
+ * `TOOLS`, derselben Zeile, aus der die Liste ihn liest. */
+function toolsHeader(key, text) {
+  const tool = TOOLS.find((w) => w.key === key) || {name: key};
+  return el("section", {class: "tools-hero " + key},
+    el("div", {class: "tools-hero-icon"}, toolsIcon(key)),
+    el("div", {class: "tools-hero-copy"},
+      el("div", {class: "tools-kicker"}, "WERKZEUG"),
       el("h2", {}, tool.name),
       el("p", {}, text)));
 }
 
-function wzInfo(title, text) {
+function toolsInfo(title, text) {
   // Erklaerungen bleiben aus dem Arbeitsfluss, bis jemand sie braucht. Das
   // Studio verwendet dafuer bereits ueberall dasselbe kleine i; ein eigener
   // Infokasten im Werkzeuge-Reiter war nicht nur unruhig, sondern drueckte bei
@@ -6933,7 +6939,7 @@ function wzInfo(title, text) {
   // einer BESCHRIFTUNG (`labeled()`), und die ist es, die sagt, worueber
   // es sich lohnt nachzufragen. Eine Zeile kleiner Schrift kostet die Breite
   // nicht, um die es dem Kompakt-Umbau ging — ein Kasten waere das gewesen.
-  // **Der Kasten hiess `wz-info-compact info`** — und `.info` ist der runde
+  // **Der Kasten hiess `tools-info-compact info`** — und `.info` ist der runde
   // ⓘ-Knopf: 13 px breit, `flex:none`, zentriert. Der Kasten erbte dessen
   // Gestalt, war 13 px breit statt so breit wie die Spalte, und sein Inhalt
   // stand mittig darüber hinaus — nach links aus dem Fenster heraus. Dieselbe
@@ -6944,18 +6950,18 @@ function wzInfo(title, text) {
   // Das `kind`-Argument ist ersatzlos weg statt auf `art-…` umgeschrieben: es
   // hatte in zwölf Aufrufen keinen einzigen Nutzer und in der CSS-Datei keine
   // einzige Variante. Ein Präfix hätte einen toten Zweig gepflegt.
-  return el("div", {class: "wz-info-compact"},
-    el("span", {class: "with-info"}, title, info(text, "werkzeug-" + title)));
+  return el("div", {class: "tools-info-compact"},
+    el("span", {class: "with-info"}, title, info(text, "tool-" + title)));
 }
 
 /** Die Zeile „worauf wirkt das hier" — als eigener Baustein, damit sie an jedem
  *  Werkzeug gleich aussieht und keines sie vergessen kann. */
-function wzScope(key) {
-  const w = WZ_TOOLS.find(x => x.key === key);
-  const boxEl = el("div", {class: "wz-scope"});
+function toolsScope(key) {
+  const w = TOOLS.find(x => x.key === key);
+  const boxEl = el("div", {class: "tools-scope"});
   if (w && w.scopeKind === "new") {
     boxEl.classList.add("single");
-    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+    boxEl.append(el("span", {class: "tools-scope-badge"}, "Bezug"),
       el("span", {}, "eine neue Sequenz — die offene Sequenz "),
       el("b", {}, W ? W.sequence : "—"),
       el("span", {}, " bleibt unverändert"));
@@ -6963,18 +6969,18 @@ function wzScope(key) {
   }
   if (w && w.scopeKind === "none") {
     boxEl.classList.add("single");
-    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+    boxEl.append(el("span", {class: "tools-scope-badge"}, "Bezug"),
       el("span", {}, "nichts — es misst nur den Bildschirm und ändert keine Datei"));
     return boxEl;
   }
   if (!w || w.scopeKind === "inventory") {
-    boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+    boxEl.append(el("span", {class: "tools-scope-badge"}, "Bezug"),
       el("span", {}, "der gesamte gespeicherte Bestand — alle Sequenzen, Punkte, "
         + "Slots und Scans, nicht nur die offene Sequenz"));
     return boxEl;
   }
   boxEl.classList.add("single");
-  boxEl.append(el("span", {class: "wz-scope-badge"}, "Bezug"),
+  boxEl.append(el("span", {class: "tools-scope-badge"}, "Bezug"),
     el("span", {}, "die offene Sequenz "),
     el("b", {}, W ? W.sequence : "—"),
     el("span", {class: "hint"}, W ? " (" + W.file + ")" : ""));
@@ -6988,22 +6994,22 @@ async function renderTools(fresh) {
   if (!answer || view !== "tools") return;
   W = answer;
   for (const u of W.scope)
-    if (wzScopeState[u.key] === undefined) wzScopeState[u.key] = u.default_value;
-  if (fresh) { wzReport = null; wzColorQuestion = null; }
+    if (toolsScopeState[u.key] === undefined) toolsScopeState[u.key] = u.default_value;
+  if (fresh) { toolsReport = null; toolsColorQuestion = null; }
   const memo = rememberFocus();
-  wzRenderLeft();
-  wzRenderMiddle();
-  wzRenderRight();
+  toolsRenderLeft();
+  toolsRenderMiddle();
+  toolsRenderRight();
   restoreFocus(memo);
 }
 
-/** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
- *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
 // Werkzeuge, die die Punkte der Sequenz aendern. Die stehen in `sequence.json`
 // — also im Editor-Zustand `S`, den `ask()` nicht anfasst.
 const TOOL_POINT_COMMANDS = new Set(["tool_point_capture", "tool_point_set",
   "tool_point_delete", "tool_points_prune"]);
 
+/** Ein Werkzeug-Befehl. Antwort ist ein Ergebnis, KEINE Momentaufnahme —
+ *  deshalb `ask()` und danach neu zeichnen, statt `S` zu ersetzen. */
 async function callTool(name, data) {
   const answer = await ask(name, data);
   if (!answer) return null;
@@ -7017,13 +7023,13 @@ async function callTool(name, data) {
   if (answer.message)
     setStatus({text: answer.message + (points && S && S.dirty
                 ? " Noch nicht gespeichert — im Editor speichern." : ""),
-               kind: answer.ok ? "ok" : "err"});
+               kind: answer.kind || (answer.ok ? "ok" : "err")});
   await renderTools();
   return answer;
 }
 
-function wzRenderLeft() {
-  const target = $("wz-left");
+function toolsRenderLeft() {
+  const target = $("tools-left");
   // Hier stand „offene Sequenz <Name>". Der Block hatte einen Grund: die
   // Kopfleiste blendete ihre Sequenz-Bedienelemente in diesem Reiter aus, und
   // damit war auch der Name weg — bei der Klick-Runde genau die Frage, die man
@@ -7035,49 +7041,49 @@ function wzRenderLeft() {
   const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "WERKZEUGE"));
   const listEl = el("div", {class: "section growing", style: "gap:6px"});
-  for (const w of WZ_TOOLS) {
+  for (const w of TOOLS) {
     const button = el("button", {
-      class: "wz-nav " + w.key + (wzOpenTool === w.key ? " on" : ""),
-      onclick: () => wzOpen(w.key),
+      class: "tools-nav " + w.key + (toolsOpenKey === w.key ? " on" : ""),
+      onclick: () => toolsOpen(w.key),
       // Der Konsolen-Befehl steht im Tooltip — wer das Werkzeug aus dem
       // Punkte-Menue kennt, findet es so wieder. Als Marke neben dem Titel
       // drueckte er jeden Namen auf zwei Zeilen („Sequenz / aufnehmen"), und
       // wer nur das Fenster benutzt, las ein Wort, das ihm nichts sagt.
       title: w.short + (w.command ? " · in der Konsole: Punkte-Menü (CTRL+ALT+P) → "
                                     + w.command : ""),
-    }, el("span", {class: "wz-nav-icon"}, wzIcon(w.key)),
-       el("span", {class: "wz-nav-copy"},
-         el("span", {class: "wz-nav-title"}, w.name),
-         el("span", {class: "wz-nav-short"}, w.short)),
-       el("span", {class: "wz-nav-arrow"}, "›"));
+    }, el("span", {class: "tools-nav-icon"}, toolsIcon(w.key)),
+       el("span", {class: "tools-nav-copy"},
+         el("span", {class: "tools-nav-title"}, w.name),
+         el("span", {class: "tools-nav-short"}, w.short)),
+       el("span", {class: "tools-nav-arrow"}, "›"));
     listEl.appendChild(button);
   }
-  listEl.appendChild(wzInfo("Slots exakt reparieren",
+  listEl.appendChild(toolsInfo("Slots exakt reparieren",
     "CTRL+ALT+N → Slots → repair misst die Flächen pixelgenau neu."));
   target.replaceChildren(head, listEl);
   applyHelps(target);
 }
 
 /** Ein Werkzeug öffnen — auch als Sprungziel aus dem Editor heraus. */
-function wzOpen(key) {
-  if (!WZ_TOOLS.some(w => w.key === key)) return;
-  wzOpenTool = key;
+function toolsOpen(key) {
+  if (!TOOLS.some(w => w.key === key)) return;
+  toolsOpenKey = key;
   if (view !== "tools") {
     setView("tools", true);
     return;
   }
-  wzRenderMiddle();
-  wzRenderRight();
-  wzRenderLeft();
+  toolsRenderMiddle();
+  toolsRenderRight();
+  toolsRenderLeft();
 }
 
-function wzRenderMiddle() {
-  const target = $("wz-middle");
-  const content = wzOpenTool === "recording" ? wzBuildRecording()
-    : wzOpenTool === "check" ? wzBuildCheck()
-    : wzOpenTool === "points" ? wzBuildPoints()
-    : wzOpenTool === "colors" ? wzBuildColors()
-    : wzOpenTool === "calibrate" ? wzBuildCalib() : wzBuildReclick();
+function toolsRenderMiddle() {
+  const target = $("tools-middle");
+  const content = toolsOpenKey === "recording" ? toolsBuildRecording()
+    : toolsOpenKey === "check" ? toolsBuildCheck()
+    : toolsOpenKey === "points" ? toolsBuildPoints()
+    : toolsOpenKey === "colors" ? toolsBuildColors()
+    : toolsOpenKey === "calibrate" ? toolsBuildCalib() : toolsBuildReclick();
   target.replaceChildren(...content);
   // Offene i-Texte ueberleben den Neuaufbau nach einer Werkzeug-Aktion.
   applyHelps(target);
@@ -7085,61 +7091,61 @@ function wzRenderMiddle() {
 
 /* ------------------------------------------------------------------ Prüfen */
 
-function wzBuildCheck() {
-  const out = [wzHeader("check",
+function toolsBuildCheck() {
+  const out = [toolsHeader("check",
     "Ein vollständiger Gesundheitscheck für die gespeicherten Sequenzen und Scans.")];
-  out.push(wzScope("check"));
-  out.push(wzInfo("Was wird geprüft?",
+  out.push(toolsScope("check"));
+  out.push(toolsInfo("Was wird geprüft?",
     "Templates, Erkennungsmethoden, Punkt- und Scan-Verweise sowie Stellen "
     + "ausserhalb der angeschlossenen Monitore. Es zählt der zuletzt gespeicherte Stand."));
-  out.push(el("div", {class: "wz-action row"},
-    el("button", {class: "btn primary wz-main-action", onclick: wzCheck},
-      wzIcon("check"), el("span", {}, "Jetzt prüfen"))));
+  out.push(el("div", {class: "tools-action row"},
+    el("button", {class: "btn primary tools-main-action", onclick: toolsCheck},
+      toolsIcon("check"), el("span", {}, "Jetzt prüfen"))));
 
-  if (!wzReport) return out;
-  if (!wzReport.ok) {
-    out.push(el("p", {class: "kind-err"}, wzReport.message || "Prüfung fehlgeschlagen."));
+  if (!toolsReport) return out;
+  if (!toolsReport.ok) {
+    out.push(el("p", {class: "kind-err"}, toolsReport.message || "Prüfung fehlgeschlagen."));
     return out;
   }
-  if (!wzReport.findings.length) {
-    out.push(el("div", {class: "wz-success"}, wzIcon("ok"),
+  if (!toolsReport.findings.length) {
+    out.push(el("div", {class: "tools-success"}, toolsIcon("ok"),
       el("div", {}, el("b", {}, "Alles in Ordnung"),
-        el("span", {}, wzReport.checked.length + " Bereiche ohne Befund geprüft."))));
+        el("span", {}, toolsReport.checked.length + " Bereiche ohne Befund geprüft."))));
     return out;
   }
-  out.push(el("div", {class: "wz-metrics"},
-    wzMetric(String(wzReport.errors || 0), "Fehler", "error"),
-    wzMetric(String(wzReport.hints || 0), "Hinweise", "hint"),
-    wzMetric(String(wzReport.checked.length), "Bereiche", "neutral")));
+  out.push(el("div", {class: "tools-metrics"},
+    toolsMetric(String(toolsReport.errors || 0), "Fehler", "error"),
+    toolsMetric(String(toolsReport.hints || 0), "Hinweise", "hint"),
+    toolsMetric(String(toolsReport.checked.length), "Bereiche", "neutral")));
   // Fehler zuerst: „laeuft so nicht" schlaegt „ist vermutlich nicht gewollt".
   for (const level of ["error", "hint"]) {
-    const match = wzReport.findings.filter(b => b.level === level);
+    const match = toolsReport.findings.filter(b => b.level === level);
     if (!match.length) continue;
     out.push(el("h3", {style: "margin-top:16px"},
       level === "error" ? "Fehler (" + match.length + ")"
                          : "Hinweise (" + match.length + ")"));
-    for (const b of match) out.push(wzFinding(b, level));
+    for (const b of match) out.push(toolsFinding(b, level));
   }
   return out;
 }
 
 /* ------------------------------------------------------ Punkte verwalten */
 
-function wzBuildPoints() {
-  const out = [wzHeader("points",
+function toolsBuildPoints() {
+  const out = [toolsHeader("points",
     "Klickstellen sind eigenständige Objekte — jede Änderung zieht alle verwendenden Blöcke mit.")];
-  out.push(wzScope("points"));
+  out.push(toolsScope("points"));
   const points = (W && W.points) || [];
-  if (!points.some(p => p.id === wzPointId)) wzPointId = points.length ? points[0].id : null;
-  const point = points.find(p => p.id === wzPointId);
+  if (!points.some(p => p.id === toolsPointId)) toolsPointId = points.length ? points[0].id : null;
+  const point = points.find(p => p.id === toolsPointId);
   const newName = el("input", {placeholder: "Name des neuen Punkts", value: "Neuer Punkt",
     autocomplete: "off"});
-  out.push(el("div", {class: "wz-action grid2"}, newName,
+  out.push(el("div", {class: "tools-action grid2"}, newName,
     el("button", {class: "btn primary", onclick: async () => {
       setStatus({kind: "info", text: "Ins Spiel wechseln, Maus platzieren und ENTER drücken …"});
       const a = await withWait("tool", "tool_point_capture",
                                 {name: newName.value});
-      if (a && a.ok) wzPointId = a.point_id;
+      if (a && a.ok) toolsPointId = a.point_id;
     }}, "＋ Neuen Punkt aufnehmen")));
   if (!point) {
     out.push(el("p", {class: "empty"}, "Noch keine Punkte in dieser Sequenz."));
@@ -7149,15 +7155,15 @@ function wzBuildPoints() {
   // 0× dasteht. STRG+Z im Editor holt sie zurueck.
   const unusedCount = points.filter((p) => !p.usages.length).length;
   if (unusedCount) {
-    out.push(el("div", {class: "wz-action row"},
-      el("button", {class: "btn quiet danger", id: "wz-points-prune",
+    out.push(el("div", {class: "tools-action row"},
+      el("button", {class: "btn quiet danger", id: "tools-points-prune",
         onclick: () => callTool("tool_points_prune")},
         unusedCount + " ungenutzte löschen"),
       el("span", {class: "small"}, "Punkte ohne einen einzigen Verweis")));
   }
   out.push(selection("Punkt", points.map(p => ({value: p.id,
     text: "#" + p.id + " " + p.name + " (" + p.x + ", " + p.y + ")"})), point.id,
-    (v) => { wzPointId = Number(v); wzRenderMiddle(); wzRenderRight(); }));
+    (v) => { toolsPointId = Number(v); toolsRenderMiddle(); toolsRenderRight(); }));
   const setter = (field, value) => callTool("tool_point_set",
     {point_id: point.id, field: field, value: value});
   out.push(field("Name", point.name, (v) => setter("name", v)));
@@ -7184,31 +7190,31 @@ function wzBuildPoints() {
 
 /* ------------------------------------------------------ Farben analysieren */
 
-function wzBuildColors() {
-  const out = [wzHeader("colors",
+function toolsBuildColors() {
+  const out = [toolsHeader("colors",
     "Liest einen Pixel oder gruppiert die häufigsten Farben eines Bildschirmbereichs.")];
   // Fuenf Werkzeuge trugen ihre Bezugszeile, dieses nicht — obwohl „jedes
   // Werkzeug sagt, WORAUF es wirkt" die Regel des Reiters ist. Gerade hier ist
   // die Antwort die beruhigende: es fasst nichts an.
-  out.push(wzScope("colors"));
-  out.push(wzInfo("Aufnahme ohne Studio im Bild",
+  out.push(toolsScope("colors"));
+  out.push(toolsInfo("Aufnahme ohne Studio im Bild",
     "Nach dem Klick ins Spiel wechseln. Punkt und Vollbild starten mit ENTER; bei einer Region " +
     "werden obere linke und untere rechte Ecke jeweils mit ENTER bestätigt."));
   const startBtn = async (kind) => {
     setStatus({kind: "info", text: "Ins Spiel wechseln und mit ENTER bestätigen …"});
-    wzColorAnalysis = await withWait("tool", "tool_colors", {kind: kind});
-    wzRenderMiddle(); wzRenderRight();
+    toolsColorAnalysis = await withWait("tool", "tool_colors", {kind: kind});
+    toolsRenderMiddle(); toolsRenderRight();
   };
-  out.push(el("div", {class: "grid3 wz-action"},
+  out.push(el("div", {class: "grid3 tools-action"},
     el("button", {class: "btn primary", onclick: () => startBtn("point")}, "Pixel unter Maus"),
     el("button", {class: "btn", onclick: () => startBtn("region")}, "Bereich analysieren"),
     el("button", {class: "btn", onclick: () => startBtn("fullscreen")}, "Vollbild analysieren")));
-  if (wzColorAnalysis && !wzColorAnalysis.ok)
-    out.push(el("p", {class: "kind-err"}, wzColorAnalysis.message || "Analyse fehlgeschlagen."));
-  if (wzColorAnalysis && wzColorAnalysis.ok) {
-    const listEl = el("div", {class: "wz-color-list"});
-    for (const f of wzColorAnalysis.colors || []) listEl.appendChild(el("div", {class: "wz-color-row"},
-      el("span", {class: "wz-color-sample", style: "background:" + f.hex}),
+  if (toolsColorAnalysis && !toolsColorAnalysis.ok)
+    out.push(el("p", {class: "kind-err"}, toolsColorAnalysis.message || "Analyse fehlgeschlagen."));
+  if (toolsColorAnalysis && toolsColorAnalysis.ok) {
+    const listEl = el("div", {class: "tools-color-list"});
+    for (const f of toolsColorAnalysis.colors || []) listEl.appendChild(el("div", {class: "tools-color-row"},
+      el("span", {class: "tools-color-sample", style: "background:" + f.hex}),
       el("b", {class: "mono"}, f.hex),
       el("span", {}, "RGB " + f.rgb.join(", ")),
       el("span", {class: "grow hint"}, f.name || ""),
@@ -7220,105 +7226,105 @@ function wzBuildColors() {
 
 /* --------------------------------------------------------------- Aufnehmen */
 
-function wzNewRecordingName() {
-  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+function toolsNewRecordingName() {
+  const d = new Date();
   // Ein Name, den man stehen lassen kann; der Ordner wird daraus abgeleitet.
-  return "Aufnahme " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
+  return "Aufnahme " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
 }
 
-function wzBuildRecording() {
-  if (!wzRecordingName) wzRecordingName = wzNewRecordingName();
-  const out = [wzHeader("recording",
+function toolsBuildRecording() {
+  if (!toolsRecordingName) toolsRecordingName = toolsNewRecordingName();
+  const out = [toolsHeader("recording",
     "Spiele den Ablauf einmal vor — jeder Klick, Tastendruck und Marker wird direkt zu Blöcken.")];
-  out.push(wzScope("recording"));
+  out.push(toolsScope("recording"));
 
-  const form = el("div", {class: "wz-recording-form"});
-  const name = el("input", {value: wzRecordingName, autocomplete: "off",
-    disabled: wzRecordingStarted});
-  name.addEventListener("input", () => { wzRecordingName = name.value; });
+  const form = el("div", {class: "tools-recording-form"});
+  const name = el("input", {value: toolsRecordingName, autocomplete: "off",
+    disabled: toolsRecordingStarted});
+  name.addEventListener("input", () => { toolsRecordingName = name.value; });
   const cycles = el("input", {type: "number", min: "0", step: "1",
-    value: String(wzRecordingCycles), disabled: wzRecordingStarted});
-  cycles.addEventListener("input", () => { wzRecordingCycles = Math.max(0, Number(cycles.value) || 0); });
-  const note = el("textarea", {rows: "3", disabled: wzRecordingStarted,
-    placeholder: "optional — wofür ist diese Sequenz?"}, wzRecordingDescription);
-  note.addEventListener("input", () => { wzRecordingDescription = note.value; });
+    value: String(toolsRecordingCycles), disabled: toolsRecordingStarted});
+  cycles.addEventListener("input", () => { toolsRecordingCycles = Math.max(0, Number(cycles.value) || 0); });
+  const note = el("textarea", {rows: "3", disabled: toolsRecordingStarted,
+    placeholder: "optional — wofür ist diese Sequenz?"}, toolsRecordingDescription);
+  note.addEventListener("input", () => { toolsRecordingDescription = note.value; });
   form.append(
     el("label", {class: "field"}, "Name", name),
     el("label", {class: "field"}, "Zyklen · 0 = endlos", cycles),
-    el("label", {class: "field wz-recording-note"}, "Notiz", note));
+    el("label", {class: "field tools-recording-note"}, "Notiz", note));
   out.push(form);
 
-  const stamp = el("div", {class: "wz-recording-state" +
-    (wzRecordingStarted ? " running" : "")},
-    el("span", {class: "wz-rec-point"}),
-    el("div", {}, el("b", {}, wzRecordingStarted ? "Aufnahme läuft" : "Bereit zur Aufnahme"),
-      el("span", {}, wzRecordingStarted
+  const stamp = el("div", {class: "tools-recording-state" +
+    (toolsRecordingStarted ? " running" : "")},
+    el("span", {class: "tools-rec-point"}),
+    el("div", {}, el("b", {}, toolsRecordingStarted ? "Aufnahme läuft" : "Bereit zur Aufnahme"),
+      el("span", {}, toolsRecordingStarted
         ? "Ins Spiel wechseln. Der Stopp-Knopf und CTRL+ALT+J bauen danach die Blöcke."
         : "Starten, ins Spiel wechseln und den gewünschten Ablauf einmal ausführen.")));
   const action = el("button", {
-    class: "btn " + (wzRecordingStarted ? "danger" : "primary") + " wz-recording-button",
-    onclick: wzRecordingStarted ? wzStopRecording : wzStartRecording,
-  }, icon(wzRecordingStarted ? "stop" : "record"),
-     wzRecordingStarted ? "Aufnahme stoppen" : "Aufnahme starten");
+    class: "btn " + (toolsRecordingStarted ? "danger" : "primary") + " tools-recording-button",
+    onclick: toolsRecordingStarted ? toolsStopRecording : toolsStartRecording,
+  }, icon(toolsRecordingStarted ? "stop" : "record"),
+     toolsRecordingStarted ? "Aufnahme stoppen" : "Aufnahme starten");
   stamp.appendChild(action);
   out.push(stamp);
 
-  const output = el("div", {class: "wz-recording-output", id: "wz-recording-output"});
+  const output = el("div", {class: "tools-recording-output", id: "tools-recording-output"});
   out.push(output);
-  wzFillRecordingOutput(output);
+  toolsFillRecordingOutput(output);
 
-  out.push(el("div", {class: "wz-subheader"}, "HOTKEYS WÄHREND DER AUFNAHME"));
-  out.push(wzKeyTable((W && W.recording_keys) || []));
-  out.push(wzInfo("TUI bleibt verfügbar",
+  out.push(el("div", {class: "tools-subheader"}, "HOTKEYS WÄHREND DER AUFNAHME"));
+  out.push(toolsKeyTable((W && W.recording_keys) || []));
+  out.push(toolsInfo("TUI bleibt verfügbar",
     "CTRL+ALT+J kann die Aufnahme weiterhin ganz ohne Studio starten. Dann werden "
     + "Name, Zyklen und Notiz wie bisher beim Beenden in der Konsole abgefragt."));
   return out;
 }
 
-async function wzStartRecording() {
-  const name = wzRecordingName.trim();
+async function toolsStartRecording() {
+  const name = toolsRecordingName.trim();
   if (!name) {
     setStatus({text: "Bitte zuerst einen Namen eingeben.", kind: "err"});
     return;
   }
   const answer = await ask("recording_start", {
-    name: name, cycles: wzRecordingCycles, description: wzRecordingDescription});
+    name: name, cycles: toolsRecordingCycles, description: toolsRecordingDescription});
   if (!answer) return;
   setStatus({text: answer.message || "", kind: answer.ok ? "ok" : "err"});
   if (!answer.ok) return;
-  wzRecordingName = answer.name || name;
-  wzRecordingStarted = true;
-  wzRecordingLive = {active: true, paused: false, count: 0, events: []};
-  wzWatchRecording();
-  wzRenderMiddle();
-  wzRenderRight();
-  wzStartRecordingLive();
+  toolsRecordingName = answer.name || name;
+  toolsRecordingStarted = true;
+  toolsRecordingLive = {active: true, paused: false, count: 0, events: []};
+  toolsWatchRecording();
+  toolsRenderMiddle();
+  toolsRenderRight();
+  toolsStartRecordingLive();
 }
 
 /** Drei feste Zeilen statt eines wachsenden Logs: neuestes Ereignis unten. */
-function wzFillRecordingOutput(target, live = wzRecordingLive, started = wzRecordingStarted) {
+function toolsFillRecordingOutput(target, live = toolsRecordingLive, started = toolsRecordingStarted) {
   if (!target) return;
   const data = live || {};
   const events = Array.isArray(data.events) ? data.events.slice(-3) : [];
   const headText = data.paused ? "PAUSIERT" : started ? "LIVE" : "LETZTE EREIGNISSE";
-  target.replaceChildren(el("div", {class: "wz-output-header"},
+  target.replaceChildren(el("div", {class: "tools-output-header"},
     el("span", {}, headText),
-    el("span", {class: "wz-output-counter"}, String(data.count || 0) + " Ereignisse")));
-  const rows = el("div", {class: "wz-output-rows"});
+    el("span", {class: "tools-output-counter"}, String(data.count || 0) + " Ereignisse")));
+  const rows = el("div", {class: "tools-output-rows"});
   if (!events.length) {
-    rows.appendChild(el("div", {class: "wz-output-empty"},
+    rows.appendChild(el("div", {class: "tools-output-empty"},
       started ? "Warte auf das erste Ereignis …" : "Noch nichts aufgenommen."));
   } else {
     events.forEach((e, i) => {
       const color = e.color
-        ? el("span", {class: "wz-output-color",
+        ? el("span", {class: "tools-output-color",
             style: "color:rgb(" + e.color.join(",") + ")"}, "█") : null;
-      rows.appendChild(el("div", {class: "wz-output-row" +
+      rows.appendChild(el("div", {class: "tools-output-row" +
           (i === events.length - 1 ? " new" : "")},
-        el("span", {class: "wz-output-nr"}, String(e.number || "")),
-        el("span", {class: "wz-output-text"}, e.text || "—"),
-        el("span", {class: "wz-output-time"}, e.time || ""),
-        el("span", {class: "wz-output-color-text"}, color, e.color_text || "")));
+        el("span", {class: "tools-output-nr"}, String(e.number || "")),
+        el("span", {class: "tools-output-text"}, e.text || "—"),
+        el("span", {class: "tools-output-time"}, e.time || ""),
+        el("span", {class: "tools-output-color-text"}, color, e.color_text || "")));
     });
   }
   target.appendChild(rows);
@@ -7331,25 +7337,25 @@ function wzFillRecordingOutput(target, live = wzRecordingLive, started = wzRecor
   }
 }
 
-function wzStartRecordingLive() {
-  const number = ++wzRecordingLivePoll;
+function toolsStartRecordingLive() {
+  const number = ++toolsRecordingLivePoll;
   const read = async () => {
-    if (number !== wzRecordingLivePoll || !wzRecordingStarted) return;
+    if (number !== toolsRecordingLivePoll || !toolsRecordingStarted) return;
     const status = await ask("recording_status");
     if (status) {
-      wzRecordingLive = status;
-      wzFillRecordingOutput($("wz-recording-output"));
+      toolsRecordingLive = status;
+      toolsFillRecordingOutput($("tools-recording-output"));
     }
     setTimeout(read, 300);
   };
   setTimeout(read, 150);
 }
 
-async function wzStopRecording() {
+async function toolsStopRecording() {
   const answer = await ask("recording_stop");
   if (!answer) return;
   setStatus({text: answer.message || "", kind: answer.ok ? "ok" : "err"});
-  if (answer.ok) wzWatchRecording(true);
+  if (answer.ok) toolsWatchRecording(true);
 }
 
 /** Findet die vom Hauptprozess gespeicherte Datei und öffnet ihre fertigen Blöcke.
@@ -7366,14 +7372,14 @@ async function wzStopRecording() {
  * Die Wartezeit selbst bleibt unbegrenzt: eine Stunde aufzunehmen ist erlaubt.
  * Begrenzt wird nur der Fall, in dem die Aufnahme NIE anlaeuft — dann hoert
  * niemand zu, und das ist eine Meldung wert statt eines stillen Dauerlaufs. */
-function wzWatchRecording(quick = false) {
-  const number = ++wzRecordingPoll;
+function toolsWatchRecording(quick = false) {
+  const number = ++toolsRecordingPoll;
   let attempts = 0;
   const poll = async () => {
-    if (number !== wzRecordingPoll || !wzRecordingStarted) return;
+    if (number !== toolsRecordingPoll || !toolsRecordingStarted) return;
     if (!quick) {
       // Laeuft sie noch, gibt es nichts zu holen: billig warten statt fragen.
-      if (wzRecordingLive && wzRecordingLive.active) {
+      if (toolsRecordingLive && toolsRecordingLive.active) {
         attempts = 0;
         return void setTimeout(poll, 1000);
       }
@@ -7382,28 +7388,28 @@ function wzWatchRecording(quick = false) {
       // entweder „nie angelaufen" oder „gestoppt, aber nichts geschrieben" —
       // beides gehoert gesagt statt still weitergedreht.
       if (attempts >= 60) {
-        wzRecordingStarted = false;
-        ++wzRecordingLivePoll;
-        wzRenderMiddle();
+        toolsRecordingStarted = false;
+        ++toolsRecordingLivePoll;
+        toolsRenderMiddle();
         setStatus({text: "Keine laufende Aufnahme — hört der Hauptprozess zu?",
                      kind: "warn"});
         return;
       }
     }
     const listEl = (await ask("sequence_list")) || [];
-    if (listEl.some(s => s.name === wzRecordingName)) {
-      wzRecordingStarted = false;
-      ++wzRecordingLivePoll;
-      await call("load", {name: wzRecordingName});
+    if (listEl.some(s => s.name === toolsRecordingName)) {
+      toolsRecordingStarted = false;
+      ++toolsRecordingLivePoll;
+      await call("load", {name: toolsRecordingName});
       setView("editor");
       setStatus({text: "Aufnahme gespeichert — die erzeugten Blöcke sind geöffnet.", kind: "ok"});
       return;
     }
     attempts += 1;
     if (quick && attempts >= 12) {
-      wzRecordingStarted = false;
-      ++wzRecordingLivePoll;
-      wzRenderMiddle();
+      toolsRecordingStarted = false;
+      ++toolsRecordingLivePoll;
+      toolsRenderMiddle();
       setStatus({text: "Keine gespeicherte Aufnahme gefunden — wurde etwas aufgezeichnet?", kind: "warn"});
       return;
     }
@@ -7412,16 +7418,16 @@ function wzWatchRecording(quick = false) {
   setTimeout(poll, quick ? 350 : 1000);
 }
 
-function wzMetric(value, label, kind) {
-  return el("div", {class: "wz-metric " + kind},
+function toolsMetric(value, label, kind) {
+  return el("div", {class: "tools-metric " + kind},
     el("strong", {}, value), el("span", {}, label));
 }
 
-function wzFinding(b, level) {
-  const boxEl = el("div", {class: "wz-finding " + level});
-  boxEl.appendChild(el("div", {class: "wz-finding-icon"}, wzIcon(level)));
-  const copy = el("div", {class: "wz-finding-copy"},
-    el("div", {class: "wz-area"}, b.area), el("div", {}, b.text));
+function toolsFinding(b, level) {
+  const boxEl = el("div", {class: "tools-finding " + level});
+  boxEl.appendChild(el("div", {class: "tools-finding-icon"}, toolsIcon(level)));
+  const copy = el("div", {class: "tools-finding-copy"},
+    el("div", {class: "tools-area"}, b.area), el("div", {}, b.text));
   if (b.tip) copy.appendChild(el("div", {class: "hint", style: "white-space:normal"}, b.tip));
   boxEl.appendChild(copy);
   // Das Ziel des Befunds: Scan im Scans-Reiter, Block im Editor, Punkt in der
@@ -7431,54 +7437,54 @@ function wzFinding(b, level) {
   const where = !t ? "" : t.view === "scans"
     ? (t.name ? "Im Scans-Reiter öffnen" : "Bibliothek öffnen")
     : (t.point !== undefined && t.point !== null) ? "Punkt zeigen" : "Block öffnen";
-  if (t) boxEl.appendChild(el("div", {class: "wz-finding-jump"}, jumpButton(t, where)));
+  if (t) boxEl.appendChild(el("div", {class: "tools-finding-jump"}, jumpButton(t, where)));
   return boxEl;
 }
 
-function wzBuildChecked() {
+function toolsBuildChecked() {
   const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "GEPRÜFT"));
   const listEl = el("div", {class: "section growing", style: "gap:4px"});
-  if (!wzReport || !wzReport.ok) {
+  if (!toolsReport || !toolsReport.ok) {
     listEl.appendChild(el("div", {class: "hint", style: "white-space:normal"},
       "Noch nichts geprüft."));
   } else {
-    for (const b of wzReport.checked)
-      listEl.appendChild(el("div", {class: "wz-checked"}, wzIcon("ok"), el("span", {}, b)));
+    for (const b of toolsReport.checked)
+      listEl.appendChild(el("div", {class: "tools-checked"}, toolsIcon("ok"), el("span", {}, b)));
   }
   return [head, listEl];
 }
 
-async function wzCheck() {
+async function toolsCheck() {
   setStatus({text: "Prüfe…", kind: "info"});
-  wzReport = await ask("tool_check");
-  if (!wzReport) return;
-  const n = wzReport.errors || 0, h = wzReport.hints || 0;
+  toolsReport = await ask("tool_check");
+  if (!toolsReport) return;
+  const n = toolsReport.errors || 0, h = toolsReport.hints || 0;
   setStatus({
-    text: !wzReport.ok ? (wzReport.message || "Prüfung fehlgeschlagen.")
+    text: !toolsReport.ok ? (toolsReport.message || "Prüfung fehlgeschlagen.")
         : (n || h) ? n + " Fehler, " + h + " Hinweis(e)."
         : "Alles in Ordnung.",
-    kind: !wzReport.ok || n ? "err" : h ? "warn" : "ok",
+    kind: !toolsReport.ok || n ? "err" : h ? "warn" : "ok",
   });
-  wzRenderMiddle();
-  // **Auch rechts.** Hier stand nur `wzRenderMiddle()`, und damit blieb in der
+  toolsRenderMiddle();
+  // **Auch rechts.** Hier stand nur `toolsRenderMiddle()`, und damit blieb in der
   // rechten Spalte „Noch nichts geprüft." stehen, während in der Mitte längst
   // der Bericht lag. Ausgerechnet dort: die Spalte listet, WAS geprüft wurde,
   // und ohne sie ist „Alles in Ordnung" eine Behauptung — genau die Begründung,
   // mit der sie gebaut wurde. Jeder andere Werkzeug-Befehl zeichnet beides
   // (`callTool` über `renderTools`); dieser eine ging seinen eigenen
   // Weg, weil er `ask()` direkt ruft.
-  wzRenderRight();
+  toolsRenderRight();
 }
 
 /* ------------------------------------------------------------- Kalibrieren */
 
-function wzBuildCalib() {
+function toolsBuildCalib() {
   const K = (W && W.calibration) || {};
-  const out = [wzHeader("calibrate",
+  const out = [toolsHeader("calibrate",
     "Einen bekannten Punkt neu messen und alle gespeicherten Stellen präzise mitziehen.")];
-  out.push(wzScope("calibrate"));
-  out.push(wzInfo("Wann brauche ich das?",
+  out.push(toolsScope("calibrate"));
+  out.push(toolsInfo("Wann brauche ich das?",
     "Wenn Windows Monitore verschoben oder die Auflösung geändert hat. Der erste "
     + "Referenzpunkt bestimmt die Verschiebung, ein zweiter optional die Skalierung."));
 
@@ -7487,65 +7493,65 @@ function wzBuildCalib() {
     return out;
   }
 
-  out.push(wzRefRow(1, K.ref1));
+  out.push(toolsRefRow(1, K.ref1));
   // Der zweite Punkt erst anbieten, wenn der erste steht: ohne Verschiebung
   // gibt es keine Skalierung, und zwei leere Felder nebeneinander sehen aus,
   // als muesste man beide ausfuellen.
   if (K.ref1) {
-    out.push(wzInfo("Zweiter Referenzpunkt",
+    out.push(toolsInfo("Zweiter Referenzpunkt",
       "Nur wenn sich auch die Auflösung geändert hat: Dann einen zweiten Punkt "
       + "möglichst weit vom ersten entfernt anfahren."));
-    out.push(wzRefRow(2, K.ref2));
+    out.push(toolsRefRow(2, K.ref2));
   }
 
   if (K.ref1) {
-    out.push(el("div", {class: "wz-subheader"}, "BERECHNETER TRANSFORM"));
+    out.push(el("div", {class: "tools-subheader"}, "BERECHNETER TRANSFORM"));
     const v = K.offset || {x: 0, y: 0};
-    const values = el("div", {class: "wz-metrics"},
-      wzMetric(wzSign(v.x), "X-Versatz", "neutral"),
-      wzMetric(wzSign(v.y), "Y-Versatz", "neutral"));
+    const values = el("div", {class: "tools-metrics"},
+      toolsMetric(toolsSign(v.x), "X-Versatz", "neutral"),
+      toolsMetric(toolsSign(v.y), "Y-Versatz", "neutral"));
     if (K.scaling && (K.scaling.x !== 1 || K.scaling.y !== 1))
-      values.appendChild(wzMetric(K.scaling.x + "×" + K.scaling.y,
+      values.appendChild(toolsMetric(K.scaling.x + "×" + K.scaling.y,
         "Skalierung X/Y", "hint"));
     out.push(values);
-    out.push(wzOffsetFields(v));
+    out.push(toolsOffsetFields(v));
     if (K.identity)
       out.push(el("p", {class: "kind-warn"},
         "Der Transform ändert nichts — der Punkt sitzt schon richtig."));
-    out.push(wzScopeBox());
+    out.push(toolsScopeBox());
     const strip = el("div", {style: "display:flex;gap:8px;margin-top:14px"});
     strip.appendChild(el("button", {
       class: "btn primary", disabled: !!K.identity,
-      onclick: () => callTool("calib_apply", {...wzScopeState}),
+      onclick: () => callTool("calib_apply", {...toolsScopeState}),
     }, "Umrechnen und speichern"));
     strip.appendChild(el("button", {
       class: "btn", onclick: () => callTool("calib_cancel"),
     }, "Verwerfen"));
     out.push(strip);
-    out.push(wzInfo("Sicherung und laufende Sequenz",
+    out.push(toolsInfo("Sicherung und laufende Sequenz",
       "Vorher entsteht ein vollständiges Export-ZIP als Sicherung. Läuft eine "
       + "Sequenz, wird nicht umgerechnet — sie klickt sonst mitten im Umbau."));
   }
   return out;
 }
 
-function wzSign(n) { return (n > 0 ? "+" : "") + n; }
+function toolsSign(n) { return (n > 0 ? "+" : "") + n; }
 
-function wzColor(rgb) {
-  return el("span", {class: "wz-color",
+function toolsColor(rgb) {
+  return el("span", {class: "tools-color",
                      style: "background:rgb(" + rgb.join(",") + ")"});
 }
 
 /** Die Rueckfrage bei abweichender Farbe: beide Farben nebeneinander, dann
  *  entscheiden. Gesperrt wird nichts — manchmal hat sich das Spiel geaendert und
  *  die neue Farbe ist die richtige. Es soll nur nicht aus Versehen gehen. */
-function wzBuildColorQuestion() {
-  const f = wzColorQuestion;
-  const boxEl = el("div", {class: "wz-color-question"});
+function toolsBuildColorQuestion() {
+  const f = toolsColorQuestion;
+  const boxEl = el("div", {class: "tools-color-question"});
   boxEl.appendChild(el("div", {class: "kind-warn"}, f.message));
-  const series = el("div", {class: "wz-color-series"});
-  series.append(el("span", {class: "hint"}, "gespeichert"), wzColor(f.expected),
-               el("span", {class: "hint"}, "dort gemessen"), wzColor(f.measured),
+  const series = el("div", {class: "tools-color-series"});
+  series.append(el("span", {class: "hint"}, "gespeichert"), toolsColor(f.expected),
+               el("span", {class: "hint"}, "dort gemessen"), toolsColor(f.measured),
                el("span", {class: "hint"},
                   "(" + f.position[0] + ", " + f.position[1] + ")"));
   boxEl.appendChild(series);
@@ -7553,7 +7559,7 @@ function wzBuildColorQuestion() {
   strip.appendChild(el("button", {
     class: "btn", onclick: async () => {
       const n = f.number, id = f.point_id;
-      wzColorQuestion = null;
+      toolsColorQuestion = null;
       // Auch „Trotzdem setzen" misst die Stelle NEU — calib_reference wartet
       // in jedem Fall auf ENTER. Ohne den Hinweis sieht der Knopf aus, als
       // habe er nichts getan.
@@ -7563,7 +7569,7 @@ function wzBuildColorQuestion() {
   }, "Trotzdem setzen"));
   strip.appendChild(el("button", {
     class: "btn primary", onclick: () => {
-      wzColorQuestion = null;
+      toolsColorQuestion = null;
       setStatus({text: "Verworfen — nichts gesetzt.", kind: "info"});
       renderTools();
     },
@@ -7581,7 +7587,7 @@ function wzBuildColorQuestion() {
  * Zwei nah beieinander liegende Punkte machen die Skalierung unbrauchbar: der
  * Messfehler der Maus (ein paar Pixel) verteilt sich dann auf eine kurze
  * Strecke und wird zum Faktor hochgerechnet. */
-function wzFarthestPoint(ref1) {
+function toolsFarthestPoint(ref1) {
   let best = W.points[0], wide = -1;
   for (const p of W.points) {
     if (ref1 && p.id === ref1.point_id) continue;
@@ -7592,9 +7598,9 @@ function wzFarthestPoint(ref1) {
 }
 
 /** Eine Referenzpunkt-Zeile: welchen Punkt, und der Knopf zum Anfahren. */
-function wzRefRow(number, placed) {
-  const boxEl = el("div", {class: "wz-ref"});
-  boxEl.appendChild(el("div", {class: "wz-area"},
+function toolsRefRow(number, placed) {
+  const boxEl = el("div", {class: "tools-ref"});
+  boxEl.appendChild(el("div", {class: "tools-area"},
     number === 1 ? "1. Referenzpunkt (Verschiebung)"
                  : "2. Referenzpunkt (Skalierung, optional)"));
   const choice = el("select");
@@ -7606,7 +7612,7 @@ function wzRefRow(number, placed) {
   // Hinweis darueber. Der erste Eintrag der Liste ist aber der erste Punkt
   // selbst, und den lehnt die Bruecke ab: ein Vorschlag, der garantiert eine
   // Fehlermeldung ergibt, ist schlimmer als gar keiner.
-  else if (number === 2) choice.value = String(wzFarthestPoint(W.calibration.ref1));
+  else if (number === 2) choice.value = String(toolsFarthestPoint(W.calibration.ref1));
   boxEl.appendChild(choice);
   boxEl.appendChild(el("button", {
     class: "btn",
@@ -7616,14 +7622,14 @@ function wzRefRow(number, placed) {
         {number, point_id: Number(choice.value)});
       // Die Farbe passt nicht: nachfragen statt setzen. Ein Referenzpunkt, der
       // danebenliegt, verschiebt nicht sich selbst, sondern ALLES.
-      if (answer && answer.confirm) { wzColorQuestion = {...answer, number}; }
+      if (answer && answer.confirm) { toolsColorQuestion = {...answer, number}; }
       else if (answer && answer.message)
         setStatus({text: answer.message, kind: answer.ok ? "ok" : "err"});
       await renderTools();
     },
   }, placed ? "Neu anfahren" : "Stelle anfahren"));
-  if (wzColorQuestion && wzColorQuestion.number === number)
-    boxEl.appendChild(wzBuildColorQuestion());
+  if (toolsColorQuestion && toolsColorQuestion.number === number)
+    boxEl.appendChild(toolsBuildColorQuestion());
   if (placed)
     boxEl.appendChild(el("div", {class: "hint"},
       "(" + placed.old[0] + ", " + placed.old[1] + ") → ("
@@ -7632,9 +7638,9 @@ function wzRefRow(number, placed) {
 }
 
 /** Versatz von Hand nachziehen — mit der Maus trifft man den Pixel nicht genau. */
-function wzOffsetFields(v) {
-  const boxEl = el("div", {class: "wz-ref"});
-  boxEl.appendChild(el("div", {class: "wz-area"}, "Versatz von Hand"));
+function toolsOffsetFields(v) {
+  const boxEl = el("div", {class: "tools-ref"});
+  boxEl.appendChild(el("div", {class: "tools-area"}, "Versatz von Hand"));
   const fields = {};
   for (const axis of ["x", "y"]) {
     const field = el("input", {type: "number", step: "1", value: String(v[axis]),
@@ -7646,25 +7652,25 @@ function wzOffsetFields(v) {
     class: "btn", onclick: () => callTool("calib_offset",
       {x: fields.x.value, y: fields.y.value}),
   }, "Übernehmen"));
-  boxEl.appendChild(wzInfo("Versatz von Hand",
+  boxEl.appendChild(toolsInfo("Versatz von Hand",
     "Weisst du, dass eine Achse stimmt, ist eine getippte 0 genauer als jede Messung."));
   return boxEl;
 }
 
-function wzScopeBox() {
-  const boxEl = el("div", {class: "wz-ref", style: "flex-direction:column;align-items:stretch"});
-  boxEl.appendChild(el("div", {class: "wz-area"}, "Was mitgerechnet wird"));
-  boxEl.appendChild(wzInfo("Punkte",
+function toolsScopeBox() {
+  const boxEl = el("div", {class: "tools-ref", style: "flex-direction:column;align-items:stretch"});
+  boxEl.appendChild(el("div", {class: "tools-area"}, "Was mitgerechnet wird"));
+  boxEl.appendChild(toolsInfo("Punkte",
     "Punkte werden immer mitgerechnet — daran hängt alles andere."));
   for (const u of W.scope) {
     const row = el("label", {class: "share-row on"});
     const box = el("input", {type: "checkbox"});
-    box.checked = !!wzScopeState[u.key];
-    box.addEventListener("change", () => { wzScopeState[u.key] = box.checked; });
+    box.checked = !!toolsScopeState[u.key];
+    box.addEventListener("change", () => { toolsScopeState[u.key] = box.checked; });
     row.append(box, el("span", {}, u.text));
     boxEl.appendChild(row);
   }
-  boxEl.appendChild(wzInfo("Warum Slots standardmässig aus sind",
+  boxEl.appendChild(toolsInfo("Warum Slots standardmässig aus sind",
     "Slots stehen getrennt und sind aus: nach einem repair dürfen sie kein "
     + "zweites Mal wandern."));
   return boxEl;
@@ -7672,11 +7678,11 @@ function wzScopeBox() {
 
 /* --------------------------------------------------------- Punkte nachklicken */
 
-/* Die vier Griffe während der Runde — dieselbe Liste wie `TASTEN` in
- * `editors/nachklick.py`. Sie steht hier als Tabelle und nicht als Absatz, weil
+/* Die vier Griffe während der Runde — dieselbe Liste wie `KEYS` in
+ * `editors/reclick.py`. Sie steht hier als Tabelle und nicht als Absatz, weil
  * man sie MITTEN im Klicken nachschlägt: Fliesstext zwingt zum Lesen von vorn,
  * und dann liest ihn niemand. */
-const WZ_KEYS = [
+const TOOLS_KEYS = [
   ["CTRL+ALT+K", "überspringen", "Punkt bleibt, wo er ist"],
   ["CTRL+ALT+U", "zurück", "einen Punkt zurück, noch mal"],
   ["CTRL+ALT+H", "pausieren", "navigieren, ohne einen Punkt zu verbrauchen"],
@@ -7685,7 +7691,7 @@ const WZ_KEYS = [
 
 /* Was die Runde tut, in der Reihenfolge, in der es passiert. Drei Schritte statt
  * dreier Absätze: der Ablauf IST die Erklärung. */
-const WZ_STEPS = [
+const TOOLS_STEPS = [
   ["Starten", "Der Zeiger springt auf den ersten Punkt der Sequenz."],
   ["Klicken", "Stimmt die Stelle noch? Dann einfach klicken. Sonst hinfahren und "
             + "dort klicken — der Klick geht ans Spiel, die Oberfläche öffnet "
@@ -7694,21 +7700,21 @@ const WZ_STEPS = [
                + "nichts — an keiner Datei und in keinem Speicher."],
 ];
 
-function wzKeyTable(keys = WZ_KEYS) {
+function toolsKeyTable(keys = TOOLS_KEYS) {
   const bodyEl = el("tbody");
   for (const [combo, what, why] of keys)
     bodyEl.appendChild(el("tr", {},
-      el("td", {}, el("span", {class: "wz-key"}, combo)),
-      el("td", {class: "wz-what"}, what),
-      el("td", {class: "wz-why"}, why)));
-  return el("table", {class: "wz-keys"}, bodyEl);
+      el("td", {}, el("span", {class: "tools-key"}, combo)),
+      el("td", {class: "tools-what"}, what),
+      el("td", {class: "tools-why"}, why)));
+  return el("table", {class: "tools-keys"}, bodyEl);
 }
 
 /* Was ein erledigter Punkt geworden ist. Vier Ausgaenge, weil die Runde vier
  * kennt — und „bestaetigt" von „uebersprungen" zu unterscheiden ist der ganze
  * Grund fuer `reclick_history`: beide aendern nichts, aber nur einer heisst
  * „ich habe hingesehen". */
-const WZ_RECLICK_KIND = {
+const TOOLS_RECLICK_KIND = {
   fits: ["check", "rc-fits", "bestätigt — bleibt, wo er ist"],
   placed: ["→", "rc-set", "neu gesetzt"],
   skipped: ["↷", "rc-skip", "übersprungen"],
@@ -7716,9 +7722,9 @@ const WZ_RECLICK_KIND = {
 };
 
 /** Der Live-Stand der Runde: wo sie steht, was dran ist, was war. */
-function wzFillReclickOutput(target) {
+function toolsFillReclickOutput(target) {
   if (!target) return;
-  const d = wzReclickLive || {};
+  const d = toolsReclickLive || {};
   const total = d.total || 0;
   const done = Math.min(d.index || 0, total);
   const running = !!d.active && !d.orphaned;
@@ -7727,14 +7733,14 @@ function wzFillReclickOutput(target) {
   // ein verwaister Stand sagt es, statt eine tote Runde als lebend zu zeigen.
   const headText = d.orphaned ? "KEIN HAUPTPROZESS"
     : d.paused ? "PAUSIERT" : running ? "LÄUFT" : total ? "BEENDET" : "NICHT GESTARTET";
-  target.replaceChildren(el("div", {class: "wz-output-header"},
+  target.replaceChildren(el("div", {class: "tools-output-header"},
     el("span", {}, headText),
-    el("span", {class: "wz-output-counter"},
+    el("span", {class: "tools-output-counter"},
       total ? done + " von " + total + " Punkt(en)" : "—")));
 
   if (!total) {
-    target.appendChild(el("div", {class: "wz-output-rows"},
-      el("div", {class: "wz-output-empty"},
+    target.appendChild(el("div", {class: "tools-output-rows"},
+      el("div", {class: "tools-output-empty"},
         "Noch keine Runde gelaufen. „Runde starten“ setzt den Zeiger auf den "
         + "ersten Punkt.")));
     return;
@@ -7754,7 +7760,7 @@ function wzFillReclickOutput(target) {
       el("span", {class: "num"}, "#" + p.id),
       el("span", {class: "rc-now-name"}, p.name || ""),
       el("span", {class: "rc-now-pos"}, "(" + p.x + ", " + p.y + ")"),
-      p.color ? el("span", {class: "wz-output-color",
+      p.color ? el("span", {class: "tools-output-color",
                             style: "color:rgb(" + p.color.join(",") + ")"}, "█") : null));
     target.appendChild(el("div", {class: "hint rc-hint"}, d.paused
       ? "Pausiert — Klicks setzen keinen Punkt. CTRL+ALT+H macht weiter."
@@ -7768,13 +7774,13 @@ function wzFillReclickOutput(target) {
 
   // Der Verlauf laeuft rueckwaerts: das Letzte ist das, was man sucht.
   const history = Array.isArray(d.history) ? d.history.slice(-6).reverse() : [];
-  const rows = el("div", {class: "wz-output-rows"});
+  const rows = el("div", {class: "tools-output-rows"});
   if (!history.length) {
-    rows.appendChild(el("div", {class: "wz-output-empty"},
+    rows.appendChild(el("div", {class: "tools-output-empty"},
       "Noch kein Punkt erledigt."));
   } else {
     for (const v of history) {
-      const [glyph, cls, what] = WZ_RECLICK_KIND[v.kind] || ["·", "", v.kind];
+      const [glyph, cls, what] = TOOLS_RECLICK_KIND[v.kind] || ["·", "", v.kind];
       rows.appendChild(el("div", {class: "rc-row"},
         el("span", {class: "rc-kind " + cls, title: what}, ICONS[glyph] ? icon(glyph) : glyph),
         el("span", {class: "num"}, "#" + v.id),
@@ -7788,7 +7794,7 @@ function wzFillReclickOutput(target) {
   if (d.others)
     target.appendChild(el("div", {class: "hint rc-hint"},
       d.others + " Stelle(n) erreicht die Runde nicht (beobachtete Pixel, "
-      + "ELSE, Rad) — dafür bleibt walk im Punkte-Menü."));
+      + "ELSE) — dafür bleibt walk im Punkte-Menü."));
 }
 
 /* Gepollt wird, solange der Reiter offen ist — nicht nur nach dem eigenen
@@ -7796,17 +7802,17 @@ function wzFillReclickOutput(target) {
  * dann ist dieses Fenster trotzdem der bequemere Platz, um ihr zuzusehen.
  * Nach dem Ende laeuft der Poll aus (`quiet`), damit ein offener Reiter nicht
  * dauerhaft alle 400 ms eine Datei liest. */
-function wzStartReclickLive() {
-  const number = ++wzReclickPoll;
+function toolsStartReclickLive() {
+  const number = ++toolsReclickPoll;
   let quiet = 0;
   const read = async () => {
-    if (number !== wzReclickPoll || wzOpenTool !== "reclick") return;
+    if (number !== toolsReclickPoll || toolsOpenKey !== "reclick") return;
     const stamp = await ask("reclick_status");
-    if (number !== wzReclickPoll || wzOpenTool !== "reclick") return;
+    if (number !== toolsReclickPoll || toolsOpenKey !== "reclick") return;
     if (stamp) {
-      const wasRunning = wzReclickLive.active;
-      wzReclickLive = stamp;
-      wzFillReclickOutput($("wz-reclick-output"));
+      const wasRunning = toolsReclickLive.active;
+      toolsReclickLive = stamp;
+      toolsFillReclickOutput($("tools-reclick-output"));
       // Endet die Runde, sagt es die Statuszeile — sonst merkt man es nur,
       // wenn man gerade hinsieht.
       if (wasRunning && !stamp.active)
@@ -7817,25 +7823,25 @@ function wzStartReclickLive() {
       quiet += 1;
     }
     if (quiet > 12) return;
-    setTimeout(read, wzReclickLive.active ? 400 : 1000);
+    setTimeout(read, toolsReclickLive.active ? 400 : 1000);
   };
   setTimeout(read, 100);
 }
 
-function wzBuildReclick() {
-  const out = [wzHeader("reclick",
+function toolsBuildReclick() {
+  const out = [toolsHeader("reclick",
     "Eine geführte Kontrollrunde durch alle Klickstellen der geöffneten Sequenz.")];
-  out.push(wzScope("reclick"));
+  out.push(toolsScope("reclick"));
 
-  const steps = el("div", {class: "wz-steps"});
-  WZ_STEPS.forEach(([title, text], i) => {
-    steps.append(el("div", {class: "wz-number"}, String(i + 1)),
-      el("div", {class: "wz-step-text"}, el("b", {}, title + ": "), text));
+  const steps = el("div", {class: "tools-steps"});
+  TOOLS_STEPS.forEach(([title, text], i) => {
+    steps.append(el("div", {class: "tools-number"}, String(i + 1)),
+      el("div", {class: "tools-step-text"}, el("b", {}, title + ": "), text));
   });
   out.push(steps);
 
   // Die eine Regel, an der alles haengt — als Kasten, nicht als Satz im Absatz.
-  out.push(el("div", {class: "wz-rule"},
+  out.push(el("div", {class: "tools-rule"},
     el("span", {}, icon("warn", 14)),
     el("span", {}, el("b", {}, "Nichts wird geschrieben, bis du übernimmst. "),
       "Fenster zu, Programm aus oder „Verwerfen“ = die Runde ist weg und "
@@ -7868,13 +7874,13 @@ function wzBuildReclick() {
 
   // Der Live-Stand steht ZWISCHEN Knoepfen und Tastentabelle: was das
   // Programm gerade macht, sucht man dort, wo man es gerade gestartet hat.
-  const output = el("div", {class: "wz-output", id: "wz-reclick-output"});
+  const output = el("div", {id: "tools-reclick-output"});
   out.push(output);
-  wzFillReclickOutput(output);
+  toolsFillReclickOutput(output);
 
-  wzStartReclickLive();
-  out.push(wzKeyTable());
-  out.push(wzInfo("Bedienung im Spiel",
+  toolsStartReclickLive();
+  out.push(toolsKeyTable());
+  out.push(toolsInfo("Bedienung im Spiel",
     "Die Runde läuft wegen des systemweiten Maus-Hooks im Hauptprozess. Die "
     + "Tasten wirken überall — auch mit dem Spiel im Vordergrund. Gezählt "
     + "wird nur, was im Spielfenster geklickt wird (window_focus_title); ein "
@@ -7884,21 +7890,21 @@ function wzBuildReclick() {
 
 /* ------------------------------------------------------------------- rechts */
 
-function wzRenderRight() {
-  const target = $("wz-right");
+function toolsRenderRight() {
+  const target = $("tools-right");
   // Beim Pruefen steht hier, WAS geprueft wurde. „Alles in Ordnung" ist ohne
   // diese Liste eine Behauptung: man weiss nicht, ob der Bereich sauber war
   // oder gar nicht angesehen wurde.
-  if (wzOpenTool === "check") return target.replaceChildren(...wzBuildChecked());
-  if (wzOpenTool === "recording")
+  if (toolsOpenKey === "check") return target.replaceChildren(...toolsBuildChecked());
+  if (toolsOpenKey === "recording")
     return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "SO ENTSTEHEN DIE BLÖCKE"),
-      el("div", {class: "wz-recording-flow"},
+      el("div", {class: "tools-recording-flow"},
         el("b", {}, "1 · Starten"), el("span", {}, "Das Studio schickt Name und Einstellungen mit."),
-        el("b", {}, "2 · Spielen"), el("span", {}, "Klicks, Tasten, Rad und Marker werden gesammelt."),
+        el("b", {}, "2 · Spielen"), el("span", {}, "Klicks, Tasten und Marker werden gesammelt."),
         el("b", {}, "3 · Stoppen"), el("span", {}, "Die Sequenz wird gespeichert und automatisch im Editor geöffnet."))));
-  if (wzOpenTool === "points") {
-    const point = W && W.points.find(p => p.id === wzPointId);
+  if (toolsOpenKey === "points") {
+    const point = W && W.points.find(p => p.id === toolsPointId);
     const head = el("div", {class: "section"},
       el("span", {class: "heading"}, "VERWENDUNGEN"),
       el("span", {class: "hint"}, point ? "Punkt #" + point.id : "kein Punkt gewählt"));
@@ -7906,24 +7912,24 @@ function wzRenderRight() {
     if (!point || !point.usages.length)
       listEl.appendChild(el("p", {class: "hint"}, "Dieser Punkt wird nirgends verwendet und kann sicher gelöscht werden."));
     else for (const v of point.usages)
-      listEl.appendChild(el("div", {class: "wz-checked"}, wzIcon("points"), el("span", {}, v)));
+      listEl.appendChild(el("div", {class: "tools-checked"}, toolsIcon("points"), el("span", {}, v)));
     return target.replaceChildren(head, listEl);
   }
-  if (wzOpenTool === "colors")
+  if (toolsOpenKey === "colors")
     return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "MESSUNG"),
-      el("p", {class: "hint"}, wzColorAnalysis && wzColorAnalysis.ok
-        ? (wzColorAnalysis.message || "Analyse abgeschlossen.")
+      el("p", {class: "hint"}, toolsColorAnalysis && toolsColorAnalysis.ok
+        ? (toolsColorAnalysis.message || "Analyse abgeschlossen.")
         : "Noch keine Analyse. Die Farbfelder erscheinen nach der Aufnahme in der Mitte.")));
-  if (wzOpenTool === "reclick")
+  if (toolsOpenKey === "reclick")
     // Als einziges Werkzeug stand hier keine Ueberschrift — die anderen fuenf
     // haben GEPRUEFT, SO ENTSTEHEN DIE BLOECKE, VERWENDUNGEN, MESSUNG und
     // VORSCHAU. Uebrig blieb ein Hinweis ohne Dach in einer sonst leeren
     // Spalte, und der sah aus, als sei die Spalte kaputt.
     return target.replaceChildren(el("div", {class: "section"},
       el("span", {class: "heading"}, "GRENZEN DER RUNDE"),
-      wzInfo("Was die Runde nicht erreicht",
-        "Beobachtete Pixel, Nachprüfungen, ELSE-Klicks und Rad-Schritte kommen "
+      toolsInfo("Was die Runde nicht erreicht",
+        "Beobachtete Pixel, Nachprüfungen und ELSE-Klicks kommen "
         + "in einem normalen Durchlauf gar nicht vor. Dafür bleibt walk im "
         + "Punkte-Menü. Welche das sind, sagt die Runde beim Start in der Konsole.")));
   if (!W || !W.calibration.ref1)
@@ -7938,7 +7944,7 @@ function wzRenderRight() {
     el("div", {class: "hint"}, rows.length + " Stelle(n), Auszug"));
   const listEl = el("div", {class: "section growing", style: "gap:4px"});
   for (const z of rows) {
-    listEl.appendChild(el("div", {class: "wz-preview"},
+    listEl.appendChild(el("div", {class: "tools-preview"},
       el("div", {}, z.what),
       el("div", {class: "hint"},
         "(" + z.before.join(", ") + ") → (" + z.after.join(", ") + ")")));
@@ -8026,7 +8032,7 @@ function cfgText(value, m) {
   if (value === null || value === undefined || value === "")
     return m.empty || (value === "" ? "(leer)" : "keiner");
   if (value === true) return "an";
-  if (value === false) return m.kind === "xy" ? "aus" : "aus";
+  if (value === false) return "aus";
   if (Array.isArray(value)) return "(" + value.join(", ") + ")";
   if (m.options) {
     const t = m.options.find((o) => cfgEqual(o.value, value));
@@ -8285,11 +8291,11 @@ function cfgEmpty(key, m) {
 
 /** Wie lang der Standardwert IM KNOPF stehen darf, bevor er in den Tooltip
  *  wandert. Eine Zahl, „an", ein Enum-Text passen; ein Satz nicht. */
-const STD_MAX = 24;
+const DEFAULT_MAX = 24;
 
 function cfgDefault(key, m) {
-  const std = C.defaults[key];
-  if (cfgEqual(cfgValue(key), std))
+  const defaultValue = C.defaults[key];
+  if (cfgEqual(cfgValue(key), defaultValue))
     return el("span", {class: "cfg-default"}, "Standard");
   // **Ein Knopf sagt, was er TUT** — dieselbe Regel wie beim Rückgängig im
   // Scans-Reiter. `cfgText()` gibt bei einem leeren Standardwert den
@@ -8297,13 +8303,13 @@ function cfgDefault(key, m) {
   // stand hier als Beschriftung: der Knopf war breiter als seine Spalte und
   // lief rechts aus dem Fenster. Der Satz steht ohnehin schon eine Zeile
   // höher an `cfgEmpty()` — hier gehört hin, worauf zurückgesetzt wird.
-  const raw = (std === null || std === undefined || std === "")
-    ? "(leer)" : cfgText(std, m);
-  const short = raw.length > STD_MAX;
+  const raw = (defaultValue === null || defaultValue === undefined || defaultValue === "")
+    ? "(leer)" : cfgText(defaultValue, m);
+  const short = raw.length > DEFAULT_MAX;
   return el("button", {class: "btn quiet cfg-default",
                        title: "auf den Standardwert zurücksetzen"
                               + (short ? ": " + raw : ""),
-                       onclick: () => cfgSet(key, std)},
+                       onclick: () => cfgSet(key, defaultValue)},
             icon("reset"), "Standard" + (short ? "" : ": " + raw));
 }
 
@@ -8451,7 +8457,7 @@ function wire() {
     if (e.target === $("shortcuts")) toggleShortcuts(false);
   });
   $("btn-run").prepend(icon("play"));
-  $("btn-recording").addEventListener("click", () => wzOpen("recording"));
+  $("btn-recording").addEventListener("click", () => toolsOpen("recording"));
   $("btn-recording").prepend(icon("record"));
   $("scan-window-capture").prepend(icon("refresh"));
   // Ein Knopf, zwei Bedeutungen — er trägt die aktuelle als Beschriftung, damit
@@ -8758,10 +8764,10 @@ function keyboard(e) {
       // Eine GEHALTENE Taste ist ein Verschieben, nicht dreissig: nur der erste
       // Schritt einer Serie kommt auf den Rueckgaengig-Stapel.
       const now = Date.now();
-      const serie = now - scanNudgeTime < 900;
+      const inSeries = now - scanNudgeTime < 900;
       scanNudgeTime = now;
       return callScan("scan_move",
-                     {dx: nudge[0] * wide, dy: nudge[1] * wide, counts: !serie});
+                     {dx: nudge[0] * wide, dy: nudge[1] * wide, counts: !inSeries});
     }
     // **Ein Buchstabe ist erst ohne Modifikator ein Werkzeug.** Die Kacheln
     // liegen auf V/G/S/F/K/B, die Erkennungs-Werkzeuge auf R/K/T — und geprueft

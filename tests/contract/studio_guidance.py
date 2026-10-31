@@ -11,7 +11,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from ._harness import check, section, studio_web_source
+from ._harness import check, section
 from autoclicker.models import (
     ClickPoint as _CP,
     LoopPhase as _PHASE,
@@ -19,7 +19,6 @@ from autoclicker.models import (
     SequenceStep as _STEP,
 )
 
-_web = studio_web_source()
 _WEB = Path(__file__).resolve().parents[2] / "autoclicker/editors/sequence_studio/web"
 _js = (_WEB / "app.js").read_text(encoding="utf-8")
 _css = (_WEB / "styles.css").read_text(encoding="utf-8")
@@ -199,11 +198,11 @@ section("Werkzeuge und Editor: ein Name, eine Bedeutung")
 
 # Links „Bestand prüfen", rechts „Setup prüfen": man fragt sich, ob man im
 # richtigen Werkzeug gelandet ist.
-check("der Kopf eines Werkzeugs nimmt seinen Namen aus WZ_TOOLS",
-      "function wzHeader(key, text)" in _js
-      and "WZ_TOOLS.find((w) => w.key === key)" in _body("wzHeader"))
+check("der Kopf eines Werkzeugs nimmt seinen Namen aus TOOLS",
+      "function toolsHeader(key, text)" in _js
+      and "TOOLS.find((w) => w.key === key)" in _body("toolsHeader"))
 check("kein Werkzeug-Kopf traegt einen eigenen Titel mehr",
-      re.search(r'wzHeader\("\w+", "', _js) is None)
+      re.search(r'toolsHeader\("\w+", "', _js) is None)
 check("ein Konsolen-Befehl steht nur, wo es ihn gibt",
       'command: "rec"' not in _js and 'command: "points"' not in _js
       and 'command: "color"' not in _js)

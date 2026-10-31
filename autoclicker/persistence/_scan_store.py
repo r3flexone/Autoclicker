@@ -62,7 +62,7 @@ def list_scan_files(directory: str) -> list[tuple[str, Path]]:
                 if not isinstance(data, dict):
                     continue
                 scans.append((data.get("name", f.stem), f))
-        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError, ValueError, UnicodeDecodeError):
+        except LOAD_EXCEPTIONS:
             pass  # Ungültige/korrupte Datei überspringen
     return scans
 

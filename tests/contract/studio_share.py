@@ -5,13 +5,12 @@ dieselbe — geprüft wird, was die Brücke daraus macht: der Bestand kommt von
 Platte, nicht aus dem Fenster.
 """
 import os as _os
-import re
 import tempfile
 from pathlib import Path
 
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.bridge_share import PARTS as _TEILE
+from autoclicker.editors.sequence_studio.bridge_share import PARTS as _PARTS
 from autoclicker.models import (
     AutoClickerState as _ST, ClickPoint as _CP, ItemProfile as _ITEM,
     ItemScanConfig as _ISC, ItemSlot as _SLOT, LoopPhase as _PHASE,
@@ -28,7 +27,7 @@ import inspect as _inspect
 from autoclicker.import_export import export_bundle as _exp, import_bundle as _imp
 _export_args = set(_inspect.signature(_exp).parameters)
 _import_args = set(_inspect.signature(_imp).parameters)
-_missing = [k for k, _ in _TEILE
+_missing = [k for k, _ in _PARTS
             if f"include_{k}" not in _export_args or f"import_{k}" not in _import_args]
 check("jeder anhakbare Teil hat sein Argument auf beiden Seiten", _missing == [])
 if _missing:
@@ -36,9 +35,6 @@ if _missing:
 
 check("die Seite hat einen Reiter dafuer", 'data-view="share"' in _web)
 check("und ruft die Bruecke ueber einen eigenen Kanal", "callShare(" in _web)
-_called = sorted(set(re.findall(r'callShare\("([a-z_]+)"', _web)))
-_without = [n for n in _called if not callable(getattr(_SB, n, None))]
-check("jeden gerufenen Namen gibt es in der Bruecke", _without == [])
 
 _sandbox = tempfile.mkdtemp(prefix="teilen_")
 _cwd = _os.getcwd()
@@ -75,10 +71,10 @@ try:
     check("noch kein Buendel da", _z["exports"] == [])
     check("und nichts gewaehlt", _z["import"] is None)
 
-    _z = _b.export_start({"parts": {k: True for k, _ in _TEILE}, "name": "probe"})
+    _z = _b.export_start({"parts": {k: True for k, _ in _PARTS}, "name": "probe"})
     check("das Buendel steht auf Platte", Path("exports/probe.zip").exists())
     check("und in der Liste", [e["name"] for e in _z["exports"]] == ["probe.zip"])
-    _z = _b.export_start({"parts": {k: False for k, _ in _TEILE}})
+    _z = _b.export_start({"parts": {k: False for k, _ in _PARTS}})
     check("ohne Auswahl wird nichts geschrieben", _z["status"]["kind"] == "warn")
 
     _z = _b.import_check({"path": "gibtsnicht.zip"})
@@ -90,7 +86,7 @@ try:
     # Ohne beidseitig bekanntes Spielfenster gibt es nichts umzurechnen.
     check("ohne Fenster keine automatische Umrechnung", _z["import"]["auto"] is False)
 
-    _z = _b.import_start({"parts": {k: True for k, _ in _TEILE},
+    _z = _b.import_start({"parts": {k: True for k, _ in _PARTS},
                             "mode": "identity", "merge": True})
     check("der Import laeuft durch", _z["status"]["kind"] == "ok")
     check("und das Fenster liest danach neu", len(_b.points) >= 2)

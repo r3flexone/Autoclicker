@@ -199,14 +199,14 @@ def _edit_phases(state: AutoClickerState, draft: _SequenceDraft) -> bool:
     sonst geht die Arbeit kommentarlos verloren. Wer nicht verwerfen will,
     macht mit dem bisherigen Stand der Phase weiter.
     """
-    print(header("PHASE 0: INIT-SEQUENZ (wird einmalig vor allen Zyklen ausgeführt)"))
+    print(header("PHASE 1: INIT-SEQUENZ (wird einmalig vor allen Zyklen ausgeführt)"))
     print("  (Optional: Login, Vorbereitung, etc. – läuft nur beim allerersten Start)")
     result = edit_phase(state, draft.init_steps, "INIT")
     if result is None and _confirm_discard(draft.init_steps, draft.loop_phases, draft.end_steps):
         return False
     draft.init_steps = draft.init_steps if result is None else result
 
-    print(header("PHASE 1: LOOP-PHASEN (können mehrere sein)"))
+    print(header("PHASE 2: LOOP-PHASEN (können mehrere sein)"))
     result = edit_loop_phases(state, draft.loop_phases)
     if result is None and _confirm_discard(draft.init_steps, draft.loop_phases, draft.end_steps):
         return False
@@ -349,7 +349,7 @@ def _print_post_save_summary(seq_name: str, init_steps: list, loop_phases: list,
     pixel_triggers = sum(1 for s in all_steps if s.wait_condition)
 
     print(f"\n{col('[ERFOLG]', 'green')} Sequenz '{seq_name}' gespeichert!")
-    for i, lp in enumerate(loop_phases):
+    for lp in loop_phases:
         print(f"         {lp.name}: {len(lp.steps)} Schritte x{lp.repeat}")
     if end_steps:
         print(f"         End: {len(end_steps)} Schritte (einmal am Ende)")

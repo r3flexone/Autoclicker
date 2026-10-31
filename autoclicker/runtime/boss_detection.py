@@ -29,7 +29,7 @@ from ..session_log import log_event
 from ..utils import col, err, dbg, warn
 from ..winapi import check_failsafe
 from .actions import (
-    safe_click, safe_key, _step_status, is_verbose_debug, wait_while_paused, input_refused,
+    safe_click, safe_key, _step_status, wait_while_paused, input_refused,
 )
 from .debug import is_log_debug
 from .item_scan import execute_item_scan, _click_scan_result, _check_profile_match
@@ -100,13 +100,13 @@ def _boss_scan_snapshot(state: AutoClickerState, config_name: str) -> Optional[_
         if config is None:
             print(err(f"Boss-Scan '{config_name}' nicht gefunden!"))
             return None
-        # Lokale Bosse + globale Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
+        # Lokale Bosse + Bibliothek mergen (lokal hat Vorrang bei gleichem Namen)
         local_names = {b.name for b in config.bosses}
         bosses = list(config.bosses) + [
-            b for b in state.global_bosses if b.name not in local_names
+            b for b in state.boss_library if b.name not in local_names
         ]
         if not bosses:
-            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine globalen)!"))
+            print(err(f"Boss-Scan '{config_name}' hat keine Bosse definiert (auch keine aus der Bibliothek)!"))
             return None
         # Erkennungs-Flags im selben Lock-Snapshot einfrieren — sonst kann ein
         # Editor sie zwischen mehreren frischen Reads toggeln und das LLM läuft
@@ -157,24 +157,24 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
     Returns:
         Das neu angelegte BossProfile, oder None wenn der Name bereits bekannt/vorgemerkt ist.
     """
-    from ..persistence import save_boss_scan, save_global_bosses
+    from ..persistence import save_boss_scan, save_boss_library
 
-    learn_global = state.config.boss_learn_global
+    learn_to_library = state.config.boss_learn_global
 
     # Check und Append atomar im selben Lock-Block — sonst kann zwischen Prüfung
     # und Mutation ein paralleler Pfad (Sync-Scan + Async-Watcher) denselben Boss
     # doppelt anhängen (TOCTOU).
     with state.lock:
         existing_names = ({b.name for b in config.bosses}
-                          | {b.name for b in state.global_bosses})
+                          | {b.name for b in state.boss_library})
         already_pending = any(n == name for _, n, _ in state.pending_new_bosses)
         if name in existing_names or already_pending:
             return None
 
         new_boss = BossProfile(name=name, action=BOSS_ACTION_SKIP)
-        if learn_global:
-            state.global_bosses.append(new_boss)
-            target = "Bibliothek (global)"
+        if learn_to_library:
+            state.boss_library.append(new_boss)
+            target = "Bibliothek"
         else:
             config.bosses.append(new_boss)
             state.boss_scans[config.name] = config
@@ -182,8 +182,8 @@ def _handle_new_boss(state: AutoClickerState, config: BossScanConfig,
         state.pending_new_bosses.append((target, name, source))
 
     print(col(f"[{source}] Neuer Boss entdeckt: '{name}' — gespeichert in {target}", "green"))
-    if learn_global:
-        save_global_bosses(state)
+    if learn_to_library:
+        save_boss_library(state)
     else:
         save_boss_scan(config)
 
@@ -409,12 +409,12 @@ def _llm_boss(run: _DetectionRun, name: str, is_new: bool, attempt: int) -> Opti
     if new_boss is not None:
         return new_boss
     # Falls _handle_new_boss None zurückgab (Name schon bekannt oder vorgemerkt),
-    # das Profil trotzdem liefern. Auch aus der globalen Bibliothek: mit
+    # das Profil trotzdem liefern. Auch aus der Bibliothek: mit
     # boss_learn_global landen neue Bosse dort und NICHT in config.bosses —
     # die Suche allein in config.bosses ging in dem Fall ins Leere und der
     # Scan meldete "kein Boss", obwohl er den Namen gerade erkannt hatte.
     with run.state.lock:
-        candidates = list(run.config.bosses) + list(run.state.global_bosses)
+        candidates = list(run.config.bosses) + list(run.state.boss_library)
     return next((boss for boss in candidates if boss.name == name), None)
 
 
@@ -559,7 +559,7 @@ _DETECTION_ACTIONS = {
 
 
 def _execute_boss_action(state: AutoClickerState, boss: BossProfile,
-                         step: SequenceStep, step_num: int, total_steps: int,
+                         step_num: int, total_steps: int,
                          phase: str, debug: bool) -> bool:
     """Führt die einem Boss zugeordnete Aktion aus (dünner Adapter)."""
     return _execute_detection_action(
@@ -598,9 +598,8 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
     Sequenz-Worker läuft parallel weiter. Klick-Konflikte werden über
     state.input_lock in safe_click/safe_key garantiert: Worker und dieser Thread
     können nie gleichzeitig SetCursorPos+SendInput senden (echte Mutual-Exclusion).
-    llm_action_event bleibt als Status-Marker erhalten.
     """
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     try:
         if step.boss_scan:
             boss = _async_single_scan(state, step, step_num, total_steps, phase, debug)
@@ -608,12 +607,8 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
             boss = _async_watch(state, step.boss_watcher, debug)
         if boss is None or not _async_gate(state, "Async-Boss-Aktion pausiert..."):
             return
-        # Boss erkannt → Aktion ausführen, Event sichert exklusiven Zugriff auf Maus/Tastatur
-        state.llm_action_event.set()
-        try:
-            _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
-        finally:
-            state.llm_action_event.clear()
+        # Boss erkannt → Aktion ausführen
+        _execute_boss_action(state, boss, step_num, total_steps, phase, debug)
 
     except Exception as e:
         detail = f"{type(e).__name__}: {e}"
@@ -621,8 +616,6 @@ def _boss_async_thread(state: AutoClickerState, step: SequenceStep,
         log_event(state, "boss_async_error", detail=detail,
                   extra=step.boss_scan or step.boss_watcher or "")
         print(err(f"  -> Asynchrone Boss-Erkennung fehlgeschlagen: {detail}"))
-    finally:
-        state.llm_action_event.clear()
 
 
 def _async_single_scan(state: AutoClickerState, step: SequenceStep, step_num: int,
@@ -679,27 +672,28 @@ def _maybe_execute_async_else(state: AutoClickerState, step: SequenceStep,
         return
     if not _async_gate(state, "Async-Else-Aktion pausiert..."):
         return
-    state.llm_action_event.set()
-    try:
-        if ec.delay > 0 and state.stop_event.wait(ec.delay):
+    if ec.delay > 0 and state.stop_event.wait(ec.delay):
+        return
+    if ec.action == ELSE_CLICK:
+        if not ec.has_click_target:
+            # Ohne Punkt stünde x/y auf (0, 0) — wie im synchronen Pfad: wie skip.
+            if debug:
+                print(dbg("  → Async-Else: Klick entfällt — kein Punkt"))
             return
-        if ec.action == ELSE_CLICK:
-            safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
-            if debug:
-                print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))
-        elif ec.key:
-            safe_key(state, ec.key, ec.name or f"Async-Else-Taste {ec.key}")
-            if debug:
-                print(dbg(f"  → Async-Else: Taste '{ec.key}'"))
-    finally:
-        state.llm_action_event.clear()
+        safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
+        if debug:
+            print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))
+    elif ec.key:
+        safe_key(state, ec.key, ec.name or f"Async-Else-Taste {ec.key}")
+        if debug:
+            print(dbg(f"  → Async-Else: Taste '{ec.key}'"))
 
 
 def _spawn_boss_async(state: AutoClickerState, step: SequenceStep,
                       step_num: int, total_steps: int, phase: str) -> None:
     """Startet _boss_async_thread wenn kein Thread bereits läuft."""
     if state.llm_thread and state.llm_thread.is_alive():
-        if is_verbose_debug(state):
+        if is_log_debug(state):
             print(dbg("  → LLM-Async: vorheriger Thread noch aktiv, übersprungen"))
         return
     t = threading.Thread(

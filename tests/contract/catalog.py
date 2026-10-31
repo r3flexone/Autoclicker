@@ -28,7 +28,7 @@ _k = Catalog({
     "Centaurs Helmet": {"kategorie": "Helm", "wert": 20000},
     "Bronze Helmet": {"kategorie": "Helm", "wert": 32},
     "Godlike Pickaxe": {"kategorie": "Pickaxe", "wert": 500000},
-}, ["Black Dragon", "Banshee"])
+})
 
 check("kennt seine Items", len(_k) == 4 and bool(_k))
 check("leerer Katalog ist falsy", not Catalog() and not EMPTY)
@@ -41,7 +41,6 @@ check("Leerraum stoert nicht", _k.match("  Citadel Helmet  ") == "Citadel Helmet
 check("unbekannter Name -> None", _k.category("Gibtsnicht") is None)
 check("unbekannter Name hat keinen Wert", _k.value("Gibtsnicht") is None)
 check("Wert kommt als Zahl", _k.value("Godlike Pickaxe") == 500000.0)
-check("Gegner stehen bereit", _k.enemy == ["Black Dragon", "Banshee"])
 check("names() ist die geschlossene Liste", "Godlike Pickaxe" in _k.names() and len(_k.names()) == 4)
 
 # Der Rang gilt INNERHALB des Scans und dicht. Ein globaler Rang aus dem Katalog
@@ -94,7 +93,11 @@ check("gute Eintraege kommen an", _gl.category("Citadel Helmet") == "Helm")
 check("kaputter Eintrag fliegt einzeln raus", _gl.match("Kaputt") is None)
 check("fehlender Wert wird 0", _gl.value("Ohne Wert") == 0.0)
 check("unbrauchbarer Wert wird 0", _gl.value("Wert ist Text") == 0.0)
-check("leerer Gegnername faellt weg", _gl.enemy == ["Black Dragon"])
+# Die Gegnernamen in der Datei liest der Katalog nicht: gebraucht werden sie nur vom Studio,
+# das sie fuer seine Anzeige zaehlt (`bridge_services`). Hier stand `Catalog.enemy` — mit
+# einem einzigen Leser, dem Test dafuer.
+check("der Katalog traegt keine Gegnerliste (ein Leser nur im Studio)",
+      not hasattr(_gl, "enemy") and not hasattr(Catalog(), "enemy"))
 check("zweimal laden liefert denselben Katalog (Cache am Dateistand)",
       load_catalog(str(_good)) is _gl)
 
@@ -361,10 +364,10 @@ section("LLM-Mitschrift: was rausgeht und was zurueckkommt")
 # `_raw_lmstudio_debug()` in `tools/test_llm.py` — einen ZWEITEN HTTP-Aufruf
 # mit einer anderen Frage, der also gerade nicht zeigt, was der echte Aufruf
 # bekommen hat.
-import contextlib as _ctx_mit                                      # noqa: E402
-import io as _io_mit                                               # noqa: E402
-import json as _json_mit                                           # noqa: E402
-from autoclicker.config import CONFIG as _CFG_mit                  # noqa: E402
+import contextlib as _ctx_with                                     # noqa: E402
+import io as _io_with                                              # noqa: E402
+import json as _json_with                                          # noqa: E402
+from autoclicker.config import CONFIG as _CFG_with                 # noqa: E402
 
 _ANSWER_with = {"choices": [{"message": {
     "content": "Kraken",
@@ -377,7 +380,7 @@ _ANSWER_with = {"choices": [{"message": {
 
 class _FakeAnswer_with:
     def __init__(self, payload):
-        self._raw = _json_mit.dumps(payload).encode("utf-8")
+        self._raw = _json_with.dumps(payload).encode("utf-8")
 
     def read(self):
         return self._raw
@@ -392,25 +395,25 @@ class _FakeAnswer_with:
 def _run_with(debug, payload=None):
     """analyze_image mit gestubbtem HTTP — gibt (Ergebnis, Konsolentext)."""
     _real_open = _lv.urllib.request.urlopen
-    _old_debug = _CFG_mit.llm_debug
-    _CFG_mit.llm_debug = debug
+    _old_debug = _CFG_with.llm_debug
+    _CFG_with.llm_debug = debug
     _lv.urllib.request.urlopen = lambda *a, **kw: _FakeAnswer_with(
         payload if payload is not None else _ANSWER_with)
-    buffer = _io_mit.StringIO()
+    buffer = _io_with.StringIO()
     try:
-        with _ctx_mit.redirect_stdout(buffer):
+        with _ctx_with.redirect_stdout(buffer):
             res = _lv.analyze_image(img=_IMAGE_with, provider="lmstudio",
                                     model="testmodell", prompt="Wer ist das?")
     finally:
         _lv.urllib.request.urlopen = _real_open
-        _CFG_mit.llm_debug = _old_debug
+        _CFG_with.llm_debug = _old_debug
     return res, buffer.getvalue()
 
 
 _has_pil_with = False
 try:
-    from PIL import Image as _PIL_mit
-    _IMAGE_with = _PIL_mit.new("RGB", (4, 4), (10, 20, 30))
+    from PIL import Image as _PIL_with
+    _IMAGE_with = _PIL_with.new("RGB", (4, 4), (10, 20, 30))
     _has_pil_with = True
 except ImportError:
     _IMAGE_with = None
@@ -447,17 +450,17 @@ else:
         raise _lv.urllib.error.URLError("kein Server")
 
     _real_open_with = _lv.urllib.request.urlopen
-    _old_debug_with = _CFG_mit.llm_debug
-    _CFG_mit.llm_debug = True
+    _old_debug_with = _CFG_with.llm_debug
+    _CFG_with.llm_debug = True
     _lv.urllib.request.urlopen = _throw_with
-    _buffer_with = _io_mit.StringIO()
+    _buffer_with = _io_with.StringIO()
     try:
-        with _ctx_mit.redirect_stdout(_buffer_with):
+        with _ctx_with.redirect_stdout(_buffer_with):
             _res_miss = _lv.analyze_image(img=_IMAGE_with, provider="lmstudio",
                                           model="testmodell")
     finally:
         _lv.urllib.request.urlopen = _real_open_with
-        _CFG_mit.llm_debug = _old_debug_with
+        _CFG_with.llm_debug = _old_debug_with
     check("ein Fehlschlag steht ebenfalls in der Mitschrift",
           _res_miss[0] is False and "kein Server" in _buffer_with.getvalue())
 
@@ -490,34 +493,34 @@ _GAME_DATA_kh = {"Items": {"Items": [
 _sandbox_kh = _tmp_kh.mkdtemp(prefix="katalogholen_")
 _cwd_kh = _os.getcwd()
 _real_fetch_kh = _tk_kh.fetch_game_data
-_old_path_kh = _CFG_mit.scan_catalog_file
+_old_path_kh = _CFG_with.scan_catalog_file
 _os.chdir(_sandbox_kh)
 try:
     def _build_kh():
         _P_kh("sequences").mkdir(exist_ok=True)
         return _SB_kh(_SEQ_kh(name="S"), _P_kh("sequences/s/sequence.json"), "sequences")
 
-    _CFG_mit.scan_catalog_file = ""
+    _CFG_with.scan_catalog_file = ""
     _tk_kh.fetch_game_data = lambda *a, **kw: _GAME_DATA_kh
     _res_kh = _build_kh().catalog_fetch()
     check("der Knopf holt und schreibt die Datei",
           _res_kh["ok"] and _P_kh("catalog.json").exists())
-    _content_kh = _json_mit.loads(_P_kh("catalog.json").read_text(encoding="utf-8"))
+    _content_kh = _json_with.loads(_P_kh("catalog.json").read_text(encoding="utf-8"))
     check("mit den echten Namen aus der API",
           "Godlike Bow" in _content_kh["items"]
           and _content_kh["items"]["Godlike Bow"]["kategorie"] == "Bow")
     # Ohne diesen Schritt hat man die Datei und trotzdem keine Wirkung — der
     # Scan liest den Pfad, nicht den Ordner.
     check("und traegt den Pfad gleich in die Config ein",
-          _CFG_mit.scan_catalog_file.endswith("catalog.json"))
+          _CFG_with.scan_catalog_file.endswith("catalog.json"))
     check("die Meldung nennt, was drin ist", "2 Items" in _res_kh["message"])
 
     # Ein selbst gesetzter Pfad wird AKTUALISIERT, nicht ueberschrieben: wer
     # zwei Spiele betreibt, hat den Katalog bewusst woanders liegen.
-    _CFG_mit.scan_catalog_file = "eigener/pfad.json"
+    _CFG_with.scan_catalog_file = "eigener/pfad.json"
     _res2_kh = _build_kh().catalog_fetch()
     check("ein eigener Pfad bleibt stehen",
-          _res2_kh["ok"] and _CFG_mit.scan_catalog_file == "eigener/pfad.json"
+          _res2_kh["ok"] and _CFG_with.scan_catalog_file == "eigener/pfad.json"
           and _P_kh("eigener/pfad.json").exists())
 
     # Kein Netz ist der haeufigste Fehlerfall — und darf die vorhandene Datei
@@ -529,7 +532,7 @@ try:
         raise OSError("kein Netz")
 
     _tk_kh.fetch_game_data = _throw_kh
-    _CFG_mit.scan_catalog_file = str(_P_kh("catalog.json"))
+    _CFG_with.scan_catalog_file = str(_P_kh("catalog.json"))
     _res3_kh = _build_kh().catalog_fetch()
     check("ohne Netz wird nichts geschrieben",
           _res3_kh["ok"] is False and "kein Netz" in _res3_kh["message"]
@@ -554,7 +557,7 @@ try:
                ' "d": NumberDecimal("1.5"), "t": "nutze ObjectId(\\"x\\") hier",'
                ' "u": NumberFoo(3), "w": Timestamp(1, 2), "leer": ISODate()}')
     _json_kh, _unk_kh = _tk_kh.clean_extended_json(_raw_kh)
-    _data_kh = _json_mit.loads(_json_kh)
+    _data_kh = _json_with.loads(_json_kh)
     check("ObjectId wird Text, NumberLong Zahl — mit und ohne Anfuehrungszeichen",
           _data_kh["_id"] == "61e2b1b0" and _data_kh["n"] == 0
           and _data_kh["m"] == 42 and _data_kh["d"] == 1.5)
@@ -613,7 +616,7 @@ try:
     check("und eine kaputte Datei auch",
           "nicht lesbar" in _SB_kh._catalog_state("kaputt.json"))
     check("ohne Pfad steht gar nichts da", _SB_kh._catalog_state("") == "")
-    _P_kh("stempel.json").write_text(_json_mit.dumps({
+    _P_kh("stempel.json").write_text(_json_with.dumps({
         "_erzeugt": "2026-09-07T16:42:11Z",
         "items": {"a": {}, "b": {}}, "gegner": ["x"]}), encoding="utf-8")
     _stamp_kh = _SB_kh._catalog_state("stempel.json")
@@ -629,7 +632,7 @@ try:
 
     # Der Weg bis in die Ansicht: `config_read()` liefert ihn, und die Seite
     # zeichnet ihn unter dem Feld.
-    _CFG_mit.scan_catalog_file = "stempel.json"
+    _CFG_with.scan_catalog_file = "stempel.json"
     _states_kh = _build_kh().config_read()["states"]
     check("die Einstellungen liefern den Stand mit",
           "2 Items" in _states_kh.get("scan_catalog_file", ""))
@@ -637,7 +640,7 @@ try:
           "C.states" in _studio_web_kh())
 finally:
     _tk_kh.fetch_game_data = _real_fetch_kh
-    _CFG_mit.scan_catalog_file = _old_path_kh
+    _CFG_with.scan_catalog_file = _old_path_kh
     _os.chdir(_cwd_kh)
     _sh_kh.rmtree(_sandbox_kh, ignore_errors=True)
 

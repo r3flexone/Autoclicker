@@ -1,8 +1,9 @@
 """Der Schritt-Editor einer Phase (`sequence_editor/steps.py`), per Tastenfolge.
 
 Geschrieben, BEVOR sechs Methoden von `_PhaseEditor` zerlegt wurden — der
-Verteiler `_dispatch` (33), `_handle_edit_menu` (17), `_handle_link` (17),
-`_parse_point_options` (15), `_handle_wait` (12), `_handle_show_detail` (12).
+Verteiler `_dispatch` (33), `_handle_edit_menu` (17), `_handle_link` (17; der Befehl
+`link` ist inzwischen gelöscht), `_parse_point_options` (15), `_handle_wait` (12),
+`_handle_show_detail` (12).
 Gefahren wird jeder Befehl über `edit_phase()`, also durch den echten
 Verteiler: ein Befehl, der dort im falschen Zweig landet, fällt hier auf.
 Gestellt werden Tastatur, Maus, Farbabgriff, Speichern und der echte Lauf
@@ -326,25 +327,21 @@ _r = _Run(["edit 9", "done"], steps=_three()).run()
 check("edit: ausserhalb", "Ungültiger Schritt" in _r.output)
 
 # ============================================================ link
-_steps = [_STEP(x=100, y=200, delay_before=0, name="genau"),          # passt zu Punkt 1
-          _STEP(x=5, y=5, delay_before=0, name="nirgends"),
-          _STEP(x=100, y=200, delay_before=0, name="schon", point_id=1),
-          _STEP(x=0, y=0, delay_before=0, name="taste", key_press="enter"),
-          _STEP(x=300, y=400, delay_before=0, name="doppelt")]
-_r = _Run(["link", "done"], steps=_steps)
-_r.state.points.append(_CP(300, 400, "Zwilling", 3))
-_r.run()
-check("link: ein eindeutiger Punkt wird verknüpft", _r.steps[0].point_id == 1)
-check("link: mehrdeutig und ohne Punkt bleiben, Tasten werden übergangen",
-      _r.steps[4].point_id is None and _r.steps[1].point_id is None and _r.steps[3].point_id is None
-      and "1 mehrdeutig" in _r.output and "1 ohne passenden Punkt" in _r.output
-      and "1 Schritt(e) waren schon verknüpft" in _r.output)
-_r = _Run(["link all", "done"], steps=[_STEP(x=0, y=0, delay_before=0, name="t", key_press="a")]).run()
-check("link: nichts zu tun", "Nichts zu tun" in _r.output)
-_r = _Run(["link", "done"], steps=_three())
-_r.state.points = []
-_r.run()
-check("link: ohne Punkte", "Keine Punkte" in _r.output)
+# Den Befehl `link` (Schritte nachtraeglich mit Punkten verknuepfen) gibt es nicht
+# mehr: er war fuer Schritte da, die eine Koordinate statt einer `point_id` trugen,
+# und seit der Loader keine Koordinate am Schritt mehr liest, gibt es die nicht mehr.
+_r = _Run(["link", "done"], steps=_three()).run()
+check("link: ein getipptes `link` aendert nichts und wirft nicht",
+      _names(_r) == ["A", "B", "C"] and all(st.point_id == 1 for st in _r.steps)
+      and "Unbekannt" in _r.output)
+_help = _io.StringIO()
+with _cl.redirect_stdout(_help):
+    _PS._print_phase_help()
+    _PS._print_phase_help(full=True)
+check("link: kein Befehl, keine Hilfezeile, kein Helfer mehr",
+      "link" not in _help.getvalue().lower()
+      and "link" not in _PS._KNOWN_COMMANDS and "link" not in _PS._EXACT
+      and not hasattr(_PS._PhaseEditor, "_handle_link") and not hasattr(_PS, "_link_step"))
 
 # ============================================================ else-Formen
 section("ELSE-Bedingung: jede Form")

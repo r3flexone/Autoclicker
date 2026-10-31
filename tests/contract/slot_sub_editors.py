@@ -18,7 +18,7 @@ import autoclicker.editors.slot_editor as _SE
 import autoclicker.editors.item_editor.autoscan as _AS
 import autoclicker.editors.import_export_editor as _IEE
 import autoclicker.import_export as _IE
-from autoclicker.models import AutoClickerState as _ST, ItemSlot as _SLOT
+from autoclicker.models import AutoClickerState as _ST, ItemSlot as _SLOT, ItemScanConfig as _ISC
 
 
 class _Image:
@@ -45,10 +45,11 @@ class _Pixels:
 class _Run:
     def __init__(self, inputs=(), choices=(), answers=(), region=(100, 200, 160, 260),
                  shot=True, cursor=((5, 6),), pixel=(1, 2, 3), detected=(), opencv=True,
-                 saves=True):
+                 saves=True, window=None):
         self.inputs, self.choices, self.answers = list(inputs), list(choices), list(answers)
         self.region, self.cursor, self.pixel = region, list(cursor), pixel
         self.detected, self.opencv, self.saves = list(detected), opencv, saves
+        self.window = window
         self.image = _Image() if shot else None
         self.state = _ST()
         self.calls = []
@@ -68,7 +69,8 @@ class _Run:
                 list(self.detected), _BGR()),
             "OPENCV_AVAILABLE": self.opencv,
             "NUMPY_AVAILABLE": self.opencv,
-            "save_global_slots": lambda state: self.calls.append("gespeichert") or self.saves,
+            "save_scan_slots": lambda state: self.calls.append("gespeichert") or self.saves,
+            "resolve_window": lambda title, index, ref: self.window,
             "time": _Clock(),
         }
 
@@ -140,10 +142,10 @@ check("neuer Slot: getippter Name, 'skip' ohne Farbe, 'center' = Mitte",
 _r = _Run(inputs=["cancel"])
 check("neuer Slot: 'cancel' beim Namen", _r(_SE.create_slot) is None)
 _r = _Run(inputs=["A"], answers=[False])
-_r.state.global_slots = {"A": _slot("A")}
+_r.state.scan_slots = {"A": _slot("A")}
 check("neuer Slot: ein vergebener Name ohne Zustimmung bricht ab", _r(_SE.create_slot) is None)
 _r = _Run(inputs=["A", "", ""], answers=[True])
-_r.state.global_slots = {"A": _slot("A")}
+_r.state.scan_slots = {"A": _slot("A")}
 check("neuer Slot: mit Zustimmung geht es weiter", _r(_SE.create_slot).name == "A")
 _r = _Run(inputs=[""], region=None)
 check("neuer Slot: ohne Region kein Slot", _r(_SE.create_slot) is None)
@@ -158,23 +160,28 @@ _new = _r(_SE.create_slot)
 check("neuer Slot: ohne Screenshot trotzdem ein Slot", _new is not None and "Top" not in _r.output)
 
 # ============================================================ edit_slot
+def _edit_slot(state, slot):
+    """`_Run` reicht immer den State mit; `edit_slot` braucht ihn nicht."""
+    return _SE.edit_slot(slot)
+
+
 _old = _SLOT("Alt", (0, 0, 10, 10), (5, 5), slot_color=(9, 9, 9), id=4)
 _r = _Run(inputs=["Neu", "", ""], choices=[0, 1, 2, 3, 4, 5], cursor=[(77, 88), (1, 1)],
           pixel=(4, 4, 4))
-_new = _r(_SE.edit_slot, _old)
+_new = _r(_edit_slot, _old)
 check("Slot bearbeiten: jedes Feld lässt sich ändern",
       (_new.name, _new.scan_region, _new.click_pos, _new.slot_color, _new.enabled)
       == ("Neu", (100, 200, 160, 260), (77, 88), (4, 4, 4), False))
 check("Slot bearbeiten: die ID bleibt", _new.id == 4)
 _r = _Run(inputs=[""], choices=[0, 1, 5], region=None)
-_new = _r(_SE.edit_slot, _old)
+_new = _r(_edit_slot, _old)
 check("Slot bearbeiten: Enter und eine abgebrochene Region ändern nichts",
       (_new.name, _new.scan_region) == ("Alt", (0, 0, 10, 10)))
 _r = _Run(inputs=[""], choices=[3, 5], pixel=None)
 check("Slot bearbeiten: unlesbare Farbe lässt die alte stehen",
-      _r(_SE.edit_slot, _old).slot_color == (9, 9, 9))
+      _r(_edit_slot, _old).slot_color == (9, 9, 9))
 _r = _Run(choices=[4, 4, 5])
-check("Slot bearbeiten: zweimal umschalten ist wieder an", _r(_SE.edit_slot, _old).enabled is True)
+check("Slot bearbeiten: zweimal umschalten ist wieder an", _r(_edit_slot, _old).enabled is True)
 check("Slot bearbeiten: der alte Slot bleibt unangetastet",
       (_old.name, _old.enabled) == ("Alt", True))
 
@@ -206,7 +213,7 @@ else:
 
     _r = _Run(inputs=[""], detected=[(0, 0, 20, 20), (30, 0, 20, 20)], answers=[True])
     _r.state.config.scan_slot_inset = 2
-    _r.state.global_slots = {"Slot 1": _slot("Slot 1")}
+    _r.state.scan_slots = {"Slot 1": _slot("Slot 1")}
     _orig_detect = _Run.stubs
 
     def _stubs_with_array(self):
@@ -221,12 +228,12 @@ else:
     finally:
         _Run.stubs = _orig_detect
     check("automatisch: erkannte Slots kommen mit freien Namen dazu",
-          _ok is True and list(_r.state.global_slots) == ["Slot 1", "Slot 2", "Slot 3"])
+          _ok is True and list(_r.state.scan_slots) == ["Slot 1", "Slot 2", "Slot 3"])
     check("automatisch: Region um den Einzug verkleinert, Klick in der Mitte",
-          (_r.state.global_slots["Slot 2"].scan_region,
-           _r.state.global_slots["Slot 2"].click_pos) == ((102, 202, 118, 218), (110, 210)))
+          (_r.state.scan_slots["Slot 2"].scan_region,
+           _r.state.scan_slots["Slot 2"].click_pos) == ((102, 202, 118, 218), (110, 210)))
     check("automatisch: die Farbe unter der Maus wird die Slot-Farbe",
-          _r.state.global_slots["Slot 3"].slot_color == (1, 2, 3))
+          _r.state.scan_slots["Slot 3"].slot_color == (1, 2, 3))
     check("automatisch: auf Wunsch werden Items aus demselben Bild gelernt",
           ("lernen", 2, (100, 200)) in _r.calls)
     check("automatisch: Screenshot und Vorschau landen unter bilder/",
@@ -237,7 +244,7 @@ else:
 def _repair_run(old_regions, detected, answers=(), **kw):
     run = _Run(inputs=[""], detected=detected, answers=list(answers), **kw)
     run.state.config.scan_slot_inset = 0
-    run.state.global_slots = {f"S{i}": _slot(f"S{i}", reg) for i, reg in enumerate(old_regions)}
+    run.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg) for i, reg in enumerate(old_regions)}
     return run
 
 
@@ -253,13 +260,13 @@ _old = [(100, 200, 110, 210), (120, 200, 130, 210)]
 _found = [(5, 5, 10, 10), (25, 5, 10, 10)]
 _r = _repair_run(_old, _found, answers=[False])
 check("repair: ohne Zustimmung wird nichts geändert",
-      _r(_SE.slot_repair) is False and _r.state.global_slots["S0"].scan_region == _old[0]
+      _r(_SE.slot_repair) is False and _r.state.scan_slots["S0"].scan_region == _old[0]
       and "VORSCHAU" in _r.output and "+5 X, +5 Y" in _r.output)
 _r = _repair_run(_old, _found, answers=[True, False])
 check("repair: mit Zustimmung neu vermessen, gesichert und gespeichert",
       _r(_SE.slot_repair) is True
-      and _r.state.global_slots["S0"].scan_region == (105, 205, 115, 215)
-      and _r.state.global_slots["S1"].click_pos == (130, 210)
+      and _r.state.scan_slots["S0"].scan_region == (105, 205, 115, 215)
+      and _r.state.scan_slots["S1"].click_pos == (130, 210)
       and _r.calls[:2] == ["sicherung", "gespeichert"])
 _r = _repair_run(_old, _found, answers=[True, True, True])
 _r(_SE.slot_repair)
@@ -281,10 +288,35 @@ check("repair: scheitert das Speichern, wird es gesagt",
       _r(_SE.slot_repair) is True and "NICHT gespeichert" in _r.output)
 _r = _Run(inputs=[""], detected=_found, answers=[False], pixel=(7, 7, 7))
 _r.state.config.scan_slot_inset = 0
-_r.state.global_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
+_r.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
 _r(_SE.slot_repair)
 check("repair: ohne gespeicherte Farbe wird einmal gepickt",
       "bitte einmalig picken" in _r.output and "VORSCHAU" in _r.output)
 _r = _Run(inputs=[""], detected=_found, pixel=None)
-_r.state.global_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
+_r.state.scan_slots = {f"S{i}": _slot(f"S{i}", reg, color=None) for i, reg in enumerate(_old)}
 check("repair: unlesbare Farbe bricht ab", _r(_SE.slot_repair) is False)
+
+
+# Ein Scan am Fenster: die Laufzeit rechnet seine Slots vom Anker auf die heutige
+# Fensterlage um. Nach dem Neuvermessen stehen sie in den Koordinaten von JETZT —
+# mit dem alten Anker käme der Fensterversatz ein zweites Mal dazu.
+def _window_repair(window):
+    run = _repair_run(_old, _found, answers=[True, False], window=window)
+    run.state.item_scans["Inv"] = _ISC(
+        name="Inv", slots=list(run.state.scan_slots.values()), owner_sequence="s",
+        capture_window_title="Spiel", capture_window_rect=(0, 0, 400, 300))
+    run.state.active_item_scan = "Inv"
+    run(_SE.slot_repair)
+    return run, run.state.item_scans["Inv"].capture_window_rect
+
+
+_r, _anchor = _window_repair(("Spiel", (7, 9, 407, 309), 42))
+check("repair: der Fenster-Anker folgt der heutigen Fensterlage",
+      _anchor == (7, 9, 407, 309) and "Fenster-Anker neu gesetzt" in _r.output)
+_r, _anchor = _window_repair(None)
+check("repair: ohne gefundenes Fenster wandert der Anker um den gemessenen Versatz",
+      _anchor == (5, 5, 405, 305))
+_r = _repair_run(_old, _found, answers=[True, False])
+_r(_SE.slot_repair)
+check("repair: ein Scan ohne Fenster bekommt keinen Anker",
+      "Fenster-Anker" not in _r.output)

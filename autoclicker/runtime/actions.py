@@ -26,6 +26,7 @@ from ..winapi import (
     is_target_window_active, get_foreground_window_title,
 )
 from . import status
+from .debug import is_log_debug
 
 
 # =============================================================================
@@ -94,7 +95,7 @@ def net_seconds(state: AutoClickerState, began: float, paused_before: float) -> 
 # WINDOW-FOKUS-CHECK
 # =============================================================================
 
-def _wait_for_target_window(state: AutoClickerState, phase: str = "") -> bool:
+def _wait_for_target_window(state: AutoClickerState) -> bool:
     """Wartet bis das Ziel-Fenster den Fokus hat. Respektiert stop/pause.
 
     Returns:
@@ -272,17 +273,6 @@ def safe_key(state: AutoClickerState, key: str, label: str = "") -> bool:
 # STATUS-AUSGABE + PHASE-FARBEN
 # =============================================================================
 
-def is_verbose_debug(state: AutoClickerState) -> bool:
-    """True = jeder Schritt wird persistent geloggt statt die Status-Zeile zu überschreiben.
-
-    Der Einzelschritt-Modus impliziert das (eine überschreibbare Status-Zeile nützt beim
-    Durchsteppen nichts). Definition liegt in runtime/debug.py, hier nur weitergereicht,
-    damit bestehende Importe gültig bleiben.
-    """
-    from .debug import is_log_debug
-    return is_log_debug(state)
-
-
 def _step_status(debug: bool, phase: str, step_num: int, total_steps: int,
                   msg: str, dbg_msg: str = None) -> None:
     """Gibt Schritt-Status aus: debug-print ODER überschreibbare Status-Zeile."""
@@ -298,8 +288,6 @@ def _phase_color(phase: str) -> str:
     p = phase.upper()
     if p.startswith("INIT"):
         return "green"
-    if p.startswith("START"):
-        return "blue"
     if p.startswith("END"):
         return "cyan"
     return "magenta"
@@ -375,13 +363,11 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
     einer reinen Wartezeit ist „was steht gerade da, wo gleich geklickt wird?"
     die Frage, mit der man hinsieht.
     """
-    remaining = seconds
-    debug_active = is_verbose_debug(state)
-    last_remaining = -1
+    debug_active = is_log_debug(state)
     began, paused_before = time.time(), paused_total(state)
     try:
-        return _wait_loop(state, seconds, remaining, debug_active, last_remaining,
-                               phase, step_num, total_steps, message, point)
+        return _wait_loop(state, seconds, debug_active, phase, step_num, total_steps,
+                          message, point)
     finally:
         # Fertig gewartet — egal auf welchem der fünf Wege. Ohne das Abmelden
         # bliebe die Restzeit in der Live-Ansicht stehen und liefe ins Negative.
@@ -394,11 +380,12 @@ def wait_with_pause_skip(state: AutoClickerState, seconds: float, phase: str, st
                   extra=f"s={net_seconds(state, began, paused_before):.2f}")
 
 
-def _wait_loop(state: AutoClickerState, seconds: float, remaining: float,
-                    debug_active: bool, last_remaining: int, phase: str,
-                    step_num: int, total_steps: int, message: str, point=None) -> bool:
+def _wait_loop(state: AutoClickerState, seconds: float, debug_active: bool, phase: str,
+               step_num: int, total_steps: int, message: str, point=None) -> bool:
     """Der Rumpf von `wait_with_pause_skip` — ausgelagert nur wegen des `finally`."""
     live = _LiveImage(state, point)
+    remaining = seconds
+    last_remaining = -1
     while remaining > 0:
         if state.stop_event.is_set():
             return False
@@ -491,7 +478,7 @@ def execute_else_action(state: AutoClickerState, step: SequenceStep, phase: str,
     handler = _ELSE_ACTIONS.get(ec.action)
     if handler is None:
         return True
-    return handler(state, step, ec, phase, step_num, total_steps, is_verbose_debug(state))
+    return handler(state, step, ec, phase, step_num, total_steps, is_log_debug(state))
 
 
 def _else_skip(state, step, ec, phase, step_num, total_steps, debug) -> bool:
@@ -500,11 +487,12 @@ def _else_skip(state, step, ec, phase, step_num, total_steps, debug) -> bool:
 
 
 def _else_click(state, step, ec, phase, step_num, total_steps, debug) -> bool:
-    if ec.unresolved:
-        # Der Punkt hinter dem Else-Klick fehlt (`resolve()` hat es gemeldet).
+    if not ec.has_click_target:
+        # Kein Punkt gewählt, oder der Punkt fehlt (`resolve()` hat es gemeldet).
         # Ein Klick auf (0, 0) waere die Bildschirmecke — also wie `skip`.
+        why = "Punkt fehlt" if ec.unresolved else "kein Punkt gewählt"
         _step_status(debug, phase, step_num, total_steps,
-                     "ELSE: Klick entfaellt — Punkt fehlt (wie skip)")
+                     f"ELSE: Klick entfaellt — {why} (wie skip)")
         return True
     if ec.delay > 0 and not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
                                                  "ELSE: klicke in", point=(ec.x, ec.y, None),

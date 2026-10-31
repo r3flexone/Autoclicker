@@ -10,7 +10,7 @@ die Einstellungen wirklich im Feld landet.
 
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def setup():
@@ -37,10 +37,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b, width=1100, height=760) as f:
         # ------------------------------------------------ Phasenleiste und Kanten
@@ -121,7 +118,7 @@ def run():
         # ------------------------------------ Sprungmarke Bericht -> Einstellungen
         f.page.set_viewport_size({"width": 1500, "height": 900})
         f.tab("report")
-        f.click_text("#rep-right button", "Marktwert-Datei eintragen")
+        f.click_text("#rep-right button", "Marktwert-Datei prüfen")
         f.page.wait_for_function(
             "() => { const a = document.activeElement;"
             " return !!(a && a.closest && a.closest('#cfg-row-scan_market_value_file')); }",

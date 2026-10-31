@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Wertet die Session-Logs aus: welcher Schritt haengt, was wurde gefunden, wie lief die Nacht.
 
-Die Logs wurden bisher nur geschrieben und von nichts gelesen. Sie beantworten aber
-genau die Frage, die man nach einem langen Lauf hat und heute nur raten kann:
-**welcher Schritt laeuft am haeufigsten in den Timeout?**
+Die Logs beantworten genau die Frage, die man nach einem langen Lauf hat und ohne
+Auswertung nur raten kann: **welcher Schritt laeuft am haeufigsten in den Timeout?**
 
     python tools/log_report.py              # alle Logs im logs/-Ordner
     python tools/log_report.py <datei.csv>  # eine bestimmte Session
@@ -357,7 +356,7 @@ def main() -> int:
         if not paths:
             print(f"Keine CSV-Dateien in '{LOGS_DIR}'.")
             return 1
-        if args:                       # --letzte
+        if args:                       # --last
             paths = paths[-1:]
             print(f"Neueste Session: {paths[0].name}\n")
 

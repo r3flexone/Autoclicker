@@ -16,7 +16,6 @@ from .bridge_contract import (
     WAIT_TIMEOUT,
     _FIELDS,
     _blocks,
-    _rgb,
     else_applies,
 )
 from .model import (
@@ -27,6 +26,7 @@ from .model import (
     Lane,
     PalettePoint,
     ensure_else,
+    rgb_value,
     set_block_type,
     step_from_point,
 )
@@ -66,7 +66,7 @@ class BridgeEditingMixin:
 
     def _edit_selection(self) -> tuple:
         """Die Auswahl als Indizes — ein Abzug darf keine Lane-Objekte halten."""
-        others = [(self._lane_index(lane), set(rows)) for lane, rows in self.sel_other]
+        others = [(self.board.position(lane), set(rows)) for lane, rows in self.sel_other]
         return (self._sel_index(), set(self.sel_rows), self.sel_anchor,
                 [(index, rows) for index, rows in others if index is not None])
 
@@ -392,7 +392,7 @@ class BridgeEditingMixin:
     def _selection_tidy(self) -> None:
         """Leere Phasen fallen heraus; ist die aktuelle leer, rückt eine andere nach."""
         self.sel_other = [(ln, rows) for ln, rows in self.sel_other
-                          if rows and self._lane_index(ln) is not None]
+                          if rows and self.board.position(ln) is not None]
         if self.sel_rows:
             return
         if self.sel_other:
@@ -1219,8 +1219,6 @@ class BridgeEditingMixin:
             self._points_apply()
         if "action_key" in data:
             ec.key = str(data["action_key"] or "").strip() or None
-        if "delay" in data:
-            ec.delay = max(0.0, float(data["delay"] or 0))
         return self._changed()
 
     # ---------------------------------------------------------------- Punkte
@@ -1253,7 +1251,7 @@ class BridgeEditingMixin:
                 # Die Farbe ist das, was ein Farb-Trigger prueft — sie von Hand zu
                 # setzen ist deshalb eine echte Aenderung am Verhalten, nicht bloss
                 # Anzeige. Leer heisst „keine gemessene Farbe", nicht Schwarz.
-                point.color = _rgb(value)
+                point.color = rgb_value(value)
             else:
                 return self._report(f"Unbekanntes Feld '{field}'.", "err")
         except (TypeError, ValueError):

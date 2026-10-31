@@ -148,24 +148,10 @@ def _on_close(bridge, quit_with_window: bool = False) -> None:
         send_command("quit_program")
 
 
-def _attach_close_handler(window, bridge,
-                          quit_with_window: bool = False) -> None:
-    """Hängt `_on_close` ans Fenster — über beide pywebview-Schreibweisen.
-
-    Bis pywebview 3.5 hiess das Ereignis `window.closing`, danach
-    `window.events.closing`. Ohne den Haken geht die Rettungskopie verloren.
-    """
-    for owner_name in (getattr(window, "events", None), window):
-        event = getattr(owner_name, "closing", None) if owner_name is not None else None
-        if event is not None and hasattr(event, "__iadd__"):
-            event += lambda: _on_close(bridge, quit_with_window)
-            return
-
-
 def main(argv: list[str]) -> int:
     # `--scans` waehlt nur den Reiter vor; ein leeres erstes Argument ist erlaubt.
     scans = "--scans" in argv[1:]
-    quit_with_window = "--beenden-mit-fenster" in argv[1:]
+    quit_with_window = "--quit-with-window" in argv[1:]
     positions = [a for a in argv[1:] if not a.startswith("--")]
     seq_name = positions[0] if positions else ""
 
@@ -206,7 +192,9 @@ def main(argv: list[str]) -> int:
         height=1000,
         background_color="#0C0F14",
     )
-    _attach_close_handler(window, bridge, quit_with_window)
+    # Ohne den Haken geht die Rettungskopie verloren. (Bis pywebview 3.5 hiess das
+    # Ereignis `window.closing`; requirements.txt holt die aktuelle Fassung.)
+    window.events.closing += lambda: _on_close(bridge, quit_with_window)
 
     try:
         # gui=None: pywebview nimmt, was da ist (Windows: WebView2/EdgeChromium).

@@ -6,9 +6,9 @@ Modul-Aufteilung:
     io.py        safe_input, interactive_select, read_key, read_command
     parsing.py   parse_time_input, parse_non_negative_*, format_duration, sanitize_filename, clean_item_name, compact_json
 
-Re-exportiert die komplette bisherige API damit `from .utils import ...`
-und `from autoclicker.utils import ...` aus anderen Modulen unverändert
-weiterfunktionieren.
+Hier stehen die Namen, die andere Module als `from .utils import ...` holen.
+Was nur ein Modul des Pakets braucht (etwa `flush_input_buffer` und `read_key`
+aus `io.py`), wird dort geholt — `from .utils.io import ...`.
 """
 
 from .console import (
@@ -20,8 +20,8 @@ from .console import (
 )
 from .io import (
     is_cancel, cancel_hint,
-    flush_input_buffer, safe_input, confirm,
-    read_key, read_command, interactive_select,
+    safe_input, confirm,
+    read_command, interactive_select,
 )
 from .parsing import (
     parse_time_input, parse_non_negative_float, parse_non_negative_range,
@@ -39,8 +39,8 @@ __all__ = [
     'clear_line', 'status_line', 'init_logging',
     # io
     'is_cancel', 'cancel_hint',
-    'flush_input_buffer', 'safe_input', 'confirm',
-    'read_key', 'read_command', 'interactive_select',
+    'safe_input', 'confirm',
+    'read_command', 'interactive_select',
     # parsing
     'parse_time_input', 'parse_non_negative_float', 'parse_non_negative_range',
     'format_duration', 'sanitize_filename', 'clean_item_name', 'without_counter', 'unique_name', 'next_free_name',

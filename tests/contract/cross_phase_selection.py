@@ -18,7 +18,7 @@ from autoclicker.models import (
 )
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
 
-INIT, A, B, END = 0, 1, 2, 3
+A, B, END = 1, 2, 3        # Positionen im Brett; 0 ist INIT
 
 
 def _bridge(shared: bool = False):
@@ -193,6 +193,15 @@ check("die beiden Phasen sind wirklich gleich", _bt.board.lanes[1] == _bt.board.
 _snap = _bt.select({"phase": 2, "row": 0, "mode": "single"})
 check("gewählt in der ZWEITEN — und die Momentaufnahme sagt die zweite",
       _snap["selection"]["phase"] == 2 and _picked(_snap) == {(2, 0)})
+# Auch der Inspektor des einen gewählten Blocks (`_block_detail`) nannte seine
+# Phase über `lanes.index()` — für den Block der zweiten Zwillingsphase stand
+# dort die erste, und jeder Befehl des Inspektors (Wartezeit, Typ, Löschen)
+# wirkte auf den Block der falschen Phase.
+check("der Inspektor-Block nennt die zweite Phase, nicht die gleich aussehende erste",
+      _snap["block"] is not None and _snap["block"]["phase"] == 2)
+_snap = _bt.select({"phase": 1, "row": 0, "mode": "single"})
+check("und in der ersten nennt er die erste",
+      _snap["block"] is not None and _snap["block"]["phase"] == 1)
 
 # =============================================================================
 section("Die Seite zählt über alle Phasen")

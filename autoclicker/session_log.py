@@ -93,7 +93,7 @@ def start_session_log(state: 'AutoClickerState') -> Optional[SessionLog]:
         log_dir = Path(state.config.session_log_dir)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         seq = state.active_sequence
-        seq_name = seq.name if seq and hasattr(seq, "name") else "session"
+        seq_name = seq.name if seq else "session"
         from .utils import sanitize_filename
         safe_name = sanitize_filename(seq_name)
         log_path = log_dir / f"{timestamp}_{safe_name}.csv"
@@ -108,6 +108,6 @@ def start_session_log(state: 'AutoClickerState') -> Optional[SessionLog]:
 def log_event(state: 'AutoClickerState', event: str, detail: str = "",
               x: Optional[int] = None, y: Optional[int] = None, extra: str = "") -> None:
     """Schreibt ein Event, wenn ein aktives Log vorhanden ist."""
-    log = getattr(state, "session_log", None)
+    log = state.session_log
     if log is not None:
         log.log(event, detail, x, y, extra)

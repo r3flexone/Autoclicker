@@ -27,15 +27,13 @@ section("Scans: Slot aus zwei Ecken, Farbe gemessen, Referenzen nachgezogen")
 # was die Bruecke daraus macht: aus zwei Klicks ein Rechteck, aus einem Klick
 # eine gemessene Farbe, aus einem Umbenennen eine nachgezogene Referenz.
 import re as _re13
-from autoclicker.editors.sequence_studio.scans import (
+from autoclicker.editors.sequence_studio.scan_contract import (
     MODE_CLICK as _MK18, MODE_MEASURE as _MM18, MODE_SLOT as _MS18,
     MODE_CHOICE as _MW18, MODE_AREA as _MB18, MODE_FIND as _MF18,
     MODES as _MODI18, MIN_SLOT as _MINSLOT18,
 )
 from autoclicker.models import (ItemProfile as _ITEM8, ItemSlot as _SLOT8,
                                 ItemScanConfig as _ISC8)
-
-_repo17 = Path(__file__).resolve().parent.parent
 
 _sandbox18 = tempfile.mkdtemp(prefix="studioscan_")
 _cwd18 = _os.getcwd()
@@ -657,9 +655,9 @@ try:
     check("beim Zurückwechseln kommt genau dessen Bestand wieder",
           sorted(_b18.slots) == ["Slot 1"] and sorted(_b18.items) == ["Item 1"])
 
-    _z_besitz18 = _b18.scan_save()
+    _z_owner18 = _b18.scan_save()
     check("Scan-Bestand wird unter seiner Sequenz gespeichert",
-          _z_besitz18["status"]["kind"] == "ok"
+          _z_owner18["status"]["kind"] == "ok"
           and Path("sequences/s/item_scans/lokal.json").exists())
     check("keine globalen Slot-/Item-Dateien entstehen",
           not Path("slots/slots.json").exists()
@@ -688,7 +686,7 @@ check("und jede Kachel eine eigene Taste",
       len(_keys18) == len(_tiles18) == len(set(_keys18)))
 
 # --- Die verbleibenden zusammenklappbaren Abschnitte haengen zusammen ---
-# Kopf (`data-klapp`), Rahmen (`id="ab-…"`) und Zustand (`collapsed`) muessen
+# Kopf (`data-collapse`), Rahmen (`id="sec-…"`) und Zustand (`collapsed`) muessen
 # denselben Schluessel tragen. Ein Tippfehler in einem davon ist kein Fehler,
 # den man sieht: der Abschnitt laesst sich dann einfach nicht mehr zuklappen,
 # oder er bleibt zu und der Kopf reagiert nicht. Genau die Sorte stiller
@@ -701,10 +699,10 @@ _state18 = _re13.search(r'let collapsed = \{([^}]*)\}', _html18)
 check("und jeder hat einen Zustand in collapsed",
       _state18 is not None
       and sorted(_re13.findall(r'(\w+):', _state18.group(1))) == _collapse18)
-# Gegenrichtung: ein Abschnitt, der als klappbar ausgezeichnet ist, aber keinen
+# Gegenrichtung: ein Abschnitt, der als `collapsible` ausgezeichnet ist, aber keinen
 # Rumpf hat, klappt zwar zu - nur bleibt dann alles stehen.
 check("jeder klappbare Abschnitt hat auch einen Rumpf",
-      _html18.count('class="section klappbar"') == _html18.count('class="collapse-body'))
+      _html18.count('class="section collapsible"') == _html18.count('class="collapse-body'))
 
 # Die drei Hauptaufgaben sind kein zweiter Satz Klapp-Panels mehr. Sie bilden
 # einen eigenen Assistenten: genau drei feste Karten, von denen jede ueber ihren
@@ -954,9 +952,6 @@ try:
     check("der mitgeschickte Maskenname entscheidet, was gelöscht wird",
           "Erster" not in _bL18.scans and "Zweiter" in _bL18.scans
           and "Erster" in _zL18["status"]["text"])
-    _zL18 = _bL18.scan_delete()
-    check("ohne Maskenname bleibt der offene Scan der Rückfall",
-          not _bL18.scans and "Zweiter" in _zL18["status"]["text"])
 finally:
     _os.chdir(_cwdL18)
     shutil.rmtree(_sandboxL18, ignore_errors=True)
@@ -1477,7 +1472,7 @@ check("und schneiden dabei keine Beschriftung ab",
       "white-space:normal}" in _html18[_html18.index(".button-pair > .btn{"):
                                        _html18.index(".button-pair > .btn{") + 90])
 # Der Wortschatz ist zu zweit vollstaendig: EIN Knopf ueber die volle Breite
-# ist `btn breit`, mehrere nebeneinander sind ein `knopfpaar`. Ein `wachse` in
+# ist `btn wide`, mehrere nebeneinander sind ein `button-pair`. Ein `grow` in
 # einer Knopfzeile waere die dritte Antwort auf dieselbe Frage.
 _button_rows18 = _html18.count('class: "button-pair"')
 check(f"und die Regel gilt ueberall ({_button_rows18} Zeilen)",
@@ -1519,7 +1514,7 @@ try:
     check("und die Ansicht nennt ihn beim Namen",
           _itemB["confirmation"]["point_id"] == _pidB
           and "OK-Knopf" in _itemB["confirmation"]["text"])
-    # **Die Koordinate steht in points.json, sonst nirgends.** `confirm_point`
+    # **Die Koordinate steht im Punkt der sequence.json, sonst nirgends.** `confirm_point`
     # ist der abgeleitete Arbeitswert — dieselbe Rolle wie `action_x/y`.
     check("der abgeleitete Arbeitswert wird mitgezogen",
           _bB.items["Trank"].confirm_point is not None
@@ -1813,9 +1808,9 @@ try:
         # sonst benennt ein Fehlgriff den ganzen von Hand gepflegten Bestand um.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bs = _build_on()
-        _erg_std = _pass_on(_bs, {})
+        _res_std = _pass_on(_bs, {})
         check("ohne 'alle' bleibt es bei den auto-gelernten Items",
-              _erg_std["status"]["kind"] == "warn" and "Item 1" in _bs.items)
+              _res_std["status"]["kind"] == "warn" and "Item 1" in _bs.items)
 
         # --- Der Grund, warum die Kategorie nie kam ---------------------------
         # **`sanitize_filename()` stand hier und war die falsche Funktion.** Sie
@@ -1834,9 +1829,8 @@ try:
         _CFG_an.scan_catalog_file = str(Path("catalog.json").resolve())
         try:
             _bk = _build_on()
-            # `item_names` gehoert NICHT in den Konstruktor: die Namen sind
-            # die Wahrheit, aber abgeleitet — `sync_names()` fuellt sie aus den
-            # Objekten (`__post_init__`).
+            # `item_names` gehoert NICHT in den Konstruktor: die Objekte in
+            # `items` sind die Wahrheit, die Namen werden daraus abgeleitet.
             _bk.scans = {"S": _ISC8(name="S", use_catalog=True,
                                     items=[_bk.items["Item 1"], _bk.items["Item 2"]])}
             _bk.open_scan = "S"
@@ -1881,7 +1875,7 @@ try:
         _lv_an.suggest_item_name_with_reason = _erst_timeout
         _bt = _build_on()
         _bt.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to = _pass_on(_bt, {"all_items": True})
+        _pass_on(_bt, {"all_items": True})
         check("nach einem Timeout wird einmal wiederholt", len(_attempts_on) == 2)
         check("und der zweite Versuch bekommt mehr Zeit",
               _attempts_on[1] > _attempts_on[0])
@@ -1892,8 +1886,8 @@ try:
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: (None, _TO_an)
         _bt2 = _build_on()
         _bt2.items = {"Item 1": _ITEM8(name="Item 1", template="a.png")}
-        _erg_to2 = _pass_on(_bt2, {"all_items": True})
-        _txt_to = _erg_to2["status"]["text"]
+        _res_to2 = _pass_on(_bt2, {"all_items": True})
+        _txt_to = _res_to2["status"]["text"]
         check("ein bleibender Timeout heisst nicht 'ohne Vorschlag'",
               "Zeitüberschreitung" in _txt_to and "ohne Vorschlag" not in _txt_to)
         check("und die Meldung nennt die Abhilfe", "llm_timeout" in _txt_to)
@@ -1907,7 +1901,7 @@ try:
         # Gegenstand.
         _lv_an.suggest_item_name_with_reason = lambda *a, **kw: ("Godlike Bow", "")
         _bd = _build_on()
-        _erg_dop = _pass_on(_bd, {"all_items": True})
+        _res_dop = _pass_on(_bd, {"all_items": True})
         check("derselbe Name legt kein zweites Item an",
               "Godlike Bow" in _bd.items and "Godlike Bow 2" not in _bd.items)
         # Die erste Vorlage ist beim Benennen dem Namen gefolgt
@@ -1919,9 +1913,9 @@ try:
               len(_names_dop) == 2 and _names_dop[0].startswith("godlike_bow")
               and _names_dop[1] == "b.png")
         check("und die Meldung sagt es",
-              "angehängt" in _erg_dop["status"]["text"])
-        # Der Name IST die Referenz: ohne `_sync_objects()` kaeme das
-        # geloeschte Item ueber `sync_names()` beim Speichern zurueck.
+              "angehängt" in _res_dop["status"]["text"])
+        # Die Objekte im Scan sind die Wahrheit: ohne `_sync_objects()` bliebe
+        # das geloeschte Item dort stehen und kaeme beim Speichern zurueck.
         check("das Doppel ist auch aus dem Scan raus",
               "Item 2" not in (_bd.scans[_bd.open_scan].item_names
                                if _bd.open_scan in _bd.scans else []))

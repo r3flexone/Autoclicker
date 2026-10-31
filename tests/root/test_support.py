@@ -1,4 +1,20 @@
-"""Plattform-Stubs für per ``unittest discover`` gestartete Logiktests."""
+"""Plattform-Stubs und Bild-Skip für per ``unittest discover`` gestartete Logiktests."""
+
+import unittest
+
+# Pillow ist optional, wie überall im Baum. Der Import stand in den Modulen
+# selbst oben, und ohne Pillow starben sie schon beim LADEN - womit
+# `python -m unittest test_*.py` gar nicht erst sammelte und es zwei
+# Testkommandos brauchte. Übersprungen wird jetzt, was Bilder braucht; der Rest
+# läuft.
+try:
+    from PIL import Image
+    PILLOW = True
+except ImportError:                                              # pragma: no cover
+    Image = None
+    PILLOW = False
+
+needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
 
 
 def install_platform_stubs() -> None:

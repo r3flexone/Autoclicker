@@ -2,18 +2,7 @@
 
 import unittest
 
-# Pillow ist optional, wie ueberall im Baum. Der Import stand hier oben und ohne
-# Pillow starb das Modul beim LADEN - womit `python -m unittest test_*.py` gar
-# nicht erst sammelte und es zwei Testkommandos brauchte. Uebersprungen wird
-# jetzt, was Bilder braucht; der Rest laeuft.
-try:
-    from PIL import Image
-    PILLOW = True
-except ImportError:                                              # pragma: no cover
-    Image = None
-    PILLOW = False
-
-needs_pillow = unittest.skipUnless(PILLOW, "Pillow nicht installiert")
+from test_support import Image, needs_pillow
 
 from autoclicker.editors.scan_services import (
     _hue_intervals,

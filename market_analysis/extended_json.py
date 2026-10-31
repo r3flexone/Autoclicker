@@ -62,7 +62,7 @@ def _argument_end(text: str, start: int) -> int:
 
     Gibt -1 zurueck, wenn die Klammer nie zugeht — dann wird nichts ersetzt.
     """
-    depth_value = 1
+    depth = 1
     i = start
     n = len(text)
     while i < n:
@@ -71,10 +71,10 @@ def _argument_end(text: str, start: int) -> int:
             i = _string_end(text, i)
             continue
         if c == "(":
-            depth_value += 1
+            depth += 1
         elif c == ")":
-            depth_value -= 1
-            if depth_value == 0:
+            depth -= 1
+            if depth == 0:
                 return i + 1
         i += 1
     return -1
@@ -126,22 +126,22 @@ def clean_up(text: str) -> tuple[str, dict[str, int]]:
     while i < n:
         c = text[i]
         if c == '"':
-            end_value = _string_end(text, i)
-            parts.append(text[i:end_value])
-            i = end_value
+            end = _string_end(text, i)
+            parts.append(text[i:end])
+            i = end
             continue
         match = _CALL.match(text, i)
         if match is None:
             parts.append(c)
             i += 1
             continue
-        end_value = _argument_end(text, match.end())
-        if end_value < 0:
+        end = _argument_end(text, match.end())
+        if end < 0:
             parts.append(text[i:match.end()])
             i = match.end()
             continue
-        parts.append(_replacement(match.group(1), text[match.end():end_value - 1], unknown))
-        i = end_value
+        parts.append(_replacement(match.group(1), text[match.end():end - 1], unknown))
+        i = end
     return "".join(parts), unknown
 
 

@@ -15,15 +15,18 @@ from ...persistence import (
 from ...utils import sanitize_filename, unique_name
 from .bridge_contract import (
     _same_value,
-    _hex,
     _mtime,
+    put_repo_on_path,
     scan_warnings,
 )
 from .model import (
     BLOCK_COLORS,
     BLOCK_LABELS,
     board_to_sequence,
+    hex_color,
     ink_color,
+    palette_from_sequence,
+    palette_to_points,
     sequence_to_board,
 )
 
@@ -68,16 +71,16 @@ class BridgeServicesMixin:
         """Kennzahlen aller gespeicherten Sequenzen für die Übersicht.
 
         Keine Momentaufnahme — deshalb über `ask()` zu holen, sonst zerschösse die
-        Antwort den Editor-Zustand. Über `load_sequence_file()`, damit Migration und
-        Punkt-Auflösung mitlaufen. Nur Kennzahlen, keine Schritte.
+        Antwort den Editor-Zustand. Über `load_sequence_file()`, damit die
+        Punkt-Auflösung mitläuft. Nur Kennzahlen, keine Schritte.
         """
         out: list[dict] = []
-        root_layer = Path(self.sequences_dir)
+        sequences_root = Path(self.sequences_dir)
         files = sorted(
-            (folder / "sequence.json" for folder in root_layer.iterdir()
+            (folder / "sequence.json" for folder in sequences_root.iterdir()
              if folder.is_dir() and (folder / "sequence.json").exists()),
             key=lambda path: path.parent.name,
-        ) if root_layer.exists() else []
+        ) if sequences_root.exists() else []
         for path in files:
             saved_name = path.parent.name
             try:
@@ -254,9 +257,9 @@ class BridgeServicesMixin:
         for entry, path in list_available_sequences():
             if entry == name:
                 return Path(path).parent
-        root_layer = Path(self.sequences_dir)
-        if root_layer.is_dir():
-            for folder in root_layer.iterdir():
+        sequences_root = Path(self.sequences_dir)
+        if sequences_root.is_dir():
+            for folder in sequences_root.iterdir():
                 if folder.is_dir() and folder.name == name:
                     return folder
         return None
@@ -350,7 +353,7 @@ class BridgeServicesMixin:
         # Farbe ist die Legende, und sie muss in beiden Ansichten dieselbe sein.
         type_value = state_value.get("block_set_type")
         if type_value in BLOCK_COLORS:
-            state_value["block_color"] = _hex(BLOCK_COLORS[type_value])
+            state_value["block_color"] = hex_color(BLOCK_COLORS[type_value])
             state_value["block_ink"] = ink_color(BLOCK_COLORS[type_value])
             state_value["block_badge"] = BLOCK_LABELS[type_value]
         return state_value
@@ -689,9 +692,9 @@ class BridgeServicesMixin:
             "meta": {k: m.as_dict() for k, m in META.items()},
             # Wo ein leeres Eingabefeld `null` heisst und nicht 0.
             "optional": optional_fields(),
-            # Was hinter einem Feld gerade WIRKLICH liegt — heute nur der
-            # Katalog. Der Pfad allein sagt nicht, ob die Datei da ist und wie
-            # alt sie ist, und genau das ist die Frage, die man an eine
+            # Was hinter einem Feld gerade WIRKLICH liegt — Katalog und
+            # Marktwerte. Der Pfad allein sagt nicht, ob die Datei da ist und
+            # wie alt sie ist, und genau das ist die Frage, die man an eine
             # geholte Liste hat.
             "states": self._config_states(),
             "error": error,
@@ -734,11 +737,43 @@ class BridgeServicesMixin:
                 parts.append("geholt am " + when)
         return " · ".join(parts)
 
+    @staticmethod
+    def _market_state(path: str) -> str:
+        """Umfang und Alter der Marktwert-Datei — dieselbe Auskunft wie beim Katalog.
+
+        **Seit der Pfad voreingestellt ist, steht er auch da, wenn die
+        Marktanalyse nie gelaufen ist.** Ob die Item-Klicks nach Wert sortiert
+        werden, sagt deshalb erst diese Zeile, nicht das Feld. Der Zeitpunkt ist
+        der der Datei: die Analyse schreibt keinen hinein, und „von wann sind die
+        Preise" ist die Frage, die man an eine Wertetabelle hat.
+        """
+        import json
+        from datetime import datetime
+        if not path:
+            return ""
+        file = Path(path)
+        if not file.exists():
+            return "Datei fehlt — Marktanalyse noch nicht gelaufen?"
+        try:
+            raw = json.loads(file.read_text(encoding="utf-8"))
+            when = datetime.fromtimestamp(file.stat().st_mtime)
+        except (OSError, ValueError) as e:
+            return f"nicht lesbar ({e})"
+        if not isinstance(raw, dict):
+            return "nicht lesbar (kein Name→Wert-Objekt)"
+        return (f"{len(raw)} Items · gerechnet am "
+                + when.strftime("%d.%m.%Y um %H:%M"))
+
     def _config_states(self) -> dict:
         """Zusatzauskunft je Feld, wo der Wert allein zu wenig sagt."""
         from ...config import CONFIG
-        stamp = self._catalog_state(str(CONFIG.scan_catalog_file or "").strip())
-        return {"scan_catalog_file": stamp} if stamp else {}
+        states = {
+            "scan_catalog_file": self._catalog_state(
+                str(CONFIG.scan_catalog_file or "").strip()),
+            "scan_market_value_file": self._market_state(
+                str(CONFIG.scan_market_value_file or "").strip()),
+        }
+        return {key: stamp for key, stamp in states.items() if stamp}
 
     def config_write(self, data: Optional[dict] = None) -> dict:
         """Schreibt geänderte Werte in `config.json` — und meldet Korrekturen.
@@ -817,12 +852,9 @@ class BridgeServicesMixin:
         eingetragen hat, bekommt seine Datei aktualisiert und nicht seinen
         Eintrag ueberschrieben.
         """
-        import sys
         from ...config import CONFIG
 
-        root_layer = Path(__file__).resolve().parents[3]
-        if str(root_layer) not in sys.path:
-            sys.path.insert(0, str(root_layer))
+        put_repo_on_path()
         try:
             from tools.catalog import (build_catalog, fetch_game_data,
                                        _summary, DEFAULT_TARGET)
@@ -895,7 +927,6 @@ class BridgeServicesMixin:
         self.filepath = Path(path)
         # Punkte neu einlesen: zwischen zwei Sequenzen kann im Hauptprozess ein
         # Punkt dazugekommen sein.
-        from .model import palette_from_sequence
         self.points = palette_from_sequence(seq)
         self._scan_init()
         self._scan_load()
@@ -1012,7 +1043,6 @@ class BridgeServicesMixin:
         if isinstance(moved, dict):
             return moved
 
-        from .model import palette_to_points
         sequence = board_to_sequence(self.board)
         sequence.points = palette_to_points(self.points)
         if not save_sequence_file(sequence, new):
@@ -1125,7 +1155,6 @@ class BridgeServicesMixin:
             f"{self.filepath.stem}.ungespeichert.json")
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            from .model import palette_to_points
             sequence = board_to_sequence(self.board)
             sequence.points = palette_to_points(self.points)
             if save_sequence_file(sequence, target):

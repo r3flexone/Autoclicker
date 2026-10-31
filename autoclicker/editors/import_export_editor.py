@@ -50,8 +50,10 @@ def run_import_export_editor(state: AutoClickerState) -> None:
 def _show_data_overview(state: AutoClickerState) -> None:
     """Zeigt was aktuell im State liegt und welche Presets/Sequenzen verfügbar sind.
 
-    Hilft, vor einem Export zu sehen was mitgenommen wird und welche Presets es
-    überhaupt gibt (Slot-/Item-Presets liegen separat von den aktiven Daten).
+    Exportiert werden die Sequenzordner auf der Platte (und die Config), nicht
+    der Stand im Speicher; die Übersicht zeigt beides nebeneinander und dazu,
+    welche Presets es gibt (Slot-/Item-Presets liegen separat von den aktiven
+    Daten).
     """
     from ..persistence import (
         list_slot_presets, list_item_presets, list_available_sequences,
@@ -61,10 +63,10 @@ def _show_data_overview(state: AutoClickerState) -> None:
     print(header("ÜBERSICHT: GESPEICHERTE DATEN"))
 
     with state.lock:
-        print(f"\n  {col('Aktiver State (wird beim Export mitgenommen):', 'bold')}")
+        print(f"\n  {col('Geladen im Arbeitsspeicher (der Export liest die Platte):', 'bold')}")
         print(f"    Punkte:      {len(state.points)}")
-        print(f"    Slots:       {len(state.global_slots)}")
-        print(f"    Items:       {len(state.global_items)}")
+        print(f"    Slots:       {len(state.scan_slots)}")
+        print(f"    Items:       {len(state.scan_items)}")
         print(f"    Item-Scans:  {len(state.item_scans)}")
         print(f"    Boss-Scans:  {len(state.boss_scans)}")
         print(f"    Icon-Scans:  {len(state.icon_scans)}")
@@ -351,22 +353,18 @@ def _choose_bundle():
     return _ask_filepath()
 
 
-# Diese Teile stehen im Manifest als Liste von Namen — gezeigt wird die Anzahl.
-_LISTED = {"sequences", "item_scans", "boss_scans", "icon_scans"}
-
-
 def _print_bundle_contents(manifest: dict) -> None:
     """Was im Bündel steht, samt Beschreibungen und Referenzpunkten des Exporters."""
     contents = manifest.get("contents", {})
     print(f"\n  {col('Inhalt der Export-Datei:', 'bold')}")
-    for key, label in (("points", "Punkte:     "), ("sequences", "Sequenzen:  "),
-                       ("slots", "Slots:      "), ("items", "Items:      "),
-                       ("item_scans", "Item-Scans: "), ("boss_scans", "Boss-Scans: "),
-                       ("icon_scans", "Icon-Scans: "), ("templates", "Templates:  ")):
+    for key, label in (("sequences", "Sequenzen:  "), ("item_scans", "Item-Scans: "),
+                       ("boss_scans", "Boss-Scans: "), ("icon_scans", "Icon-Scans: "),
+                       ("templates", "Templates:  ")):
         if key not in contents:
             continue
         value = contents[key]
-        shown = len(value) if key in _LISTED and isinstance(value, list) else value
+        # Die Sequenzen stehen als Liste von Namen im Manifest — gezeigt wird die Anzahl.
+        shown = len(value) if isinstance(value, list) else value
         print(f"    {label} {shown}")
         if key == "sequences":
             _print_sequence_descriptions(value, manifest.get("sequence_descriptions", {}))
@@ -522,7 +520,7 @@ def run_calibration(state: AutoClickerState) -> None:
         print(f"  {err('Keine Punkte vorhanden — es gibt nichts zu kalibrieren.')}")
         return
 
-    transform = _ask_calibration_transform(state, points)
+    transform = _ask_calibration_transform(points)
     if transform is None:
         print(f"  {info(_CALIBRATION_CANCELLED)}")
         return
@@ -532,7 +530,7 @@ def run_calibration(state: AutoClickerState) -> None:
     _print_calibration_preview(state, transform)
 
     with state.lock:
-        slot_count = len(state.global_slots)
+        slot_count = len(state.scan_slots)
     if slot_count:
         _warn_slots_are_approximate(slot_count)
     extent = _ask_calibration_extent()
@@ -557,10 +555,10 @@ def run_calibration(state: AutoClickerState) -> None:
 _CALIBRATION_CANCELLED = "[ABBRUCH] Kalibrierung abgebrochen — nichts geändert."
 
 
-def _ask_calibration_transform(state: AutoClickerState, points: list):
+def _ask_calibration_transform(points: list):
     """Die Umrechnung aus einem (oder zwei) neu gesetzten Punkten — None bei Abbruch."""
     from ..import_export import transform_from_offset
-    ref1 = _calibration_reference(state, points, "Referenzpunkt")
+    ref1 = _calibration_reference(points, "Referenzpunkt")
     if ref1 is None:
         return None
     p_old, p_new = ref1
@@ -570,7 +568,7 @@ def _ask_calibration_transform(state: AutoClickerState, points: list):
     print(f"  Verschiebung: {col(offset, 'yellow')}")
 
     if len(points) > 1:
-        transform = _maybe_add_scale(state, points, ref1, transform)
+        transform = _maybe_add_scale(points, ref1, transform)
     # Mit der Maus trifft man den Pixel nicht genau. Weiss man, dass eine Achse
     # stimmt, ist eine erzwungene 0 genauer als jede Messung.
     if transform["scale_x"] == 1.0 and transform["scale_y"] == 1.0:
@@ -578,7 +576,7 @@ def _ask_calibration_transform(state: AutoClickerState, points: list):
     return transform
 
 
-def _maybe_add_scale(state: AutoClickerState, points: list, ref1: tuple, transform: dict) -> dict:
+def _maybe_add_scale(points: list, ref1: tuple, transform: dict) -> dict:
     """Ein optionaler zweiter Punkt, möglichst weit vom ersten — dann wird auch skaliert."""
     from ..import_export import compute_transform
     print()
@@ -587,7 +585,7 @@ def _maybe_add_scale(state: AutoClickerState, points: list, ref1: tuple, transfo
     if not confirm("  Zweiten Referenzpunkt setzen (Skalierung)?", default=False):
         return transform
     p_old, p_new = ref1
-    ref2 = _calibration_reference(state, points, "Zweiter Referenzpunkt", except_step=p_old)
+    ref2 = _calibration_reference(points, "Zweiter Referenzpunkt", except_step=p_old)
     if ref2 is None:
         print(f"  {info('Ohne zweiten Punkt — es wird nur verschoben.')}")
         return transform
@@ -644,10 +642,10 @@ def _ask_calibration_extent():
 
 
 _CALIBRATION_CAPTION = {
-    "points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+    "points": "Punkte", "slots": "Slots",
     "item_scans": "Item-Scan-Fensteranker",
     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-    "bosses": "globale Bosse", "sequences": "Sequenzdateien",
+    "sequences": "Sequenzen (samt Ordnern der nicht geladenen)",
 }
 
 
@@ -709,8 +707,7 @@ def _adjust_offset(transform: dict) -> dict | None:
             "offset_x": new[0], "offset_y": new[1]}
 
 
-def _calibration_reference(state: AutoClickerState, points: list, title: str,
-                    except_step: tuple | None = None):
+def _calibration_reference(points: list, title: str, except_step: tuple | None = None):
     """Lässt einen Punkt wählen und seine RICHTIGE Position aufnehmen.
 
     Gibt ((alt_x, alt_y), (new_x, new_y)) zurück oder None bei Abbruch.

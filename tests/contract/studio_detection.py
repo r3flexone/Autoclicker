@@ -3,7 +3,7 @@
 Bis hierher waren die beiden nur ueber die Konsolen-Editoren erreichbar und
 standen in keinem Test. Was jetzt zaehlt, ist dasselbe wie beim Item-Teil: nicht
 die Ansicht (die laeuft in keinem Test), sondern was die Bruecke daraus macht —
-aus zwei Klicks eine Region, aus einem Klick ein Punkt in `points.json`, aus
+aus zwei Klicks eine Region, aus einem Klick ein Punkt der `sequence.json`, aus
 einem Verschieben ein Boss, der in jedem Scan gilt.
 
 Zwei Eigenschaften sind wichtiger als alle Feldsetzer zusammen und stehen
@@ -18,8 +18,8 @@ from pathlib import Path
 
 from ._harness import check, section, studio_web_source
 from autoclicker.editors.sequence_studio.bridge import StudioBridge as _SB
-from autoclicker.editors.sequence_studio.scans import (
-    SCAN_KINDS as _ARTEN, MIN_REGION as _MIN_REGION, MODES as _MODI,
+from autoclicker.editors.sequence_studio.scan_contract import (
+    SCAN_KINDS as _KINDS, MIN_REGION as _MIN_REGION, MODES as _MODES,
     MODES_ALL as _MODI_ALLE, MODE_ACTION as _M_AKTION,
     MODE_REGION as _M_REGION, MODE_CHOICE as _M_WAHL,
 )
@@ -62,11 +62,11 @@ check("und jede nimmt das eine Argument an, das die Seite schickt", _unpassend =
 # den es am laengsten gibt).
 _tiles = re.findall(r'data-scan-kind="([a-z]+)"', _web)
 check("jede Scan-Art hat eine Kachel, in der Reihenfolge der Bruecke",
-      _tiles == list(_ARTEN))
+      _tiles == list(_KINDS))
 _js_kinds = re.search(r'const SCAN_KINDS = \[([^\]]+)\]', _web)
 check("und die Seite fuehrt dieselbe Liste",
       _js_kinds is not None
-      and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_ARTEN))
+      and re.findall(r'"([a-z]+)"', _js_kinds.group(1)) == list(_KINDS))
 
 # **Der Fallback eines Boss-Scans kann weniger als ein Boss.** Ohne erkannten
 # Boss gibt es keinen Punkt und keine Taste — die Felder dafuer sitzen am
@@ -108,7 +108,7 @@ try:
 
     _z = _b.scan_data()
     check("ohne Bestand ist die Boss-Liste leer", _z["boss_scans"] == [])
-    check("und die Bibliothek auch", _z["global_bosses"] == [])
+    check("und die Bibliothek auch", _z["boss_library"] == [])
     check("die Aktionskacheln kommen aus models.py — Bosse",
           {a["value"] for a in _z["actions"]["boss"]} == _V_BOSS)
     check("die Aktionskacheln kommen aus models.py — Icons",
@@ -189,18 +189,18 @@ try:
 
     # --- Bibliothek ---
     _b.boss_select({"name": "Ancient Dragon"})
-    _b.boss_move_global({})
+    _b.boss_move_library({})
     check("verschoben liegt er in der Bibliothek",
-          [x.name for x in _b.global_bosses] == ["Ancient Dragon"])
+          [x.name for x in _b.boss_library] == ["Ancient Dragon"])
     check("und nicht mehr im Scan", _b.boss_scans["Bossfarm"].bosses == [])
     check("die Wahl wandert mit — sonst zeigt die rechte Spalte ins Leere",
-          _b.boss_choice_global is True)
+          _b.boss_choice_in_library is True)
     check("er gilt trotzdem in diesem Scan",
           [x.name for x in _b._merged_bosses(_b.boss_scans["Bossfarm"])]
           == ["Ancient Dragon"])
     # Ein lokaler gleichen Namens gewinnt — so merged auch `execute_boss_scan`.
     _b.boss_scans["Bossfarm"].bosses.append(
-        type(_b.global_bosses[0])(name="Ancient Dragon", min_confidence=0.5))
+        type(_b.boss_library[0])(name="Ancient Dragon", min_confidence=0.5))
     _gemergt = _b._merged_bosses(_b.boss_scans["Bossfarm"])
     check("bei Namensgleichheit gewinnt der lokale",
           len(_gemergt) == 1 and _gemergt[0].min_confidence == 0.5)
@@ -219,10 +219,37 @@ try:
     _z = _b.icon_set({"field": "action", "value": "item_scan"})
     check("ein Item-Scan ist als Icon-Aktion nicht erlaubt", _icon.action == "click")
 
+    # **Die Wörter, die die Seite für „woran erkennt der Scan" übersetzt, sind die,
+    # die die Brücke liefert.** `detHowText` hatte `keine` statt `none` — beim
+    # Englisch-Umbau auf der Brückenseite übersetzt, in der Tabelle der Seite nicht:
+    # ein Scan ohne Erkennung zeigte das Rohwort. Gemessen wird beides, die echten
+    # Werte der Brücke und die Schlüssel der Tabelle in `app.js`.
+    from autoclicker.models import (
+        BossProfile as _BossProfile, IconScanConfig as _IconScanConfig)
+    _how_bridge = {
+        _b._icon_scan_json(_IconScanConfig(name="a", template="t.png"))["detection"],
+        _b._icon_scan_json(_IconScanConfig(name="b", marker_colors=[(1, 2, 3)]))["detection"],
+        _b._icon_scan_json(_IconScanConfig(name="c"))["detection"],
+        _b._boss_json(_BossProfile(name="d", template="t.png"), False)["detection"],
+        _b._boss_json(_BossProfile(name="e", marker_colors=[(1, 2, 3)]), False)["detection"],
+        _b._boss_json(_BossProfile(name="f"), False)["detection"],
+    }
+    _how_table = re.search(r"function detHowText\(how\) \{\s*return \{([^}]*)\}\[how\]", _web)
+    _how_keys = set(re.findall(r"(\w+):", _how_table.group(1))) if _how_table else set()
+    check("die Brücke kennt drei Erkennungsarten", len(_how_bridge) == 3)
+    check("jede davon steht in der Übersetzungstabelle der Seite",
+          _how_bridge <= _how_keys)
+    if not _how_bridge <= _how_keys:
+        print("        ohne Übersetzung: " + ", ".join(sorted(_how_bridge - _how_keys)))
+    check("und die Tabelle führt keinen Schlüssel, den die Brücke nie liefert",
+          _how_keys <= _how_bridge)
+    check("die Bibliothekskarte zeigt die Erkennung über dieselbe Tabelle",
+          "detHowText(b.detection)" in _web)
+
     # --- Werkzeuge ---
     section("Region und Klickpunkt: zwei Werkzeuge, ein Rueckweg")
     check("die Modi der Item-Ansicht bleiben unter sich",
-          _M_REGION not in _MODI and _M_AKTION not in _MODI)
+          _M_REGION not in _MODES and _M_AKTION not in _MODES)
     check("angenommen werden sie trotzdem",
           _M_REGION in _MODI_ALLE and _M_AKTION in _MODI_ALLE)
     _z = _b.scan_mode_set({"mode": _M_REGION})
@@ -274,7 +301,7 @@ try:
             check("mit Bild und Ziel schaltet das Werkzeug scharf",
                   _z["mode"] == _M_REGION)
             check("und die Bruecke merkt sich, WORAUF es wirkt",
-                  _z["region_target"] == ["icon", "Mission nicht machbar"])
+                  list(_b._region_target or ()) == ["icon", "Mission nicht machbar"])
             _z = _b.scan_click({"x": 300, "y": 200})
             check("die erste Ecke legt noch nichts an",
                   _z["corner"] == [300, 200]
@@ -285,7 +312,7 @@ try:
                   _b.icon_scans["Mission nicht machbar"].scan_region == (300, 200, 340, 240))
             check("und das Werkzeug faellt ins Auswaehlen zurueck", _z["mode"] == _M_WAHL)
             check("das Ziel ist danach weg — es gehoerte zu diesem einen Durchgang",
-                  _z["region_target"] is None)
+                  _b._region_target is None)
 
             # --- Der Ausschnitt zeigt, was der Scan sieht ---
             _ic = [c for c in _z["icon_scans"] if c["name"] == "Mission nicht machbar"][0]
@@ -340,7 +367,7 @@ try:
             check("die Koordinate steht im Punkt", (_b.points[0].x, _b.points[0].y)
                   == (500, 320))
             # **Ein vorhandener Punkt wird wiederverwendet** — sonst laege
-            # derselbe Knopf zweimal in points.json, und beim Nachjustieren
+            # derselbe Knopf zweimal in den Punkten, und beim Nachjustieren
             # wanderte die Haelfte.
             _b.boss_scan_open({"name": "Bossfarm"})
             _b.boss_new({"name": "Hydra"})
@@ -384,8 +411,8 @@ try:
                   Path("sequences/s/icon_scans/mission_nicht_machbar.json").exists())
             check("und die Bibliothek",
                   Path("sequences/s/boss_scans/bibliothek.json").exists())
-            # **Die Punkte gehen mit.** Ein Klickpunkt ist ein Punkt in
-            # points.json — bliebe er ungeschrieben, zeigte die gespeicherte
+            # **Die Punkte gehen mit.** Ein Klickpunkt ist ein Punkt in der
+            # sequence.json — bliebe er ungeschrieben, zeigte die gespeicherte
             # Aktion beim naechsten Start ins Leere.
             check("und die Punkte, an denen die Aktionen haengen",
                   Path("sequences/s/sequence.json").exists()
@@ -403,9 +430,9 @@ try:
             check("samt Icon-Scans",
                   {c["name"] for c in _z2["icon_scans"]} == {"Mission nicht machbar"})
             check("samt Bibliothek",
-                  [b["name"] for b in _z2["global_bosses"]] == ["Ancient Dragon"])
-            check("und die Bibliothek ist als global markiert",
-                  _z2["global_bosses"][0]["global"] is True)
+                  [b["name"] for b in _z2["boss_library"]] == ["Ancient Dragon"])
+            check("und ihre Bosse sind als aus der Bibliothek markiert",
+                  _z2["boss_library"][0]["in_library"] is True)
 
             # --- Fremdaenderung ---
             # Der Konsolen-Editor bleibt der zweite Weg, und ein Lauf legt per
@@ -464,14 +491,14 @@ check("und die Phasenfarben sind drei verschiedene",
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen
 # sie auf denselben Schluesseln.
 from autoclicker.editors.sequence_studio.scan_detect import (
-    _ACTION_SHORT as _KURZ, _BOSS_ACTIONS as _ORDNUNG,
+    _ACTION_SHORT as _SHORT, _BOSS_ACTIONS as _ORDER,
 )
 from autoclicker.models import ACTION_TEXT as _TEXT
 check("jede angebotene Aktion hat eine Kurzbeschriftung",
-      set(_KURZ) == set(_ORDNUNG))
-check("und einen Satz dazu", set(_ORDNUNG) <= set(_TEXT))
+      set(_SHORT) == set(_ORDER))
+check("und einen Satz dazu", set(_ORDER) <= set(_TEXT))
 check("die Reihenfolge deckt genau die gueltigen Boss-Aktionen ab",
-      set(_ORDNUNG) == _V_BOSS)
+      set(_ORDER) == _V_BOSS)
 
 # **Was etwas kostet, wird gefragt und nicht mitgeliefert.** `autoclicker.ocr`
 # importiert EasyOCR beim Laden und zieht damit Torch nach — Sekunden, in denen
@@ -523,4 +550,37 @@ if _without:
     print("        fehlt in index.html: " + ", ".join(_without))
 check("die neuen Bloecke der Erkennungs-Arten sind darunter",
       {"sec-det-choice", "sec-det-steps", "scan-library"} <= _asked)
-check("und der Umschalter steht im Dokument", 'id="scan-art"' in _html)
+check("und der Umschalter steht im Dokument", 'id="scan-kind"' in _html)
+
+# **Der Wert am Werkzeug ist ein Befehl, kein Beschriftungstext.** Die Seite
+# schickt `button.dataset.scanTool` unverändert als `mode` an `scan_mode_set`,
+# und das lehnt jeden Wert ausserhalb von `MODES_ALL` ab. Beim Englisch-Umbau
+# blieb das „Auswählen"-Werkzeug auf `data-scan-tool="wahl"` stehen: der Klick
+# kam als „Unbekannter Modus" zurück, ohne dass etwas in der Konsole auftauchte.
+_scan_tools = re.findall(r'data-scan-tool="([^"]*)"', _html)
+check("die Werkzeugleiste hat mindestens das Auswählen-Werkzeug",
+      _M_WAHL in _scan_tools)
+check("jedes data-scan-tool ist ein Modus, den scan_mode_set annimmt",
+      set(_scan_tools) <= set(_MODI_ALLE))
+if not set(_scan_tools) <= set(_MODI_ALLE):
+    print("        unbekannt: " + ", ".join(sorted(set(_scan_tools) - set(_MODI_ALLE))))
+
+# **Eine Klasse, die die Seite vergibt, braucht eine Regel im Stylesheet.** Die
+# Zeilen von „alle Bosse gegen dieses Bild halten" tragen den Grund in einem
+# `span.reason`; die Regel dazu hiess nach dem Umbau noch `.ground` und traf
+# nichts mehr — der Grund stand in der falschen Spalte, ohne dass es auffiel.
+_css = (Path(__file__).resolve().parent.parent.parent
+        / "autoclicker/editors/sequence_studio/web/styles.css").read_text("utf-8")
+_row_start = _js.index('class: "scan-result-row"')
+_row_js = _js[_row_start:_js.index("t.reason)", _row_start)]
+_row_classes = {name for text in re.findall(r'class: "([a-z -]+)"', _row_js)
+                for name in text.split()}
+_row_unstyled = sorted(name for name in _row_classes
+                       if not re.search(r"\." + re.escape(name) + r"\b", _css))
+check("die Boss-Testzeile vergibt den Grund als Klasse 'reason'",
+      "reason" in _row_classes)
+check("jede Klasse der Boss-Testzeilen hat eine CSS-Regel", _row_unstyled == [])
+if _row_unstyled:
+    print("        ohne Regel: " + ", ".join(_row_unstyled))
+check("und die Grund-Regel hängt an der Zeile (über beide Spalten)",
+      re.search(r"\.scan-result-row \.reason\{grid-column:1/-1", _css) is not None)

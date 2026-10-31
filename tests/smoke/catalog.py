@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from ._image import inventory_image, mock_screen
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 # Namen aus dem echten Katalog. Zwei Helme (damit die Rangfolge etwas zu
 # entscheiden hat) und ein Name, den der Katalog NICHT kennt.
@@ -83,10 +83,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     def buttons(f):
         """Wie oft der Katalog-Knopf gerade gezeichnet ist."""
@@ -216,10 +213,10 @@ def run():
         f.page.fill("#cfg-search", "scan_")
         f.settle()
         out = f.page.evaluate("""() => {
-            const mitte = document.getElementById('cfg-fields');
-            const limit = mitte.getBoundingClientRect().right;
+            const middle = document.getElementById('cfg-fields');
+            const limit = middle.getBoundingClientRect().right;
             const out = [];
-            mitte.querySelectorAll('.cfg-rights > *').forEach((k) => {
+            middle.querySelectorAll('.cfg-rights > *').forEach((k) => {
               const r = k.getBoundingClientRect();
               if (r.width && r.right > limit + 1)
                 out.push((k.textContent || '').slice(0, 40));

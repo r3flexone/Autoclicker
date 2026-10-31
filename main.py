@@ -22,11 +22,11 @@ from autoclicker.winapi import (
     HOTKEY_TOGGLE, HOTKEY_PAUSE, HOTKEY_SKIP, HOTKEY_SWITCH,
     HOTKEY_SCHEDULE, HOTKEY_ANALYZE, HOTKEY_QUIT, HOTKEY_FINISH,
     HOTKEY_IMPORT_EXPORT, HOTKEY_RECORD_SEQ, HOTKEY_RECORD_PAUSE,
-    HOTKEY_SEQUENCE_STUDIO, HOTKEY_SCAN_STUDIO, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
+    HOTKEY_SEQUENCE_STUDIO, HOTKEY_STUDIO_SCANS, HOTKEY_HELP, HOTKEY_RECORD_COLOR,
     HOTKEY_RECORD_SCREENSHOT, HOTKEY_REC_PHASE, HOTKEY_REC_REGION, HOTKEY_REC_WATCH,
     HOTKEY_SKIP_STEP,
     register_hotkeys, unregister_hotkeys, flush_hotkey_messages,
-    poll_hotkey, get_current_thread_id, platform_name, environment_warnings,
+    poll_hotkey, platform_name, environment_warnings,
     PlatformError,
 )
 from autoclicker.persistence import (
@@ -44,7 +44,7 @@ from autoclicker.handlers import (
     handle_import_export, handle_record_sequence, handle_record_pause,
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
-    handle_sequence_studio, handle_scan_studio, reload_if_pending,
+    handle_sequence_studio, handle_studio_scans, reload_if_pending,
     start_next_if_pending, COMMANDS
 )
 from autoclicker.mailbox import fetch_command, discard_command
@@ -68,8 +68,8 @@ def print_banner() -> None:
     print(line)
 
 
-def print_help(with_guide: bool = True) -> None:
-    """Zeigt die Hilfe mit farbigen Kategorien an."""
+def print_help() -> None:
+    """Zeigt die Hilfe mit farbigen Kategorien an, danach die Anleitung."""
     line = col("=" * 65, 'cyan')
     print(line)
     print(f"  {col(platform_name().upper() + ' AUTOCLICKER MIT SEQUENZ-UNTERSTÜTZUNG', 'bold')}")
@@ -99,7 +99,7 @@ def print_help(with_guide: bool = True) -> None:
     print(f"  {col('CTRL+ALT+V', 'yellow')}  Studio: Reiter Scans {hint('(Item-, Boss- und Icon-Scans auf einem Screenshot)')}")
     print(f"  {col('CTRL+ALT+L', 'yellow')}  Gespeicherte Sequenz laden")
     print(f"  {col('CTRL+ALT+P', 'yellow')}  Punkte testen/anzeigen/umbenennen "
-          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, klick = nachklicken, manuell, log/detail)')}")
+          f"{hint('(dort auch: check = Setup prüfen, fix = kalibrieren, walk, reclick = nachklicken, manual, log/detail)')}")
     print(f"  {col('CTRL+ALT+I', 'yellow')}  Import/Export {hint('(Setup teilen/importieren)')}")
     print(f"  {col('CTRL+ALT+T', 'yellow')}  Farb-Analysator {hint('(für Bilderkennung)')}")
     print()
@@ -122,12 +122,7 @@ def print_help(with_guide: bool = True) -> None:
     print(f"  {col('CTRL+ALT+Q', 'yellow')}  Programm beenden")
     print()
 
-    if with_guide:
-        print_guide()
-    else:
-        print(hint(f"  Daten: '{SEQUENCES_DIR}/' | Einstellungen: '{CONFIG_FILE}'"))
-        print(line)
-        print()
+    print_guide()
 
 
 def print_guide() -> None:
@@ -274,7 +269,7 @@ def main() -> int:
     # Dasselbe Objekt, keine Kopie: `from .config import CONFIG` steht in
     # imaging und in mehreren Item-Editoren, und mit einer Kopie lasen die
     # dauerhaft den Stand vom Programmstart. Wer die Werte aendert, schreibt
-    # deshalb HINEIN (config.uebernehmen) statt state.config auszutauschen.
+    # deshalb HINEIN (config.apply_config) statt state.config auszutauschen.
     state.config = CONFIG
     # Logger-Meldungen sichtbar und im Stil des Programms. DEBUG nur, wenn eine der
     # Ausgabe-Stufen an ist - sonst blieben Diagnosen wie "Template passt nicht zur
@@ -285,7 +280,6 @@ def main() -> int:
         print_banner()
     if not _platform_ready():
         return 2
-    main_thread_id = get_current_thread_id()
 
     # Ordner erstellen
     ensure_sequences_dir()
@@ -337,7 +331,7 @@ def main() -> int:
     if not tui_start and not studio_open:
         _fall_back_to_console(state, first_start)
 
-    _event_loop(state, main_thread_id)
+    _event_loop(state)
     return 0
 
 
@@ -415,12 +409,12 @@ def _hotkey_handlers() -> dict:
         HOTKEY_REC_REGION: handle_rec_region,
         HOTKEY_REC_WATCH: handle_rec_watch,
         HOTKEY_SEQUENCE_STUDIO: handle_sequence_studio,
-        HOTKEY_SCAN_STUDIO: handle_scan_studio,
+        HOTKEY_STUDIO_SCANS: handle_studio_scans,
         HOTKEY_HELP: lambda _state: print_help(),
     }
 
 
-def _event_loop(state, main_thread_id) -> None:
+def _event_loop(state) -> None:
     """Holt Hotkeys ab und im Leerlauf die Befehle aus dem Studio — bis zum Beenden."""
     hotkey_handlers = _hotkey_handlers()
     try:
@@ -432,7 +426,7 @@ def _event_loop(state, main_thread_id) -> None:
                 time.sleep(0.01)
                 continue
             if hk_id == HOTKEY_QUIT:
-                handle_quit(state, main_thread_id)
+                handle_quit(state)
                 break
             if hk_id in hotkey_handlers:
                 run_safely("Hotkey-Aktion", hotkey_handlers[hk_id], state)

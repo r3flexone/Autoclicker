@@ -22,7 +22,7 @@ import autoclicker.mailbox as _bf
 
 def _sandbox_dir():
     """Ein vollständiger kleiner Bestand auf Platte, plus die Brücke darauf."""
-    sandbox_dir = _tf.mkdtemp(prefix="wz_")
+    sandbox_dir = _tf.mkdtemp(prefix="tools_")
     _os.chdir(sandbox_dir)
     _P("sequences").mkdir()
 
@@ -64,17 +64,17 @@ _app = (_web / "app.js").read_text(encoding="utf-8")
 _css = (_web / "styles.css").read_text(encoding="utf-8")
 check("jedes Werkzeug hat ein eigenes Linien-Icon",
       all(f'{k}:' in _app for k in ("check", "calibrate", "reclick"))
-      and "function wzIcon(" in _app)
+      and "function toolsIcon(" in _app)
 check("Werkzeugkarten statt einfacher Textknöpfe",
-      'class: "wz-nav "' in _app and ".wz-nav{" in _css)
+      'class: "tools-nav "' in _app and ".tools-nav{" in _css)
 check("der Inhalt beginnt mit einem gestalteten Werkzeugkopf",
-      "function wzHeader(" in _app and ".wz-hero{" in _css)
+      "function toolsHeader(" in _app and ".tools-hero{" in _css)
 check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
-      "function wzMetric(" in _app and ".wz-metrics{" in _css
-      and ".wz-success{" in _css)
+      "function toolsMetric(" in _app and ".tools-metrics{" in _css
+      and ".tools-success{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
-      'function wzInfo(' in _app and 'info(text, "werkzeug-" + title)' in _app
-      and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
+      'function toolsInfo(' in _app and 'info(text, "tool-" + title)' in _app
+      and ".tools-info-compact{" in _css and ".tools-info{" not in _css)
 # **Symbole sind SVG** (`ICONS`/`icon()`), keine Unicode-Zeichen: die kommen aus
 # der Systemschrift und stehen je nach Fenster verschieden gross und hoch. Vier
 # Knoepfe trugen ihr Zeichen bis zuletzt im Text (◷ ◎ ⧉ ✛).
@@ -185,6 +185,24 @@ try:
           tuple(_slot["scan_region"]) == (10, 20, 70, 80))
     check("nach dem Anwenden laeuft keine Kalibrierung mehr",
           _b.tool_data()["calibration"] == {})
+    check("und eine lesbare Datei erzeugt keinen Hinweis auf Lesefehler",
+          "nicht neu lesen" not in _res["message"])
+finally:
+    _os.chdir(_cwd)
+
+
+section("Studio-Werkzeuge: eine unlesbare Sequenzdatei leert die Punkte nach der Kalibrierung nicht")
+# Hier las `load_palette_points()` die Datei still und gab bei jedem Lesefehler
+# eine leere Liste zurück: das Fenster zeigte danach keinen einzigen Punkt, und
+# der nächste Druck auf Speichern schrieb diese Leere in die Sequenz.
+try:
+    _sandbox, _b = _sandbox_dir()
+    _before = [(p.id, p.x, p.y) for p in _b.points]
+    _b.filepath.write_text("{kaputt", encoding="utf-8")
+    check("die Rückgabe sagt, dass die Datei nicht zu lesen war",
+          _b._after_calibration() is False)
+    check("und die Punkte im Fenster bleiben, wie sie waren",
+          [(p.id, p.x, p.y) for p in _b.points] == _before)
 finally:
     _os.chdir(_cwd)
 
@@ -240,17 +258,22 @@ try:
     check("und kein Sequenz-Schritt daneben", not any("Seq " in w for w in _was))
     check("es sind genau so viele wie Punkte", len(_was) == 3)
 
-    # Gegenprobe: ein Schritt OHNE Punkt hat seine eigene Stelle und gehoert sehr
-    # wohl in die Liste - sonst raeumte der Fix zu viel weg.
+    # Dasselbe gilt fuer alles andere, was an einem Punkt haengt: der Else-Klick, der
+    # Bestaetigungsklick, Boss und Icon. Sie standen frueher mit ihren abgeleiteten
+    # Koordinaten neben dem Punkt - und ein Schritt ohne Punkt hat keine Stelle, die
+    # man listen koennte (die Datei kennt keine Koordinate am Schritt).
     from autoclicker.import_export import collect_click_positions
+    from autoclicker.models import BossProfile as _BP, ElseConfig as _EC
     _st = _ST()
-    _st.active_sequence = _SEQ(name="S", points=[_CP(id=1, x=10, y=10, name="A")],
-                               loop_phases=[_LP(name="L", steps=[
-        _SS(x=70, y=80, point_id=None), _SS(x=10, y=10, point_id=1)])])
+    _st.points = [_CP(id=1, x=10, y=10, name="A")]
+    _st.active_sequence = _SEQ(name="S", points=_st.points, loop_phases=[_LP(name="L", steps=[
+        _SS(x=70, y=80, point_id=None),
+        _SS(x=10, y=10, point_id=1, else_config=_EC("click", point_id=1, x=10, y=10))])])
+    _st.boss_library = [_BP(name="Drache", action="click", action_point_id=1,
+                              action_x=10, action_y=10)]
     _labels = [lb for lb, _, _ in collect_click_positions(_st)]
-    check("ein Schritt ohne point_id bleibt sichtbar",
-          any("Seq 'S'" in lb for lb in _labels))
-    check("und der mit point_id nicht", sum("Seq 'S'" in lb for lb in _labels) == 1)
+    check("es steht genau der Punkt da - nichts, was an ihm haengt",
+          _labels == ["Punkt #1 A"])
 finally:
     _os.chdir(_cwd)
 
@@ -288,10 +311,10 @@ try:
     check("auch JavaScript baut dort kein Info-i mehr",
           "aufnahme-info" not in _js)
     check("der Editor-Knopf verweist auf das Werkzeug",
-          'wzOpen("recording")' in _js)
+          'toolsOpen("recording")' in _js)
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
-          all(word in _js for word in ("wzStartRecording", "wzStopRecording",
-                                       "wzWatchRecording")))
+          all(word in _js for word in ("toolsStartRecording", "toolsStopRecording",
+                                       "toolsWatchRecording")))
     from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
           _b.tool_data()["recording_keys"] ==
@@ -308,13 +331,18 @@ try:
     check("Verwendungen stehen am Punkt", any("Block 1" in v for v in _p1["usages"]))
     _res = _b.tool_point_delete({"point_id": 1})
     check("ein verwendeter Punkt wird nicht gelöscht",
-          not _res["ok"] and _b._point_with_id(1) is not None)
+          not _res["ok"] and _b._point(1) is not None)
     check("der Löschschutz nennt die Verwendungen", bool(_res.get("usages")))
+    # Eine unlesbare ID kam aus dem Fenster und darf die Brücke nicht umwerfen —
+    # `int("abc")` stand früher in den Editor-Kommandos ungefangen da.
+    check("eine unlesbare Punkt-ID ergibt keinen Punkt statt eines Absturzes",
+          _b._point("abc") is None and _b._point(None) is None
+          and _b._point("1") is _b._point(1))
 
     _b._await_position = lambda: (333, 444, "")
     _b._color_at = staticmethod(lambda x, y: (12, 34, 56))
     _res = _b.tool_point_capture({"name": "Neu"})
-    _new = _b._point_with_id(_res.get("point_id"))
+    _new = _b._point(_res.get("point_id"))
     check("ein freier Punkt lässt sich im Studio aufnehmen",
           _res["ok"] and (_new.x, _new.y) == (333, 444))
     check("die Farbe wird dabei mitgemessen", _new.color == (12, 34, 56))
@@ -324,6 +352,27 @@ try:
     check("der Farbanalysator liefert RGB und Hex",
           _res["ok"] and _res["colors"][0]["rgb"] == [12, 34, 56]
           and _res["colors"][0]["hex"] == "#0C2238")
+
+    # „Zeigen & Farbe prüfen" mass schon immer — aber das Ergebnis stand in
+    # Feldern, die die Seite nie las; die Meldung sagte nur, wo die Maus steht.
+    import autoclicker.winapi as _WA
+    _moves, _orig_move = [], _WA.set_cursor_pos
+    _WA.set_cursor_pos = lambda x, y: _moves.append((x, y))
+    try:
+        _res = _b.tool_point_show({"point_id": _new.id})
+        check("Zeigen: die Maus fährt auf den Punkt", _moves == [(333, 444)])
+        check("Zeigen & Farbe prüfen: eine passende Farbe steht in der Meldung",
+              _res["ok"] and _res["kind"] == "ok" and "Farbe passt" in _res["message"])
+        _b._color_at = staticmethod(lambda x, y: (200, 10, 30))
+        _res = _b.tool_point_show({"point_id": _new.id})
+        check("... eine abweichende als Warnung, mit beiden Farben",
+              _res["kind"] == "warn" and "RGB(12, 34, 56)" in _res["message"]
+              and "RGB(200, 10, 30)" in _res["message"])
+        _b._color_at = staticmethod(lambda x, y: None)
+        check("... und eine unlesbare Farbe wird gesagt",
+              "nicht lesbar" in _b.tool_point_show({"point_id": _new.id})["message"])
+    finally:
+        _WA.set_cursor_pos = _orig_move
 finally:
     _os.chdir(_cwd)
 
@@ -354,9 +403,9 @@ finally:
 
 
 section("Studio-Live-Run: alle Laufentscheidungen sind verdrahtet")
-from autoclicker.handlers import COMMANDS as _BEFEHLE_NEU
+from autoclicker.handlers import COMMANDS as _HANDLER_COMMANDS
 check("Studio und Hauptprozess kennen dieselben Befehle",
-      sorted(_SB.ALL_COMMANDS) == sorted(_BEFEHLE_NEU))
+      sorted(_SB.ALL_COMMANDS) == sorted(_HANDLER_COMMANDS))
 check("Warte- und Block-Skip, sanftes Ende, Schrittmodus und Zeitplan sind im Vertrag",
       {"skip", "skip_step", "finish", "start_manual", "manual_action", "schedule"}
       <= set(_SB.RUN_COMMANDS))
@@ -444,7 +493,7 @@ try:
     check("die UI-Vorgaben speichern ohne safe_input",
           _saved == "Abrechnung mit den Göttern")
     from autoclicker.persistence import load_sequence_file as _load_sequence_file
-    _file = _rec.recording_file("Abrechnung mit den Göttern")
+    _file = _rec.sequence_file("Abrechnung mit den Göttern")
     _loaded = _load_sequence_file(_file)
     check("die Aufnahme wird wirklich zur Sequenz", _loaded is not None)
     # Der Ordner ist bereinigt, der NAME nicht: er wird angezeigt.

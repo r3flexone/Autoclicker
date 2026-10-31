@@ -136,7 +136,6 @@ try:
     save_sequence_file(_seq, sequence_file(_seq.name))
     _st.item_scans["Inventar"] = _ISC(name="Inventar")           # ohne Slots
     _rep = _cs(_st)
-    _by_text = {b.text: b for b in _rep.findings}
     _scan = next((b for b in _rep.findings if b.area == "Item-Scan 'Inventar'"), None)
     check("ein Scan ohne Slot zeigt in den Scans-Reiter",
           _scan is not None
@@ -277,7 +276,7 @@ try:
           and "if (!S.phases.some((phase) => phase.blocks.length)) target.appendChild(startCard());"
           in _web)
     check("sie nennt beide Wege und den Import",
-          'wzOpen("recording")' in _web and '"Ersten Block anlegen"' in _web
+          'toolsOpen("recording")' in _web and '"Ersten Block anlegen"' in _web
           and 'setView("share", true)' in _web)
     check("die Tafel gibt es, mit Taste und Knopf",
           'id="shortcuts"' in _web and 'e.key === "?"' in _web and 'id="btn-help"' in _web)

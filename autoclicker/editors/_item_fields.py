@@ -32,28 +32,27 @@ from ..utils import is_cancel, parse_non_negative_float, safe_input
 CANCELLED = object()
 
 
-def ask_priority(state: AutoClickerState, category: Optional[str],
-                     default_value: int = 1, *, cancellable: bool = False):
+def ask_priority(state: AutoClickerState, category: Optional[str], *,
+                 cancellable: bool = False):
     """Fragt die Priorität ab. Gibt die Zahl zurück — oder `CANCELLED`.
 
     `0` heisst „beste": das Item bekommt Priorität 1 und alle anderen derselben
     Kategorie rutschen einen Platz nach hinten. Ohne Kategorie ergibt das keinen
     Sinn (es gibt nichts zu verschieben) und wird gesagt statt still ignoriert.
 
-    Eine Fehleingabe behält die Vorgabe — dieselbe Haltung wie überall in den
-    Editoren: wiederholen statt abbrechen.
+    Eine Fehleingabe ergibt 1 — dieselbe Haltung wie überall in den
+    Editoren: nicht abbrechen, sondern mit der Vorgabe weitermachen.
     """
-    priority = max(1, int(default_value or 1))
     user_input = safe_input(
-        f"  Priorität (1=beste, 0=beste+verschieben, Enter={priority}): ").strip()
+        "  Priorität (1=beste, 0=beste+verschieben, Enter=1): ").strip()
     if cancellable and is_cancel(user_input):
         return CANCELLED
     if not user_input:
-        return priority
+        return 1
     try:
         value = int(user_input)
     except ValueError:
-        return priority
+        return 1
     if value != 0:
         return max(1, value)
     if not category:

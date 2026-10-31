@@ -29,7 +29,7 @@ max-complexity = 11
 
 # Was ANGESTREBT wird, aber (noch) nicht erzwungen ist: die Zeilenlaenge.
 # Gemessen, nicht geraten — in `autoclicker/`, `main.py` und `tools/` liegen
-# noch 214 Zeilen ueber 100 Spalten. Ein Lauf, der beim Aufmachen 200 Treffer
+# noch 204 Zeilen ueber 100 Spalten. Ein Lauf, der beim Aufmachen 200 Treffer
 # meldet, wird nicht gelesen, und ein rotes CI, das nur Altlasten beschreibt,
 # verdeckt echte Fehler im Rauschen — dieselbe Regel wie beim Ueberspringen
 # fehlender Testpakete. Der Editor liest den Wert trotzdem und zieht seine
@@ -40,9 +40,13 @@ max-complexity = 11
 # Sinkt die Zahl auf null, gehoert die Regel in `select`.
 max-line-length = 100
 
+# `.claude` enthaelt lokale Arbeitsbaeume anderer Branches (Worktrees): eine
+# vollstaendige Repo-Kopie samt ihrer eigenen Funde. Ohne die Ausnahme meldet
+# `python -m flake8` ohne Argumente deren Zustand statt den dieses Baums.
 exclude =
     .git,
     .venv,
+    .claude,
     __pycache__,
     build,
     dist

@@ -149,7 +149,8 @@ def _read_tesseract(img: 'Image.Image', languages: list[str] = None,
                      min_confidence: float = 0.3) -> list[tuple[str, float]]:
     """Liest Text mit Tesseract."""
     lang_str = "+".join(languages) if languages else "eng"
-    data = _pytesseract_mod.image_to_data(img, long_text=lang_str, output_type=_pytesseract_mod.Output.DICT)
+    data = _pytesseract_mod.image_to_data(
+        img, lang=lang_str, output_type=_pytesseract_mod.Output.DICT)
 
     texts = []
     for i, text in enumerate(data["text"]):
@@ -207,10 +208,9 @@ def detect_boss_name(
 
     # Kein bekannter Boss — prüfe ob ein Text mit hoher Konfidenz als neuer Name gilt
     new_candidate = None
-    if texts:
-        best_text, best_conf = texts[0]  # bereits nach Konfidenz absteigend sortiert
-        if best_conf >= new_boss_min_confidence and len(best_text.strip()) >= 3:
-            new_candidate = best_text.strip()
+    best_text, best_conf = texts[0]  # bereits nach Konfidenz absteigend sortiert
+    if best_conf >= new_boss_min_confidence and len(best_text.strip()) >= 3:
+        new_candidate = best_text.strip()
 
     return False, None, full_text, duration_ms, new_candidate
 

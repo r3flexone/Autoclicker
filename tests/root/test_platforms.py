@@ -16,6 +16,7 @@ from test_support import install_platform_stubs
 
 install_platform_stubs()
 
+from autoclicker import winapi
 from autoclicker.platforms import load_backend
 from autoclicker.platforms.base import BACKEND_FUNCTIONS
 from autoclicker.platforms.common import PlatformError
@@ -39,7 +40,6 @@ class LinuxBackendTests(unittest.TestCase):
     def test_facade_exportiert_backend_und_gemeinsame_konstanten(self):
         if not sys.platform.startswith("linux"):
             self.skipTest("Fassade verwendet auf diesem Runner das Windows-Backend")
-        from autoclicker import winapi
         self.assertIs(winapi.capture_screen, linux_x11.capture_screen)
         self.assertEqual("Autoclicker.SequenzStudio", winapi.APP_ID)
 
@@ -75,11 +75,11 @@ class LinuxBackendTests(unittest.TestCase):
             self.assertFalse(linux_x11.register_hotkeys())
 
     def test_hotkey_listener_stellt_ids_in_die_event_queue(self):
-        erfasst = {}
+        captured = {}
 
         class Listener:
             def __init__(self, callbacks):
-                erfasst.update(callbacks)
+                captured.update(callbacks)
 
             def start(self):
                 return None
@@ -92,23 +92,103 @@ class LinuxBackendTests(unittest.TestCase):
                         clear=True), patch.object(
                             linux_x11, "_pynput", return_value=(Keyboard, object())):
             self.assertTrue(linux_x11.register_hotkeys())
-            erfasst["<ctrl>+<alt>+a"]()
+            captured["<ctrl>+<alt>+a"]()
             self.assertEqual(1, linux_x11.poll_hotkey())
 
-    def test_fensteraufloesung_bevorzugt_exakten_titel(self):
-        window = [
-            ("Idle Clans - Hilfe", (0, 0, 100, 100), 1),
-            ("Idle Clans", (200, 100, 500, 400), 2),
-        ]
-        with patch.object(linux_x11, "list_windows", return_value=window):
-            self.assertEqual(2, linux_x11.resolve_window("Idle Clans")[2])
+    def test_tastaturhook_ignoriert_tasten_bei_gehaltenem_alt_oder_strg(self):
+        """Der Hook baut seine Modifikator-Mengen aus echten pynput-Namen.
+
+        Der Fake kennt nur, was pynput kennt: ein erfundener Name wie
+        `Key.old` (statt `Key.alt`) wirft hier einen AttributeError, den der
+        `except` im Hook nicht faengt — die Tastatur-Aufnahme waere unter
+        Linux tot. Gehaltenes ALT bzw. STRG darf keinen Tastendruck melden
+        (so landen die Marker-Hotkeys nicht in der Aufnahme).
+        """
+        import enum
+
+        class Key(enum.Enum):
+            ctrl = 1
+            ctrl_l = 2
+            ctrl_r = 3
+            alt = 4
+            alt_l = 5
+            alt_r = 6
+            alt_gr = 7
+            enter = 8
+            tab = 9
+            space = 10
+            esc = 11
+            backspace = 12
+            delete = 13
+            left = 14
+            right = 15
+            up = 16
+            down = 17
+            f1 = 18
+            f2 = 19
+            f3 = 20
+            f4 = 21
+            f5 = 22
+            f6 = 23
+            f7 = 24
+            f8 = 25
+            f9 = 26
+            f10 = 27
+            f11 = 28
+            f12 = 29
+
+        class Letter:
+            def __init__(self, char):
+                self.char = char
+
+        captured = {}
+
+        class Listener:
+            def __init__(self, on_press, on_release):
+                captured["press"] = on_press
+                captured["release"] = on_release
+
+            def start(self):
+                return None
+
+            def stop(self):
+                return None
+
+        class Keyboard:
+            pass
+
+        Keyboard.Key = Key
+        Keyboard.Listener = Listener
+
+        reported = []
+        linux_x11._keyboard_listener = None
+        try:
+            with patch.object(linux_x11, "_pynput",
+                              return_value=(Keyboard, object())):
+                self.assertTrue(linux_x11.install_keyboard_hook(reported.append))
+            press, release = captured["press"], captured["release"]
+
+            press(Letter("a"))
+            self.assertEqual(["a"], reported)
+
+            for modifier in (Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
+                             Key.ctrl, Key.ctrl_l, Key.ctrl_r):
+                press(modifier)
+                press(Letter("b"))
+                release(modifier)
+            self.assertEqual(["a"], reported)
+
+            press(Letter("c"))
+            self.assertEqual(["a", "c"], reported)
+        finally:
+            linux_x11._keyboard_listener = None
 
     def test_linux_pixelmessung_nutzt_plattformaufnahme(self):
         """Die Pixelmessung geht durchs Backend — nicht an ihm vorbei.
 
         `PILLOW_AVAILABLE` wird mitgesetzt: geprueft wird die WEITERGABE, und die
         haengt nicht daran, ob Pillow installiert ist. Ohne den Patch faellt der
-        Test in der `without`-Variante um, obwohl an der Weitergabe nichts fehlt -
+        Test in der `ohne`-Variante um, obwohl an der Weitergabe nichts fehlt -
         ein roter Test, der nur die Testumgebung meldet, verdeckt echte.
         """
         from autoclicker import imaging
@@ -152,6 +232,75 @@ class WindowsBackendTests(unittest.TestCase):
         with patch.object(windows.user32, "GetCursorPos", return_value=False):
             with self.assertRaisesRegex(PlatformError, "Mausposition"):
                 windows.get_cursor_pos()
+
+
+class FacadeHelperTests(unittest.TestCase):
+    """Was nur aus Systemaufrufen folgt, steht einmal in `winapi` — für beide Backends.
+
+    Die Primitiven kommen aus `winapi._backend`, dem Backend dieses Rechners; die
+    Tests füttern sie mit festen Daten und laufen so auf Windows und Linux gleich.
+    """
+
+    @staticmethod
+    def state(enabled=True, x=5, y=5):
+        from types import SimpleNamespace
+        return SimpleNamespace(config=SimpleNamespace(
+            failsafe_enabled=enabled, failsafe_x=x, failsafe_y=y))
+
+    def test_backend_vertrag_enthaelt_nur_systemaufrufe(self):
+        derived = {"resolve_window", "get_virtual_origin",
+                   "get_screen_center", "check_failsafe"}
+        self.assertEqual(set(), derived & set(BACKEND_FUNCTIONS))
+        for backend in (linux_x11, windows):
+            self.assertEqual([], [name for name in derived
+                                  if hasattr(backend, name)], backend.__name__)
+        for name in derived:
+            self.assertTrue(callable(getattr(winapi, name)), name)
+
+    def test_fensteraufloesung_bevorzugt_exakten_titel(self):
+        window = [
+            ("Idle Clans - Hilfe", (0, 0, 100, 100), 1),
+            ("Idle Clans", (200, 100, 500, 400), 2),
+        ]
+        with patch.object(winapi._backend, "list_windows", return_value=window):
+            self.assertEqual(2, winapi.resolve_window("Idle Clans")[2])
+
+    def test_fensteraufloesung_nimmt_instanz_und_sonst_aehnlichste_lage(self):
+        window = [
+            ("Spiel", (0, 0, 100, 100), 1),
+            ("Spiel", (500, 500, 600, 600), 2),
+        ]
+        with patch.object(winapi._backend, "list_windows", return_value=window):
+            self.assertEqual(2, winapi.resolve_window("Spiel", 1)[2])
+            # Index weg: das Fenster, das der gemerkten Lage am nächsten liegt.
+            self.assertEqual(2, winapi.resolve_window("Spiel", 7, (490, 490, 590, 590))[2])
+            self.assertEqual(1, winapi.resolve_window("Spiel", 7)[2])
+            self.assertIsNone(winapi.resolve_window("Anderes"))
+            self.assertIsNone(winapi.resolve_window("  "))
+
+    def test_mitte_und_ursprung_fallen_der_reihe_nach_zurueck(self):
+        backend = winapi._backend
+        with patch.object(backend, "get_virtual_desktop", return_value=(-100, -50, 300, 150)):
+            self.assertEqual((-100, -50), winapi.get_virtual_origin())
+            self.assertEqual((100, 50), winapi.get_screen_center())
+        with patch.object(backend, "get_virtual_desktop", return_value=None), \
+                patch.object(backend, "get_screen_size", return_value=(1000, 600)):
+            self.assertEqual((0, 0), winapi.get_virtual_origin())
+            self.assertEqual((500, 300), winapi.get_screen_center())
+        with patch.object(backend, "get_virtual_desktop", return_value=None), \
+                patch.object(backend, "get_screen_size", return_value=None):
+            self.assertEqual((960, 540), winapi.get_screen_center())
+
+    def test_failsafe_ecke_ausgeschaltet_und_ohne_mausposition(self):
+        backend = winapi._backend
+        with patch.object(backend, "get_cursor_pos", return_value=(0, 0)):
+            self.assertTrue(winapi.check_failsafe(self.state()))
+            self.assertFalse(winapi.check_failsafe(self.state(enabled=False)))
+        with patch.object(backend, "get_cursor_pos", return_value=(400, 300)):
+            self.assertFalse(winapi.check_failsafe(self.state()))
+        # Ohne bekannte Mausposition ist Weiterklicken nicht sicher.
+        with patch.object(backend, "get_cursor_pos", side_effect=PlatformError("weg")):
+            self.assertTrue(winapi.check_failsafe(self.state()))
 
 
 if __name__ == "__main__":

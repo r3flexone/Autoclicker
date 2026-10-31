@@ -111,16 +111,16 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("manifest.json", json.dumps(_manifest_data(version=999)))
             zf.writestr("points.json", json.dumps([{"id": 2, "x": 1, "y": 1}]))
         state = AutoClickerState()
-        state.points = [ClickPoint(5, 5, "Alt", 1)]
 
-        ok, _ = import_bundle(state, "bundle.zip", import_config=False)
+        ok, message = import_bundle(state, "bundle.zip", import_config=False)
 
         self.assertFalse(ok)
-        self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
+        self.assertIn("Unbekannte Version", message)
         self.assertFalse(Path("points.json").exists())
+        self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
 
-    def test_failed_import_rolls_back_state_and_files(self):
-        from autoclicker import import_export as module_name
+    def test_failed_import_rolls_back_files(self):
+        from autoclicker import import_export as import_export_module
         original = _write_sequence("inventory")
         before = (original / "sequence.json").read_bytes()
         manifest = _manifest_data()
@@ -131,25 +131,23 @@ class ImportExportSecurityTest(unittest.TestCase):
             zf.writestr("sequences/A/templates/neu.png", b"neues Bild")
             zf.writestr("sequences/Z/sequence.json", json.dumps(_sequence_data("broken")))
         state = AutoClickerState()
-        state.points = [ClickPoint(5, 5, "Alt", 1)]
-        real_copytree = module_name.shutil.copytree
+        real_copytree = import_export_module.shutil.copytree
         mutated = []
 
-        def kopieren(source, target, *args, **kwargs):
+        def copy_tree(source, target, *args, **kwargs):
             if Path(target).name == "broken":
                 mutated.append((original / "templates/neu.png").read_bytes())
                 raise OSError("Fehler nach dem ersten ersetzten Ordner")
             return real_copytree(source, target, *args, **kwargs)
 
-        with patch.object(module_name.shutil, "copytree", side_effect=kopieren):
+        with patch.object(import_export_module.shutil, "copytree", side_effect=copy_tree):
             ok, _ = import_bundle(state, "bundle.zip", import_config=False, merge=False)
 
         self.assertFalse(ok)
         self.assertEqual(mutated, [b"neues Bild"])
-        self.assertEqual([(p.id, p.name) for p in state.points], [(1, "Alt")])
         self.assertEqual((original / "sequence.json").read_bytes(), before)
         self.assertFalse((original / "templates/neu.png").exists())
-        self.assertFalse(Path("sequences/defekt").exists())
+        self.assertFalse(Path("sequences/broken").exists())
 
     def test_windows_archivpfade_werden_vor_dem_schreiben_abgelehnt(self):
         from autoclicker.import_export import _safe_bundle_path
@@ -250,7 +248,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         sequence = Sequence(name="Farm")
         state.active_sequence = sequence
         slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
-        state.global_slots[slot.name] = slot
+        state.scan_slots[slot.name] = slot
         state.item_scans["Live"] = ItemScanConfig(
             name="Live", slots=[slot], capture_window_title="Mein Spiel",
             capture_window_rect=(0, 0, 100, 100), owner_sequence="Farm",
@@ -266,6 +264,27 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual(
             state.item_scans["Live"].capture_window_rect, (50, -10, 150, 90))
         self.assertEqual(counts["item_scans"], 1)
+
+    def test_ohne_slots_bleibt_auch_der_fenster_anker_stehen(self):
+        # Die Laufzeit rechnet die Slots vom Anker auf die heutige Fensterlage um.
+        # Wanderte der Anker allein (die Voreinstellung im Studio), hielt sie die
+        # alten Slots für schon verschoben: jeder lag um den Versatz daneben.
+        state = AutoClickerState()
+        state.active_sequence = Sequence(name="Farm")
+        slot = ItemSlot("Slot 1", (10, 20, 30, 40), (20, 30))
+        state.scan_slots[slot.name] = slot
+        state.item_scans["Live"] = ItemScanConfig(
+            name="Live", slots=[slot], capture_window_title="Mein Spiel",
+            capture_window_rect=(0, 0, 100, 100), owner_sequence="Farm",
+        )
+        transform = {"scale_x": 1.0, "scale_y": 1.0, "offset_x": 50, "offset_y": -10}
+
+        counts = calibrate_inventory(
+            state, transform, with_scans=True, with_sequences=False, with_slots=False)
+
+        self.assertEqual(slot.scan_region, (10, 20, 30, 40))
+        self.assertEqual(state.item_scans["Live"].capture_window_rect, (0, 0, 100, 100))
+        self.assertEqual(counts["item_scans"], 0)
 
     # Die folgenden fünf hielten bis zum Zerlegen von `import_export.py` keine
     # Prüfung: man konnte die Sicherung herausnehmen, und alles blieb grün.
@@ -291,12 +310,12 @@ class ImportExportSecurityTest(unittest.TestCase):
         self.assertEqual([], list(Path(".").glob("sequences/*/sequence.json")))
 
     def test_ein_buendel_ueber_der_gesamtgroesse_wird_abgelehnt(self):
-        from autoclicker import import_export as module_name
+        from autoclicker import import_export as import_export_module
         self._folder_bundle([
             ("sequences/farm/sequence.json", json.dumps(_sequence_data("farm"))),
             ("sequences/farm/templates/a.png", b"x" * 40),
         ])
-        with patch.object(module_name, "MAX_BUNDLE_TOTAL_SIZE", 60):
+        with patch.object(import_export_module, "MAX_BUNDLE_TOTAL_SIZE", 60):
             ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
         self.assertFalse(ok)
         self.assertIn("zu groß", message)
@@ -307,7 +326,7 @@ class ImportExportSecurityTest(unittest.TestCase):
         # misst das Ziel. Hier wird die erste ausgehängt, um die zweite zu sehen.
         import tempfile as tempfile_module
         from pathlib import PurePosixPath
-        from autoclicker import import_export as module_name
+        from autoclicker import import_export as import_export_module
         inner = Path("tief/innen")
         inner.mkdir(parents=True)
         real = tempfile_module.TemporaryDirectory
@@ -319,25 +338,28 @@ class ImportExportSecurityTest(unittest.TestCase):
         def names_only(name):
             return PurePosixPath(name) if name.startswith("sequences/") else None
 
-        with patch.object(module_name, "_safe_bundle_path", names_only), \
-                patch.object(module_name.tempfile, "TemporaryDirectory",
+        with patch.object(import_export_module, "_safe_bundle_path", names_only), \
+                patch.object(import_export_module.tempfile, "TemporaryDirectory",
                              lambda prefix="": real(prefix=prefix, dir=inner)):
             ok, message = import_bundle(AutoClickerState(), "bundle.zip", import_config=False)
         self.assertFalse(ok)
         self.assertIn("verlässt den Importordner", message)
         self.assertEqual([], list(inner.rglob("ausserhalb.txt")))
 
-    def test_else_klick_ohne_punkt_steht_in_der_kalibrier_vorschau(self):
+    def test_kalibrier_vorschau_listet_nur_die_punkte(self):
+        # Was an einem Punkt haengt (Schritt, Else-Klick, Bestaetigung, Boss, Icon),
+        # steht nicht daneben: doppelt gelistet versprach die Vorschau eine Umrechnung,
+        # die gar nicht stattfindet. Ein Else-Klick ohne Punkt hat keine Stelle.
         from autoclicker.import_export import collect_click_positions
         from autoclicker.models import ElseConfig, LoopPhase, SequenceStep
         state = AutoClickerState()
-        with_point = SequenceStep(point_id=3, else_config=ElseConfig("click", point_id=4))
+        state.points = [ClickPoint(10, 20, "Knopf", 3)]
+        with_point = SequenceStep(point_id=3, else_config=ElseConfig("click", point_id=3))
         without = SequenceStep(point_id=3, else_config=ElseConfig("click", x=70, y=80))
         state.active_sequence = Sequence(
-            name="Farm", loop_phases=[LoopPhase("L", [with_point, without])])
-        positions = collect_click_positions(state)
-        self.assertIn(("Seq 'Farm'/L #2 (else)", 70, 80), positions)
-        self.assertFalse(any(label.endswith("#1 (else)") for label, _x, _y in positions))
+            name="Farm", loop_phases=[LoopPhase("L", [with_point, without])],
+            points=state.points)
+        self.assertEqual([("Punkt #3 Knopf", 10, 20)], collect_click_positions(state))
 
     def test_kalibrieren_rechnet_die_geladene_sequenz_nur_einmal_um(self):
         # Die geladene Sequenz schreibt `save_points()` aus dem Speicher —

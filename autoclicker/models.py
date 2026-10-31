@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .config import AppConfig
+from .config import AppConfig, TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP
 
 # Der DATEI-Default fuer min_confidence: was gilt, wenn das Feld in der JSON fehlt.
 # Konstant und NICHT aus der Config abgeleitet - sonst kaeme ein weggelassenes Feld
@@ -23,7 +23,7 @@ DEFAULT_MIN_CONFIDENCE: float = 0.8
 # =============================================================================
 # Aktions-Typen (zentral, eine Quelle der Wahrheit).
 # ElseConfig, BossProfile und IconScanConfig teilen sich dieselben Aktionswerte —
-# die familienspezifischen Namen unten sind nur Aliase für Lesbarkeit/Kompat.
+# die familienspezifischen Namen unten sind nur Aliase für die Lesbarkeit.
 ACTION_CLICK = "click"              # Punkt klicken
 ACTION_KEY = "key"                  # Taste drücken
 ACTION_SKIP = "skip"                # Schritt überspringen
@@ -37,7 +37,6 @@ ELSE_SKIP_CYCLE = ACTION_SKIP_CYCLE
 ELSE_RESTART = ACTION_RESTART
 ELSE_CLICK = ACTION_CLICK
 ELSE_KEY = ACTION_KEY
-VALID_ELSE_ACTIONS = {ELSE_SKIP, ELSE_SKIP_CYCLE, ELSE_RESTART, ELSE_CLICK, ELSE_KEY}
 
 # Was eine Aktion tut, als Satzteil. Steht hier und nicht bei den Anzeigen, weil
 # es zwei davon gibt, die es brauchen und sich nicht kennen dürfen: die Karte im
@@ -53,14 +52,10 @@ ACTION_TEXT = {
     ACTION_ITEM_SCAN: "Item-Scan ausführen",
 }
 
-# pixel_timeout_action (Config)
-TIMEOUT_SKIP_CYCLE = "skip_cycle"
-TIMEOUT_RESTART = "restart"
-TIMEOUT_STOP = "stop"
-
-# Was die Timeout-Aktion tut, als Satzteil — aus demselben Grund hier wie
-# ACTION_TEXT: die Laufzeit schreibt sie in den Laufstatus, das Studio zeigt sie
-# im Inspektor an, und die beiden duerfen sich nicht kennen.
+# Was die Timeout-Aktion (`pixel_timeout_action`, Werte in config.py) tut, als
+# Satzteil — aus demselben Grund hier wie ACTION_TEXT: die Laufzeit schreibt sie
+# in den Laufstatus, das Studio zeigt sie im Inspektor an, und die beiden duerfen
+# sich nicht kennen.
 TIMEOUT_TEXT = {
     TIMEOUT_SKIP_CYCLE: "Zyklus abbrechen, nächster Zyklus",
     TIMEOUT_RESTART: "Sequenz neu starten",
@@ -77,11 +72,6 @@ TIMEOUT_TEXT = {
 # run = ausfuehren, skip = ueberspringen, continue = Schrittmodus aus,
 # step = ab hier Schritt fuer Schritt, stop = Lauf abbrechen.
 GATE_COMMANDS = ("run", "skip", "continue", "step", "stop")
-
-# consecutive_timeout_action (Config)
-CONSEC_STOP = "stop"
-CONSEC_QUIT = "quit"
-CONSEC_EXIT = "exit"
 
 # SequenceStep.item_scan_mode
 SCAN_MODE_ALL = "all"         # Bestes pro Kategorie
@@ -174,6 +164,18 @@ class ElseConfig:
     # wie es in der Datei steht. Vorher schrieb `resolve()` beim LADEN
     # `action = skip` hinein, und das naechste Speichern machte es dauerhaft.
     unresolved: bool = False
+
+    @property
+    def has_click_target(self) -> bool:
+        """Ob ein Else-Klick eine echte Stelle hat: einen Punkt, und der ist aufgelöst.
+
+        Fehlt eines davon, stehen x/y auf (0, 0) — die Bildschirmecke. Geprüft
+        wurde nur `unresolved`: ein Klick ohne gewählten Punkt (das Studio legt ihn
+        so an, bis man einen wählt) ging deshalb in die Ecke, und der Async-Pfad
+        des Boss-Watchers fragte nicht einmal `unresolved`. Beide Klickwege fragen
+        jetzt hier.
+        """
+        return self.point_id is not None and not self.unresolved
 
 
 @dataclass
@@ -540,8 +542,7 @@ class ItemProfile:
     # Editoren die erste Vorlage; weitere, groessenpassende Aufnahmen stehen hier.
     template_variants: list[str] = field(default_factory=list)
     # Das Profil bleibt vollständig im Scan gespeichert, kann für den Lauf aber
-    # vorübergehend geparkt werden. Hinter allen bisherigen Feldern, damit alte
-    # positionale Konstruktionen ihre Bedeutung behalten.
+    # vorübergehend geparkt werden.
     enabled: bool = True
 
     def template_names(self) -> list[str]:
@@ -583,7 +584,6 @@ class ItemSlot:
     # Der Slot bleibt mit Fläche, Klickpunkt und ID im Scan erhalten, kann für
     # den Lauf aber gezielt geparkt werden. Das ist kein zweiter Besitzbegriff:
     # er gehört weiterhin genau diesem Scan, nur `enabled=False` überspringt ihn.
-    # Hinter `id`, damit bestehende positionale Aufrufe kompatibel bleiben.
     enabled: bool = True
 
     def __str__(self) -> str:
@@ -855,7 +855,7 @@ class AutoClickerState:
     # übersprungen. Bewusst Laufzeit-Zustand statt Config - im Punkte-Menü
     # (CTRL+ALT+P -> 'manuell') umschaltbar. Mutation unter state.lock.
     step_mode: bool = False
-    # Wurde der manuelle Modus im Studio eingeschaltet, kommen die vier
+    # Wurde der manuelle Modus im Studio eingeschaltet, kommen die fünf
     # Entscheidungen über den Befehls-Briefkasten statt von stdin. Das Event
     # weckt den Worker; der String wird immer unter `state.lock` gelesen und
     # geschrieben. Der TUI-Modus bleibt davon unberührt.
@@ -888,21 +888,22 @@ class AutoClickerState:
     # geaendert hatte. Es gibt EINE geladene Sequenz — `active_sequence` —,
     # alles andere steht auf der Platte und wird von dort gelesen.
 
-    # Globale Slots und Items (wiederverwendbar)
-    global_slots: dict[str, ItemSlot] = field(default_factory=dict)
-    global_items: dict[str, ItemProfile] = field(default_factory=dict)
+    # Arbeitsansichten der Konsole auf die Slots und Items des Item-Scans
+    # `active_item_scan` — der Scan besitzt sie, hier liegt keine zweite Liste.
+    scan_slots: dict[str, ItemSlot] = field(default_factory=dict)
+    scan_items: dict[str, ItemProfile] = field(default_factory=dict)
 
     # Item-Scan Konfigurationen (verknüpft Slots + Items)
     item_scans: dict[str, ItemScanConfig] = field(default_factory=dict)
-    # TUI-Arbeitskontext. `global_slots/items` sind nur Ansichten auf diesen Scan.
+    # TUI-Arbeitskontext: der Scan, auf den `scan_slots`/`scan_items` zeigen.
     active_item_scan: str = ""
 
     # Boss-Scan Konfigurationen (Boss erkennen → bedingte Aktion)
     boss_scans: dict[str, BossScanConfig] = field(default_factory=dict)
 
-    # Globale Boss-Bibliothek: gilt zusätzlich in JEDEM Boss-Scan.
+    # Boss-Bibliothek der aktiven Sequenz: gilt zusätzlich in JEDEM Boss-Scan.
     # Lokale Bosse eines Scans haben bei Namensgleichheit Vorrang.
-    global_bosses: list[BossProfile] = field(default_factory=list)
+    boss_library: list[BossProfile] = field(default_factory=list)
 
     # Icon-Scan Konfigurationen (Symbol/Icon erkennen → Aktion)
     icon_scans: dict[str, IconScanConfig] = field(default_factory=dict)
@@ -974,7 +975,6 @@ class AutoClickerState:
 
     # LLM Async-Thread (Boss-Scan/Watcher läuft im Hintergrund)
     llm_thread: Optional[threading.Thread] = None
-    llm_action_event: threading.Event = field(default_factory=threading.Event)
 
     # Set für einmalige Konfigurations-Warnungen pro Worker-Lauf (z.B. "use_llm aber !llm_enabled").
     # Wird beim Sequenz-Start in sequence_worker geleert. Zugriff unter state.lock.
@@ -1032,8 +1032,8 @@ class AutoClickerState:
     # uebersprungener. Reine Anzeige — das Ergebnis steht weiterhin in
     # `reclick_set`.
     reclick_history: list = field(default_factory=list)
-    # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE,
-    # Rad). Steht im Banner und im Studio — eine Runde, die schweigt, was sie
+    # Wie viele Stellen die Runde NICHT erreicht (beobachtete Pixel, ELSE).
+    # Steht im Banner und im Studio — eine Runde, die schweigt, was sie
     # auslaesst, sieht vollstaendiger aus als sie ist.
     reclick_other: int = 0
     # Der Fenstertitel, in dem ein Klick als Punkt zählt (aus

@@ -7,7 +7,7 @@ Gold/h unter Beruecksichtigung der Account-Upgrades und exportiert nach Excel.
 Was gerechnet wird, welche Annahmen ingame verifiziert sind und was noch offen ist:
 siehe README.md. Alles Einstellbare steht in config.py.
 
-    pip install pandas requests openpyxl matplotlib
+    pip install -r market_analysis/requirements.txt   # matplotlib ist optional (nur fuer den Chart)
     python market_analysis/analysis.py
 """
 
@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import requests
@@ -27,58 +28,64 @@ try:
     from .config import (
         AUTO_COOK_CHANCE, AUTO_COOK_SOURCE_SKILL, COMPREHENSIVE_AVG_FIELDS,
         COMPREHENSIVE_URL_TEMPLATE, COMPREHENSIVE_VOLUME_FIELD, EXPORT_PATH,
-        GAME_URL, HISTORY_ENABLED, HISTORY_ORDERBOOK_TOP_N, HISTORY_PATH,
+        GAME_URL, HISTORY_ENABLED, HISTORY_PATH,
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL,
+        ORDERBOOK_QUOTA_RETRIES, OUTLIER_PRICE_FACTOR, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
-        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASES, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
-        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
         THIN_BID_HOURS, net_player_price,
     )
     from .orderbook import (
-        buy_levels_from_depth, patience_analysis as geduld_analyse,
-        price_position as preis_position, sell_levels_from_depth, walk_orderbook,
+        NO_PATIENCE, bids_for_measurement, buy_levels_from_depth, corrected_top,
+        implausible_top, patience_analysis, price_position, sell_levels_from_depth,
+        walk_orderbook,
     )
     from .pricing import (
-        thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, wide_spread,
+        thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
+        cost_per_action, export_market_values, price_anomaly, resolve_chain,
+        weighted_gold, wide_spread,
     )
     from .recipes import build_all_recipes
-    from .extended_json import load as extended_json_laden
-    from . import history as historie
+    from .extended_json import load as load_extended_json
+    from . import history
 except ImportError:  # direkter Skriptstart bleibt unterstützt
     from config import (  # type: ignore
         AUTO_COOK_CHANCE, AUTO_COOK_SOURCE_SKILL, COMPREHENSIVE_AVG_FIELDS,
         COMPREHENSIVE_URL_TEMPLATE, COMPREHENSIVE_VOLUME_FIELD, EXPORT_PATH,
-        GAME_URL, HISTORY_ENABLED, HISTORY_ORDERBOOK_TOP_N, HISTORY_PATH,
+        GAME_URL, HISTORY_ENABLED, HISTORY_PATH,
         LIQUIDITY_WARNING_RATIO, LONGTERM_AVERAGES_REQUEST_DELAY_S,
         MARKET_DROP_WARNING_RATIO, MARKET_STATS, MARKET_URL, MARKET_VALUE_PATH,
         MAX_AVG_DEVIATION_RATIO, MAX_PLAUSIBLE_ACTION_SEC, MAX_SPREAD_RATIO,
-        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL, OUTPUT_DIR,
+        MIN_PLAUSIBLE_ACTION_SEC, NPC_MARKER_COLOR, ORDERBOOK_PARALLEL,
+        ORDERBOOK_QUOTA_RETRIES, OUTLIER_PRICE_FACTOR, OUTPUT_DIR,
         PRICE_POSITION_HINT_RATIO, PRICE_SENSITIVITY_CHART_PATH,
         PRICE_SENSITIVITY_SERIES_COLORS, PRICE_SENSITIVITY_SERIES_STYLES,
-        PRICE_SENSITIVITY_TOP_N, RANKING_BASIS, REASON_CANDIDATES,
+        PRICE_SENSITIVITY_TOP_N, RANKING_BASES, RANKING_BASIS, REASON_CANDIDATES,
         RUN_STATS_HISTORY_LIMIT, RUN_STATS_PATH, SHOW_LONGTERM_AVERAGES,
         SHOW_PRICE_SENSITIVITY_CHART, SHOW_REASON_ANALYSIS,
-        SKILL_RELIABILITY, SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
+        SMELTING_MAGIC_EXCLUDED_ITEM_NAMES, STRUCTURAL_STATS,
         THIN_BID_HOURS, net_player_price,
     )
     from orderbook import (  # type: ignore
-        buy_levels_from_depth, patience_analysis as geduld_analyse,
-        price_position as preis_position, sell_levels_from_depth, walk_orderbook,
+        NO_PATIENCE, bids_for_measurement, buy_levels_from_depth, corrected_top,
+        implausible_top, patience_analysis, price_position, sell_levels_from_depth,
+        walk_orderbook,
     )
     from pricing import (  # type: ignore
-        thin_top_bid, effective_sell_price, is_player_shop_tradeable,
-        cost_per_action, price_anomaly, resolve_chain, wide_spread,
+        thin_top_bid, chain_reliability, effective_sell_price, is_player_shop_tradeable,
+        cost_per_action, export_market_values, price_anomaly, resolve_chain,
+        weighted_gold, wide_spread,
     )
     from recipes import build_all_recipes  # type: ignore
-    from extended_json import load as extended_json_laden  # type: ignore
-    import history as historie  # type: ignore
+    from extended_json import load as load_extended_json  # type: ignore
+    import history  # type: ignore
 
 
 # ---------------------------------------------------------------
@@ -131,7 +138,7 @@ def load_market_map() -> dict:
 
 def load_game_data() -> dict:
     """Game-Data-Endpoint liefert MongoDB-Shell-JSON (`ObjectId(...)`, `NumberLong(...)`)
-    - `extended_json.laden` uebersetzt es und meldet, was es nicht kannte.
+    - `extended_json.load` uebersetzt es und meldet, was es nicht kannte.
 
     **Ein Spiel-Update darf den Lauf nicht beenden.** Hier stand eine Regex, die
     genau `ObjectId` kannte; als die Achievements `NumberLong` mitbrachten, brach
@@ -139,7 +146,7 @@ def load_game_data() -> dict:
     Wert uebernommen und als Warnung ausgegeben - der Lauf geht weiter."""
     resp = _get_json(GAME_URL, timeout=60, context="Game-Data-Endpoint")
     try:
-        game, hints = extended_json_laden(resp.text)
+        game, hints = load_extended_json(resp.text)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Game-Data-Endpoint: Antwort ist auch nach der Uebersetzung "
                            f"der Extended-JSON-Konstrukte kein gueltiges JSON ({exc}). "
@@ -164,7 +171,6 @@ def build_item_info_map(game: dict) -> dict:
             "base_value": it.get("BaseValue", 0),
             "can_trade": not it.get("CanNotBeTraded", False),
             "can_sell_to_npc": not it.get("CanNotBeSoldToGameShop", False),
-            "market_buy_limit": it.get("PlayerMarketBuyLimit", 0),
         }
     return info
 
@@ -224,8 +230,13 @@ def build_fish_to_cooked_map(all_recipes: list, recipe_by_output: dict) -> dict:
     return fish_to_cooked
 
 
+# Gemeint ist ein Markt ohne Eintrag: alles 0. Nur LESEN - wer ihn aendern will,
+# nimmt eine Kopie (`dict(EMPTY_MARKET)`).
+EMPTY_MARKET = {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
+
+
 # ============================================================
-# 7. EINZELSCHRITT-ANALYSE ("Rohdaten"-Tab)
+# EINZELSCHRITT-ANALYSE ("Rohdaten"-Tab)
 # ============================================================
 
 def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dict) -> pd.DataFrame:
@@ -246,10 +257,10 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         # anbietet. Ohne sie verloere ein 3-Gold-Item bei jedem Vergleich 1%, das es
         # im Spiel nie zahlt.
         channel = effective_sell_price(r["item_id"], market_map, item_info_map, items_per_hour)
-        sell_price, sold_to_npc = channel.price_value, channel.to_npc
+        sell_price, sold_to_npc = channel.price, channel.to_npc
 
         # m wird fuer Zusatzinfos (Avg-Preis, Volumen, Anomalie-Checks) weiterverwendet.
-        m = market_map.get(r["item_id"]) or {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
+        m = market_map.get(r["item_id"]) or EMPTY_MARKET
 
         # Rohdaten hat keinen Hard-Filter: jedes Recipe bleibt sichtbar, der Grund steht
         # im Klartext in "AusschlussGrund". InKetten=True heisst nur "verkaufbar" - das
@@ -266,18 +277,18 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
         revenue_per_hour_avg = (items_per_hour * net_player_price(m["avg"], items_per_hour)
                                 if (not sold_to_npc and m["avg"] > 0) else None)
 
-        costs_value = cost_per_action(r["costs"], market_map, actions_per_hour, item_info_map)
-        max_liquidity_ratio = costs_value.max_liquidity
+        picture = cost_per_action(r["costs"], market_map, actions_per_hour, item_info_map)
+        max_liquidity_ratio = picture.max_liquidity
         if not sold_to_npc and m["buyVol"] > 0:
             max_liquidity_ratio = max(max_liquidity_ratio, items_per_hour / m["buyVol"])
 
-        cost_per_hour = costs_value.costs_value * actions_per_hour
+        cost_per_hour = picture.costs * actions_per_hour
 
         # **Ein unbekannter Zutatenpreis ist keine kostenlose Zutat.** Frueher fiel die
         # Zeile hier stillschweigend mit 0 durch, und das Rezept stand mit vollem
         # Gewinn in der Rangliste. Jetzt bleibt Gold/h leer, und die fehlende Zutat
         # steht beim Namen im Grund.
-        if costs_value.complete:
+        if picture.complete:
             profit_per_hour = gold_per_hour - cost_per_hour
             profit_per_hour_avg = (revenue_per_hour_avg - cost_per_hour
                                    if revenue_per_hour_avg is not None else None)
@@ -287,16 +298,16 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             profit_per_hour = profit_per_hour_avg = None
             gold_per_unit = gold_per_xp = None
             cost_per_hour = None
-            missing_flag = ", ".join(costs_value.missing_ones[:3]) or "unbekannt"
+            missing_flag = ", ".join(picture.missing_ones[:3]) or "unbekannt"
             reason = f"Zutatenpreis unbekannt ({missing_flag})"
             exclusion_reason = f"{exclusion_reason} + {reason}" if exclusion_reason else reason
 
         output_anomaly = price_anomaly(m) if not sold_to_npc else False
         output_spread_warning = wide_spread(m) if not sold_to_npc else False
 
-        liquidity_warning = max_liquidity_ratio > LIQUIDITY_WARNING_RATIO or costs_value.market_unhealthy
-        price_anomaly_flag = output_anomaly or costs_value.anomaly_price
-        spread_warning_flag = output_spread_warning or costs_value.spread_warning_value
+        liquidity_warning = max_liquidity_ratio > LIQUIDITY_WARNING_RATIO or picture.market_unhealthy
+        price_anomaly_flag = output_anomaly or picture.anomaly_price
+        spread_warning_flag = output_spread_warning or picture.spread_warning
 
         # Duennes Top-Gebot: das Item wird trotzdem am Markt verkauft (die Tiefe
         # darunter kennt der Bulk-Endpoint nicht), aber die Stunde geht dort nicht
@@ -307,7 +318,7 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
 
         if not in_chains:
             status = "Ausgeschlossen"
-        elif not costs_value.complete:
+        elif not picture.complete:
             status = "Ausgeschlossen"
         else:
             status = "OK"
@@ -341,21 +352,21 @@ def build_single_step_df(all_recipes: list, market_map: dict, item_info_map: dic
             "MarketAsk": m["sell"],
             "Handelbar": can_trade,
             "NPCVerkaufMoeglich": can_sell_npc,
-            "CostDataComplete": costs_value.complete,
-            "FehlendeZutaten": ", ".join(costs_value.missing_ones),
+            "CostDataComplete": picture.complete,
+            "FehlendeZutaten": ", ".join(picture.missing_ones),
             "TopGebotDuenn": thin_bid,
-            "InKetten": in_chains and costs_value.complete,
+            "InKetten": in_chains and picture.complete,
             "Status": status,
             "AusschlussGrund": exclusion_reason,
             "LiquidityWarning": liquidity_warning,
             "LiquidityRatio": round(max_liquidity_ratio, 1),
-            "IngredientMarketUnhealthy": costs_value.market_unhealthy,
+            "IngredientMarketUnhealthy": picture.market_unhealthy,
             "PriceAnomaly": price_anomaly_flag,
             "OutputPriceAnomaly": output_anomaly,
-            "IngredientPriceAnomaly": costs_value.anomaly_price,
+            "IngredientPriceAnomaly": picture.anomaly_price,
             "SpreadWarning": spread_warning_flag,
             "OutputSpreadWarning": output_spread_warning,
-            "IngredientSpreadWarning": costs_value.spread_warning_value,
+            "IngredientSpreadWarning": picture.spread_warning,
             "BuyVol": m["buyVol"], "SellVol": m["sellVol"],
             "XP/h": xp_per_hour,
             "Gold per XP": gold_per_xp,
@@ -396,7 +407,7 @@ def merge_worst_case_single_step(df_best: pd.DataFrame, df_worst: pd.DataFrame) 
 
 
 # ============================================================
-# 8. KETTEN-ANALYSE ("Ketten" / "Realistisch_Farmbar"-Tabs)
+# KETTEN-ANALYSE ("Ketten" / "Realistisch_Farmbar"-Tabs)
 # ============================================================
 
 def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict, fish_to_cooked: dict) -> pd.DataFrame:
@@ -412,11 +423,11 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
 
         actions_per_hour = 3_600_000.0 / chain.time_ms
         channel = effective_sell_price(item_id, market_map, item_info_map, actions_per_hour)
-        sell_price, sold_to_npc = channel.price_value, channel.to_npc
+        sell_price, sold_to_npc = channel.price, channel.to_npc
         if sell_price <= 0:
             continue
 
-        m = market_map.get(item_id) or {"buy": 0, "sell": 0, "buyVol": 0, "sellVol": 0, "avg": 0}
+        m = market_map.get(item_id) or EMPTY_MARKET
         # Zwei verschiedene Dinge, die frueher vermischt waren und ein Item verworfen
         # haben, das bestens handelbar ist:
         #   erlaubt = das Item DARF im Player Shop gehandelt werden (API-Flag)
@@ -432,7 +443,7 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
         # `side_yield` steht pro Stueck Endprodukt, also mit derselben Rate wie alles
         # andere in dieser Zeile.
         side_yield_per_hour = actions_per_hour * chain.side_yield
-        cost_per_hour = actions_per_hour * chain.costs_value
+        cost_per_hour = actions_per_hour * chain.costs
 
         if chain.costs_known:
             profit_per_hour = revenue_per_hour + side_yield_per_hour - cost_per_hour
@@ -483,6 +494,13 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "Revenue/h": revenue_per_hour,
             "Revenue/h (Ø-Preis)": revenue_per_hour_avg,
             "Nebenertrag/h": side_yield_per_hour,
+            "Nebenprodukte": ", ".join(
+                f"{item_info_map.get(item, {}).get('name', item)} {qty * actions_per_hour:,.1f}/h"
+                for item, qty, _ in chain.side_items),
+            # Fuer die Begruendung: je Nebenprodukt (Item, Stueck/h, NPC-Preis). Mit "_"
+            # beginnende Spalten gehen nicht in die Excel-Datei.
+            "_side_items": tuple((item, qty * actions_per_hour, npc)
+                                 for item, qty, npc in chain.side_items),
             "RawMaterialCost/h": cost_per_hour,
             "KostenVollstaendig": chain.costs_known,
             "FehlendeZutaten": ", ".join(chain.missing_ones),
@@ -494,12 +512,25 @@ def build_chain_df(recipe_by_output: dict, market_map: dict, item_info_map: dict
             "SpielerMarktDuenn": thin_bid,
             "BidVolumen": m["buyVol"],
             "MarketAsk": m["sell"],
+            # Fuer die Historie: der gehandelte Tagesschnitt und die Menge am besten
+            # Angebot. Beide standen dort fest auf leer - in 17 Laeufen war `avg` nie
+            # gefuellt, und "war das letzte Woche auch so?" fragt nach dem, was
+            # gehandelt wurde, nicht nach dem Gebot, das gerade oben steht.
+            "_avg": m["avg"] or None,
+            "_ask_vol": m["sellVol"] or None,
             "LiquidityWarning": max_liquidity_ratio > LIQUIDITY_WARNING_RATIO,
             "LiquidityRatio": round(max_liquidity_ratio, 1),
             "PriceAnomaly": price_anomaly(m) if not sold_to_npc else False,
             "SpreadWarning": wide_spread(m) if not sold_to_npc else False,
             "XP/h (letzter Schritt)": xp_per_unit_final_step * actions_per_hour,
         })
+    # Mit Auto-Cook ist roher Fisch kein eigenes Farmziel: derselbe Fischzug steht
+    # schon beim gekochten Fisch, samt rohem Rest und mit demselben Gold/h. Die Zeile
+    # stuende sonst doppelt in der Empfehlung. Fehlt die gekochte Zeile, bleibt sie.
+    if AUTO_COOK_CHANCE > 0:
+        present = {row["ItemID"] for row in chain_results}
+        chain_results = [row for row in chain_results
+                         if fish_to_cooked.get(row["ItemID"]) not in present]
     return pd.DataFrame(chain_results)
 
 
@@ -535,13 +566,55 @@ def merge_worst_case_chain(df_chain_best: pd.DataFrame, df_chain_worst: pd.DataF
 _orderbook_cache: dict[int, dict] = {}
 
 
+# Wann zuletzt "API-Limit, warte" gesagt wurde: acht Threads laufen gleichzeitig
+# ins Limit, und acht gleiche Zeilen sagen nicht mehr als eine.
+_quota_lock = threading.Lock()
+_quota_notice_until = 0.0
+
+
+def _quota_wait_seconds(response) -> float:
+    """Bis das Minutenfenster der API neu beginnt (Header X-Rate-Limit-Reset,
+    sieben Nachkommastellen, deshalb gekuerzt), ohne Header 20 s."""
+    try:
+        reset = datetime.fromisoformat(response.headers["X-Rate-Limit-Reset"][:26] + "+00:00")
+    except (KeyError, ValueError):
+        return 20.0
+    return min(65.0, max(1.0, (reset - datetime.now(timezone.utc)).total_seconds() + 1.0))
+
+
+def _wait_for_quota(response) -> None:
+    global _quota_notice_until
+    seconds = _quota_wait_seconds(response)
+    with _quota_lock:
+        if time.monotonic() >= _quota_notice_until:
+            print(f"  API-Limit erreicht (50 Abrufe je Minute) - warte {seconds:.0f} s "
+                  "auf das naechste Fenster ...")
+            _quota_notice_until = time.monotonic() + seconds
+    time.sleep(seconds)
+
+
 def fetch_orderbook_depth(item_id: int) -> dict | None:
+    """Das Orderbuch eines Items, oder None, wenn es nicht abrufbar war.
+
+    **None heisst "unbekannt", nicht "leer".** Am 04.10.2026 liefen 66 Abrufe in
+    einer Minute ins Limit der API (HTTP 429), 18 Buecher kamen nicht an, und weil
+    die Begruendung ein fehlendes Buch wie eines ohne Gebote las, standen dort
+    mahogany, teak, coal_ore & Co. mit 0 Gold/h. Bei 429 wird deshalb gewartet.
+    """
     if item_id in _orderbook_cache:
         return _orderbook_cache[item_id]
+    url = COMPREHENSIVE_URL_TEMPLATE.format(item_id=item_id)
+    for attempt in range(ORDERBOOK_QUOTA_RETRIES + 1):
+        try:
+            r = requests.get(url, timeout=15)
+        except Exception:
+            return None
+        if r.status_code != 429 or attempt == ORDERBOOK_QUOTA_RETRIES:
+            break
+        _wait_for_quota(r)
     try:
-        r = requests.get(COMPREHENSIVE_URL_TEMPLATE.format(item_id=item_id), timeout=15)
         depth = r.json() if r.status_code == 200 else None
-    except Exception:
+    except ValueError:
         return None
     if depth is not None:
         _orderbook_cache[item_id] = depth
@@ -573,7 +646,7 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     1 Request pro EINDEUTIGEM ItemID (dedupliziert, da dasselbe Item ueber mehrere
     Rezepte/Skills auftauchen kann). Nur aktiv bei SHOW_LONGTERM_AVERAGES=True, da das
     bei vielen Items in Rohdaten mehrere Minuten dauern kann. Nur fuer Rohdaten gedacht -
-    Ketten/Realistisch_Farmbar/Nach_Skill_Level bleiben bewusst schlank (s. Absprache)."""
+    Ketten/Realistisch_Farmbar/Nach_Skill_Level bleiben bewusst schlank."""
     unique_ids = [int(x) for x in df["ItemID"].unique().tolist()]
     print(f"Hole 1-/7-/30-Tage-Durchschnitt fuer {len(unique_ids)} eindeutige Items "
           "(comprehensive-Endpoint, 1 Request/Item, das dauert einen Moment)...")
@@ -607,17 +680,66 @@ def enrich_with_longterm_averages(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(avg_df, on="ItemID", how="left")
 
 
+def drop_outlier_listings(market_map: dict, fetch_ids) -> list:
+    """Bestpreise weit weg vom gehandelten Schnitt zaehlen nicht (s. `implausible_top`,
+    `OUTLIER_PRICE_FACTOR`) - ueber den ganzen Markt, denn auch die Marktwert-Tabelle
+    fuer den Autoclicker liest diese Preise.
+
+    Die naechste echte Stufe holt das Orderbuch, aber **nur fuer `fetch_ids`** (die
+    Items der Rezepte); bei allen anderen faellt die Seite ohne Abruf weg. Hier wurde
+    einmal fuer jedes betroffene Item des Markts abgerufen - 36 Abrufe, und zusammen
+    mit der Begruendung lief der Lauf ins Limit der API (50 je Minute). Ein Ausreisser
+    ohne Ersatz kann nichts mehr aufblaehen; fuer die Rechnung zaehlt der Ersatz.
+    Rueckgabe: ``(item_id, vorher, nachher)`` je korrigiertem Item.
+    """
+    wanted = set(fetch_ids)
+    # Was in die Rechnung eingeht, zuerst - die Konsole zeigt nur die ersten acht.
+    suspicious = sorted((item_id for item_id, entry in market_map.items()
+                         if implausible_top(entry)), key=lambda item_id: item_id not in wanted)
+    preload_orderbooks([item_id for item_id in suspicious if item_id in wanted],
+                       "Ausreisser im Buch")
+    changes = []
+    for item_id in suspicious:
+        before = market_map[item_id]
+        depth = fetch_orderbook_depth(int(item_id)) if item_id in wanted else None
+        market_map[item_id] = corrected_top(before, depth)
+        changes.append((item_id, before, market_map[item_id]))
+    return changes
+
+
+def print_outlier_changes(changes: list, item_info_map: dict, limit: int = 8):
+    """Welche Bestpreise ignoriert wurden - eine Korrektur, die niemand sieht, haelt
+    man spaeter fuer einen Rechenfehler."""
+    if not changes:
+        return
+    print(f"ℹ {len(changes)} Bestpreise haetten die Rechnung geschoent (Gebot mehr als Faktor "
+          f"{OUTLIER_PRICE_FACTOR:g} ueber dem gehandelten Schnitt, Angebot so weit darunter) "
+          "und zaehlen nicht:")
+    for item_id, before, after in changes[:limit]:
+        name = item_info_map.get(item_id, {}).get("name", f"item_{item_id}")
+        parts = [f"{label} {before[side]:,} -> {after[side]:,}" if after[side] else
+                 f"{label} {before[side]:,} -> keins"
+                 for side, label in (("buy", "Gebot"), ("sell", "Angebot"))
+                 if before[side] != after[side]]
+        print(f"    {name:<28} {', '.join(parts)}  (Schnitt {before.get('avg', 0):,.0f})")
+    if len(changes) > limit:
+        print(f"    ... und {len(changes) - limit} weitere")
+
+
 def price_points_from_depth(depth: dict) -> list:
     """5 hoechste Buy-Preise (aufsteigend, niedrigster zuerst) + 5 niedrigste Sell-Preise
-    (aufsteigend). Fehlende Tiefenstufen (dünner Markt) werden mit None aufgefuellt."""
-    buys = sorted(depth.get("highestBuyPricesWithVolume", []), key=lambda x: x["key"], reverse=True)[:5]
-    buys = sorted(buys, key=lambda x: x["key"])
+    (aufsteigend). Fehlende Tiefenstufen (dünner Markt) werden mit None aufgefuellt.
+
+    Dieselben Stufen wie ueberall, also ohne Ausreisser: das Oak-Angebot zu
+    464.650 g stand hier als 1,56 Mrd. Gold/h und drueckte jede andere Linie auf
+    die Nulllinie."""
+    buys = sorted(price for price, _ in buy_levels_from_depth(depth))[-5:]
     while len(buys) < 5:
         buys.insert(0, None)
-    sells = sorted(depth.get("lowestSellPricesWithVolume", []), key=lambda x: x["key"])[:5]
+    sells = sorted(price for price, _ in sell_levels_from_depth(depth))[:5]
     while len(sells) < 5:
         sells.append(None)
-    return [(b["key"] if b else None) for b in buys] + [(s["key"] if s else None) for s in sells]
+    return buys + sells
 
 
 PRICE_SENSITIVITY_LABELS_SHORT = ["Buy1", "Buy2", "Buy3", "Buy4", "Buy5", "Sell1", "Sell2", "Sell3", "Sell4", "Sell5"]
@@ -756,20 +878,6 @@ def build_price_sensitivity_chart(df_sens: pd.DataFrame, npc_items: list[str],
 # Empfehlung: was farmen, was bringt es, an wen verkaufen
 # ---------------------------------------------------------------
 
-def chain_reliability(chain_skills: str) -> tuple[float, str]:
-    """Wie planbar ist der Nachschub fuer diese Kette? Es zaehlt der unzuverlaessigste
-    Schritt (min, nicht Produkt) - zwei zufallsabhaengige Skills machen eine Kette nicht
-    doppelt so unplanbar, sie bleibt schlicht so unplanbar wie ihr schwaechstes Glied."""
-    factor, reasons = 1.0, []
-    for part in str(chain_skills or "").split("->"):
-        skill = part.strip()
-        entry = SKILL_RELIABILITY.get(skill)
-        if entry and entry[0] < 1.0:
-            factor = min(factor, entry[0])
-            reasons.append(f"{skill}: {entry[1]}")
-    return factor, "; ".join(reasons)
-
-
 RECOMMENDATION_COLUMNS = [
     "Rang", "Item", "Skills", "Gold/h realistisch", "Gold/h Quelle", "Gold/h gewichtet", "Gold/h",
     "Verlässlichkeit",
@@ -778,6 +886,13 @@ RECOMMENDATION_COLUMNS = [
     "Verkauf an", "Erlös pro Stück", "Spieler-Gebot (brutto)", "NPC-Preis", "Vorteil",
     "Alles selbst farmbar", "Warnung", "Hinweis",
 ]
+
+
+def _reliability(r) -> tuple[float, str]:
+    """`chain_reliability()` fuer eine Zeile des Ketten-Sheets."""
+    return chain_reliability(r["ChainSkills"], bool(r.get("FullySelfSufficient", True)),
+                             _num(r.get("Revenue/h")) + _num(r.get("Nebenertrag/h")),
+                             _num(r.get("RawMaterialCost/h")))
 
 
 def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
@@ -794,15 +909,17 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
     if src.empty:
         return pd.DataFrame(columns=RECOMMENDATION_COLUMNS)
 
-    # Nach gewichtetem Gold/h sortieren: unplanbarer Nachschub soll die Empfehlung nicht
-    # anfuehren, auch wenn die reine Rechnung dafuer spricht (s. SKILL_RELIABILITY).
-    src["_faktor"] = src["ChainSkills"].map(lambda c: chain_reliability(c)[0])
-    src["_gewichtet"] = src["Gold/h (Eigenherstellung)"] * src["_faktor"]
-    src = src.sort_values("_gewichtet", ascending=False)
+    # Nach gewichtetem Gold/h sortieren: unplanbarer Nachschub und eine Kette, die
+    # vor allem Zukauf weiterreicht, sollen die Empfehlung nicht anfuehren, auch wenn
+    # die reine Rechnung dafuer spricht (s. chain_reliability in pricing.py).
+    reliability = {idx: _reliability(r) for idx, r in src.iterrows()}
+    src["_weighted"] = [weighted_gold(g, reliability[idx][0])
+                        for idx, g in src["Gold/h (Eigenherstellung)"].items()]
+    src = src.sort_values("_weighted", ascending=False, kind="stable")
 
     rows = []
-    for rank, (_, r) in enumerate(src.iterrows(), 1):
-        factor, factor_reason = chain_reliability(r["ChainSkills"])
+    for rank, (idx, r) in enumerate(src.iterrows(), 1):
+        factor, factor_reason = reliability[idx]
         npc, player = r.get("NPCPreis", 0) or 0, r.get("SpielerpreisBid", 0) or 0
         to_npc = bool(r["SoldToNPC"])
         # Vergleich netto gegen netto: das Spielergebot verliert noch die Marktsteuer,
@@ -831,12 +948,12 @@ def build_recommendation_df(df_chain: pd.DataFrame) -> pd.DataFrame:
             "Rang": rank,
             "Item": r["Item"],
             "Skills": r["ChainSkills"],
-            "Gold/h gewichtet": round(r["Gold/h (Eigenherstellung)"] * factor),
+            "Gold/h gewichtet": round(weighted_gold(r["Gold/h (Eigenherstellung)"], factor)),
             "Gold/h": round(r["Gold/h (Eigenherstellung)"]),
-            "Verlässlichkeit": round(factor, 2),
+            "Verlässlichkeit": round(factor, 3),
             "Gold/h (ungünstigster Fall)": round(worst) if pd.notna(worst) else None,
             "Sek pro Stück": round(r["TimePerItem_sec"], 2),
-            "Stück/h": round(r["Stück/h"], 1),
+            "Stück/h": _display_rate(r["Stück/h"]),
             "Gold pro Stück": round(r["Gold pro Stück"], 1),
             "Verkauf an": "NPC-Vendor" if to_npc else "Spieler",
             "Erlös pro Stück": round(r.get("Verkaufspreis", 0), 2),
@@ -903,30 +1020,36 @@ def _price_position_text(position: float | None, trend: str) -> str:
     if position is None or abs(position) < PRICE_POSITION_HINT_RATIO:
         return ""
     if position < 0:
-        rate_value = f"Kurs liegt {-position:.0%} UNTER dem 30-Tage-Schnitt (Verkauf in eine Delle)"
+        text = f"Kurs liegt {-position:.0%} UNTER dem 30-Tage-Schnitt (Verkauf in eine Delle)"
     else:
-        rate_value = f"Kurs liegt {position:.0%} ueber dem 30-Tage-Schnitt (eher Ausnahme als Normalfall)"
-    return f"{rate_value}, Trend {trend}" if trend else rate_value
+        text = f"Kurs liegt {position:.0%} ueber dem 30-Tage-Schnitt (eher Ausnahme als Normalfall)"
+    return f"{text}, Trend {trend}" if trend else text
 
 
 def _patience_text(patience: dict | None) -> str:
     """Was ein eigenes Angebot brächte - nur erwähnen, wenn es sich lohnt."""
-    if not patience or patience.get("aufschlag") is None or patience["aufschlag"] < 0.02:
+    if not patience or patience.get("markup") is None or patience["markup"] < 0.02:
         return ""
-    rate_value = (f"mit eigenem Angebot zu {patience['price_value']:,.0f}g waeren es "
-            f"{patience['aufschlag']:+.0%} ({patience['gold_h']:,.0f} Gold/h)")
-    wait_value = patience.get("wartezeit_h")
-    if wait_value is not None:
-        rate_value += (f", 1 h Produktion liegt dann ~{wait_value:,.0f} h im Buch"
-                 if wait_value >= 1 else ", 1 h Produktion ist in unter 1 h weg")
-    return rate_value
+    text = (f"mit eigenem Angebot zu {patience['price']:,.0f}g waeren es "
+            f"{patience['markup']:+.0%} ({patience['gold_h']:,.0f} Gold/h)")
+    waiting = patience.get("waiting_h")
+    if waiting is not None:
+        offered = "1 Stueck" if patience.get("per_piece") else "1 h Produktion"
+        text += (f", {offered} liegt dann ~{waiting:,.0f} h im Buch"
+                 if waiting >= 1 else f", {offered} ist in unter 1 h weg")
+    return text
 
 
 def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
              average: float, loss: float, warning: str, deviation: float = 0.0,
              position: float | None = None, trend: str = "",
-             patience: dict | None = None) -> str:
-    """Ein Satz Klartext: warum ist das Item gut oder eben nicht."""
+             patience: dict | None = None, sold: str = "eine Stunde Produktion",
+             dropped_bid: tuple | None = None, hours_per_piece: float = 0.0) -> str:
+    """Ein Satz Klartext: warum ist das Item gut oder eben nicht.
+
+    `sold` ist das, was verkauft wurde - eine Stunde Produktion, bei Ketten unter
+    einem Stueck je Stunde ein Stueck (s. build_reason_df). `dropped_bid` ist das
+    beste Gebot, das bei solchen Ketten nicht mitzaehlt (s. bids_for_measurement)."""
     if to_npc:
         if top_price <= 0:
             return "Nur NPC: kein brauchbares Kaufgebot im Player Shop."
@@ -942,11 +1065,15 @@ def _verdict(to_npc: bool, npc: float, top_price: float, hours_coverage: float,
         parts.append(f"Top-Gebot ist nach {hours_coverage * 60:,.0f} min leer")
     else:
         parts.append("kein Volumen am Top-Gebot")
+    if dropped_bid:
+        parts.append(f"gerechnet ohne das beste Gebot ({dropped_bid[0]:,.0f}g x "
+                     f"{dropped_bid[1]:,.0f}): ein Stueck dauert {hours_per_piece:,.0f} h, "
+                     "so lange steht kein einzelnes Gebot fest")
 
     if loss > 0.02:
-        parts.append(f"1 h Produktion druecken den Schnitt auf {average:,.0f}g ({-loss:.0%})")
+        parts.append(f"{sold} drueckt den Schnitt auf {average:,.0f}g ({-loss:.0%})")
     elif hours_coverage >= 1:
-        parts.append("eine Stunde Produktion bewegt den Preis kaum")
+        parts.append(f"{sold} bewegt den Preis kaum")
 
     if npc > average > 0:
         parts.append(f"NPC waere mit {npc:,.0f}g besser")
@@ -982,6 +1109,30 @@ def _num(value) -> float:
     return 0.0 if value is None or pd.isna(value) else float(value)
 
 
+def _display_rate(value) -> float:
+    """Stück/h fuer die Anzeige: eine Nachkommastelle, unter 10 drei gueltige
+    Ziffern. Glatt auf eine Stelle gerundet stand eine Kette mit 0,034 Stk/h als
+    0,0 im Blatt - und man sah nicht, warum ihr Ertrag so aussah."""
+    rate = _num(value)
+    return round(rate, 1) if abs(rate) >= 10 else float(f"{rate:.3g}")
+
+
+def _ranking_values(df_reason: pd.DataFrame) -> pd.Series:
+    """Die gemessene Zahl je Zeile, nach der gerankt wird - UNGEWICHTET (die
+    Verlaesslichkeit rechnet der Aufrufer dazu).
+
+    Die EINE Stelle, die `RANKING_BASIS` liest: `build_reason_df` sortiert die
+    Begruendung damit, `sort_by_measurement` danach die Empfehlung. Bei
+    "patience" zaehlt `Gold/h mit Geduld`, und wo die fehlt - beim NPC-Verkauf gibt
+    es nichts zu verhandeln - die Sofort-Zahl. Hier stand die Regel nur in der
+    Begruendung; die Empfehlung ordnete danach wieder allein nach `Gold/h
+    realistisch`, und die Einstellung verpuffte im fertigen Blatt."""
+    instant = df_reason["Gold/h realistisch"]
+    if RANKING_BASIS == "patience":
+        return df_reason["Gold/h mit Geduld"].fillna(instant)
+    return instant
+
+
 def reason_candidates(df_rec: pd.DataFrame) -> pd.DataFrame:
     """Welche Items durchs Orderbuch gerechnet werden.
 
@@ -994,6 +1145,33 @@ def reason_candidates(df_rec: pd.DataFrame) -> pd.DataFrame:
     worth_it = pd.to_numeric(df_rec["Gold/h"], errors="coerce").fillna(0) > 0
     candidates = df_rec[worth_it]
     return candidates.head(REASON_CANDIDATES) if REASON_CANDIDATES else candidates
+
+
+def _book_revenue(levels: list, units: float, npc: float) -> float:
+    """Was `units` Stueck einbringen, verkauft durchs Buch, der Rest an den NPC.
+
+    Nur Gebote, die netto mehr bringen als der NPC: darunter verkauft niemand ins
+    Buch, wenn der Vendor unbegrenzt mehr zahlt - hier lief der Verkauf frueher in
+    jedes Gebot hinein. Die Marktsteuer faellt auf den GESAMTwert der Stunde, also
+    entscheidet er selbst ueber die 100-Gold-Schwelle (deshalb Menge 1). Was nicht
+    mehr ins Buch passt, geht an den NPC (steuerfrei) statt verloren.
+    """
+    worth_it = [(price, amount) for price, amount in levels
+                if net_player_price(price, units) > npc]
+    gross, sold, _ = walk_orderbook(worth_it, units)
+    return net_player_price(gross, 1.0) + (units - sold) * npc
+
+
+def _side_revenue(side_items) -> float | None:
+    """Der Nebenertrag einer Stunde durchs Buch - None, wenn ein Buch fehlt
+    (dann gibt es keine Messung, wie beim Hauptprodukt)."""
+    total = 0.0
+    for side_id, units, npc in side_items:
+        depth = fetch_orderbook_depth(int(side_id))
+        if depth is None:
+            return None
+        total += _book_revenue(buy_levels_from_depth(depth), units, npc)
+    return total
 
 
 def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.DataFrame, list]:
@@ -1011,30 +1189,38 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         return pd.DataFrame(columns=REASON_COLUMNS), []
 
     costs_per_h = df_chain.set_index("ItemID")["RawMaterialCost/h"].to_dict() if not df_chain.empty else {}
+    # Stück/h kommt ungerundet aus der Kette, wie die Kosten daneben. Hier stand
+    # die Spalte der Empfehlung, und die ist fuer die Anzeige gerundet: eine Kette
+    # mit 0,065 Stk/h wurde mit 0,1 verkauft (fast doppelter Ertrag, Platz 1), eine
+    # mit 0,034 mit 0,0 - sie verkaufte nichts und zahlte die vollen Zutaten.
+    units_per_h = df_chain.set_index("ItemID")["Stück/h"].to_dict() if not df_chain.empty else {}
     id_of_item = df_chain.set_index("Item")["ItemID"].to_dict() if not df_chain.empty else {}
-    side_per_h = (df_chain.set_index("ItemID")["Nebenertrag/h"].to_dict()
-                  if not df_chain.empty and "Nebenertrag/h" in df_chain.columns else {})
+    side_per_h = df_chain.set_index("ItemID")["Nebenertrag/h"].to_dict() if not df_chain.empty else {}
+    side_items_of = df_chain.set_index("ItemID")["_side_items"].to_dict() if not df_chain.empty else {}
     books: list = []      # fuer die Historie - abgerufen wird ohnehin schon
 
     candidates_df = reason_candidates(df_rec)
     print(f"\nHole Kaufgebot-Stufen fuer {len(candidates_df)} von {len(df_rec)} Items "
           f"({ORDERBOOK_PARALLEL} Requests parallel), sortiere danach nach 'Gold/h realistisch'...")
-    preload_orderbooks([id_of_item[n] for n in candidates_df["Item"] if n in id_of_item],
-                          "Kaufgebot-Stufen")
+    candidate_ids = [id_of_item[n] for n in candidates_df["Item"] if n in id_of_item]
+    preload_orderbooks(candidate_ids + [side for item_id in candidate_ids
+                                        for side, _, _ in side_items_of.get(item_id) or ()],
+                       "Kaufgebot-Stufen")
 
     rows = []
+    unreachable: list[str] = []     # Buch nicht abrufbar - keine Messung
     for _, r in candidates_df.iterrows():
         item_id = id_of_item.get(r["Item"])
         to_npc = r["Verkauf an"] == "NPC-Vendor"
         npc = _num(r["NPC-Preis"])
-        units_h = _num(r["Stück/h"])
+        units_h = _num(units_per_h.get(item_id))
         material_h = _num(costs_per_h.get(item_id))
         side_yield_h = _num(side_per_h.get(item_id))
         # Bezugsgroesse ist der Preis, auf dem das ausgewiesene Gold/h beruht - sonst
         # widersprechen sich "Preisverlust" und "Gold/h realistisch".
         reference_value = _num(r["Erlös pro Stück"])
         # Und BRUTTO daneben, fuer den Vergleich mit den API-Durchschnitten: die sind
-        # Bruttopreise. Mit dem Netto-Erloes gefuettert meldete `preis_position()` bei
+        # Bruttopreise. Mit dem Netto-Erloes gefuettert meldete `price_position()` bei
         # jedem Item dieselben -1%, also einen Messfehler, der wie eine Marktlage
         # aussieht.
         #
@@ -1044,35 +1230,54 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
         reference_gross = _num(r.get("Spieler-Gebot (brutto)"))
 
         depth = fetch_orderbook_depth(int(item_id)) if item_id is not None else None
+        # Ein Buch, das nicht abrufbar war, ist keine Messung - und schon gar keine,
+        # die "verkauft nichts" sagt. Gelesen wie ein leeres Buch, standen nach einem
+        # API-Limit 18 von 30 Items mit 0 Gold/h da. Ohne Messung bleibt der
+        # Papier-Wert stehen (sort_by_measurement). Der NPC braucht kein Buch.
+        # Der Nebenertrag geht durchs Buch wie das Hauptprodukt. Zum Papier-Wert stand
+        # cooked_piranha auf Platz 5: 92 % seines Ertrags war der rohe Rest, gerechnet
+        # zu 134 g - am Gebot lagen 321 Stueck, die Stunde liefert 1.943, darunter
+        # stehen 16 g. Durchs Buch sind es 68.971 statt 257.800 Gold/h.
+        side_measured = _side_revenue(side_items_of.get(item_id) or ())
+        if (depth is None and not to_npc) or side_measured is None:
+            unreachable.append(str(r["Item"]))
+            continue
+        if side_items_of.get(item_id):
+            side_yield_h = side_measured
         levels = buy_levels_from_depth(depth) if depth else []
         if depth is not None and item_id is not None:
             books.append({"item": r["Item"], "item_id": int(item_id),
                             "kauf": levels,
                             "verkauf": sell_levels_from_depth(depth)})
 
+        # Verkauft wird mindestens EIN ganzes Stueck. Eine Kette mit 0,03 Stueck je
+        # Stunde bietet nie 0,03 Stueck an: otherworldly_bar (30 h je Barren) verkaufte
+        # einen Bruchteil ins Top-Gebot, und die Begruendung sagte "eine Stunde
+        # Produktion bewegt den Preis kaum" und "1 h Produktion ist in unter 1 h weg".
+        # Gemessen wird am Stueck, umgerechnet auf die Stunde.
+        lot = max(units_h, 1.0) if units_h > 0 else 0.0
+        # Angezeigt wird das Buch, wie es ist; verkauft wird bei langsamen Ketten
+        # ohne das beste Gebot (s. bids_for_measurement).
+        measured, dropped_bid = bids_for_measurement(levels, units_h)
         if levels:
             top_price, top_amount = max(levels, key=lambda x: x[0])
             if top_price > 0:
                 reference_gross = reference_gross or top_price
             coverage = top_amount / units_h if units_h > 0 else 0.0
-            gross, sold, _ = walk_orderbook(levels, units_h)
-            # Marktsteuer auf den Spieler-Anteil. `gross` ist bereits der GESAMTwert
-            # der Stunde, also entscheidet er selbst ueber die 100-Gold-Schwelle -
-            # deshalb Menge 1, nicht `sold`.
-            revenue_value = net_player_price(gross, 1.0)
-            # Was nicht mehr ins Buch passt, geht zum NPC (steuerfrei) statt verloren
-            remainder = units_h - sold
-            revenue_value += remainder * npc
-            average = revenue_value / units_h if units_h > 0 else 0.0
-            loss = (1 - average / reference_value) if reference_value > 0 else 0.0
         else:
             top_price, top_amount, coverage = 0.0, 0.0, 0.0
-            average = npc if to_npc else 0.0
-            revenue_value = average * units_h
-            loss = 0.0
+        if measured:
+            revenue = _book_revenue(measured, lot, npc) * (units_h / lot) if lot else 0.0
+            average = revenue / units_h if units_h > 0 else 0.0
+        else:
+            # Ein Buch ohne Gebot: alles geht an den NPC, wie oben der Rest, der
+            # nicht mehr ins Buch passt.
+            average = npc
+            revenue = average * units_h
+        loss = (1 - average / reference_value) if reference_value > 0 else 0.0
 
         if to_npc:   # NPC hat unbegrenztes Volumen, das Buch ist dann egal
-            average, revenue_value, loss = npc, npc * units_h, 0.0
+            average, revenue, loss = npc, npc * units_h, 0.0
 
         # Orderbuch und Bulk-Endpoint sind zwei Momentaufnahmen - weichen sie stark ab,
         # ist das eher ein Zeitversatz als ein echter Preissturz.
@@ -1081,11 +1286,11 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
 
         # Aus derselben Antwort, ohne zusaetzlichen Request. BRUTTO gegen BRUTTO:
         # der 30-Tage-Schnitt kennt keine Steuer.
-        position, trend = preis_position(reference_gross, depth)
+        position, trend = price_position(reference_gross, depth)
         costs_per_unit = (material_h / units_h) if units_h > 0 else 0.0
         # Beim NPC gibt es nichts zu verhandeln — der zahlt immer denselben Preis.
-        patience = (geduld_analyse(depth, top_price, units_h, costs_per_unit)
-                  if not to_npc else geduld_analyse(None, 0.0, 0.0, 0.0))
+        patience = (patience_analysis(depth, top_price, units_h, costs_per_unit)
+                    if not to_npc else NO_PATIENCE)
 
         rows.append({
             "Rang": 0,   # wird nach der Neusortierung vergeben
@@ -1093,32 +1298,38 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
             "Gold/h (Papier)": r["Gold/h"],
             "Verlässlichkeit": _num(r.get("Verlässlichkeit")) or 1.0,
             "Verkauf an": r["Verkauf an"],
-            "Stück/h": round(units_h, 1),
+            "Stück/h": _display_rate(units_h),
             "Bestes Gebot (brutto)": round(top_price, 2) if top_price else None,
             "Menge am besten Gebot": round(top_amount) if top_amount else None,
             "Deckt Stunden": round(coverage, 2) if coverage else None,
             "Schnitt bei 1h Produktion (netto)": round(average, 2),
             "Preisverlust": f"-{loss:.1%}" if loss > 0.0005 else "0%",
-            "Ansetzbarer Preis": round(patience["price_value"], 2) if patience["price_value"] else None,
-            "Erlös dabei (netto)": round(patience["revenue_value"], 2) if patience["revenue_value"] else None,
+            "Ansetzbarer Preis": round(patience["price"], 2) if patience["price"] else None,
+            "Erlös dabei (netto)": round(patience["revenue"], 2) if patience["revenue"] else None,
             "Gold/h mit Geduld": round(patience["gold_h"]) if patience["gold_h"] is not None else None,
-            "Aufschlag vs Sofort": (f"{patience['aufschlag']:+.0%}"
-                                    if patience["aufschlag"] is not None else None),
-            "Wartezeit (h)": (round(patience["wartezeit_h"], 1)
-                              if patience["wartezeit_h"] is not None else None),
-            "Angebot im Buch": (round(patience["angebot_im_buch"])
-                                if patience["angebot_im_buch"] is not None else None),
+            "Aufschlag vs Sofort": (f"{patience['markup']:+.0%}"
+                                    if patience["markup"] is not None else None),
+            "Wartezeit (h)": (round(patience["waiting_h"], 1)
+                              if patience["waiting_h"] is not None else None),
+            "Angebot im Buch": (round(patience["offers_in_book"])
+                                if patience["offers_in_book"] is not None else None),
             "Preis vs 30-Tage-Schnitt": f"{position:+.0%}" if position is not None else None,
             "Markt-Trend": trend or None,
-            "Gold/h realistisch": round(revenue_value + side_yield_h - material_h),
+            "Gold/h realistisch": round(revenue + side_yield_h - material_h),
             "NPC-Preis": round(npc, 2) if npc else None,
             "NPC besser": bool(npc > average) if not to_npc else True,
             "Kaufgebote (Stufen)": _format_levels(levels) if levels else "keine",
             "Bewertung": _verdict(to_npc, npc, top_price, coverage, average, loss,
                                   "" if pd.isna(r.get("Warnung")) else str(r.get("Warnung") or ""),
-                                  deviation, position, trend, patience),
+                                  deviation, position, trend, patience,
+                                  "ein Stueck" if 0 < units_h < 1 else "eine Stunde Produktion",
+                                  dropped_bid, 1.0 / units_h if units_h > 0 else 0.0),
         })
 
+    if unreachable:
+        print(f"⚠ {len(unreachable)} Orderbuecher nicht abrufbar - diese Items stehen mit "
+              f"ihrem Papier-Wert da: {', '.join(unreachable[:8])}"
+              + (" ..." if len(unreachable) > 8 else ""))
     if not rows:
         return pd.DataFrame(columns=REASON_COLUMNS), books
 
@@ -1127,22 +1338,18 @@ def build_reason_df(df_rec: pd.DataFrame, df_chain: pd.DataFrame) -> tuple[pd.Da
     # Top-10 ermittelt und konnte die Reihenfolge gar nicht mehr beeinflussen.
     df_reason = pd.DataFrame(rows, columns=REASON_COLUMNS)
 
-    # Welche der beiden gemessenen Zahlen den Rang bestimmt, haengt davon ab, ob das
-    # Gold sofort gebraucht wird (s. RANKING_BASIS). Fehlt die Geduld-Zahl - beim
-    # NPC-Verkauf gibt es nichts zu verhandeln -, zaehlt die Sofort-Zahl.
-    if RANKING_BASIS == "patience":
-        key_name = df_reason["Gold/h mit Geduld"].fillna(df_reason["Gold/h realistisch"])
-    else:
-        key_name = df_reason["Gold/h realistisch"]
-    # Dieselbe Abwertung wie beim Papier-Rang (SKILL_RELIABILITY): unplanbarer
+    # Welche der beiden gemessenen Zahlen den Rang bestimmt, sagt `_ranking_values`
+    # (s. RANKING_BASIS) - dieselbe Regel, nach der danach die Empfehlung sortiert.
+    # Dieselbe Abwertung wie beim Papier-Rang (chain_reliability): unplanbarer
     # Nachschub soll die Empfehlung nicht anfuehren, nur weil sein Buch gerade
     # tief ist. Solange nur zehn Items gemessen wurden, fiel das Fehlen kaum auf;
     # ueber den ganzen Bestand stuende sonst ein Papaya-Feld ganz oben.
-    key_name = key_name * df_reason["Verlässlichkeit"]
+    rank_key = [weighted_gold(g, f)
+                for g, f in zip(_ranking_values(df_reason), df_reason["Verlässlichkeit"])]
     # Jede Messung bleibt im Blatt. Hier stand ein `.head(REASON_TOP_N)`, und weil
     # die Empfehlung ihre gemessene Zahl aus dieser Liste zieht, fielen die
     # uebrigen Messungen still weg - bezahlt und nie gezeigt.
-    df_reason = df_reason.assign(_rank_value=key_name).sort_values(
+    df_reason = df_reason.assign(_rank_value=rank_key).sort_values(
         "_rank_value", ascending=False).drop(columns=["_rank_value"])
     df_reason["Rang"] = range(1, len(df_reason) + 1)
     df_reason = df_reason.reset_index(drop=True)
@@ -1170,11 +1377,16 @@ def sort_by_measurement(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.Dat
     Rest steht mit seinem Papier-Wert da, als solcher gekennzeichnet.
 
     Sortiert wird ueber DIESELBE Zahl, gewichtet mit der Verlaesslichkeit
-    (SKILL_RELIABILITY) - bei den Gemessenen die Messung, sonst `Gold/h gewichtet`.
+    (chain_reliability) - bei den Gemessenen die Messung, sonst `Gold/h gewichtet`.
     "Gemessene zuerst" stand hier vorher, und das stellte ein Item, das die Messung
     auf 50k drueckte, ueber ungemessene mit 200k - eine Rangfolge, die man dem
     Blatt nicht mehr ansieht. Ein Papier-Wert ist eine Obergrenze (das Buch kann
     ihn nur druecken), also ist er als Sortierschluessel die ehrliche Annahme.
+
+    **Welche Messung zaehlt, bestimmt `RANKING_BASIS`** (`_ranking_values`, dieselbe
+    Regel wie in der Begruendung): bei "patience" `Gold/h mit Geduld`, sonst
+    `Gold/h realistisch`. Die Spalte `Gold/h realistisch` bleibt in beiden Faellen
+    die Sofort-Zahl, die im Blatt steht - nur die Reihenfolge folgt der Basis.
 
     `Rang` wird durchgezaehlt und in `df_reason` zurueckgeschrieben, damit
     Empfehlung und Begruendung dieselbe Nummer meinen.
@@ -1190,9 +1402,12 @@ def sort_by_measurement(df_rec: pd.DataFrame, df_reason: pd.DataFrame) -> pd.Dat
     measurement = out["Item"].map(measured_values)
     out["Gold/h realistisch"] = measurement.fillna(out["Gold/h"])
     out["Gold/h Quelle"] = measurement.notna().map({True: SOURCE_ORDERBOOK, False: SOURCE_PAPER})
+    ranking = out["Item"].map(dict(zip(df_reason["Item"], _ranking_values(df_reason))))
     factor = pd.to_numeric(out["Verlässlichkeit"], errors="coerce").fillna(1.0)
-    key_name = (measurement * factor).fillna(pd.to_numeric(out["Gold/h gewichtet"], errors="coerce"))
-    out = out.assign(_rank_value=key_name).sort_values(
+    weighted = pd.Series([weighted_gold(g, f) for g, f in zip(ranking, factor)],
+                         index=out.index, dtype="float64")
+    rank_key = weighted.fillna(pd.to_numeric(out["Gold/h gewichtet"], errors="coerce"))
+    out = out.assign(_rank_value=rank_key).sort_values(
         "_rank_value", ascending=False, kind="stable").drop(columns=["_rank_value"]).reset_index(drop=True)
     out["Rang"] = range(1, len(out) + 1)
     ranks = dict(zip(out["Item"], out["Rang"]))
@@ -1211,8 +1426,13 @@ def print_reason_highlights(df_reason: pd.DataFrame):
         print(f"\n⚠ {len(pretty)} Items halten ihren Gold/h-Wert nicht, wenn man eine ganze "
               "Stunde Produktion ins Buch verkauft:")
         for _, r in pretty.head(8).iterrows():
+            # Der Preisverlust gilt dem Hauptprodukt; steht er auf 0, kam der Abschlag
+            # vom Nebenertrag (s. _side_revenue) - "0% Preisverlust" daneben las sich
+            # wie ein Widerspruch.
+            why = (f"{r['Preisverlust']} Preisverlust" if r["Preisverlust"] != "0%"
+                   else "der Nebenertrag gibt das Buch nicht her")
             print(f"    {str(r['Item']):<26}{r['Gold/h (Papier)']:>11,} -> {r['Gold/h realistisch']:>11,}  "
-                  f"({r['Preisverlust']} Preisverlust)")
+                  f"({why})")
 
 
 # ---------------------------------------------------------------
@@ -1241,39 +1461,6 @@ SKILL_LEVEL_COLUMNS = ["Skill", "Level", "Item", "Gold/h", "Gold/h_Worst", "Gold
                         "XP/h", "SoldToNPC", "NPCPreis", "ItemID"]
 
 
-def export_market_values(df: pd.DataFrame, path: str) -> int:
-    """Schreibt eine schlanke Item-Name -> Gold-pro-Stueck-Tabelle als JSON.
-
-    Der Autoclicker kann seine Item-Klicks danach sortieren statt nach einer von
-    Hand getippten Prioritaetszahl — ohne dass eine Seite die andere importiert.
-
-    Absichtlich nur Name -> Zahl: alles Weitere waere fuer die Klick-Reihenfolge
-    bedeutungslos, und eine schmale Datei kann nicht veralten wie eine breite.
-    Gibt die Anzahl geschriebener Eintraege zurueck.
-    """
-    if df is None or df.empty or "Item" not in df.columns:
-        return 0
-    column_name = "Gold pro Stück" if "Gold pro Stück" in df.columns else None
-    if column_name is None:
-        return 0
-    values: dict[str, float] = {}
-    for _, line in df.iterrows():
-        name = str(line["Item"]).strip()
-        try:
-            value = float(line[column_name])
-        except (TypeError, ValueError):
-            continue
-        if not name or value != value:          # NaN faellt hier raus
-            continue
-        # Mehrere Rezepte auf dasselbe Item: der beste Wert gewinnt.
-        if name not in values or value > values[name]:
-            values[name] = round(value, 2)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(values, f, ensure_ascii=False, indent=1, sort_keys=True)
-    return len(values)
-
-
 def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
                  df_sensitivity: pd.DataFrame | None = None,
                  df_recommendation: pd.DataFrame | None = None,
@@ -1289,6 +1476,7 @@ def export_excel(df: pd.DataFrame, df_chain: pd.DataFrame, path: str,
         # -> Preis_Sensitivitaet (die tatsaechlich farmbaren/relevanten Sichten zuerst,
         # Rohdaten + Chart-Daten als Referenz zuletzt).
         if not df_chain.empty:
+            df_chain = df_chain.drop(columns=[c for c in df_chain.columns if str(c).startswith("_")])
             df_chain.sort_values("Gold/h (Eigenherstellung)", ascending=False).to_excel(
                 writer, sheet_name="Ketten", index=False
             )
@@ -1390,9 +1578,9 @@ def history_rows(df_chain: pd.DataFrame, df_reason: pd.DataFrame) -> list:
             "skill": r.get("FinalSkill"),
             "bid": r.get("SpielerpreisBid"),
             "ask": r.get("MarketAsk"),
-            "avg": None,
+            "avg": r.get("_avg"),
             "bid_vol": r.get("BidVolumen"),
-            "ask_vol": None,
+            "ask_vol": r.get("_ask_vol"),
             "npc_preis": r.get("NPCPreis"),
             "kosten_h": r.get("RawMaterialCost/h"),
             "gold_h": r.get("Gold/h (Eigenherstellung)"),
@@ -1415,16 +1603,16 @@ def write_history(df_chain: pd.DataFrame, df_reason: pd.DataFrame, books: list,
     lines = history_rows(df_chain, df_reason)
     if not lines:
         return ""
-    conn = historie.open_db(path)
+    conn = history.open_db(path)
     try:
-        with historie.run_ctx(conn) as run_id:
-            historie.write_items(conn, run_id, lines)
-            historie.write_orderbook(conn, run_id, books, HISTORY_ORDERBOOK_TOP_N)
-        channel = historie.tidy_up(conn)
+        with history.run_ctx(conn) as run_id:
+            history.write_items(conn, run_id, lines)
+            history.write_orderbook(conn, run_id, books)
+        tidied = history.tidy_up(conn)
     finally:
         conn.close()
-    deleted_count = sum(v for k, v in channel.items() if k != "condensed")
-    hint = f" ({channel['condensed']} Tageswerte, {deleted_count} Altzeilen entfernt)" if deleted_count or channel["condensed"] else ""
+    deleted_count = sum(v for k, v in tidied.items() if k != "condensed")
+    hint = f" ({tidied['condensed']} Tageswerte, {deleted_count} Altzeilen entfernt)" if deleted_count or tidied["condensed"] else ""
     return f"{len(lines)} Items{hint}"
 
 
@@ -1441,40 +1629,34 @@ def compute_run_stats(tasks: dict, all_recipes: list, item_info_map: dict,
         "item_info_count": len(item_info_map),
         "market_map_count": len(market_map),
         "rohdaten_count": len(df),
-        "in_ketten_count": int(df["InKetten"].sum()) if "InKetten" in df.columns else None,
-        "realistic_count": (
-            int(df_chain["FullySelfSufficient"].sum())
-            if not df_chain.empty and "FullySelfSufficient" in df_chain.columns else 0
-        ),
+        "in_ketten_count": int(df["InKetten"].sum()),
+        "realistic_count": int(df_chain["FullySelfSufficient"].sum()) if not df_chain.empty else 0,
     }
 
 
 def load_run_stats_history(path: str = RUN_STATS_PATH) -> list:
-    """Liste vergangener Laeufe, aeltester zuerst. Alte Dateien enthalten nur ein einzelnes
-    Dict (nur der letzte Lauf) - das wird transparent als Ein-Element-Historie gelesen."""
+    """Liste vergangener Laeufe, aeltester zuerst."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
-    if isinstance(data, dict):
-        return [data]
     if isinstance(data, list):
         return [entry for entry in data if isinstance(entry, dict)]
     return []
 
 
 def load_last_run_stats(path: str = RUN_STATS_PATH) -> dict | None:
-    history = load_run_stats_history(path)
-    return history[-1] if history else None
+    runs = load_run_stats_history(path)
+    return runs[-1] if runs else None
 
 
 def save_run_stats(stats: dict, path: str = RUN_STATS_PATH):
-    history = load_run_stats_history(path)
-    history.append(stats)
-    history = history[-RUN_STATS_HISTORY_LIMIT:]
+    runs = load_run_stats_history(path)
+    runs.append(stats)
+    runs = runs[-RUN_STATS_HISTORY_LIMIT:]
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2, ensure_ascii=False)
+        json.dump(runs, f, indent=2, ensure_ascii=False)
 
 
 def sanity_check_run_stats(current: dict, previous: dict | None) -> list[str]:
@@ -1541,37 +1723,34 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
     if dupe_count:
         print(f"ℹ {dupe_count} Zeilen mit doppeltem Item-Namen (unterschiedliche Skills/Recipes) - Details im Rohdaten-Tab.")
 
-    if "Handelbar" in df.columns:
-        no_trade = int((~df["Handelbar"]).sum())
-        no_npc = int((~df["NPCVerkaufMoeglich"]).sum())
-        if no_trade or no_npc:
-            print(f"ℹ Laut API-Flags: {no_trade} Rezept-Ausgaben nicht am Player-Markt handelbar "
-                  f"(CanNotBeTraded), {no_npc} nicht an den NPC verkaufbar (CanNotBeSoldToGameShop).")
+    no_trade = int((~df["Handelbar"]).sum())
+    no_npc = int((~df["NPCVerkaufMoeglich"]).sum())
+    if no_trade or no_npc:
+        print(f"ℹ Laut API-Flags: {no_trade} Rezept-Ausgaben nicht am Player-Markt handelbar "
+              f"(CanNotBeTraded), {no_npc} nicht an den NPC verkaufbar (CanNotBeSoldToGameShop).")
 
     # Duenne Top-Gebote: das Item wird am Markt verkauft, aber eine Stunde Produktion
     # geht dort nicht in einem Zug weg. Frueher war das ein Ausschluss (MIN_SELL_VOLUME)
     # und warf Items wie yew_log auf den NPC-Preis zurueck; heute eine Warnung - wie
     # tief das Buch wirklich ist, misst das Sheet "Begruendung".
-    if "TopGebotDuenn" in df.columns:
-        thin = df[df["TopGebotDuenn"]]
-        if not thin.empty:
-            print(f"ℹ {len(thin)} Items mit duennem Top-Gebot (weniger als "
-                  f"{THIN_BID_HOURS:g} h Produktion) - sie werden trotzdem am Markt "
-                  "gerechnet, die echte Tiefe steht im Sheet 'Begruendung':")
-            for _, row in thin.nlargest(5, "Stück/h").iterrows():
-                print(f"    {str(row['Item']):<26} Bid {row['MarketBid']:>8,.0f}g bei "
-                      f"{row['BuyVol']:>10,.0f} Stueck  ({row['Stück/h']:,.0f} Stk/h)")
+    thin = df[df["TopGebotDuenn"]]
+    if not thin.empty:
+        print(f"ℹ {len(thin)} Items mit duennem Top-Gebot (weniger als "
+              f"{THIN_BID_HOURS:g} h Produktion) - sie werden trotzdem am Markt "
+              "gerechnet, die echte Tiefe steht im Sheet 'Begruendung':")
+        for _, row in thin.nlargest(5, "Stück/h").iterrows():
+            print(f"    {str(row['Item']):<26} Bid {row['MarketBid']:>8,.0f}g bei "
+                  f"{row['BuyVol']:>10,.0f} Stueck  ({row['Stück/h']:,.0f} Stk/h)")
 
     # Unbekannte Zutatenpreise: die betroffenen Rezepte haben KEIN Gold/h, statt mit
     # einer kostenlosen Zutat zu rechnen. Ohne diese Zeile verschwaende der Unterschied
     # zwischen "verdient nichts" und "wissen wir nicht".
-    if "CostDataComplete" in df.columns:
-        unclear = df[~df["CostDataComplete"]]
-        if not unclear.empty:
-            print(f"⚠ {len(unclear)} Rezepte ohne vollstaendige Zutatenpreise - Gold/h "
-                  "bleibt dort leer (nicht 0), Grund steht in 'FehlendeZutaten':")
-            for _, row in unclear.head(5).iterrows():
-                print(f"    {str(row['Item']):<26} fehlt: {row['FehlendeZutaten']}")
+    unclear = df[~df["CostDataComplete"]]
+    if not unclear.empty:
+        print(f"⚠ {len(unclear)} Rezepte ohne vollstaendige Zutatenpreise - Gold/h "
+              "bleibt dort leer (nicht 0), Grund steht in 'FehlendeZutaten':")
+        for _, row in unclear.head(5).iterrows():
+            print(f"    {str(row['Item']):<26} fehlt: {row['FehlendeZutaten']}")
 
     npc_count = int(df["SoldToNPC"].sum())
     if npc_count:
@@ -1599,6 +1778,12 @@ def print_summary(df: pd.DataFrame, df_chain: pd.DataFrame):
 
 
 def main():
+    # Ein unbekannter Wert fiel frueher still auf den Sofortverkauf zurueck - so lief
+    # "geduld" nach der Englisch-Umbenennung ins Leere, ohne dass es jemand merkte.
+    if RANKING_BASIS not in RANKING_BASES:
+        print(f"⚠ Abbruch: RANKING_BASIS = {RANKING_BASIS!r} in config.py - erlaubt sind "
+              + ", ".join(repr(b) for b in RANKING_BASES))
+        return
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     previous_run_stats = load_last_run_stats()
 
@@ -1615,11 +1800,19 @@ def main():
         print("⚠ Abbruch: Game-Data enthaelt keinen 'Tasks'-Block - Endpunkt/Schema pruefen.")
         return
 
-    # Best-/Worst-Case parallel aufbauen (Smelting-Magic-Reichweite, s. Abschnitt 2/6)
+    # Best-/Worst-Case parallel aufbauen (Smelting-Magic-Reichweite, s. README,
+    # "Offene Punkte")
     smelting_exclusions = resolve_smelting_magic_exclusions(item_info_map)
     all_recipes_best = build_all_recipes(tasks, case="best", excluded_cost_items=smelting_exclusions)
     all_recipes_worst = build_all_recipes(tasks, case="worst", excluded_cost_items=smelting_exclusions)
     check_action_time_plausibility(all_recipes_best)
+
+    # Vor jeder Rechnung: ein einzelner Eintrag weit weg vom gehandelten Schnitt
+    # truege sonst als Bestpreis eine ganze Stunde Produktion. Ein Orderbuch fuer
+    # den Ersatz holen nur die Items, mit denen gerechnet wird.
+    recipe_items = ({r["item_id"] for r in all_recipes_best}
+                    | {c["Item"] for r in all_recipes_best for c in r["costs"]})
+    print_outlier_changes(drop_outlier_listings(market_map, recipe_items), item_info_map)
 
     recipe_by_output_best = build_recipe_by_output(all_recipes_best)
     recipe_by_output_worst = build_recipe_by_output(all_recipes_worst)
@@ -1691,11 +1884,11 @@ def main():
     # Schlanke Wertetabelle nebenher - schlaegt sie fehl, ist das kein Grund, den
     # ganzen Lauf zu verlieren: die Excel-Datei ist das eigentliche Ergebnis.
     try:
-        n_values = export_market_values(df, MARKET_VALUE_PATH)
+        n_values = export_market_values(market_map, item_info_map, MARKET_VALUE_PATH)
         if n_values:
             print(f"Marktwerte gespeichert: {MARKET_VALUE_PATH} ({n_values} Items)")
-            print("  Der Autoclicker kann danach sortieren - Pfad in seiner config.json "
-                  "unter 'scan_market_value_file' eintragen.")
+            print("  Der Autoclicker liest sie von selbst (Standard von "
+                  "'scan_market_value_file') und sortiert seine Item-Klicks danach.")
     except (IOError, OSError) as e:
         print(f"⚠ Marktwerte konnten nicht geschrieben werden: {e}")
 

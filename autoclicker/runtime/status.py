@@ -142,7 +142,7 @@ def schedule_run(sequence: str, target_time: float, after: str = "") -> None:
     """Zeigt einen noch nicht gestarteten Zeitplan im Studio.
 
     Ein Countdown ist kein Lauf, aber auch nicht „es passiert nichts". Er steht
-    deshalb in derselben Momentaufnahme mit `aktiv: False` und eigenem Feld.
+    deshalb in derselben Momentaufnahme mit `active: False` und eigenem Feld.
     `after` nennt bei einer Folgesequenz die Sequenz davor.
     Vorheriger Laufzustand wird geleert: die nächste Worker-Meldung baut ihn
     ohnehin vollständig neu auf.
@@ -189,16 +189,16 @@ _MOMENT_FIELDS = ("block", "blocks", "block_title", "block_label", "block_set_ty
 def finish_run(state=None, reason: str = "", cycles: int = 0, duration: float = 0.0) -> None:
     """Schliesst den Lauf ab — und lässt eine Zusammenfassung stehen.
 
-    Der letzte Stand bleibt als abgeschlossener Lauf liegen (`aktiv: False`
+    Der letzte Stand bleibt als abgeschlossener Lauf liegen (`active: False`
     plus `end`), bis der nächste Start ihn überschreibt; sonst wäre die
     Live-Ansicht genau dann leer, wenn man sie ansieht. Der Leser unterscheidet
     drei Fälle am Inhalt:
 
     | Datei | bedeutet |
     |---|---|
-    | `aktiv: True`, `stamp` frisch | läuft |
-    | `aktiv: True`, `stamp` älter als 5 s | abgestürzt (verwaist) |
-    | `aktiv: False` mit `end` | fertig, hier ist die Zusammenfassung |
+    | `active: True`, `stamp` frisch | läuft |
+    | `active: True`, `stamp` älter als 5 s | abgestürzt (verwaist) |
+    | `active: False` mit `end` | fertig, hier ist die Zusammenfassung |
 
     Die Altersregel gilt nur für den ersten Fall. Ohne `state` (der Lauf lief
     gar nicht erst an) wird gelöscht — eine Zusammenfassung ohne Zahlen wäre keine.

@@ -55,7 +55,7 @@ CASES = {
     "import-rollback": (
         "autoclicker.import_export", "_ImportTransaction.rollback",
         "from .config import apply_config", "return\n    from .config import apply_config",
-        "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_state_and_files"),
+        "test_import_export_security.ImportExportSecurityTest.test_failed_import_rolls_back_files"),
     "loader-scans": (
         "autoclicker.editors.sequence_editor.loader", "run_sequence_loader",
         "activate_sequence(state, seq)",
@@ -72,6 +72,49 @@ CASES = {
         "Rest des Blocks lief weiter.\n        return True",
         "Rest des Blocks lief weiter.\n        state.skip_step_event.clear()\n        return True",
         RUNTIME + "test_block_skip_im_immediate_scan_gilt_dem_ganzen_block"),
+    "orderbook-outlier": (
+        "market_analysis.orderbook", "_levels",
+        'and plausible_price(entry["key"], reference)]', "]",
+        "test_market_analysis.OutlierTest.test_ausreisser_im_buch_zaehlen_nicht"),
+    "outlier-top": (
+        "market_analysis.orderbook", "_flattering_top",
+        'return (entry.get("buy", 0) > avg * OUTLIER_PRICE_FACTOR,', "return (False,",
+        "test_market_analysis.OutlierTest.test_unplausibles_gebot_wird_durch_die_naechste_stufe_ersetzt"),
+    "outlier-direction": (
+        "market_analysis.orderbook", "_flattering_top",
+        'entry.get("buy", 0) > avg * OUTLIER_PRICE_FACTOR,',
+        'not plausible_price(entry.get("buy", 1), avg),',
+        "test_market_analysis.OutlierTest.test_ein_schlechter_bestpreis_ist_ein_echter_preis"),
+    "auto-cook-tax-per-hour": (
+        "market_analysis.pricing", "_fishing_with_auto_cook",
+        "effective_sell_price(other_id, market_map, item_info_map, other_per_hour)",
+        "effective_sell_price(other_id, market_map, item_info_map, other_amount)",
+        "test_market_analysis.ChainTest.test_rohrest_versteuert_je_stunde_nicht_je_stueck"),
+    "auto-cook-side-items": (
+        "market_analysis.pricing", "_fishing_with_auto_cook",
+        "side_items = ((other_id, other_amount, channel.npc_price),)", "side_items = ()",
+        "test_market_analysis.ChainTest.test_nebenprodukt_steht_in_der_kette"),
+    "raw-fish-auto-cook": (
+        "market_analysis.pricing", "resolve_chain",
+        "if cooked_id is not None and cooked_id not in visited and AUTO_COOK_CHANCE > 0:",
+        "if False:",
+        "test_market_analysis.ChainTest.test_roher_fisch_kommt_mit_auto_cook_nur_teilweise_roh"),
+    "purchase-reliability": (
+        "market_analysis.pricing", "chain_reliability",
+        "    if not self_sufficient:", "    if False:",
+        "test_market_analysis.ReliabilityTest.test_zukauf_ist_der_preispuffer"),
+    "weighted-loss": (
+        "market_analysis.pricing", "weighted_gold",
+        "if gold_h > 0 else gold_h", "if True else gold_h",
+        "test_market_analysis.ReliabilityTest.test_ein_verlust_wird_nicht_kleiner"),
+    "patience-whole-piece": (
+        "market_analysis.orderbook", "patience_analysis",
+        "lot = max(units_per_hour, 1.0)", "lot = units_per_hour",
+        "test_market_analysis.OrderbookTest.test_geduld_wartet_auf_ein_ganzes_stueck"),
+    "slow-chain-best-bid": (
+        "market_analysis.orderbook", "bids_for_measurement",
+        "if not levels or not 0 < units_per_hour < 1.0:", "if True:",
+        "test_market_analysis.OrderbookTest.test_langsame_kette_misst_ohne_das_beste_gebot"),
     "auto-learn-active-variant": (
         "autoclicker.runtime.item_scan", "_learn_against_known",
         "    if known_active:", "    if False:",
@@ -127,21 +170,21 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--case", choices=CASES, action="append")
-    parser.add_argument("--kind", choices=("basis", "mutiert"), help=argparse.SUPPRESS)
+    parser.add_argument("--kind", choices=("base", "mutated"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.kind:
-        return run_check(args.case[0], args.kind == "mutiert")
+        return run_check(args.case[0], args.kind == "mutated")
     error = 0
     environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     for name in args.case or CASES:
-        for mode in ("basis", "mutiert"):
+        for mode in ("base", "mutated"):
             # Jeder Lauf in einem eigenen, leeren Ordner — nie im Repo. Die
             # Pfade der App sind CWD-relativ, und die Testfaelle hier werden
             # beim Namen geladen, also ohne den Arbeitsordner von
             # `root_tests.main()`: ein Item-Scan-Fall schrieb so bei jeder
             # Gegenprobe `.run.json` in die echten Daten. `run_check` legt das
             # Repo selbst in `sys.path`.
-            with tempfile.TemporaryDirectory(prefix="gegenprobe_",
+            with tempfile.TemporaryDirectory(prefix="mutation_",
                                              ignore_cleanup_errors=True) as workdir:
                 try:
                     run = subprocess.run(

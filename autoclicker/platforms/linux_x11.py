@@ -16,7 +16,6 @@ import time
 from .common import (
     APP_ID, HOTKEY_BINDINGS, KEY_NAMES, PlatformError,
 )
-from ..config import CONFIG
 from ..utils import err, warn
 
 logger = logging.getLogger("autoclicker")
@@ -99,20 +98,6 @@ def get_screen_size() -> tuple[int, int] | None:
             return int(monitor["width"]), int(monitor["height"])
     except (ImportError, OSError, RuntimeError, IndexError):
         return None
-
-
-def get_virtual_origin() -> tuple[int, int]:
-    rect_value = get_virtual_desktop()
-    return (rect_value[0], rect_value[1]) if rect_value else (0, 0)
-
-
-def get_screen_center() -> tuple[int, int]:
-    rect_value = get_virtual_desktop()
-    if rect_value:
-        return ((rect_value[0] + rect_value[2]) // 2,
-                (rect_value[1] + rect_value[3]) // 2)
-    size = get_screen_size()
-    return (size[0] // 2, size[1] // 2) if size else (960, 540)
 
 
 def capture_screen(region=None):
@@ -267,11 +252,11 @@ def install_keyboard_hook(on_key_down) -> bool:
         keyboard, _ = _pynput()
         modifier = set()
         controls = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
-        old = {keyboard.Key.old, keyboard.Key.alt_l, keyboard.Key.alt_r,
-               keyboard.Key.alt_gr}
+        alts = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+                keyboard.Key.alt_gr}
 
         def on_press(key):
-            if key in controls or key in old:
+            if key in controls or key in alts:
                 modifier.add(key)
                 return
             name = _key_name(keyboard, key)
@@ -394,32 +379,6 @@ def get_client_rect_by_handle(handle: int):
             display.close()
 
 
-def resolve_window(title: str, instance: int = 0, reference_rect=None):
-    if not isinstance(title, str) or not title.strip():
-        return None
-    target = title.strip().casefold()
-    window = list_windows()
-    candidates = [e for e in window if e[0].strip().casefold() == target]
-    if not candidates:
-        candidates = [e for e in window if target in e[0].casefold()]
-    if not candidates:
-        return None
-    try:
-        index = int(instance)
-    except (TypeError, ValueError):
-        index = 0
-    if 0 <= index < len(candidates):
-        return candidates[index]
-    if isinstance(reference_rect, (list, tuple)) and len(reference_rect) == 4:
-        try:
-            ref = tuple(int(v) for v in reference_rect)
-            return min(candidates, key=lambda e: sum(
-                abs(e[1][i] - ref[i]) for i in range(4)))
-        except (TypeError, ValueError):
-            pass
-    return candidates[0]
-
-
 def get_client_rect_by_title(title_substring: str):
     target = str(title_substring or "").casefold()
     entry = next((e for e in list_windows() if target in e[0].casefold()), None)
@@ -481,18 +440,6 @@ def get_window_title_at(x: int, y: int) -> str:
     return min(match)[1]
 
 
-def check_failsafe(state=None) -> bool:
-    cfg = state.config if state else CONFIG
-    if not cfg.failsafe_enabled:
-        return False
-    try:
-        x, y = get_cursor_pos()
-    except PlatformError:
-        # Ohne bekannte Mausposition ist Weiterklicken nicht sicher.
-        return True
-    return x <= cfg.failsafe_x and y <= cfg.failsafe_y
-
-
 def register_hotkeys() -> bool:
     global _hotkey_listener
     if _hotkey_listener is not None:
@@ -533,14 +480,6 @@ def unregister_hotkeys() -> None:
         _hotkey_listener.stop()
         _hotkey_listener = None
     flush_hotkey_messages()
-
-
-def get_current_thread_id() -> int:
-    return threading.get_ident()
-
-
-def post_quit(_thread_id: int) -> None:
-    """Linux hat keine Windows-Nachrichtenqueue; das Event beendet die Schleife."""
 
 
 def wait_for_key(names: tuple[str, ...], timeout: float | None = 60.0):

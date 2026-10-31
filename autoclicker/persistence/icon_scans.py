@@ -13,10 +13,9 @@ from typing import Optional
 from ..models import (
     DEFAULT_MIN_CONFIDENCE, IconScanConfig, AutoClickerState, ICON_ACTION_CLICK,
 )
-from .migration import KIND_ICON_SCAN, migrate
 from .sequences import sequence_dir
 from ._scan_store import write_scan, list_scan_files, load_all_scans, LOAD_EXCEPTIONS
-from .serialization import _icon_scan_to_dict, _click_reference
+from .serialization import _icon_scan_to_dict
 
 logger = logging.getLogger("autoclicker")
 
@@ -42,7 +41,6 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data, _messages = migrate(data, KIND_ICON_SCAN)
         if not isinstance(data, dict):
             raise TypeError("Icon-Scan muss ein JSON-Objekt sein")
 
@@ -54,9 +52,7 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
             marker_colors=[tuple(c) for c in data.get("marker_colors", [])],
             color_tolerance=data.get("color_tolerance", 30),
             action=data.get("action", ICON_ACTION_CLICK),
-            action_point_id=_click_reference(
-                data, f"Icon-Scan '{data['name']}'",
-                "Klick-Punkt im Icon-Scan-Editor neu setzen"),
+            action_point_id=data.get("action_point_id"),
             action_key=data.get("action_key"),
             action_delay=data.get("action_delay", 0),
             owner_sequence=owner or filepath.parent.parent.name,
@@ -67,7 +63,7 @@ def load_icon_scan_file(filepath: Path, owner: str = "") -> Optional[IconScanCon
         return None
 
 
-def list_available_icon_scans(owner: str = "") -> list[tuple[str, Path]]:
+def list_available_icon_scans(owner: str) -> list[tuple[str, Path]]:
     """Listet alle verfügbaren Icon-Scan Konfigurationen auf."""
     return list_scan_files(str(_icon_scans_dir(owner))) if owner else []
 
