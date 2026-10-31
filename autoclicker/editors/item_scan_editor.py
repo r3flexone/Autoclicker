@@ -194,7 +194,7 @@ def run_item_scan_menu(state: AutoClickerState) -> None:
         f"Scans bearbeiten     ({scan_count} vorhanden)",
         f"Boss-Scans bearbeiten ({boss_count} vorhanden)",
         f"Icon-Scans bearbeiten ({icon_count} vorhanden)",
-        "Auto-Scan (Slots scannen + Items + Scan in einem Schritt)",
+        "Auto-Scan (Items aus allen Slots des Scans lernen)",
         "Import / Export (Setup teilen oder importieren)",
     ]
 
@@ -659,78 +659,30 @@ def _store_item_scan(state: AutoClickerState, config: ItemScanConfig) -> None:
 
 
 def run_auto_scan_workflow(state: AutoClickerState) -> None:
-    """Kompletter Auto-Scan Workflow: Alle Slots scannen, Items erstellen, Scan-Config speichern."""
-    print(header("AUTO-SCAN WORKFLOW"))
+    """Auto-Scan: lernt die Items aus allen Slots des gewählten Item-Scans.
+
+    Hier entstand danach ein ZWEITER Scan aus denselben Slot- und Item-Objekten
+    („Slots + Items + Scan in einem Schritt") — aus der Zeit des globalen
+    Bestands, als ein Scan nur eine Auswahl daraus war. Seit ein Scan seine Slots
+    und Items besitzt, teilten sich damit zwei Scans dieselben Objekte, ein
+    vorhandener Name (Vorgabe „AutoScan") wurde ohne Rückfrage überschrieben, und
+    der Name des gewählten Scans ersetzte ihn durch eine Kopie ohne Fensterbindung,
+    Katalog und Richtung. Gelernt wird jetzt in den gewählten Scan; gespeichert
+    wird dort, wie beim Befehl `autoscan` im Item-Editor (`save_scan_items`).
+    """
+    print(header("AUTO-SCAN"))
     print(f"  {breadcrumb('Hauptmenü', 'Item-Scan', 'Auto-Scan')}")
-    print("\n  Scannt automatisch alle Slots, erstellt Items und eine Scan-Konfiguration.")
+    with state.lock:
+        scan_name = state.active_item_scan
+    print(f"\n  Lernt die Items aus allen Slots von {scan_name!r}.")
 
     if not PILLOW_AVAILABLE:
         print(f"\n{err('Pillow nicht installiert!')}")
         return
-
-    if not OPENCV_AVAILABLE:
-        print(f"\n{err('OpenCV nicht installiert!')} (pip install opencv-python)")
-        return
-
-    with state.lock:
-        slot_count = len(state.scan_slots)
-
-    if slot_count == 0:
-        print(f"\n{err('Keine Slots vorhanden!')}")
-        print("         Erstelle zuerst Slots mit dem Slot-Editor (Option 1, dann 'auto')")
-        return
-
-    # Items automatisch erstellen via item_editor
+    # Slots und OpenCV prüft `item_autoscan_command` selbst.
     from .item_editor import item_autoscan_command
     item_autoscan_command(state, "autoscan")
-
-    # Prüfen ob Items erstellt wurden
     with state.lock:
-        item_count = len(state.scan_items)
-
-    if item_count == 0:
-        print(f"\n{err('Keine Items erstellt - Scan-Konfiguration wird nicht erstellt.')}")
-        return
-
-    # Scan-Config erstellen
-    print(header("SCAN-KONFIGURATION ERSTELLEN"))
-
-    scan_name = safe_input("\nName für den Scan (Enter = 'AutoScan'): ").strip()
-    if is_cancel(scan_name):
-        print("  -> Scan-Config wird nicht erstellt (Items bleiben erhalten)")
-        return
-    if not scan_name:
-        scan_name = "AutoScan"
-
-    # Toleranz
-    tolerance = ItemScanConfig.color_tolerance
-    try:
-        tol_input = safe_input(f"Farbtoleranz (Enter = {tolerance}): ").strip()
-        if tol_input:
-            tolerance = max(1, min(100, int(tol_input)))
-    except ValueError:
-        pass
-
-    # Alle Slots und Items verwenden
-    with state.lock:
-        slots = list(state.scan_slots.values())
-        items = list(state.scan_items.values())
-
-    config = ItemScanConfig(
-        name=scan_name,
-        slots=slots,
-        items=items,
-        color_tolerance=tolerance,
-        owner_sequence=(state.active_sequence.name if state.active_sequence else ""),
-    )
-
-    with state.lock:
-        state.item_scans[scan_name] = config
-
-    if not save_item_scan(config):
-        print(err("Auto-Scan nicht gespeichert; Änderungen bleiben im Arbeitsspeicher."))
-        return
-
-    print(f"\n{ok(f'Auto-Scan komplett!')}")
-    print(f"         Scan '{scan_name}': {len(slots)} Slots, {len(items)} Items")
+        slot_count, item_count = len(state.scan_slots), len(state.scan_items)
+    print(f"         Scan '{scan_name}': {slot_count} Slots, {item_count} Items")
     print(f"         Nutze im Sequenz-Editor: 'scan {scan_name}'")

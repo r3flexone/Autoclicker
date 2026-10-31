@@ -126,7 +126,7 @@ in einem Jahr wieder ein „700, das reicht wohl".
 
 **`tests/test_logic.py`** prüft Serialisierung,
 Schema-Version, Runtime-Gates, Kalibrierung, Tastenbelegung und die Plattform-Grenze — ohne
-GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` werden am Dateianfang gestubbt;
+GUI, ohne Windows, ohne Netz. `msvcrt` und `ctypes.windll` stubbt `tests/contract/_harness.py` beim Import;
 deshalb läuft die komplette Logik-Schicht auch hier.
 
 **Und seit `.github/workflows/tests.yml` läuft sie auch, wenn niemand daran denkt.**

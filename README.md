@@ -266,7 +266,7 @@ Das Item-Scan System bietet ein Menü mit folgenden Optionen:
 - **[4] Scans bearbeiten** - Slots und Items verknüpfen (öffnet denselben Scan-Editor wie [1])
 - **[5] Boss-Scans bearbeiten** - Bosse erkennen + Aktion auslösen (siehe Boss-Scan-Sektion)
 - **[6] Icon-Scans bearbeiten** - Symbol/Icon erkennen + Aktion auslösen (siehe Icon-Scan-Sektion)
-- **[7] Auto-Scan** - Slots scannen + Items + Scan in einem Workflow erstellen
+- **[7] Auto-Scan** - Items aus allen Slots des gewählten Scans lernen (wie `autoscan` im Item-Editor)
 - **[8] Import / Export** - Setup als ZIP teilen oder importieren
 
 Im visuellen Scan-Reiter kann ein Spielfenster als dauerhafte Aufnahmequelle

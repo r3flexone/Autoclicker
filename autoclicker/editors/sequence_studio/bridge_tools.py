@@ -268,7 +268,14 @@ class BridgeToolsMixin:
         return {"ok": True, "message": f"Punkt #{point.id} geändert."}
 
     def tool_point_show(self, data: Optional[dict] = None) -> dict:
-        """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
+        """Fährt einen Punkt an und sagt, ob dort noch seine Farbe liegt.
+
+        Die Messung stand nur in Feldern (`saved`, `current`), die die Seite nie
+        las: der Knopf heisst „Zeigen & Farbe prüfen" und meldete bloss, wo die
+        Maus steht. Geurteilt wird wie bei „Stelle zeigen" im Editor
+        (`command_show` im Hauptprozess): Abstand gegen `pixel_wait_tolerance`,
+        also so, wie ein Farb-Trigger an diesem Punkt im Lauf entschiede.
+        """
         if self._running():
             return {"ok": False, "message": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         point = self._point((data or {}).get("point_id"))
@@ -276,11 +283,26 @@ class BridgeToolsMixin:
             return {"ok": False, "message": "Punkt nicht gefunden."}
         from ...winapi import set_cursor_pos
         set_cursor_pos(point.x, point.y)
-        current = self._color_at(point.x, point.y)
-        return {"ok": True, "point_id": point.id,
-                "saved": list(point.color) if point.color else None,
-                "current": list(current) if current else None,
-                "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
+        verdict, kind = self._color_verdict(point.color, self._color_at(point.x, point.y))
+        return {"ok": True, "kind": kind,
+                "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y}). {verdict}"}
+
+    @staticmethod
+    def _color_verdict(saved, current) -> tuple[str, str]:
+        """`(Satz, Art der Meldung)` zum Vergleich gespeicherte gegen aktuelle Farbe."""
+        from ...config import CONFIG
+        from ...imaging import color_distance
+        if not current:
+            return "Die Farbe dort ist nicht lesbar.", "warn"
+        now = tuple(current)
+        if not saved:
+            return (f"Dort jetzt RGB{now} — der Punkt hat keine gespeicherte Farbe "
+                    "zum Vergleichen.", "info")
+        distance = color_distance(tuple(saved), now)
+        if distance <= CONFIG.pixel_wait_tolerance:
+            return f"Farbe passt: RGB{now}.", "ok"
+        return (f"Farbe weicht ab: gespeichert RGB{tuple(saved)}, jetzt RGB{now} "
+                f"(Abstand {distance:.0f}, erlaubt {CONFIG.pixel_wait_tolerance}).", "warn")
 
     def _point_remove(self, point_id) -> tuple[bool, str, list[str]]:
         """Die EINE Löschregel für Punkte: nur unbenutzte, Referenzen nie still brechen.

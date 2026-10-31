@@ -352,6 +352,27 @@ try:
     check("der Farbanalysator liefert RGB und Hex",
           _res["ok"] and _res["colors"][0]["rgb"] == [12, 34, 56]
           and _res["colors"][0]["hex"] == "#0C2238")
+
+    # „Zeigen & Farbe prüfen" mass schon immer — aber das Ergebnis stand in
+    # Feldern, die die Seite nie las; die Meldung sagte nur, wo die Maus steht.
+    import autoclicker.winapi as _WA
+    _moves, _orig_move = [], _WA.set_cursor_pos
+    _WA.set_cursor_pos = lambda x, y: _moves.append((x, y))
+    try:
+        _res = _b.tool_point_show({"point_id": _new.id})
+        check("Zeigen: die Maus fährt auf den Punkt", _moves == [(333, 444)])
+        check("Zeigen & Farbe prüfen: eine passende Farbe steht in der Meldung",
+              _res["ok"] and _res["kind"] == "ok" and "Farbe passt" in _res["message"])
+        _b._color_at = staticmethod(lambda x, y: (200, 10, 30))
+        _res = _b.tool_point_show({"point_id": _new.id})
+        check("... eine abweichende als Warnung, mit beiden Farben",
+              _res["kind"] == "warn" and "RGB(12, 34, 56)" in _res["message"]
+              and "RGB(200, 10, 30)" in _res["message"])
+        _b._color_at = staticmethod(lambda x, y: None)
+        check("... und eine unlesbare Farbe wird gesagt",
+              "nicht lesbar" in _b.tool_point_show({"point_id": _new.id})["message"])
+    finally:
+        _WA.set_cursor_pos = _orig_move
 finally:
     _os.chdir(_cwd)
 

@@ -7023,7 +7023,7 @@ async function callTool(name, data) {
   if (answer.message)
     setStatus({text: answer.message + (points && S && S.dirty
                 ? " Noch nicht gespeichert — im Editor speichern." : ""),
-               kind: answer.ok ? "ok" : "err"});
+               kind: answer.kind || (answer.ok ? "ok" : "err")});
   await renderTools();
   return answer;
 }

@@ -243,3 +243,45 @@ try:
           "ungültig — behalte" in _r.output and "Dolch" in _r.state.scan_items)
 finally:
     _os.chdir(_cwd)
+
+
+# =============================================================================
+section("Konsolen-Auto-Scan lernt in den gewählten Scan, statt einen zweiten zu bauen")
+# =============================================================================
+# Hier entstand nach dem Lernen ein ZWEITER Scan aus denselben Slot- und
+# Item-Objekten (Vorgabe „AutoScan", ein vorhandener Name wurde überschrieben) —
+# aus der Zeit des globalen Bestands, als ein Scan nur eine Auswahl daraus war.
+import autoclicker.editors.item_editor as _IED
+
+_st_auto = _ST()
+_slot_auto = _SLOT("S1", (0, 0, 10, 10), (5, 5))
+_scan_auto = _ISC(name="Raid", slots=[_slot_auto], owner_sequence="s",
+                  capture_window_title="Spiel", capture_window_rect=(0, 0, 100, 100))
+_st_auto.item_scans["Raid"] = _scan_auto
+_st_auto.active_item_scan = "Raid"
+_st_auto.scan_slots = {"S1": _slot_auto}
+_learned_auto, _asked_auto = [], []
+
+
+def _fake_autoscan(state, user_input):
+    _learned_auto.append(user_input)
+    state.scan_items["Gelernt"] = _IP(name="Gelernt")
+
+
+_orig_auto = (_IED.item_autoscan_command, _ISE.safe_input, _ISE.PILLOW_AVAILABLE,
+              _ISE.OPENCV_AVAILABLE)
+_IED.item_autoscan_command = _fake_autoscan
+_ISE.safe_input = lambda _p="": _asked_auto.append(_p) or ""
+_ISE.PILLOW_AVAILABLE = _ISE.OPENCV_AVAILABLE = True
+try:
+    with _cl.redirect_stdout(_io.StringIO()) as _out_auto:
+        _ISE.run_auto_scan_workflow(_st_auto)
+finally:
+    (_IED.item_autoscan_command, _ISE.safe_input, _ISE.PILLOW_AVAILABLE,
+     _ISE.OPENCV_AVAILABLE) = _orig_auto
+check("Auto-Scan lernt die Items aus den Slots", _learned_auto == ["autoscan"])
+check("und legt keinen zweiten Scan an — der gewählte bleibt derselbe, samt Fensterbindung",
+      list(_st_auto.item_scans) == ["Raid"] and _st_auto.item_scans["Raid"] is _scan_auto
+      and _scan_auto.capture_window_rect == (0, 0, 100, 100))
+check("und fragt nach keinem Scan-Namen", _asked_auto == [])
+check("der Abschluss nennt den Scan und den Stand", "'Raid': 1 Slots, 1 Items" in _out_auto.getvalue())

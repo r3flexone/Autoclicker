@@ -629,6 +629,8 @@ _call_tool_d = _app_d[_app_d.index("async function callTool"):]
 _call_tool_d = _call_tool_d[:_call_tool_d.index("\n}\n")]
 check("und zwar ueber die Momentaufnahme — samt Hinweis aufs Speichern",
       'await call("snapshot")' in _call_tool_d and "im Editor speichern" in _call_tool_d)
+check("die Art der Meldung kommt von der Bruecke, wenn sie eine schickt (Farbe weicht ab)",
+      "answer.kind ||" in _call_tool_d)
 
 
 # =============================================================================

@@ -3,10 +3,10 @@
 Aufruf:  python tests/test_logic.py   (muss mit `N PASS / 0 FAIL` enden)
 
 Prüft Serialisierung/Persistenz, Farb-/Parsing-Helfer und das
-Export-Format. Auf Linux/Mac wird msvcrt gestubbt (auf Windows nicht —
-da ist es echt vorhanden), damit der Import der utils nicht scheitert.
+Export-Format. Auf Linux/Mac stubbt der Harness (`tests/contract/_harness.py`)
+msvcrt und ctypes.windll beim Import, damit der Import der utils nicht scheitert.
 """
-import sys, types, json, tempfile
+import sys, json, tempfile
 from pathlib import Path
 
 # Der dokumentierte Direktaufruf muss auch unter Windows-Codepages wie cp1252
@@ -17,46 +17,13 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-# MUSS vor dem msvcrt-Stub geladen werden: `subprocess` erkennt Windows daran,
-# dass sich msvcrt importieren laesst, und zieht dann `_winapi` nach - das es
-# auf Linux nicht gibt. Wer danach etwas importiert, das subprocess braucht
-# (z.B. PIL.ImageGrab), bekommt einen ModuleNotFoundError und haelt Pillow
-# faelschlich fuer nicht installiert. Genau daran lief der Bild-Teil der
-# Scan-Tests ins Leere.
-import subprocess  # noqa: F401
-
-try:
-    import msvcrt  # noqa: F401  (echtes Modul auf Windows)
-except ImportError:
-    sys.modules['msvcrt'] = types.ModuleType('msvcrt')  # Stub auf Linux/Mac
-
-# ctypes.windll gibt es nur auf Windows. Damit auch die Runtime-/Debug-Schicht hier
-# pruefbar ist (die importiert winapi), wird es auf Linux/Mac minimal gestubbt. Die
-# Stubs tun nichts - getestet wird ausschliesslich Logik, keine echten Maus-Aktionen.
-import ctypes
-if not hasattr(ctypes, 'windll'):
-    class _StubFn:
-        def __init__(self, *a): self.argtypes = None; self.restype = None
-        def __call__(self, *a, **kw): return 0
-
-    class _StubLib:
-        def __getattr__(self, name):
-            fn = _StubFn(); setattr(self, name, fn); return fn
-
-    class _StubWinDLL:
-        def __getattr__(self, name):
-            lib = _StubLib(); setattr(self, name, lib); return lib
-        def LoadLibrary(self, name): return _StubLib()
-
-    ctypes.windll = _StubWinDLL()
-    ctypes.WinDLL = lambda *a, **kw: _StubLib()
-    ctypes.WINFUNCTYPE = ctypes.CFUNCTYPE
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# **Zaehler und Ausgabe leben im Harness, nicht hier.** Sonst zaehlte jedes
+# **Zaehler, Ausgabe und Stubs leben im Harness, nicht hier.** Sonst zaehlte jedes
 # ausgelagerte Modul fuer sich, und die Schlusszeile saehe nur den letzten Stand.
-# Die Stubs oben stehen trotzdem in dieser Datei: sie muessen VOR dem ersten
-# autoclicker-Import sitzen, und der kommt gleich.
+# Die Stubs (msvcrt, ctypes.windll) setzt er beim Import — deshalb steht dieser
+# Import VOR dem ersten autoclicker-Import. Hier stand bis zum 31.10.2026
+# derselbe Stub-Block ein zweites Mal, Zeile für Zeile.
 import tests.contract._harness as _H     # noqa: E402
 from tests.contract._harness import check, section     # noqa: E402
 
@@ -4126,6 +4093,7 @@ from autoclicker.platforms.windows import set_app_id as _said12, APP_ID as _AID1
 
 check("die Kennung fuer die Taskleiste laesst sich setzen", _said12() is True)
 if sys.platform == "win32":
+    import ctypes
     _buffer12 = ctypes.c_wchar_p()
     _hr12 = ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID(
         ctypes.byref(_buffer12))
