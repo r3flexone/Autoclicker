@@ -198,17 +198,17 @@ def run():
         # `render()` nicht anfasst — ohne das Nachziehen stuenden dort die
         # Daten der VORIGEN Sequenz unter dem Namen der neuen.
         f.tab("tools")
-        f.click_text("#wz-left button", "Punkte nachklicken")
-        expect("Alpha" in f.text("#wz-middle"),
-               f"der Bezug nennt nicht die offene Sequenz: {f.text('#wz-middle')[:120]!r}")
+        f.click_text("#tools-left button", "Punkte nachklicken")
+        expect("Alpha" in f.text("#tools-middle"),
+               f"der Bezug nennt nicht die offene Sequenz: {f.text('#tools-middle')[:120]!r}")
         # Die Auswahl laedt selbst - einen Laden-Knopf gibt es nicht mehr.
         f.page.select_option("#seq-select", "Beta")
         f.settle()
         expect(f.page.eval_on_selector("#seq-select", "e => e.value") == "Beta",
                "die Auswahl steht nach dem Laden nicht auf 'Beta'")
-        expect("Beta" in f.text("#wz-middle"),
+        expect("Beta" in f.text("#tools-middle"),
                f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
-               f"{f.text('#wz-middle')[:120]!r}")
+               f"{f.text('#tools-middle')[:120]!r}")
 
         error.extend(f.error)
     return error

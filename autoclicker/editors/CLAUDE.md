@@ -152,7 +152,7 @@ dem Bestand der Zielsequenz als Dedup-Kontext (`points_for_events(existing=…)`
 eine geladene Fassung derselben Sequenz über `activate_sequence`. Eine neue
 Phase (`CTRL+ALT+SHIFT+P`) wird abgelehnt: eingefügt wird in genau eine. Die
 Tafel im Inspektor zeigt dieselbe Live-Ausgabe wie der Werkzeuge-Reiter
-(`wzFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
+(`toolsFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
 aktiv" erst nach einem ersten Lebenszeichen als „fertig" — beim ersten Blick
 nach dem Start hat der Hauptprozess den Briefkasten oft noch gar nicht geholt.
 Nach dem Neuladen sind die eingefügten Blöcke **gewählt** (`select_range`, aus
@@ -456,7 +456,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Basis-Ebene ist fast voll (s. Hotkey-Flow in der Wurzel-`CLAUDE.md`); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
   `KEYS` in `editors/reclick.py`; das Studio zeigt sie als **Tabelle**
-  (`WZ_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
+  (`TOOLS_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
   mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
   Lesen von vorn, und dann liest ihn niemand.
 

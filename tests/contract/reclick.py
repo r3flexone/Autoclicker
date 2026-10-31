@@ -554,7 +554,7 @@ section("Nachklicken: Konsole und Studio nennen dieselben Tasten")
 import re as _re_nk
 _appjs = (Path(_nk.__file__).resolve().parent
           / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
-_js_block = _appjs[_appjs.index("const WZ_KEYS"):_appjs.index("const WZ_STEPS")]
+_js_block = _appjs[_appjs.index("const TOOLS_KEYS"):_appjs.index("const TOOLS_STEPS")]
 _js_keys = _re_nk.findall(r'\["(CTRL\+ALT\+\w)",\s*"([^"]+)"', _js_block)
 check("das Studio nennt dieselben vier Tasten in derselben Reihenfolge",
       _js_keys == [(t_[0], t_[1]) for t_ in _nk.KEYS])

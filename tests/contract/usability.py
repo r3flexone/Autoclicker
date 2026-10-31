@@ -276,7 +276,7 @@ try:
           and "if (!S.phases.some((phase) => phase.blocks.length)) target.appendChild(startCard());"
           in _web)
     check("sie nennt beide Wege und den Import",
-          'wzOpen("recording")' in _web and '"Ersten Block anlegen"' in _web
+          'toolsOpen("recording")' in _web and '"Ersten Block anlegen"' in _web
           and 'setView("share", true)' in _web)
     check("die Tafel gibt es, mit Taste und Knopf",
           'id="shortcuts"' in _web and 'e.key === "?"' in _web and 'id="btn-help"' in _web)

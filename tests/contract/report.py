@@ -372,7 +372,7 @@ _report_js = _web[_web.index("async function renderReport"):
                    _web.index("/* ----------------------------------------------------- "
                               "Ansicht: Einstellungen */")]
 check("die Kennzahlen sind dieselben Kacheln wie im Werkzeuge-Reiter",
-      "wz-metrics" in _report_js and "wzMetric(" in _report_js)
+      "tools-metrics" in _report_js and "toolsMetric(" in _report_js)
 check("und die Karten dieselben wie im Teilen-Reiter",
       "share-card" in _report_js)
 # Dieselbe Pruefung wie bei den `--slot-*`-Variablen: eine benutzte Klasse, die

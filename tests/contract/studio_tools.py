@@ -22,7 +22,7 @@ import autoclicker.mailbox as _bf
 
 def _sandbox_dir():
     """Ein vollständiger kleiner Bestand auf Platte, plus die Brücke darauf."""
-    sandbox_dir = _tf.mkdtemp(prefix="wz_")
+    sandbox_dir = _tf.mkdtemp(prefix="tools_")
     _os.chdir(sandbox_dir)
     _P("sequences").mkdir()
 
@@ -64,17 +64,17 @@ _app = (_web / "app.js").read_text(encoding="utf-8")
 _css = (_web / "styles.css").read_text(encoding="utf-8")
 check("jedes Werkzeug hat ein eigenes Linien-Icon",
       all(f'{k}:' in _app for k in ("check", "calibrate", "reclick"))
-      and "function wzIcon(" in _app)
+      and "function toolsIcon(" in _app)
 check("Werkzeugkarten statt einfacher Textknöpfe",
-      'class: "wz-nav "' in _app and ".wz-nav{" in _css)
+      'class: "tools-nav "' in _app and ".tools-nav{" in _css)
 check("der Inhalt beginnt mit einem gestalteten Werkzeugkopf",
-      "function wzHeader(" in _app and ".wz-hero{" in _css)
+      "function toolsHeader(" in _app and ".tools-hero{" in _css)
 check("Prüfergebnisse haben Kennzahlen und Zustandskarten",
-      "function wzMetric(" in _app and ".wz-metrics{" in _css
-      and ".wz-success{" in _css)
+      "function toolsMetric(" in _app and ".tools-metrics{" in _css
+      and ".tools-success{" in _css)
 check("Erklärtexte stecken im einheitlichen i statt in offenen Kästen",
-      'function wzInfo(' in _app and 'info(text, "tool-" + title)' in _app
-      and ".wz-info-compact{" in _css and ".wz-info{" not in _css)
+      'function toolsInfo(' in _app and 'info(text, "tool-" + title)' in _app
+      and ".tools-info-compact{" in _css and ".tools-info{" not in _css)
 # **Symbole sind SVG** (`ICONS`/`icon()`), keine Unicode-Zeichen: die kommen aus
 # der Systemschrift und stehen je nach Fenster verschieden gross und hoch. Vier
 # Knoepfe trugen ihr Zeichen bis zuletzt im Text (◷ ◎ ⧉ ✛).
@@ -311,10 +311,10 @@ try:
     check("auch JavaScript baut dort kein Info-i mehr",
           "aufnahme-info" not in _js)
     check("der Editor-Knopf verweist auf das Werkzeug",
-          'wzOpen("recording")' in _js)
+          'toolsOpen("recording")' in _js)
     check("Start, Stopp und automatisches Oeffnen sind im UI verdrahtet",
-          all(word in _js for word in ("wzStartRecording", "wzStopRecording",
-                                       "wzWatchRecording")))
+          all(word in _js for word in ("toolsStartRecording", "toolsStopRecording",
+                                       "toolsWatchRecording")))
     from autoclicker.editors.sequence_recorder import RECORDING_HOTKEYS
     check("alle Aufnahme-Hotkeys kommen aus derselben Quelle",
           _b.tool_data()["recording_keys"] ==

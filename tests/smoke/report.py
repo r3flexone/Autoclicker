@@ -90,8 +90,8 @@ def run():
         expect("TIMEOUTS" in center, f"die Timeout-Liste fehlt: {center[:120]!r}")
         expect("Bank oeffnen" in center, "der haengende Schritt wird nicht genannt")
         # Fuenf Kennzahlen-Kacheln, dieselben wie im Werkzeuge-Reiter.
-        expect(f.count("#rep-middle .wz-metric") == 5,
-               f"5 Kennzahlen erwartet, da: {f.count('#rep-middle .wz-metric')}")
+        expect(f.count("#rep-middle .tools-metric") == 5,
+               f"5 Kennzahlen erwartet, da: {f.count('#rep-middle .tools-metric')}")
         # Jede Rangzeile hat ihren Balken — sonst steht die Liste ohne
         # Verhaeltnis da, und genau das ist der Unterschied zur Konsole.
         expect(f.count("#rep-middle .rep-rank") == f.count("#rep-middle .rep-bar"),

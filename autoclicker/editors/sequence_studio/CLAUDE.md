@@ -594,14 +594,14 @@ Sechs Regeln, an denen der Reiter hängt:
   erreichbar" — und überschrieb dabei, was der Nutzer inzwischen getan hatte.
   Es merkt sich deshalb `statusStamp` und schweigt, wenn seither jemand anders
   etwas gemeldet hat.
-- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `wzCheck()`
-  rief nur `wzRenderMiddle()`: der Bericht stand in der Mitte, rechts blieb
+- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `toolsCheck()`
+  rief nur `toolsRenderMiddle()`: der Bericht stand in der Mitte, rechts blieb
   „Noch nichts geprüft." — ausgerechnet die Spalte, die auflistet, WAS geprüft
   wurde, und ohne die „Alles in Ordnung" eine Behauptung ist. Jeder andere
   Werkzeug-Befehl geht über `callTool` → `renderTools()` und zeichnet
   alle drei Spalten; dieser eine ging seinen eigenen Weg, weil er `ask()`
   direkt ruft.
-- **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `wzInfo()` im
+- **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `toolsInfo()` im
   Werkzeuge-Reiter warf seinen Titel ins `title`-Attribut; sichtbar blieb ein
   nackter Kreis in der Fläche — an zwölf Stellen, in „prüfen" und „kalibrieren"
   mitten im Nichts, wo er wie ein Rest aussah. Die Beschriftung ist es, die
@@ -609,7 +609,7 @@ Sechs Regeln, an denen der Reiter hängt:
   und nicht die Breite, um die es beim Kompakt-Umbau ging (ein Kasten wäre das
   gewesen).
 - **Zustandsklassen bekommen ein Präfix — auch dort, wo es niemand sieht.** Der
-  Hinweiskasten hiess `wz-info-compact info`, und `.info` ist der runde
+  Hinweiskasten hiess `tools-info-compact info`, und `.info` ist der runde
   ⓘ-Knopf: 13 px, `flex:none`, zentriert. Der Kasten erbte dessen Gestalt.
   Solange er NUR das ⓘ enthielt, sahen 13 px richtig aus — mit einer
   Beschriftung darin stand der Text mittig über den Kasten hinaus, nach links
@@ -619,9 +619,9 @@ Sechs Regeln, an denen der Reiter hängt:
   in der CSS-Datei keine einzige Variante — ein Präfix hätte einen toten Zweig
   gepflegt.
 - **Eine Klasse, die das Layout setzt, darf keine andere überschreiben.**
-  `.wz-action{display:flex}` steht später im Stylesheet als `.grid2`/
+  `.tools-action{display:flex}` steht später im Stylesheet als `.grid2`/
   `.grid3` und gewann bei gleicher Spezifität: die beiden Stellen, die
-  ausdrücklich `wz-action gitter2` bzw. `gitter3 wz-action` schreiben, bekamen
+  ausdrücklich `tools-action grid2` bzw. `grid3 tools-action` schreiben, bekamen
   nie ihre gleichen Spalten, und die Knopfreihen standen in Textbreite da. Die
   Klasse trägt jetzt nur noch ihren Abstand; wer eine Reihe will, schreibt
   `row` dazu.
@@ -1367,7 +1367,7 @@ der Knopf aber aus, als täte er nichts.
 
 
 **Jedes Werkzeug sagt, WORAUF es wirkt** — und „jedes" heisst jedes: „Farben
-analysieren" trug als einziges keine Bezugszeile, während in `WZ_TOOLS`
+analysieren" trug als einziges keine Bezugszeile, während in `TOOLS`
 `scopeKind: "inventory"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
 den Bildschirm und schreibt nirgends hin), und weil die Zeile gar nicht
 gezeichnet wurde, fiel die Unwahrheit nicht auf. Dafür gibt es die vierte Art
@@ -1382,7 +1382,7 @@ Klick-Runde ist das genau die Frage, die man sich stellt. Seit die Auswahl
 **weg**: er liess den Namen dreimal gleichzeitig dastehen. Ein einzelner Name
 oben wäre trotzdem falsch gewesen: Prüfen und
 Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
-Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzScope()`), und
+Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`toolsScope()`), und
 links steht die offene Sequenz als Einordnung.
 
 Daran hing ein echter Fehler: `command_reclick` nahm `state.active_sequence` aus
@@ -1450,7 +1450,7 @@ Fünf Regeln, an denen er hängt:
   wächst mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet; ohne
   Deckel liest ein halbes Jahr Betrieb bei jedem Klick mit. Eine stillschweigend
   gekürzte Auswertung wäre schlimmer als eine kurze.
-- **Er baut mit dem, was da ist.** Kennzahlen sind `wz-metrics` (dieselben
+- **Er baut mit dem, was da ist.** Kennzahlen sind `tools-metrics` (dieselben
   Kacheln wie im Werkzeuge-Reiter), Karten sind `share-card`, die Spalten sind
   `section` — eigene Klassen gibt es nur für die Rangzeile und die
   Sitzungsauswahl, und **eine** Rangzeile trägt alle vier Listen plus den Ertrag.
@@ -2173,7 +2173,7 @@ Regeln beim Erweitern:
   dem man suchen geht; der Bericht hat dafür „Session-Log einschalten". Teilen
   sagte „erst speichern" in einem Reiter ohne Speichern-Knopf — die Warnung
   trägt ihn jetzt selbst (`saveEverythingForShare()`).
-- **Ein Werkzeug hat einen Namen, und er kommt aus `WZ_TOOLS`** (`wzHeader(key,
+- **Ein Werkzeug hat einen Namen, und er kommt aus `TOOLS`** (`toolsHeader(key,
   text)`). Links stand „Bestand prüfen", im Kopf „Setup prüfen", und
   „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Der Konsolenbefehl
   steht im Tooltip und nur, wo es ihn gibt (check, fix, reclick) — als Marke
