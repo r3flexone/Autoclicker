@@ -282,13 +282,21 @@ def _async_else(else_config, stop=False, failsafe=False, paused_ok=True):
 
 check("ohne ELSE nichts", _async_else(None)[:2] == ([], []))
 check("skip wird im Async-Pfad verworfen", _async_else(_EC(action="skip"))[:2] == ([], []))
-check("Klick", _async_else(_EC(action="click", x=3, y=4))[0] == [(3, 4)])
+check("Klick", _async_else(_EC(action="click", point_id=1, x=3, y=4))[0] == [(3, 4)])
+# Ohne Punkt stehen x/y auf (0, 0); der Async-Pfad klickte trotzdem — auch dort,
+# wo der synchrone längst wie skip wirkte.
+check("Klick ohne gewählten Punkt: nichts, nicht (0, 0)",
+      _async_else(_EC(action="click"))[0] == [])
+check("Klick auf einen Punkt, den es nicht mehr gibt: nichts",
+      _async_else(_EC(action="click", point_id=1, unresolved=True))[0] == [])
 check("Taste", _async_else(_EC(action="key", key="space"))[1] == ["space"])
 check("Taste ohne Namen: nichts", _async_else(_EC(action="key", key=None))[1] == [])
-check("nach einem Stopp nichts", _async_else(_EC(action="click", x=3, y=4), stop=True)[0] == [])
-_clicks, _keys, _st = _async_else(_EC(action="click", x=3, y=4), failsafe=True)
+check("nach einem Stopp nichts",
+      _async_else(_EC(action="click", point_id=1, x=3, y=4), stop=True)[0] == [])
+_clicks, _keys, _st = _async_else(_EC(action="click", point_id=1, x=3, y=4), failsafe=True)
 check("die Notbremse stoppt", _clicks == [] and _st.stop_event.is_set())
-check("eine gestoppte Pause: nichts", _async_else(_EC(action="click", x=3, y=4), paused_ok=False)[0] == [])
+check("eine gestoppte Pause: nichts",
+      _async_else(_EC(action="click", point_id=1, x=3, y=4), paused_ok=False)[0] == [])
 
 
 def _thread(step, scans, failsafe=False, interval=0, max_scans=0, timeout=0, boom=False):

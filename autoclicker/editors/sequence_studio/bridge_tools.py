@@ -31,7 +31,7 @@ from .model import PalettePoint, palette_from_sequence, rgb_value
 # Schalter zeigt und der Test beide Seiten gegeneinander hält.
 CALIB_EXTENT = (
     ("with_scans", "Scan-Regionen und Klickpunkte", True),
-    ("with_sequences", "Screenshot-Bereiche in den Sequenzen", True),
+    ("with_sequences", "Übrige Sequenzen und Screenshot-Bereiche", True),
     ("with_slots", "Slots", False),
 )
 

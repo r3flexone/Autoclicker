@@ -1595,7 +1595,7 @@ try:
     check("checkcolor + 'else skip' -> kein eigener Klick", _r is True and _own == [])
 
     # else <Punkt> -> NUR der Else-Punkt, nicht auch das eigene Ziel
-    _r, _own, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"))
+    _r, _own, _ = _color_step(False, _EC2(action="click", point_id=9, x=999, y=999, name="E"))
     check("checkcolor + 'else <Punkt>' -> nur der Else-Punkt",
           _r is True and _own == [] and (999, 999, "else:E") in _clicks)
 
@@ -1611,7 +1611,7 @@ try:
     # Dasselbe auf dem Warte-Pfad: Timeout -> else, danach KEIN eigener Klick
     _r, _own, _ = _color_step(False, _EC2(action="skip"), check_only=False)
     check("Warten + Timeout + 'else skip' -> kein eigener Klick", _own == [])
-    _r, _own, _ = _color_step(False, _EC2(action="click", x=999, y=999, name="E"),
+    _r, _own, _ = _color_step(False, _EC2(action="click", point_id=9, x=999, y=999, name="E"),
                                  check_only=False)
     check("Warten + Timeout + 'else <Punkt>' -> nur der Else-Punkt",
           _own == [] and (999, 999, "else:E") in _clicks)
@@ -1792,7 +1792,7 @@ try:
     # else greift jetzt auch hier — und ersetzt die Aktion
     _, _was = _with_trigger(_SS(x=0, y=0, delay_before=0, name="T", key_press="enter",
                                wait_condition=_wc3(check_only=True),
-                               else_config=_EC2(action="click", x=99, y=99, name="E")),
+                               else_config=_EC2(action="click", point_id=9, x=99, y=99, name="E")),
                            hits=False)
     check("Taste-Schritt: else greift und ersetzt die Taste",
           _was["action_key"] == [] and _was["klick"] == [(99, 99)])
@@ -1871,7 +1871,7 @@ def _else_fires(**kw):
     """Baut einen Schritt, haengt 'else <99,99>' an und prueft, ob es klickt."""
     _else_clicks.clear()
     step = _SS(x=1, y=2, delay_before=0, name="s", **kw)
-    step.else_config = _EC2(action="click", x=99, y=99, name="E")
+    step.else_config = _EC2(action="click", point_id=9, x=99, y=99, name="E")
     st = AutoClickerState(); st.config = _AC2()
     st.config.pixel_wait_timeout = 0.05
     st.config.pixel_check_interval = 0.01
@@ -2279,16 +2279,45 @@ try:
             {"point_id": 1, "delay_before": 0, "wait_point_id": 1,
              "else_action": "click", "else_point_id": 1}]}],
         "end_steps": []}), encoding="utf-8")
+    # Ihr Ordner traegt eigene Scans - die gehoeren genauso zur Sequenz wie ihre Punkte.
+    _sq_dir = _sq.parent
+    (_sq_dir / "item_scans").mkdir(exist_ok=True)
+    (_sq_dir / "boss_scans").mkdir(exist_ok=True)
+    _sq_item = _sq_dir / "item_scans" / "inv.json"
+    _sq_boss = _sq_dir / "boss_scans" / "b.json"
+    _sq_lib = _sq_dir / "boss_scans" / "bibliothek.json"
+    _sq_item.write_text(json.dumps({
+        "name": "inv", "capture_window_rect": [100, 200, 300, 400],
+        "slots": {"S1": {"scan_region": [100, 200, 160, 260], "click_pos": [130, 230]}}}),
+        encoding="utf-8")
+    _sq_boss.write_text(json.dumps({"name": "b", "scan_region": [100, 200, 300, 400]}),
+                        encoding="utf-8")
+    _sq_lib.write_text(json.dumps([{"name": "Drache", "action_point_id": 1}]), encoding="utf-8")
+    _lib_before = _sq_lib.read_text(encoding="utf-8")
+
+    def _sq_read():
+        return (json.loads(_sq.read_text(encoding="utf-8")),
+                json.loads(_sq_item.read_text(encoding="utf-8")),
+                json.loads(_sq_boss.read_text(encoding="utf-8")))
+
     _st3 = AutoClickerState()
     with _cl2.redirect_stdout(_io2.StringIO()):
         _IE.calibrate_inventory(_st3, _t, with_scans=False, with_sequences=True)
-    _d = json.loads(_sq.read_text(encoding="utf-8"))
+    _d, _di, _db = _sq_read()
     _s0, _s1 = _d["init_steps"][0], _d["loop_phases"][0]["steps"][0]
     check("nicht geladene Sequenzdatei wird mitgerechnet: die Screenshot-Region",
           _s0["screenshot_region"] == [140, 175, 340, 375])
+    # Hier wurden nur die Screenshot-Regionen umgerechnet - ein Rest aus der Zeit
+    # einer gemeinsamen points.json. Danach passten Region und Punkte nicht mehr
+    # zusammen: die eine am neuen Ort, die anderen am alten.
+    check("... und ihre Punkte - sie stehen in derselben Datei",
+          (_d["points"][0]["x"], _d["points"][0]["y"]) == (140, 175))
     check("ein Schritt mit Punkt-Verweisen bleibt, wie er ist - ohne Koordinate",
           (_s1["point_id"], _s1["wait_point_id"], _s1["else_point_id"]) == (1, 1, 1)
           and not any(k in _s1 for k in ("x", "y", "wait_pixel", "else_x", "else_y")))
+    check("ohne with_scans bleiben ihre Scans, wie sie sind",
+          _di["slots"]["S1"]["scan_region"] == [100, 200, 160, 260]
+          and _db["scan_region"] == [100, 200, 300, 400])
 
     # Hier stand die Gegenprobe zu `_seq_v3_to_v4` + `_als_dicts`: eine Sequenz auf
     # Schema 2 ohne points.json, deren Koordinaten die Migration in neu angelegte
@@ -2337,7 +2366,37 @@ try:
                                with_scans=False, with_sequences=True)
     _d2 = json.loads(_sq.read_text(encoding="utf-8"))
     check("Rueckrechnung trifft den Ausgangswert genau",
-          _d2["init_steps"][0]["screenshot_region"] == [100, 200, 300, 400])
+          _d2["init_steps"][0]["screenshot_region"] == [100, 200, 300, 400]
+          and (_d2["points"][0]["x"], _d2["points"][0]["y"]) == (100, 200))
+
+    # Mit Scans, aber ohne Slots: dieselben Schalter wie bei der geladenen Sequenz.
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.calibrate_inventory(_st3, _t, with_scans=True, with_sequences=True,
+                               with_slots=False)
+    _d, _di, _db = _sq_read()
+    check("mit with_scans: Boss-Region und Fenster-Anker der fremden Sequenz wandern",
+          _db["scan_region"] == [140, 175, 340, 375]
+          and _di["capture_window_rect"] == [140, 175, 340, 375])
+    check("ohne with_slots bleiben ihre Slots stehen",
+          _di["slots"]["S1"]["scan_region"] == [100, 200, 160, 260]
+          and _di["slots"]["S1"]["click_pos"] == [130, 230])
+    check("die Boss-Bibliothek traegt nur Punkt-IDs und bleibt unberuehrt",
+          _sq_lib.read_text(encoding="utf-8") == _lib_before)
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.calibrate_inventory(_st3, _IE.transform_from_offset((140, 175), (100, 200)),
+                               with_scans=True, with_sequences=True, with_slots=True)
+    _d, _di, _db = _sq_read()
+    check("mit with_slots wandern auch ihre Slots - samt Klickstelle",
+          _di["slots"]["S1"]["scan_region"] == [60, 225, 120, 285]
+          and _di["slots"]["S1"]["click_pos"] == [90, 255])
+
+    # Eine unlesbare Datei im Ordner bricht ab, BEVOR etwas geschrieben ist.
+    _sq_boss.write_text("{kaputt", encoding="utf-8")
+    _before_broken = _sq.read_text(encoding="utf-8")
+    with _cl2.redirect_stdout(_io2.StringIO()):
+        _IE.calibrate_inventory(_st3, _t, with_scans=True, with_sequences=True)
+    check("eine kaputte Scan-Datei laesst die Sequenz nicht halb verschoben zurueck",
+          _sq.read_text(encoding="utf-8") == _before_broken)
 finally:
     _os.chdir(_calib_cwd)
 

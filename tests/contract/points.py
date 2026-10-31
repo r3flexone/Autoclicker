@@ -543,6 +543,13 @@ try:
         _ok_r = _act_r.execute_else_action(_st_r, _else_step, "Loop", 1, 1)
     check("ein toter Else-Klick wirkt wie skip statt auf (0, 0) zu klicken",
           _ok_r is True and _calls_r == [])
+    # Ein Else-Klick, für den noch kein Punkt gewählt ist, hat kein `unresolved`
+    # (es gibt keine Referenz, die ins Leere zeigt) — x/y stehen trotzdem auf (0, 0).
+    _else_step = _STEP(point_id=1, delay_before=0, else_config=_ELSE(action="click"))
+    with _cl_r.redirect_stdout(_io_r.StringIO()):
+        _ok_r = _act_r.execute_else_action(_st_r, _else_step, "Loop", 1, 1)
+    check("ein Else-Klick ohne gewählten Punkt wirkt ebenso wie skip",
+          _ok_r is True and _calls_r == [])
 finally:
     _act_r.send_click, _stp_r.check_failsafe, _stp_r.take_screenshot = _orig_r
 

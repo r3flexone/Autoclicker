@@ -496,10 +496,20 @@ gesetzt hat.
 
 Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
 `calibrate_inventory()` rechnet Punkte, Slots, Scan-Regionen, die Fenster-Anker der
-Item-Scans und die Screenshot-Regionen in den Sequenz-**Dateien** um. Den
+Item-Scans und die Screenshot-Regionen um. Den
 Bestätigungsklick der Items und die Klicks von Bossen und Icons rechnet sie nicht um:
 sie zeigen auf Punkte und holen ihre Werte von dort (`resolve_click_references()`).
 Regeln:
+
+- **Mit `with_sequences` zieht jede nicht geladene Sequenz GANZ mit**
+  (`_remap_sequence_files()` → `_remap_sequence_folder()`, derselbe Umrechner wie
+  beim Import, mit denselben Schaltern). Bis zum 31.10.2026 rechnete sie dort nur
+  die Screenshot-Regionen der `sequence.json` um — ein Rest aus der Zeit einer
+  gemeinsamen `points.json`, die „Punkte immer" schon für alle erledigte. Seit Punkte
+  und Scans im Ordner ihrer Sequenz stehen, blieb jede andere Sequenz halb verschoben
+  zurück: Screenshot-Bereiche am neuen Ort, Punkte, Slots und Regionen am alten. Ein
+  Ordner wird erst ganz gelesen, dann geschrieben — eine kaputte Datei darin lässt
+  ihn unangetastet statt halb umgerechnet.
 
 - **`with_slots` steht getrennt von `with_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.

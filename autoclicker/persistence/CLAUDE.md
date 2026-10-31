@@ -193,7 +193,12 @@ Regeln beim Erweitern:
   Stiller Datenverlust, ausgerechnet durch die Regel „nur bei einer Änderung, nie
   beim Laden". Heute tragen `WaitCondition` und `ElseConfig` ein `unresolved`;
   `_with_verification` prüft dann nicht, `execute_else_action` klickt dann nicht
-  (wie `skip`) — und die Datei behält beides.
+  (wie `skip`) — und die Datei behält beides. Dasselbe gilt für einen Else-Klick, für
+  den noch gar kein Punkt gewählt ist (das Studio legt ihn so an, bis man einen
+  wählt): er hat kein `unresolved`, aber auch keine Stelle. Beide Klickwege — der
+  synchrone und der Async-Pfad des Boss-Watchers — fragen deshalb
+  `ElseConfig.has_click_target`; der Async-Pfad fragte bis zum 31.10.2026 nicht
+  einmal `unresolved` und klickte einen toten Else-Klick auf (0, 0).
 
 **Die Scan-Richtung gehört zum Scan, nicht zum Programm.** Sie stand als
 `config.scan_reverse` in der Config und galt damit für *alle* Item-Scans — die

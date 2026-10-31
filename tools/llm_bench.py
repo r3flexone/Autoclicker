@@ -309,15 +309,9 @@ def run(samples: list, catalog, config, args, model: str) -> dict:
 def loaded_models(config) -> list:
     """Was der Server gerade anbietet — fuer `--all-models`."""
     import urllib.request
-    if config.llm_endpoint:
-        # In der Config steht die Adresse des CHATS; die Modell-Liste liegt
-        # daneben, auf demselben Server und unter demselben Pfad-Anfang.
-        chat_path, list_path = (
-            ("/api/chat", "/api/tags") if config.llm_provider == "ollama"
-            else ("/chat/completions", "/models"))
-        target = config.llm_endpoint.replace(chat_path, list_path)
-    else:
-        target = test_endpoint_for(config.llm_provider)
+    # In der Config steht die Adresse des CHATS; die Modell-Liste daneben kennt
+    # `test_endpoint_for` — dieselbe Regel wie die Lampe im Studio.
+    target = test_endpoint_for(config.llm_provider, config.llm_endpoint)
     try:
         with urllib.request.urlopen(target, timeout=10) as answer:
             raw = json.loads(answer.read().decode("utf-8"))

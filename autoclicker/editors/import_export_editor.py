@@ -642,10 +642,10 @@ def _ask_calibration_extent():
 
 
 _CALIBRATION_CAPTION = {
-    "points": "Punkte", "slots": "Slots", "items": "Item-Bestätigungsklicks",
+    "points": "Punkte", "slots": "Slots",
     "item_scans": "Item-Scan-Fensteranker",
     "boss_scans": "Boss-Scans", "icon_scans": "Icon-Scans",
-    "sequences": "Sequenzdateien",
+    "sequences": "Sequenzen (samt Ordnern der nicht geladenen)",
 }
 
 

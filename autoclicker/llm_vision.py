@@ -48,9 +48,30 @@ def chat_endpoint(provider: str) -> str:
     return DEFAULT_CHAT_ENDPOINT.get(provider, DEFAULT_CHAT_ENDPOINT[PROVIDER_LMSTUDIO])
 
 
-def test_endpoint_for(provider: str) -> str:
-    """Endpunkt fuer den Verbindungstest (Modell-Liste statt Chat)."""
-    return DEFAULT_TEST_ENDPOINT.get(provider, DEFAULT_TEST_ENDPOINT[PROVIDER_LMSTUDIO])
+# Wo die Modell-Liste neben dem Chat liegt: derselbe Server, derselbe Pfad-Anfang.
+_CHAT_TO_LIST = {
+    PROVIDER_OLLAMA: ("/api/chat", "/api/tags"),
+    PROVIDER_LMSTUDIO: ("/chat/completions", "/models"),
+}
+
+
+def test_endpoint_for(provider: str, chat: Optional[str] = None) -> str:
+    """Endpunkt fuer den Verbindungstest (Modell-Liste statt Chat).
+
+    `chat` ist der eingestellte `llm_endpoint` — die Adresse des CHATS, an die
+    gepostet wird. Die Modell-Liste liegt daneben; ein GET auf den Chat selbst
+    antwortet mit 405 bzw. 404. Hier wurde der Chat-Endpunkt unverändert
+    abgefragt, und mit einem eingetragenen Endpunkt stand die Lampe immer auf
+    „nicht erreichbar", während der Server lief. Endet die Adresse nicht auf dem
+    Chat-Pfad, ist sie schon die gemeinte und bleibt, wie sie ist.
+    """
+    if not chat:
+        return DEFAULT_TEST_ENDPOINT.get(provider, DEFAULT_TEST_ENDPOINT[PROVIDER_LMSTUDIO])
+    chat_path, list_path = _CHAT_TO_LIST.get(provider, _CHAT_TO_LIST[PROVIDER_LMSTUDIO])
+    base = chat.rstrip("/")
+    if base.endswith(chat_path):
+        return base[:-len(chat_path)] + list_path
+    return chat
 VALID_PROVIDERS = {PROVIDER_OLLAMA, PROVIDER_LMSTUDIO}
 
 
@@ -691,14 +712,14 @@ def test_connection(provider: str = PROVIDER_LMSTUDIO,
     Erfolg**: die Frage hinter dieser Pruefung ist nicht „antwortet da wer",
     sondern „kann ich das LLM jetzt benutzen".
 
+    `endpoint` ist der eingestellte Chat-Endpunkt (`llm_endpoint`, leer = Standard);
+    gefragt wird die Modell-Liste daneben (`test_endpoint_for`).
+
     Returns:
         (success: bool, message: str)
     """
-    if endpoint is None:
-        endpoint = test_endpoint_for(provider)
-
     try:
-        req = urllib.request.Request(endpoint, method="GET")
+        req = urllib.request.Request(test_endpoint_for(provider, endpoint), method="GET")
         with urllib.request.urlopen(req, timeout=5) as response:
             result = json.loads(response.read().decode("utf-8"))
         return _connection_verdict(provider, model, _listed_models(result, provider))

@@ -675,6 +675,11 @@ def _maybe_execute_async_else(state: AutoClickerState, step: SequenceStep,
     if ec.delay > 0 and state.stop_event.wait(ec.delay):
         return
     if ec.action == ELSE_CLICK:
+        if not ec.has_click_target:
+            # Ohne Punkt stünde x/y auf (0, 0) — wie im synchronen Pfad: wie skip.
+            if debug:
+                print(dbg("  → Async-Else: Klick entfällt — kein Punkt"))
+            return
         safe_click(state, ec.x, ec.y, ec.name or "Async-Else-Klick")
         if debug:
             print(dbg(f"  → Async-Else: Klick ({ec.x},{ec.y})"))

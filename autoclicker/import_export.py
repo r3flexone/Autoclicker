@@ -192,9 +192,10 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
                        with_slots: bool = True) -> dict:
     """Rechnet den gespeicherten Bestand auf das neue Bildschirm-Layout um.
 
-    Punkte immer; `with_scans` zieht die Slots und Fenster-Anker der Item-Scans
-    sowie die Regionen der Boss-/Icon-Scans mit, `with_sequences` die
-    Screenshot-Regionen in den Sequenz-DATEIEN.
+    Die Punkte der geladenen Sequenz immer; `with_scans` zieht die Slots und
+    Fenster-Anker der Item-Scans sowie die Regionen der Boss-/Icon-Scans mit,
+    `with_sequences` die Screenshot-Regionen und **alle übrigen Sequenzen auf der
+    Platte** — dort mit denselben beiden Schaltern (`_remap_sequence_files`).
     Alles, was auf einen Punkt zeigt — Klick-Stellen der Sequenzen, Bestätigungsklick
     der Items, Klicks von Bossen und Icons —, wird NICHT angefasst: der Punkt ist
     schon umgerechnet, und die abgeleiteten Werte holt `resolve()` bzw.
@@ -236,7 +237,8 @@ def calibrate_inventory(state: 'AutoClickerState', transform: dict,
 
     _save_calibrated(state, scans)
     if with_sequences:
-        number["sequences"] = _remap_sequence_files(transform, written_from_memory)
+        number["sequences"] = _remap_sequence_files(transform, written_from_memory,
+                                                    with_scans, with_slots)
     return number
 
 
@@ -300,29 +302,33 @@ def _save_calibrated(state: 'AutoClickerState', scans: Optional[tuple]) -> None:
                 logger.warning("Kalibrierung: %s '%s' nicht geschrieben", kind, cfg.name)
 
 
-def _remap_sequence_files(transform: dict, written_from_memory: Optional[Path]) -> int:
-    """Sequenzen über die Dateien, damit auch nicht geladene erfasst werden.
-    Gibt zurück, wie viele umgerechnet sind."""
+def _remap_sequence_files(transform: dict, written_from_memory: Optional[Path],
+                          with_scans: bool, with_slots: bool) -> int:
+    """Die übrigen Sequenzen über ihre Ordner — vollständig, wie ein importierter.
+
+    Hier wurde nur die `sequence.json` angefasst und darin nur die Screenshot-
+    Regionen: ein Rest aus der Zeit einer gemeinsamen `points.json`, die „Punkte
+    immer" schon für alle Sequenzen umrechnete. Seit Punkte und Scans im Ordner
+    ihrer Sequenz stehen, blieb jede nicht geladene halb verschoben zurück —
+    Screenshot-Bereiche am neuen Ort, Punkte, Slots und Scan-Regionen am alten.
+    Jetzt dieselbe Rechnung wie für einen importierten Ordner, mit denselben
+    Schaltern wie für die geladene Sequenz. Gibt zurück, wie viele umgerechnet sind.
+    """
     from .persistence import list_available_sequences
     count = 0
     for _name, path in list_available_sequences():
-        # Die aktive Sequenz hat `save_points()` eben aus dem Speicher
-        # geschrieben — schon umgerechnet. Ein zweiter Durchgang ueber die
-        # Datei verschoebe ihre Screenshot-Regionen doppelt.
+        # Die aktive Sequenz kam eben aus dem Speicher — Punkte über
+        # `save_points()`, Scans über `_save_calibrated()`, schon umgerechnet.
+        # Ein zweiter Durchgang ueber ihren Ordner verschoebe alles doppelt.
         if written_from_memory is not None and Path(path).resolve() == written_from_memory:
             count += 1
             continue
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-            logger.warning("Kalibrierung: %s nicht lesbar (%s)", path.name, e)
-            continue
-        _remap_sequence_data(data, transform)
-        try:
-            atomic_write(path, compact_json(data))
+            _remap_sequence_folder(Path(path).parent, transform,
+                                   with_scans=with_scans, with_slots=with_slots)
             count += 1
-        except (IOError, OSError) as e:
-            logger.warning("Kalibrierung: %s nicht schreibbar (%s)", path.name, e)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            logger.warning("Kalibrierung: %s nicht umgerechnet (%s)", Path(path).parent.name, e)
     return count
 
 
@@ -581,15 +587,27 @@ def _safe_bundle_path(name: str) -> Optional[PurePosixPath]:
     return path
 
 
-def _remap_sequence_folder(folder: Path, transform: dict) -> None:
-    """Transformiert alle koordinatenhaltigen JSON-Dateien eines Importordners."""
+def _remap_sequence_folder(folder: Path, transform: dict,
+                           with_scans: bool = True, with_slots: bool = True) -> None:
+    """Transformiert alle koordinatenhaltigen JSON-Dateien eines Sequenzordners.
+
+    Der Import nimmt alles mit; die Kalibrierung reicht ihre Schalter durch
+    (`with_scans`, `with_slots` — dieselbe Bedeutung wie bei der geladenen Sequenz).
+    Erst wird jede Datei gelesen, dann geschrieben: eine unlesbare Datei mitten im
+    Ordner bricht ab, bevor etwas umgerechnet ist, statt die Sequenz halb verschoben
+    zurückzulassen.
+    """
     if is_identity(transform):
         return
+    remapped = []
     for path in folder.rglob("*.json"):
         rel_path = path.relative_to(folder).parts
         if rel_path == ("boss_scans", "bibliothek.json"):
             # Die Bibliothek enthält Profile mit Punkt-IDs, keine Regionen.
             # Ihre Punkte werden in sequence.json genau einmal umgerechnet.
+            continue
+        is_scan = bool(rel_path) and rel_path[0] in ("item_scans", "boss_scans", "icon_scans")
+        if is_scan and not with_scans:
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
         if path.name == "sequence.json":
@@ -597,10 +615,12 @@ def _remap_sequence_folder(folder: Path, transform: dict) -> None:
                 point["x"], point["y"] = remap_point(
                     int(point.get("x", 0)), int(point.get("y", 0)), transform)
             _remap_sequence_data(data, transform)
-        elif rel_path and rel_path[0] == "item_scans":
-            _remap_item_scan_data(data, transform)
-        elif rel_path and rel_path[0] in ("boss_scans", "icon_scans"):
+        elif rel_path[0] == "item_scans":
+            _remap_item_scan_data(data, transform, with_slots)
+        elif is_scan:
             _remap_key(data, "scan_region", transform)
+        remapped.append((path, data))
+    for path, data in remapped:
         atomic_write(path, compact_json(data))
 
 
@@ -610,12 +630,17 @@ def _remap_key(data: dict, key: str, transform: dict) -> None:
         data[key] = list(remap_region(tuple(data[key]), transform))
 
 
-def _remap_item_scan_data(data: dict, transform: dict) -> None:
-    """Slots (Region und Klickstelle) und der Fenster-Anker eines Item-Scans."""
-    for slot in (data.get("slots") or {}).values():
-        _remap_key(slot, "scan_region", transform)
-        if slot.get("click_pos"):
-            slot["click_pos"] = list(remap_point(*slot["click_pos"], transform))
+def _remap_item_scan_data(data: dict, transform: dict, with_slots: bool = True) -> None:
+    """Slots (Region und Klickstelle) und der Fenster-Anker eines Item-Scans.
+
+    Ohne `with_slots` nur der Anker — genau wie `_remap_item_scans()` es mit der
+    geladenen Sequenz tut.
+    """
+    if with_slots:
+        for slot in (data.get("slots") or {}).values():
+            _remap_key(slot, "scan_region", transform)
+            if slot.get("click_pos"):
+                slot["click_pos"] = list(remap_point(*slot["click_pos"], transform))
     _remap_key(data, "capture_window_rect", transform)
 
 

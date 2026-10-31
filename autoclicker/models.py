@@ -165,6 +165,18 @@ class ElseConfig:
     # `action = skip` hinein, und das naechste Speichern machte es dauerhaft.
     unresolved: bool = False
 
+    @property
+    def has_click_target(self) -> bool:
+        """Ob ein Else-Klick eine echte Stelle hat: einen Punkt, und der ist aufgelöst.
+
+        Fehlt eines davon, stehen x/y auf (0, 0) — die Bildschirmecke. Geprüft
+        wurde nur `unresolved`: ein Klick ohne gewählten Punkt (das Studio legt ihn
+        so an, bis man einen wählt) ging deshalb in die Ecke, und der Async-Pfad
+        des Boss-Watchers fragte nicht einmal `unresolved`. Beide Klickwege fragen
+        jetzt hier.
+        """
+        return self.point_id is not None and not self.unresolved
+
 
 @dataclass
 class WaitCondition:

@@ -487,11 +487,12 @@ def _else_skip(state, step, ec, phase, step_num, total_steps, debug) -> bool:
 
 
 def _else_click(state, step, ec, phase, step_num, total_steps, debug) -> bool:
-    if ec.unresolved:
-        # Der Punkt hinter dem Else-Klick fehlt (`resolve()` hat es gemeldet).
+    if not ec.has_click_target:
+        # Kein Punkt gewählt, oder der Punkt fehlt (`resolve()` hat es gemeldet).
         # Ein Klick auf (0, 0) waere die Bildschirmecke — also wie `skip`.
+        why = "Punkt fehlt" if ec.unresolved else "kein Punkt gewählt"
         _step_status(debug, phase, step_num, total_steps,
-                     "ELSE: Klick entfaellt — Punkt fehlt (wie skip)")
+                     f"ELSE: Klick entfaellt — {why} (wie skip)")
         return True
     if ec.delay > 0 and not wait_with_pause_skip(state, ec.delay, phase, step_num, total_steps,
                                                  "ELSE: klicke in", point=(ec.x, ec.y, None),

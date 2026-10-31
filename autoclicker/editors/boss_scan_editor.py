@@ -610,9 +610,9 @@ def _test_llm_connection(state: AutoClickerState) -> None:
 
     print(f"\n  Teste Verbindung zu {provider}...")
 
-    # Ohne eigenen Endpoint nimmt `test_connection` den Standard (Modell-Liste
-    # statt Chat). Mit Modell: ein erreichbarer Server ohne das eingestellte
-    # Modell ist kein Erfolg — danach scheitert jeder Aufruf.
+    # `test_connection` fragt die Modell-Liste neben dem eingestellten Chat-Endpunkt
+    # (ohne Eintrag: den Standard). Mit Modell: ein erreichbarer Server ohne das
+    # eingestellte Modell ist kein Erfolg — danach scheitert jeder Aufruf.
     success, message = test_connection(provider, state.config.llm_endpoint,
                                        state.config.llm_model)
 
