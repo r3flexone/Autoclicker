@@ -44,8 +44,8 @@ erinnern muss, ist keine.
 Der Grund für die Trennung ist weg: `test_itemscan_editor_ux` und
 `test_scan_services` importierten `PIL` auf Modulebene und starben ohne Pillow
 schon beim LADEN, womit `unittest` gar nicht erst sammelte. Beide überspringen
-jetzt sauber (`@needs_pillow`), und damit läuft ein Aufruf überall — 106 Tests
-mit Pillow, dieselben 106 mit 23 übersprungenen ohne.
+jetzt sauber (`@needs_pillow`), und damit läuft ein Aufruf überall: ohne Pillow
+sind es dieselben Tests, nur ein Teil davon übersprungen.
 
 **Alle Schichten laufen in einem eigenen Ordner, nie im Repo — die Gegenproben
 eingeschlossen.** Die Pfade der App sind CWD-relativ, und jeder Test ohne

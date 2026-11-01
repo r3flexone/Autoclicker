@@ -109,9 +109,11 @@ mehr — und dafür gibt es heute drei Werkzeuge (`repair`, `fix`, Klick-Runde),
 - **Tradeoff:** Trägt nur, solange sich das Fenster **verschiebt**. Ändert es die Grösse,
   müsste skaliert werden, und eine skalierte Klickstelle ist eine geratene — genau deshalb
   rechnet der Import nur mit zwei bestätigten Referenzpunkten. Zweitens müssten Scan-Regionen
-  und Slots mitwandern, sonst klickt es richtig und erkennt falsch. Und ein Anker, dessen
-  Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der gespeicherte
-  Stand, einmal gemeldet.
+  und Slots mitwandern, sonst klickt es richtig und erkennt falsch — für die Slots eines
+  Item-Scans am Fenster gibt es das schon (`capture_window_rect`, `_slots_in_window()` in
+  `runtime/item_scan.py`), und diese Rechnung wäre die Vorlage für die Punkte. Und ein
+  Anker, dessen Fenster gerade nicht da ist, darf den Lauf nicht blockieren: dann gilt der
+  gespeicherte Stand, einmal gemeldet.
 - **Ansatz:** Feld `window_anchor` an `Sequence` (Titel + Client-Rechteck), gefüllt beim
   Speichern im Studio, aufgelöst in `resolve_point_references()`. Eine Grössenänderung wird
   gemeldet und **nicht** gerechnet. Reine Vorschaltung — die bestehenden Reparaturwege
