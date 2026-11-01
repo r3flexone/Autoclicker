@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 
 # `discover()` legt das Startverzeichnis selbst in `sys.path` — deshalb findet
 # ein Wurzelmodul sein `test_support` als schlichten Nachbarn, ohne Paketpfad.
-MODULE = Path(__file__).resolve().parent / "root"
+ROOT_TESTS_DIR = Path(__file__).resolve().parent / "root"
 
 
 def collect(root_layer: Path, without_contract: bool = False) -> unittest.TestSuite:
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     # dieselbe Regel wie in `tests/contract/_harness.py`.
     tempfile.tempdir = sandbox
     try:
-        suite = collect(MODULE, args.without_contract)
+        suite = collect(ROOT_TESTS_DIR, args.without_contract)
         result = unittest.TextTestRunner(verbosity=2).run(suite)
     finally:
         tempfile.tempdir = previous_temp

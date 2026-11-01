@@ -120,6 +120,20 @@ check("ohne geladenes Modell: verbunden, mit Hinweis",
 check("geprüft wird am Test-Endpunkt des Anbieters",
       _sent[0][0].full_url == _LV.test_endpoint_for("ollama") and _sent[0][1] == 5)
 
+# Mit eingetragenem Endpunkt: dort steht die Adresse des CHATS (an sie wird
+# gepostet). Ein GET darauf antwortet mit 405/404 — die Lampe stand damit immer
+# auf „nicht erreichbar", obwohl der Server lief.
+for _prov, _chat, _list in (
+        ("ollama", "http://pc:11434/api/chat", "http://pc:11434/api/tags"),
+        ("lmstudio", "http://pc:1234/v1/chat/completions", "http://pc:1234/v1/models"),
+        ("lmstudio", "http://pc:1234/v1/chat/completions/", "http://pc:1234/v1/models")):
+    with _server({"models": [], "data": []}) as _sent:
+        _LV.test_connection(_prov, _chat)
+    check(f"{_prov}: eigener Chat-Endpunkt → gefragt wird die Modell-Liste daneben",
+          _sent[0][0].full_url == _list)
+check("eine Adresse ohne Chat-Pfad gilt als schon gemeint",
+      _LV.test_endpoint_for("ollama", "http://pc:11434/api/tags") == "http://pc:11434/api/tags")
+
 _OLLAMA = {"models": [{"name": n} for n in ("llama3:8b", "gemma3n:e4b", "qwen", "phi", "mistral", "tiny")]}
 _res, _ = _connect(_OLLAMA, model="gemma3n")
 check("der Stamm genügt bei Ollama", _res == (True, "Verbunden! 'gemma3n' ist geladen."))

@@ -9,8 +9,8 @@ Windows aus einer Datei nimmt (Verknüpfung, angehefteter Eintrag, Ordnerbild).
 
 Gerastert wird aus derselben Geometrie wie die Weboberfläche
 (`autoclicker/symbol.py`) — deshalb liegt hier keine Binärdatei im Repo, die
-beim nächsten Logo-Entwurf veraltet. Ohne Pillow läuft es trotzdem: PNG und ICO
-werden dann von Hand zusammengesetzt.
+beim nächsten Logo-Entwurf veraltet. Pillow braucht es nicht: PNG und ICO
+werden von Hand zusammengesetzt (`zlib`, `struct`).
 """
 
 import argparse

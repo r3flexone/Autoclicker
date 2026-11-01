@@ -217,7 +217,7 @@ def _calibrate(inputs=(), choices=(0, 0), answers=(False, True), points=2, slots
                backup_before_calibration=lambda state: "backups/kal.zip")
     run.state.points = [_CP(id=i + 1, x=100 * (i + 1), y=200 * (i + 1), name=f"P{i + 1}")
                         for i in range(points)]
-    run.state.global_slots = {f"S{i}": _SLOT(f"S{i}", (0, 0, 8, 8), (4, 4)) for i in range(slots)}
+    run.state.scan_slots = {f"S{i}": _SLOT(f"S{i}", (0, 0, 8, 8), (4, 4)) for i in range(slots)}
     run(_IEE.run_calibration)
     run.calibrated = calibrated
     return run

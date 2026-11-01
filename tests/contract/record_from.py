@@ -320,7 +320,7 @@ check("der Waechter merkt sich, ob die Aufnahme schon einmal lief",
 check("ohne Lebenszeichen gibt er nach einer Frist mit Meldung auf",
       "INSERT_RECORDING_START_ATTEMPTS" in _watch and "Hauptprozess" in _watch)
 check("die Live-Ausgabe ist dieselbe Funktion wie im Werkzeuge-Reiter",
-      "wzFillRecordingOutput($(\"insert-recording-output\")" in _watch
+      "toolsFillRecordingOutput($(\"insert-recording-output\")" in _watch
       and 'id: "insert-recording-output"' in _web)
 check("ein fehlender Hauptprozess meldet sich nach dem Start",
       "mailboxFollowUp()" in _web[_web.index("async function blockRecordStart"):

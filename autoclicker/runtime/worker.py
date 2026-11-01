@@ -19,8 +19,9 @@ from ..utils import (
 )
 from ..utils.console import set_console_title
 from . import status
-from .actions import is_verbose_debug, wait_while_paused
+from .actions import wait_while_paused
 from .boss_detection import _confirm_new_bosses
+from .debug import is_log_debug
 from .steps import execute_step
 
 
@@ -124,7 +125,7 @@ def sequence_worker(state: AutoClickerState) -> None:
     from ..session_log import start_session_log
     import logging
 
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     schedule_shutdown = threading.Event()
     sequence = None
     cycle_count = 0
@@ -150,7 +151,7 @@ def sequence_worker(state: AutoClickerState) -> None:
                                 "started_from": _start_from_label(sequence, start_from),
                                 "start": state.start_time}, immediately=True)
         stop_heartbeat = status.start_heartbeat(state)
-        _schedule_thread, scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
+        scheduled_pending, schedule_lock = _maybe_start_schedule_watcher(
             state, sequence, schedule_shutdown)
         cycle_count = _run_main_loop(state, sequence, scheduled_pending, schedule_lock, debug,
                                      start_from)
@@ -248,7 +249,7 @@ def _ended_regularly(state: AutoClickerState) -> bool:
 
 def _follow_up(state: AutoClickerState, sequence) -> Optional[tuple]:
     """`(Folgesequenz, Pause, diese Sequenz)` — oder None, wenn keine dran ist."""
-    if sequence is None or not getattr(sequence, "next_sequence", ""):
+    if sequence is None or not sequence.next_sequence:
         return None
     if not _ended_regularly(state):
         print(hint(f"Folgesequenz '{sequence.next_sequence}' entfällt — "
@@ -415,24 +416,22 @@ def _maybe_start_schedule_watcher(state: AutoClickerState, sequence,
                                   shutdown_event: threading.Event):
     """Startet den _schedule_watcher-Thread nur wenn mindestens eine Phase scheduled_start hat.
 
-    Returns: (thread or None, scheduled_pending dict, schedule_lock)
+    Returns: (scheduled_pending dict, schedule_lock)
     """
     scheduled_pending: dict = {}
     scheduled_last_executed: dict = {}
     schedule_lock = threading.Lock()
     has_scheduled = any(lp.scheduled_start for lp in sequence.loop_phases)
-    schedule_thread = None
     if has_scheduled:
-        schedule_thread = threading.Thread(
+        threading.Thread(
             target=_schedule_watcher,
             args=(sequence.loop_phases, scheduled_pending, scheduled_last_executed,
                   state.stop_event, schedule_lock, shutdown_event),
             daemon=True
-        )
-        schedule_thread.start()
+        ).start()
         scheduled_names = [f"'{lp.name}' um {lp.scheduled_start}" for lp in sequence.loop_phases if lp.scheduled_start]
         print(col(f"[TIMER] Zeitsteuerung aktiv: {', '.join(scheduled_names)}", "yellow"))
-    return schedule_thread, scheduled_pending, schedule_lock
+    return scheduled_pending, schedule_lock
 
 
 def _run_main_loop(state: AutoClickerState, sequence, scheduled_pending: dict,

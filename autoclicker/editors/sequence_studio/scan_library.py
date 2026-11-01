@@ -248,9 +248,8 @@ class ScanLibraryMixin:
         # Die Scan-Maske kennt ihren Namen selbst und schickt ihn mit. Der
         # globale Auswahlzustand kann inzwischen schon wieder auf einem Slot
         # oder Item stehen; davon darf der Löschknopf seiner sichtbaren Maske
-        # nicht abhängen. Ohne Namen bleibt der offene Scan der sinnvolle
-        # Rückfall für ältere Aufrufer.
-        name = str((data or {}).get("name") or self.open_scan)
+        # nicht abhängen. Ohne Namen wird nichts gelöscht.
+        name = str((data or {}).get("name") or "")
         if name not in self.scans:
             return self._scan_report("Kein Scan gewählt.", "warn")
         # STRG+Z holt die Konfiguration zurück, nicht die Dateien: die JSON

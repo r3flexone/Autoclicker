@@ -13,7 +13,8 @@ was **geteilt** ist: `editors/_detection_capture.py` gehört dem Boss- *und* dem
 Icon-Editor, ein Test deckt dort also zwei Editoren ab — Tastenabfrage,
 Region-Eingabe, Marker-Aufnahme, jeweils mit der Eigenschaft, um die es geht
 (**Fehleingabe wiederholen statt abbrechen**). Dazu `_apply_item_rename()`, weil
-am Namen drei Dinge hängen: Bestand, Template-*Datei* und jede Scan-Referenz.
+am Namen zwei Dinge hängen: der Bestand und die Template-*Datei* — eine Scan-Referenz
+gibt es nicht mehr, ein Item gehört genau einem Scan.
 
 Es kommt **einer nach dem anderen**, nicht am Stück — und immer in derselben
 Reihenfolge: **erst die Tastenfolgen auf dem alten Code, dann der Umbau** (Ziel:
@@ -69,7 +70,7 @@ etwas rot wird. Bei der Klick-Runde wurde nichts rot — „die Farbe zieht nur
 mit, wenn der Punkt schon eine hatte“ stand im Code und hier, aber in keiner
 Prüfung.
 
-**Erledigt: die Befehlsschleife des Slot-Editors** (`run_global_slot_editor`,
+**Erledigt: die Befehlsschleife des Slot-Editors** (`run_slot_editor`,
 Komplexität 44, `tests/contract/slot_editor.py` mit 26 Prüfungen vorher). Der
 Snapshot für `cancel` lebt in `_SlotSession` — der Teil, der beim Zerlegen am
 leichtesten verloren geht: `repair` schreibt sofort und zieht den Snapshot
@@ -122,6 +123,12 @@ Alle Editoren sollen sich gleich anfühlen — beim Erweitern daran halten:
   **Abbruch ist nicht `None`.** Beim Bestaetigungs-Klick ist `None` als Punkt-ID
   ein gueltiges Ergebnis („kein Klick danach"), taugt also nicht zugleich als
   Abbruch-Zeichen — dafuer gibt es `CANCELLED`.
+- **Konfidenz, Toleranz und das Ablegen einer Vorlage stehen je an einer Stelle**:
+  `ask_min_confidence()` und `ask_tolerance()` in `_detection_capture.py` (Fehleingabe
+  behält den Wert und sagt es), `save_template()` in `scan_services.py` (Ordner anlegen,
+  Bild schreiben). Den Dateinamen bestimmt der Aufrufer: die Item-Editoren nehmen einen
+  freien (`free_template_file`), Boss- und Icon-Editor überschreiben die Vorlage des
+  eigenen Eintrags.
 - **Mehrfachauswahl aus einer Liste**: `multi_select()` aus `editors/item_scan_editor.py`
   (`<Nr>`, `<Von>-<Bis>`, `all`, `clear`, `show`, `done`, `cancel`, optional ein eigener
   Befehl wie `new <Slot-Nr>`). Sie stand vorher zweimal ausgeschrieben da — für Slots und
@@ -145,7 +152,7 @@ dem Bestand der Zielsequenz als Dedup-Kontext (`points_for_events(existing=…)`
 eine geladene Fassung derselben Sequenz über `activate_sequence`. Eine neue
 Phase (`CTRL+ALT+SHIFT+P`) wird abgelehnt: eingefügt wird in genau eine. Die
 Tafel im Inspektor zeigt dieselbe Live-Ausgabe wie der Werkzeuge-Reiter
-(`wzFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
+(`toolsFillRecordingOutput`, zweiter Einbauort), und ihr Wächter liest „nicht
 aktiv" erst nach einem ersten Lebenszeichen als „fertig" — beim ersten Blick
 nach dem Start hat der Hauptprozess den Briefkasten oft noch gar nicht geholt.
 Nach dem Neuladen sind die eingefügten Blöcke **gewählt** (`select_range`, aus
@@ -188,7 +195,7 @@ Position angewiesen, die beim Drücken niemand bewusst wählt.
 
 ### Die fünf Marker
 
-Alles ausser Klick/Taste/Rad ist ein **Marker**: ein globaler Tastendruck ohne
+Alles ausser Klick/Taste ist ein **Marker**: ein globaler Tastendruck ohne
 Rückfrage, der beim Stoppen zu Struktur wird. Sie unterscheiden sich in genau drei
 Fragen, und daran hängt der jeweilige Bau:
 
@@ -267,8 +274,9 @@ Das allgemeine Muster für alles Neue: **beim Aufnehmen die Stelle im Ablauf mar
 im Editor konfigurieren.** Ein blockierender Prompt während der Aufnahme kommt nie an.
 
 `CTRL+ALT+U` nimmt während der Aufnahme das letzte Ereignis zurück, sonst den letzten
-Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: in
-der Basis-Ebene sind nur noch R/Y frei (D ging an den Screenshot-Marker). Es nimmt
+Punkt — gleiche Bedeutung, der Gegenstand hängt am Zustand. Kein eigener Buchstabe: die
+Basis-Ebene ist fast voll (frei sind nur D, M, R und Y, s. Hotkey-Flow in der
+Wurzel-`CLAUDE.md`). Es nimmt
 **jedes** Ereignis zurück, auch Marker — eine versehentlich gesetzte Phasengrenze oder
 eine falsch angefahrene Bereichs-Ecke räumt man damit weg.
 
@@ -397,7 +405,7 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   END). Klickt eine Sequenz zweimal denselben Knopf, ist das ein Punkt; ihn
   zweimal zu setzen hiesse, den ersten Griff wieder zu verwerfen.
 - **Was sie nicht erreicht, sagt sie** (`click_points()` gibt zwei Listen
-  zurück): beobachtete Pixel, ELSE-Klicks, Nachprüfungen und Rad-Schritte kommen
+  zurück): beobachtete Pixel, ELSE-Klicks und Nachprüfungen kommen
   in einem normalen Durchlauf nicht vor. Dafür bleibt `walk`. Wer beides ist —
   erst beobachtet, später geklickt — zählt als Klick; deshalb sammelt die
   Funktion **erst alle Klicks und dann den Rest**, in einem Durchgang fiel so
@@ -445,10 +453,10 @@ Fünf Regeln, an denen die Klick-Runde hängt:
   Punkt zu verbrauchen), `CTRL+ALT+K` überspringt, `CTRL+ALT+U` geht zurück —
   und **zurück heisst zurück**: der eben gesetzte Punkt bekommt seine alte
   Stelle wieder, sonst behielte ein Verklicker sie bis zum nächsten Lauf. Die
-  Basis-Ebene ist voll (s. Hotkey-Flow in der Wurzel-`CLAUDE.md`); alle vier tragen hier dieselbe
+  Basis-Ebene ist fast voll (s. Hotkey-Flow in der Wurzel-`CLAUDE.md`); alle vier tragen hier dieselbe
   Bedeutung wie sonst, nur einen anderen Gegenstand. Die Liste steht als
   `KEYS` in `editors/reclick.py`; das Studio zeigt sie als **Tabelle**
-  (`WZ_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
+  (`TOOLS_KEYS` in `app.js`), und ein Test hält beide gegeneinander. Was man
   mitten im Klicken nachschlägt, muss man finden — ein Fliesstext zwingt zum
   Lesen von vorn, und dann liest ihn niemand.
 
@@ -462,7 +470,7 @@ Hier stand einmal das Gegenteil („springt **nicht** nach einem echten Klick"),
 und der Grund war nicht falsch: der Hook meldet den **Druck**, das Loslassen
 kommt erst danach — dazwischen die Maus wegzuziehen macht aus dem Klick ein
 Ziehen. Nur war die Antwort darauf falsch. Statt gar nicht zu springen, springt
-er nach `JUMP_DELAY` (0,25 s, `_jump(..., verzoegert=True)`); die
+er nach `JUMP_DELAY` (0,25 s, `_jump(..., delayed=True)`); die
 alte Fassung liess die Stelle als Zahlenpaar in der Konsole stehen, und man
 musste sie auf dem Schirm suchen, statt sie zu sehen.
 
@@ -487,14 +495,39 @@ nur wenn der Punkt schon eine hatte — sonst schliche sich ein Trigger ein, den
 gesetzt hat.
 
 Kern in `import_export.py` (dort liegt das Remapping schon für den Import):
-`calibrate_inventory()` rechnet Punkte, Slots, Item-Bestätigungsklicks, Boss-/Icon-Scans
-und die Screenshot-Regionen in den Sequenz-**Dateien** um. Regeln:
+`calibrate_inventory()` rechnet Punkte, Slots, Scan-Regionen, die Fenster-Anker der
+Item-Scans und die Screenshot-Regionen um. Den
+Bestätigungsklick der Items und die Klicks von Bossen und Icons rechnet sie nicht um:
+sie zeigen auf Punkte und holen ihre Werte von dort (`resolve_click_references()`).
+Regeln:
+
+- **Mit `with_sequences` zieht jede nicht geladene Sequenz GANZ mit**
+  (`_remap_sequence_files()` → `_remap_sequence_folder()`, derselbe Umrechner wie
+  beim Import, mit denselben Schaltern). Bis zum 31.10.2026 rechnete sie dort nur
+  die Screenshot-Regionen der `sequence.json` um — ein Rest aus der Zeit einer
+  gemeinsamen `points.json`, die „Punkte immer" schon für alle erledigte. Seit Punkte
+  und Scans im Ordner ihrer Sequenz stehen, blieb jede andere Sequenz halb verschoben
+  zurück: Screenshot-Bereiche am neuen Ort, Punkte, Slots und Regionen am alten. Ein
+  Ordner wird erst ganz gelesen, dann geschrieben — eine kaputte Datei darin lässt
+  ihn unangetastet statt halb umgerechnet.
 
 - **`with_slots` steht getrennt von `with_scans`.** Nach einer Reparatur dürfen die Slots
   kein zweites Mal wandern, die übrigen Scan-Regionen aber schon.
+- **Der Fenster-Anker eines Item-Scans wandert nur MIT seinen Slots.** Die Laufzeit
+  rechnet die Slots vom Anker (`capture_window_rect`) auf die heutige Fensterlage um
+  (`_slots_in_window`) — ein Scan am Fenster folgt ihm also von selbst. Bis zum
+  31.10.2026 wanderte der Anker auch ohne die Slots, und zwar mit der Voreinstellung
+  des Studios (`with_slots` aus): die Laufzeit hielt die alten Slots dann für schon
+  verschoben, und jeder lag um den Versatz daneben — am Bestand des Nutzers ein Scan
+  mit 26 Slots am Spielfenster. Die Reparatur setzt den Anker des neu vermessenen
+  Scans deshalb selbst (`_reanchor_after_repair()`: heutige Fensterlage, sonst der
+  gemessene Versatz); vorher erledigte das nur die Kalibrierung danach, wenn man ihr
+  Angebot annahm, und dann auch bei jedem Scan, der gar nicht vermessen war.
 - **Nichts anfassen, was eine Punkt-Referenz hat.** Der Punkt ist schon umgerechnet; ein
   zweiter Durchgang über den abgeleiteten Wert verschöbe ihn doppelt. `_remap_sequence_obj`
-  und `_remap_sequence_data` prüfen deshalb `point_id is None`, bevor sie rechnen.
+  und `_remap_sequence_data` rechnen deshalb nur noch die Screenshot-Region; ihre
+  `point_id is None`-Zweige bedienten Schritte mit Koordinate statt Punkt, die das
+  Dateiformat nicht mehr kennt, und sind gegangen.
 - **Die geladene Sequenz im selben Lock mitziehen**, nicht nur die Dateien — sonst schreibt
   das nächste `save_points()` den alten Stand aus dem Speicher zurück. Ihre Datei wird
   danach **nicht** ein zweites Mal über die Platte umgerechnet.

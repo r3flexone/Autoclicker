@@ -8,7 +8,7 @@ Begründungen zu diesem Bereich gehören hierher, nicht in die Wurzel.
 ## Module
 
 - `autoclicker/editors/sequence_studio/` — das Studio-Fenster:
-  - `bridge.py`: stabile `StudioBridge`-Fassade und Initialisierung.
+  - `bridge.py`: `StudioBridge` fügt die Mixins zusammen und initialisiert.
   - `bridge_contract.py`: öffentliches Protokoll, Konstanten und reine Helfer.
   - `bridge_view.py`: Momentaufnahme und JSON-Projektionen.
   - `bridge_services.py`: Persistenz, Laufsteuerung und Konfiguration.
@@ -17,7 +17,7 @@ Begründungen zu diesem Bereich gehören hierher, nicht in die Wurzel.
   - `bridge_tools.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
   - `bridge_report.py`: Session-Logs und Ertrag im Reiter „Bericht".
   - `bridge_remote.py`: Discord-Freigaben im Reiter „Fernstart" (schreibt `remote.json`).
-  - `scans.py`: stabile `ScanPart`-Fassade.
+  - `scans.py`: `ScanPart` fügt die Scan-Mixins zusammen.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
     Verantwortlichkeiten.
@@ -45,7 +45,7 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 
 | Einstiegspunkt | Oberfläche | arbeitet auf |
 |---|---|---|
-| `autoclicker/sequence_studio.py` (`handle_sequence_studio`, `handle_scan_studio`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
+| `autoclicker/sequence_studio.py` (Prozess-Einstieg; gestartet von `handle_sequence_studio` und `handle_studio_scans` in `handlers.py`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
 
 **Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
 `slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein
@@ -220,8 +220,8 @@ stillschweigend — richtig für ein Menü, falsch für eine Übersicht: genau d
 man die Datei im Explorer), und geöffnet wird über den vorhandenen `load`-Befehl,
 damit die Rückfrage bei ungespeicherten Änderungen greift.
 
-**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanPart`-
-Fassade in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
+**Der Scans-Reiter arbeitet auf einem eingefrorenen Screenshot** (`ScanPart`
+in `scans.py`, Aufnahme in `scan_capture.py`, Zustands-/Interaktionslogik
 in den übrigen `scan_*.py`-Modulen). Slots werden dort aufgezogen, wo sie im
 Spiel liegen; Koordinaten tippt niemand. Er bearbeitet `sequences/<name>/item_scans/<n>.json` — Slots und Items stehen
 darin, es gibt keine globalen Listen daneben — also wieder andere Dateien
@@ -261,8 +261,9 @@ Item lernen, Farbe messen), stünde offen. Die Ersatzfläche darf als einzige ü
 100 % hinaus (bis 400 %): sie hat keine Pixel, die man fälschen könnte, und ein
 Inventar von 300 px hinge sonst verloren in einer Ecke.
 
-**Die alten Screenshots unter `slots/Screenshots/` sind kein Ersatz dafür.** Sie
-stammen aus dem Konsolen-Slot-Editor und sind **Ausschnitte** (`take_screenshot(region)`),
+**Die Screenshots des Konsolen-Slot-Editors sind kein Ersatz dafür.** Sie lagen einmal
+unter `slots/Screenshots/`, heute im `bilder/`-Ordner der Sequenz, und sind
+**Ausschnitte** (`take_screenshot(region)`),
 deren Ursprung nirgends steht — als Arbeitsfläche benutzt, läge jeder Slot still
 falsch. Genau der Fehler, gegen den der Ursprung im PNG steht.
 
@@ -337,9 +338,8 @@ Sechs Regeln, an denen der Reiter hängt:
   Slot unter dem Zeiger statt des obersten, damit ein Winzling in einem grossen
   Slot überhaupt erreichbar ist. Dazu markiert die Liste ihn (`tiny`): dort ist
   er so gross wie jeder andere, und das ist der zweite Weg zum Löschen.
-- **Was ein Klick bedeutet, sagt ein Modus** (`MODES` in `scan_contract.py`,
-  über `scans.py` weiterhin öffentlich importierbar: wählen, neuer
-  Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
+- **Was ein Klick bedeutet, sagt ein Modus** (`MODES` in `scan_contract.py`:
+  wählen, neuer Slot, Hintergrundfarbe, Klickpunkt) — ein Klick, dessen Bedeutung man raten
   muss, ist schlimmer als ein Modus-Knopf. Jeder Modus liegt zusätzlich auf
   seinem Anfangsbuchstaben; ein Test hält Kacheln und `MODES` gegeneinander —
   **Zug um Zug, nicht als Menge**, denn die Reihenfolge ist die Rangfolge:
@@ -597,14 +597,14 @@ Sechs Regeln, an denen der Reiter hängt:
   erreichbar" — und überschrieb dabei, was der Nutzer inzwischen getan hatte.
   Es merkt sich deshalb `statusStamp` und schweigt, wenn seither jemand anders
   etwas gemeldet hat.
-- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `wzCheck()`
-  rief nur `wzRenderMiddle()`: der Bericht stand in der Mitte, rechts blieb
+- **Wer die Mitte neu zeichnet, zeichnet auch die rechte Spalte.** `toolsCheck()`
+  rief nur `toolsRenderMiddle()`: der Bericht stand in der Mitte, rechts blieb
   „Noch nichts geprüft." — ausgerechnet die Spalte, die auflistet, WAS geprüft
   wurde, und ohne die „Alles in Ordnung" eine Behauptung ist. Jeder andere
   Werkzeug-Befehl geht über `callTool` → `renderTools()` und zeichnet
   alle drei Spalten; dieser eine ging seinen eigenen Weg, weil er `ask()`
   direkt ruft.
-- **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `wzInfo()` im
+- **Ein ⓘ hängt an einer Beschriftung, nicht im Leeren.** `toolsInfo()` im
   Werkzeuge-Reiter warf seinen Titel ins `title`-Attribut; sichtbar blieb ein
   nackter Kreis in der Fläche — an zwölf Stellen, in „prüfen" und „kalibrieren"
   mitten im Nichts, wo er wie ein Rest aussah. Die Beschriftung ist es, die
@@ -612,7 +612,7 @@ Sechs Regeln, an denen der Reiter hängt:
   und nicht die Breite, um die es beim Kompakt-Umbau ging (ein Kasten wäre das
   gewesen).
 - **Zustandsklassen bekommen ein Präfix — auch dort, wo es niemand sieht.** Der
-  Hinweiskasten hiess `wz-info-compact info`, und `.info` ist der runde
+  Hinweiskasten hiess `tools-info-compact info`, und `.info` ist der runde
   ⓘ-Knopf: 13 px, `flex:none`, zentriert. Der Kasten erbte dessen Gestalt.
   Solange er NUR das ⓘ enthielt, sahen 13 px richtig aus — mit einer
   Beschriftung darin stand der Text mittig über den Kasten hinaus, nach links
@@ -622,9 +622,9 @@ Sechs Regeln, an denen der Reiter hängt:
   in der CSS-Datei keine einzige Variante — ein Präfix hätte einen toten Zweig
   gepflegt.
 - **Eine Klasse, die das Layout setzt, darf keine andere überschreiben.**
-  `.wz-action{display:flex}` steht später im Stylesheet als `.grid2`/
+  `.tools-action{display:flex}` steht später im Stylesheet als `.grid2`/
   `.grid3` und gewann bei gleicher Spezifität: die beiden Stellen, die
-  ausdrücklich `wz-action gitter2` bzw. `gitter3 wz-action` schreiben, bekamen
+  ausdrücklich `tools-action grid2` bzw. `grid3 tools-action` schreiben, bekamen
   nie ihre gleichen Spalten, und die Knopfreihen standen in Textbreite da. Die
   Klasse trägt jetzt nur noch ihren Abstand; wer eine Reihe will, schreibt
   `row` dazu.
@@ -1240,7 +1240,7 @@ Acht Regeln, an denen der Teil hängt:
 - **Die Bibliothek gilt zusätzlich in JEDEM Boss-Scan**, lokale Bosse gewinnen bei
   Namensgleichheit (so merged auch `execute_boss_scan`). Deshalb testet
   „alle testen" die **gemergte** Liste, deshalb kollidiert ein neuer Boss-Name
-  gegen beide Mengen, und deshalb steht ein verdeckter globaler Boss blass in der
+  gegen beide Mengen, und deshalb steht ein verdeckter Boss aus der Bibliothek blass in der
   Liste statt so zu tun, als würde er benutzt. Angezeigt wird sie als Kartenraster
   an der Stelle der Bühne — sie ist kein Rechteck auf dem Bild, sondern eine
   Sammlung.
@@ -1370,7 +1370,7 @@ der Knopf aber aus, als täte er nichts.
 
 
 **Jedes Werkzeug sagt, WORAUF es wirkt** — und „jedes" heisst jedes: „Farben
-analysieren" trug als einziges keine Bezugszeile, während in `WZ_TOOLS`
+analysieren" trug als einziges keine Bezugszeile, während in `TOOLS`
 `scopeKind: "inventory"` stand. Das wäre die falsche Auskunft gewesen (es misst nur
 den Bildschirm und schreibt nirgends hin), und weil die Zeile gar nicht
 gezeichnet wurde, fiel die Unwahrheit nicht auf. Dafür gibt es die vierte Art
@@ -1385,7 +1385,7 @@ Klick-Runde ist das genau die Frage, die man sich stellt. Seit die Auswahl
 **weg**: er liess den Namen dreimal gleichzeitig dastehen. Ein einzelner Name
 oben wäre trotzdem falsch gewesen: Prüfen und
 Kalibrieren gehen über den **ganzen Bestand**, nur die Klick-Runde meint **eine**
-Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`wzScope()`), und
+Sequenz. Deshalb trägt jedes Werkzeug seine eigene Bezugszeile (`toolsScope()`), und
 links steht die offene Sequenz als Einordnung.
 
 Daran hing ein echter Fehler: `command_reclick` nahm `state.active_sequence` aus
@@ -1453,11 +1453,11 @@ Fünf Regeln, an denen er hängt:
   wächst mit jedem Start, und der Reiter wird bei jedem Öffnen gezeichnet; ohne
   Deckel liest ein halbes Jahr Betrieb bei jedem Klick mit. Eine stillschweigend
   gekürzte Auswertung wäre schlimmer als eine kurze.
-- **Er baut mit dem, was da ist.** Kennzahlen sind `wz-metrics` (dieselben
+- **Er baut mit dem, was da ist.** Kennzahlen sind `tools-metrics` (dieselben
   Kacheln wie im Werkzeuge-Reiter), Karten sind `share-card`, die Spalten sind
   `section` — eigene Klassen gibt es nur für die Rangzeile und die
   Sitzungsauswahl, und **eine** Rangzeile trägt alle vier Listen plus den Ertrag.
-  Ein achter Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
+  Ein weiterer Reiter, der sich seine eigene Gestalt gibt, kostet mehr als er
   einbringt. Dazu gehört, dass untereinander stehende Blöcke auf **derselben**
   Kante liegen: die Kennzahlen dürfen 880 px, die Karten kamen mit 720 — gestapelt
   waren das zwei rechte Kanten, 160 px auseinander und damit nah genug, dass es wie
@@ -1525,7 +1525,7 @@ und schreibt sie in dasselbe Objekt. Ein laufender Lauf zieht sofort mit — der
 liest `state.config` bei jedem Schritt neu.
 
 **Und der Schreiber lädt sich selbst mit.** `config_write()` ruft
-`apply_config(CONFIG, neu)` auf dem eigenen Prozess — das fehlte, und damit war
+`apply_config(CONFIG, new)` auf dem eigenen Prozess — das fehlte, und damit war
 ausgerechnet das Fenster, das die Datei geschrieben hat, das einzige, das den neuen
 Stand nicht kannte: der Hauptprozess bekam den Briefkasten-Befehl, der Studio-Prozess
 blieb bis zum Neustart auf den Werten vom Programmstart sitzen. Aufgefallen ist es am
@@ -1564,7 +1564,7 @@ Regeln für die Ansicht:
 - **Eine Einstellung ist ein Sprungziel** (`goTo({view: "settings", key})`):
   scrollt hin, lässt die Zeile aufleuchten, setzt den Fokus ins Feld. Leere
   Zustände anderer Reiter nennen deshalb keinen Config-Schlüssel mehr, sondern
-  bieten den Sprung an („Marktwert-Datei eintragen" im Bericht). Die
+  bieten den Sprung an („Marktwert-Datei prüfen" im Bericht). Die
   Änderungskarten rechts springen ebenso zu ihrem Feld.
 - **Ein abhängiges Feld heisst `.faded`** — `cfgRow()` setzte `blass`, das CSS
   kannte nur `.cfg-row.faded`, und abhängige Felder waren seit dem
@@ -1647,7 +1647,7 @@ rettet, ist schlimmer als keiner — man merkt den Verlust erst beim Laden.
 **Das eigene Symbol braucht zwei Dinge, nicht eins.** Titelleiste und ALT+TAB
 nehmen es aus `WM_SETICON` (`set_window_icon()`) — aber erst, wenn es das
 Fenster gibt: `webview.start(func)` ruft seinen Callback davor auf, deshalb die
-Frist (`warten=`). Die **Taskleiste** ignoriert das Fenstersymbol, solange sie
+Frist (`waiting=`). Die **Taskleiste** ignoriert das Fenstersymbol, solange sie
 das Fenster unter der ausführenden Datei einsortiert, und die heisst `python.exe`;
 dafür gibt es `set_app_id()`, und die muss **vor dem ersten Fenster** laufen.
 Zwei Mechanismen, zwei Aufrufe, zwei Tests — wer nur einen setzt, sieht das
@@ -1668,7 +1668,7 @@ Motivs, die beim nächsten Entwurf veralten.
 Rauschen (seine Linien sind dort schmaler als ein Pixel), und das genau dort,
 wo man das Symbol am häufigsten sieht: Browser-Tab und kleines Fenstersymbol.
 `web/sequenz-studio-logo-small.svg` ist dieselbe Kette mit vier statt neun
-Knoten, jede Kante auf dem 16er-Raster. `symbol.logo_path(kante)` wählt: bis
+Knoten, jede Kante auf dem 16er-Raster. `symbol.logo_path(edge)` wählt: bis
 `SMALL_UP_TO` (24) das kleine, darüber das grosse. Ab 32 px ist das grosse
 lesbar genug, und der Nutzer will dort das Original sehen — das kleine springt
 nur ein, wo vom grossen nichts übrig bleibt, nicht darüber hinaus.
@@ -1683,11 +1683,11 @@ stach die dickere Linie seitlich aus ihr heraus), und es ist **höher als die
 
 | wer | wozu |
 |---|---|
-| `winapi._icon_bits()` | ICO-Bits für `WM_SETICON` (16 klein, 32 gross) |
+| `platforms/windows.py` (`_icon_bits()`) | ICO-Bits für `WM_SETICON` (16 klein, 32 gross) |
 | `tools/symbol.py` | PNG-Dateien und eine `.ico` für Verknüpfungen |
 | `web/index.html` | Favicon (klein) und Kopf (gross, 30 CSS-Pixel) |
 
-Alle gehen über `symbol.pixel_rows(kante)` bzw. die Datei selbst; Tests halten
+Alle gehen über `symbol.pixel_rows(edge)` bzw. die Datei selbst; Tests halten
 fest, welche Grösse welche Datei nimmt, dass Favicon und Kopf die richtige
 nennen, dass beide dieselbe Farbe tragen, und dass jedes SVG nur die Befehle
 benutzt, die `_path_polygons()` lesen kann — ein `A` aus einem CAD-Export fiele
@@ -1765,7 +1765,7 @@ Regeln beim Erweitern:
   und keins davon ändert die Regel:
 
   - Der Inspektor nennt die **anderen** Verwendungen des Punkts (`point_others`,
-    `_point_usages(…, ausser=step)`) — als offener `hint`, denn das ist
+    `_point_usages(…, except_step=step)`) — als offener `hint`, denn das ist
     Zustand; das Warum bleibt im ⓘ. **Gebündelt, nicht aufgezählt**
     (`_point_usage_groups()`): eine Zeile je Phase, jeder Block einmal,
     Folgen ab drei als Bereich („Blöcke 1–5, 7–24"), und eine Rolle nur, wenn
@@ -1796,7 +1796,7 @@ Regeln beim Erweitern:
   Phasen stehen nebeneinander, ein Bereich quer darüber hätte keine sichtbare
   Reihenfolge. Die Seite zählt `S.selection.count`, nie `rows.length` (das sind
   nur die Zeilen der letzten Phase). Phasen werden an der **Identität** erkannt
-  (`_lane_index()`), nicht mit `lanes.index()`: `Lane` ist eine Dataclass, und
+  (`board.position()`), nicht mit `lanes.index()`: `Lane` ist eine Dataclass, und
   zwei gleich aussehende Phasen fand `index()` immer als die erste.
 - **Die Karte zeigt wenig, der Inspektor alles.** Auf die Karte gehört, was man beim
   Überfliegen von 50 Blöcken braucht (Typ, Ziel, Wartezeit, Trigger, ELSE, Warnung);
@@ -1948,7 +1948,7 @@ Regeln beim Erweitern:
   etwas so ist, gehört ins ⓘ — es gilt immer, ändert sich nie und steht deshalb
   bei jedem Blick im Weg; `openHelps` merkt sich, welche aufgeklappt sind.
   `toggle()`, `numberField()`, `color_swatch()`, `selection()` und `heading()`
-  nehmen dafür alle `hilfe, schluessel` entgegen — ein Erklärungsabsatz **unter**
+  nehmen dafür alle `help, key` entgegen — ein Erklärungsabsatz **unter**
   einem dieser Bedienelemente ist deshalb fast immer ein Fehler.
 - **Feste kurze Auswahl als Kacheln, alles Wachsende als Liste.** Block-Typ (neun)
   und ELSE-Aktion (fünf) sind Kacheln: die Menge ist im Code festgelegt und ändert
@@ -1989,7 +1989,7 @@ Regeln beim Erweitern:
   für jede der neun Typfarben nach — Mindestmass 4,5:1. Der Typ sitzt dabei als
   umrandete **Marke** in der Kopfzeile, nicht als Wort im Fluss.
 - **Jede Kartenzeile trägt ein Etikett** (`_lines()` liefert `{label, text}`:
-  STELLE, WARTE, TASTE, SCAN, RAD, BEREICH, FARBE, ELSE), und der Kartenkörper
+  STELLE, WARTE, TASTE, SCAN, BEREICH, FARBE, ELSE), und der Kartenkörper
   ist ein zweispaltiges Raster, damit die Etiketten bündig stehen. Bei fünfzig
   Karten untereinander findet das Auge „WARTE" schneller als „1.5s" — und ohne
   Etikett musste man das Vorzeichen als Wartezeit erkennen (das `+` ist
@@ -2188,7 +2188,7 @@ Regeln beim Erweitern:
   dem man suchen geht; der Bericht hat dafür „Session-Log einschalten". Teilen
   sagte „erst speichern" in einem Reiter ohne Speichern-Knopf — die Warnung
   trägt ihn jetzt selbst (`saveEverythingForShare()`).
-- **Ein Werkzeug hat einen Namen, und er kommt aus `WZ_TOOLS`** (`wzHeader(key,
+- **Ein Werkzeug hat einen Namen, und er kommt aus `TOOLS`** (`toolsHeader(key,
   text)`). Links stand „Bestand prüfen", im Kopf „Setup prüfen", und
   „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Der Konsolenbefehl
   steht im Tooltip und nur, wo es ihn gibt (check, fix, reclick) — als Marke

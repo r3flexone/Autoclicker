@@ -24,9 +24,11 @@ EXPORT_PATH = os.path.join(OUTPUT_DIR, "idle_clans_farming.xlsx")
 PRICE_SENSITIVITY_CHART_PATH = os.path.join(OUTPUT_DIR, "price_sensitivity_chart.png")
 RUN_STATS_PATH = os.path.join(OUTPUT_DIR, "run_stats_history.json")
 # Schlanke Item-Name -> Gold-pro-Stueck-Tabelle. EINZIGE Beruehrung mit dem
-# Autoclicker, und zwar nur als Datei: der Autoclicker LIEST sie (falls in seiner
-# config.json ein Pfad eingetragen ist), diese Analyse weiss nichts von ihm. Kein
-# Import in beide Richtungen, keine gemeinsame Abhaengigkeit - nur eine JSON.
+# Autoclicker, und zwar nur als Datei: der Autoclicker LIEST sie (sein
+# `scan_market_value_file` zeigt von Haus aus hierher), diese Analyse weiss nichts
+# von ihm. Kein Import in beide Richtungen, keine gemeinsame Abhaengigkeit - nur
+# eine JSON. Wer diesen Pfad verlegt, zieht den Standard dort mit; die
+# Vertragssuite prueft, dass beide auf dieselbe Datei zeigen.
 MARKET_VALUE_PATH = os.path.join(OUTPUT_DIR, "marktwert.json")
 
 
@@ -142,7 +144,7 @@ PLAYER_MARKET_TAX = 0.01
 PLAYER_MARKET_TAX_MIN_TOTAL = 100.0
 
 
-def net_player_price(price_value: float, amount_value: float = 1.0) -> float:
+def net_player_price(price: float, amount: float = 1.0) -> float:
     """Was je Stueck nach Marktsteuer beim Verkaeufer ankommt.
 
     Die Steuer greift erst ab `PLAYER_MARKET_TAX_MIN_TOTAL` Gold GESAMTWERT eines
@@ -151,9 +153,9 @@ def net_player_price(price_value: float, amount_value: float = 1.0) -> float:
     weglaesst, fragt nach genau einem Stueck - und bekommt bei billigen Items dann
     auch den steuerfreien Preis, statt stillschweigend 1% zu verlieren.
     """
-    if price_value <= 0 or price_value * max(amount_value, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
-        return price_value
-    return price_value * (1.0 - PLAYER_MARKET_TAX)
+    if price <= 0 or price * max(amount, 0.0) < PLAYER_MARKET_TAX_MIN_TOTAL:
+        return price
+    return price * (1.0 - PLAYER_MARKET_TAX)
 
 
 # Gold ist in der API ein Item wie jedes andere und taucht als Kostenzeile auf
@@ -171,6 +173,9 @@ GOLD_ITEM_PRICE = 1.0
 # Wirkt AUSSCHLIESSLICH auf die Rangfolge im Empfehlungs-Sheet (Spalte
 # "Gold/h gewichtet"). Gold/h selbst, Ketten, Rohdaten und alle anderen Sheets bleiben
 # unveraendert - dort steht weiter der echte Ertrag.
+#
+# Der zweite Grund fuer eine Abwertung, der Zukauf, steht NICHT hier: sein Faktor
+# wird je Kette gerechnet (purchase_buffer in pricing.py), nicht eingestellt.
 SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
     "Farming": (0.5, "Samen nur als Zufallsdrop"),
 }
@@ -178,12 +183,13 @@ SKILL_RELIABILITY: dict[str, tuple[float, str]] = {
 AUTO_COOK_CHANCE = 0.5               # Anteil der Faenge, der bereits gekocht ankommt
 AUTO_COOK_SOURCE_SKILL = "Fishing"
 
-# Der Rest des Fangs ist ROHER Fisch, und der ist verkaeuflich. Die Kette hat ihn
-# lange weggeworfen und dabei rund ein Drittel des Ertrags unterschlagen (bei tuna:
-# 154.170 statt ~198.800 Gold/h ausgewiesen). Er wird als Nebenertrag gutgeschrieben,
-# ueber denselben Verkaufsweg wie jedes andere Item - also Kaufgebot oder NPC, je
-# nachdem, was mehr bringt. Auf False steht wieder die alte, pessimistische Rechnung.
-AUTO_COOK_SELL_RAW_REST = True
+# Ein Fischzug liefert gekocht UND roh, und beides ist verkaeuflich. Die Kette hat den
+# rohen Rest lange weggeworfen und dabei rund ein Drittel des Ertrags unterschlagen
+# (bei tuna: 154.170 statt ~198.800 Gold/h ausgewiesen). Der jeweils andere Teil des
+# Fangs wird als Nebenertrag gutgeschrieben - beim gekochten Fisch der rohe, beim
+# rohen (als Zutat, z. B. sea_serpent_scale) der gekochte -, ueber denselben
+# Verkaufsweg wie jedes andere Item. Auf False zaehlt nur der gefragte Teil.
+AUTO_COOK_SELL_REST = True
 
 # Smelting Magic: Chance, Erz beim Ore->Bar-Schmelzen nicht zu verbrauchen (hoechster
 # Tier = 30%, Tiers stacken nicht). Wirkt nur auf *_bar-Rezepte, nicht aufs Schmieden.
@@ -278,6 +284,14 @@ MAX_SPREAD_RATIO = 1.0         # Warnung ab Ask > 2x Bid
 MAX_AVG_DEVIATION_RATIO = 0.5  # Warnung ab >50% Abweichung vom 24h-Schnitt
 LIQUIDITY_WARNING_RATIO = 5.0  # Warnung ab Bedarf/Absatz > 5x Marktvolumen
 
+# Ein Eintrag im Buch, der um mehr als diesen Faktor vom GEHANDELTEN Schnitt
+# abweicht, ist kein Marktpreis, sondern ein Versehen oder Absicht - Anlass war
+# Oak am 04.10.2026: ein Angebot zu 464.650 g (Schnitt 95 g) und ein Gebot zu 1 g,
+# je ein Stueck. Massstab ist der Schnitt, weil ein Eintrag, den niemand annimmt,
+# ihn nicht bewegt. Solche Eintraege zaehlen nirgends: nicht im Bestpreis, nicht
+# beim Verkauf durchs Buch, nicht im Chart (s. README, "Ausreisser im Buch").
+OUTLIER_PRICE_FACTOR = 10.0
+
 
 # ------------------------------------------------------------------
 # Optionale Auswertungen (kosten zusaetzliche Live-Requests)
@@ -340,19 +354,30 @@ REASON_CANDIDATES = 30
 # und irgendwann drosselt die API - 1 heisst wieder streng nacheinander.
 ORDERBOOK_PARALLEL = 8
 
+# Die API laesst 50 Abrufe je Minute zu (Header X-Rate-Limit-*) und antwortet
+# danach mit HTTP 429. Ein Lauf braucht gut 30; zwei Laeufe kurz hintereinander
+# (oder apicheck davor) reissen die Grenze. Dann wird bis zum naechsten Fenster
+# gewartet, so oft wie hier steht - ein fehlendes Buch hiesse sonst eine Luecke.
+ORDERBOOK_QUOTA_RETRIES = 3
+
 # Preis-Position: aktueller Erloes gegen den 30-Tage-Schnitt desselben Items. Ab dieser
 # Abweichung wird es in der Bewertung erwaehnt (0.10 = 10%).
 PRICE_POSITION_HINT_RATIO = 0.10
 
 # Wonach die Top-Liste sortiert wird:
-#   "sofort" - alles ins beste Gebot verkauft, Geld ist sofort da
-#   "geduld" - eigenes Angebot eingestellt und gewartet
+#   "instant"  - alles ins beste Gebot verkauft, Geld ist sofort da
+#   "patience" - eigenes Angebot eingestellt und gewartet
 #
 # Der Unterschied ist gross: ein Item kann beim Sofortverkauf einbrechen (duennes Gebot)
 # und mit eigenem Angebot trotzdem das beste sein. Wer das Gold nicht sofort braucht,
-# stellt hier "geduld" ein — dann zaehlt aber die Spalte "Wartezeit (h)": eine Stunde
+# stellt hier "patience" ein — dann zaehlt aber die Spalte "Wartezeit (h)": eine Stunde
 # Produktion kann Tage im Buch liegen.
-RANKING_BASIS = "sofort"
+#
+# Hier standen bis zum 11.10.2026 "sofort" und "geduld", waehrend der Code seit der
+# Englisch-Umbenennung auf "patience" pruefte: wer "geduld" einstellte, bekam still den
+# Sofortverkauf. Ein Wert ausserhalb von RANKING_BASES bricht den Lauf deshalb ab.
+RANKING_BASES = ("instant", "patience")
+RANKING_BASIS = "instant"
 
 SHOW_LONGTERM_AVERAGES = False        # 1 Request PRO ITEM in Rohdaten -> Minuten
 LONGTERM_AVERAGES_REQUEST_DELAY_S = 0.05
@@ -421,7 +446,7 @@ CONFIG_HASH_KEYS = [
     "ORE_STORAGE_ACTIVE", "ORE_STORAGE_SAVE",
     "SMELTING_MAGIC_ACTIVE", "SMELTING_MAGIC_SAVE",
     "FARMING_COST_MULTIPLIER", "SMITHING_SMELTING_COST_MULTIPLIER",
-    "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_RAW_REST",
-    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME",
+    "AUTO_COOK_CHANCE", "AUTO_COOK_SELL_REST",
+    "MIN_SELL_BID_VOLUME", "MIN_BUY_ASK_VOLUME", "OUTLIER_PRICE_FACTOR",
     "RANKING_BASIS",
 ]

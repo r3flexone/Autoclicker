@@ -20,8 +20,6 @@ from ..imaging import (
 from ..models import (
     AutoClickerState, SequenceStep,
     ACTION_TEXT, SCAN_MODE_ALL, SCAN_MODE_BEST, SCAN_MODE_EVERY, TIMEOUT_TEXT, block_type,
-    TIMEOUT_SKIP_CYCLE, TIMEOUT_RESTART, TIMEOUT_STOP,
-    CONSEC_EXIT, CONSEC_QUIT,
     BOSS_ACTION_SCAN, BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART,
     VALID_BOSS_DEFAULT_ACTIONS,
 )
@@ -30,17 +28,20 @@ from ..session_log import log_event
 from ..utils import (
     atomic_write, clear_line, status_line, col, err, hint, info, dbg, warn,
 )
-from ..config import LAST_SCAN_IMAGE_FILE, SCAN_MOUSE_PARK
+from ..config import (
+    CONSEC_EXIT, CONSEC_QUIT, LAST_SCAN_IMAGE_FILE, SCAN_MOUSE_PARK,
+    TIMEOUT_RESTART, TIMEOUT_SKIP_CYCLE, TIMEOUT_STOP,
+)
 from ..winapi import PlatformError, check_failsafe, get_cursor_pos, set_cursor_pos
 from .actions import (
-    safe_click, safe_key, _step_status, _phase_color, is_verbose_debug,
+    safe_click, safe_key, _step_status, _phase_color,
     wait_with_pause_skip, wait_while_paused, execute_else_action, input_refused,
     pixel_crop, _LIVE_INTERVAL, net_seconds, paused_total,
 )
 from . import status
 from .debug import (
     GATE_RUN, GATE_SKIP, GATE_STOP, color_comparison, color_swatch, describe_step,
-    is_detail_debug, is_step_mode, print_step_detail, show_point, skip_waits,
+    is_detail_debug, is_log_debug, is_step_mode, print_step_detail, show_point, skip_waits,
     step_gate, step_label,
 )
 from .boss_detection import (
@@ -162,7 +163,7 @@ def _execute_item_scan_step(state: AutoClickerState, step: SequenceStep,
 def _item_scan_step(state: AutoClickerState, step: SequenceStep, step_num: int,
                     total_steps: int, phase: str, report: _ScanReport) -> bool:
     """Der Rumpf von `_execute_item_scan_step` — ausgelagert nur wegen des `finally`."""
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     mode = step.item_scan_mode
     # Drei Modi, drei Woerter — hier stand "alle"/"bestes", und `every` hiess
     # damit faelschlich "bestes".
@@ -186,7 +187,7 @@ def _item_scan_step(state: AutoClickerState, step: SequenceStep, step_num: int,
         return False
 
     if scan_results:
-        for i, (pos, item, priority) in enumerate(scan_results):
+        for pos, item, priority in scan_results:
             if state.stop_event.is_set():
                 return False
             if not _click_scan_result(state, pos, item, priority, debug):
@@ -270,7 +271,7 @@ def _execute_item_scan_immediate(state: AutoClickerState, step: SequenceStep,
 def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Boss-Scan Schritt aus."""
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
 
     _warn_llm_config_inconsistencies(state, step.boss_scan)
 
@@ -289,7 +290,7 @@ def _execute_boss_scan_step(state: AutoClickerState, step: SequenceStep,
     if found and boss:
         _step_status(debug, phase, step_num, total_steps,
                      f"Boss: {boss.name}", f"Boss erkannt: {boss.name}")
-        return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
+        return _execute_boss_action(state, boss, step_num, total_steps, phase, debug)
 
     # Kein Boss erkannt → Else-Config oder Default-Aktion
     if step.else_config:
@@ -371,7 +372,7 @@ def _warn_default_action_once(state: AutoClickerState, config) -> None:
 def _execute_icon_scan_step(state: AutoClickerState, step: SequenceStep,
                             step_num: int, total_steps: int, phase: str) -> bool:
     """Führt einen Icon-Scan Schritt aus: Icon erkennen → Aktion, sonst else/weiter."""
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
 
     _step_status(debug, phase, step_num, total_steps, f"Icon-Scan '{step.icon_scan}'...")
     found = execute_icon_scan(state, step.icon_scan)
@@ -415,7 +416,7 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
     Der Watcher prüft periodisch die Boss-Region (Intervall aus config.llm_watcher_interval)
     und führt die dem Boss zugeordnete Aktion aus, sobald einer erkannt wird.
     """
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
 
     _warn_llm_config_inconsistencies(state, step.boss_watcher)
 
@@ -452,7 +453,7 @@ def _execute_boss_watcher_step(state: AutoClickerState, step: SequenceStep,
             _step_status(debug, phase, step_num, total_steps,
                          f"Boss erkannt: {boss.name}!",
                          f"Boss-Watcher: {boss.name} ERKANNT! (nach {watch.scan_count} Scan(s))")
-            return _execute_boss_action(state, boss, step, step_num, total_steps, phase, debug)
+            return _execute_boss_action(state, boss, step_num, total_steps, phase, debug)
 
         if watch.exhausted(time.time() - watch.start_time):
             return True
@@ -529,7 +530,7 @@ class _Watch:
 def _execute_key(state: AutoClickerState, step: SequenceStep,
                       step_num: int, total_steps: int, phase: str) -> bool:
     """Drückt die Taste. Gewartet (Zeit oder Farb-Bedingung) hat execute_step bereits."""
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     if safe_key(state, step.key_press, label="step"):
         with state.lock:
             state.key_presses += 1
@@ -546,7 +547,7 @@ def _execute_key(state: AutoClickerState, step: SequenceStep,
 
 def effective_timeout(wc, config) -> float:
     """Die Zeitgrenze eines Farb-Wartens: die des Blocks, sonst die der Config."""
-    own = getattr(wc, "timeout", None)
+    own = wc.timeout
     return config.pixel_wait_timeout if own is None else own
 
 
@@ -562,7 +563,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
     `else` zusätzlich sein eigenes Ziel, und ein nicht erfüllter checkcolor-Schritt
     riss den Rest der Phase mit ab.
     """
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     wc = step.wait_condition
     actual_delay = 0 if skip_waits(state) else step.get_actual_delay()
     if actual_delay > 0:
@@ -588,7 +589,7 @@ def _execute_wait_for_color(state: AutoClickerState, step: SequenceStep,
 
     # check_only: einmal prüfen statt warten. Passt die Farbe nicht, greift sofort
     # else_config (Standard skip) - kein Blockieren bis zum Timeout.
-    if getattr(wc, "check_only", False):
+    if wc.check_only:
         return _check_color_once(state, step, step_num, total_steps, phase)
 
     timeout = effective_timeout(wc, state.config)
@@ -695,7 +696,7 @@ def _color_loop(state: AutoClickerState, step: SequenceStep, wc, step_num: int,
 def _color_wait_status(state: AutoClickerState, step: SequenceStep, wc,
                       current_color, dist, start_time: float, timeout: float,
                       image=None) -> dict:
-    """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.wartet`)."""
+    """Der Warte-Teilzustand für die Live-Ansicht (siehe `status.waiting_for`)."""
     return {
         "image": image,
         "kind": "color",
@@ -745,7 +746,7 @@ def _check_color_once(state: AutoClickerState, step: SequenceStep,
     else_config - ohne else_config wird nur DIESER Schritt übersprungen (GATE_SKIP),
     die Phase läuft weiter.
     """
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     wc = step.wait_condition
     tol = state.config.pixel_wait_tolerance
 
@@ -843,7 +844,7 @@ def _handle_color_wait_timeout(state: AutoClickerState, step: SequenceStep, phas
 def _execute_click(state: AutoClickerState, step: SequenceStep,
                    step_num: int, total_steps: int, phase: str) -> bool:
     """Führt den eigentlichen Klick aus."""
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     clicks = state.config.click_per_point
     for _ in range(clicks):
         if state.stop_event.is_set():
@@ -1029,7 +1030,7 @@ def _block_skip(state: AutoClickerState, phase: str, step_num: int,
     if not state.skip_step_event.is_set():
         return False
     state.skip_step_event.clear()
-    _step_status(is_verbose_debug(state), phase, step_num, total_steps,
+    _step_status(is_log_debug(state), phase, step_num, total_steps,
                  "Block übersprungen", "BLOCK ÜBERSPRUNGEN")
     return True
 
@@ -1091,7 +1092,7 @@ def _announce_step(state: AutoClickerState, step: SequenceStep, phase: str,
     # und Zykluswechsel im Worker schreiben immer, ein einzelner Block darf
     # ausgelassen werden. `describe_step` statt eines Typ-Kürzels, weil es hier
     # schon steht und mehr sagt — "Item-Scan 'Beutel' (all)" gegen "ITEM-SCAN".
-    # `warten: None` gehört dazu: der neue Block wartet noch auf nichts, und der
+    # `waiting: None` gehört dazu: der neue Block wartet noch auf nichts, und der
     # Warte-Kasten des vorherigen darf nicht darüber stehenbleiben.
     # `block_set_type` ist der Schlüssel, nicht die Farbe: die Zuordnung Typ→Farbe ist
     # Anzeige und gehört ins Studio (`BLOCK_COLORS`). Hier steht nur, WAS läuft.
@@ -1103,7 +1104,7 @@ def _announce_step(state: AutoClickerState, step: SequenceStep, phase: str,
 
     # Ankündigung nur in Stufe 1 allein - die Detail-Kopfzeile darunter sagt dasselbe,
     # nur vollständiger. Beides wäre die Doppelung, die vorher jeden Schritt aufblähte.
-    if is_verbose_debug(state) and not is_detail_debug(state):
+    if is_log_debug(state) and not is_detail_debug(state):
         print(dbg(f"Step {step_num}: {step_label(step)}, x={step.x}, y={step.y}"))
 
     # Stufe 2: ausschreiben was kommt + Zeiger hinsetzen (blockiert nicht).
@@ -1160,7 +1161,7 @@ def _action_step(state: AutoClickerState, step: SequenceStep, phase: str,
 
     if step.wait_only:
         # Reines Warten hat keine Wirkung, die man nachpruefen koennte.
-        _step_status(is_verbose_debug(state), phase, step_num, total_steps,
+        _step_status(is_log_debug(state), phase, step_num, total_steps,
                      "Warten beendet (kein Klick)")
         return True
 
@@ -1233,7 +1234,7 @@ def _with_verification(state: AutoClickerState, step: SequenceStep, step_num: in
     if vc is None or vc.unresolved:
         return action(state, step, step_num, total_steps, phase)
 
-    debug = is_verbose_debug(state)
+    debug = is_log_debug(state)
     attempts = max(0, state.config.verify_retries) + 1
     timeout = state.config.verify_timeout
 

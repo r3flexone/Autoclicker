@@ -28,8 +28,8 @@ class InputSynchronisationTest(unittest.TestCase):
                 state.config.window_focus_check = True
                 state.config.window_focus_title = "Spiel"
                 state.config.window_focus_action = "pause"
-                verloren = threading.Event()
-                wieder_da = threading.Event()
+                focus_lost = threading.Event()
+                focus_back = threading.Event()
                 decided = threading.Event()
                 results_list, error = [], []
                 calls = 0
@@ -41,9 +41,9 @@ class InputSynchronisationTest(unittest.TestCase):
                     if calls == 1:
                         return True
                     if calls == 2:
-                        verloren.set()
+                        focus_lost.set()
                         return False
-                    if not wieder_da.wait(3):
+                    if not focus_back.wait(3):
                         raise RuntimeError("Test hat Fokus nicht freigegeben")
                     return True
 
@@ -73,9 +73,9 @@ class InputSynchronisationTest(unittest.TestCase):
                 thread = threading.Thread(target=execute, daemon=True)
                 thread.start()
                 try:
-                    self.assertTrue(verloren.wait(3), "Fokus-Wartephase nicht erreicht")
+                    self.assertTrue(focus_lost.wait(3), "Fokus-Wartephase nicht erreicht")
                     state.pause_event.set()
-                    wieder_da.set()
+                    focus_back.set()
                     self.assertTrue(decided.wait(3), "Keine Reaktion auf Fokusrückkehr")
                     self.assertEqual(error, [])
                     for send_fn in sender:
@@ -92,7 +92,7 @@ class InputSynchronisationTest(unittest.TestCase):
                 finally:
                     state.stop_event.set()
                     state.pause_event.clear()
-                    wieder_da.set()
+                    focus_back.set()
                     thread.join(3)
 
 

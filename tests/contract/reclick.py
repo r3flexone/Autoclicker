@@ -131,7 +131,7 @@ try:
     check("der Klick merkt die neue Stelle",
           _s.reclick_set[0][:3] == (1, (100, 100), (150, 160)))
     # **Der Punkt bleibt bis zum Schluss unangetastet.** Sonst waere ein Abbruch
-    # eine halb ueberschriebene points.json - und genau so sind in einer echten
+    # eine halb ueberschriebene Punktliste - und genau so sind in einer echten
     # Runde drei Fehlklicks dauerhaft in den Punkten gelandet.
     check("der Punkt selbst ist noch unverändert",
           (_s.points[0].x, _s.points[0].y) == (100, 100))
@@ -498,7 +498,7 @@ _active(_s10, _SEQ(name="Quit", loop_phases=[_PHASE(name="A", steps=[
        [_point(1, 100, 100), _point(2, 200, 200)])
 _ruesten(_s10)
 _click(_s10, 4444, 55, None)          # etwas gesetzt, aber nicht übernommen
-_hd.handle_quit(_s10, 0)
+_hd.handle_quit(_s10)
 check("das Beenden des Programms verwirft die Runde", _s10.reclick_active is False)
 check("und lässt die Punkte stehen", (_s10.points[0].x, _s10.points[0].y) == (100, 100))
 
@@ -554,7 +554,7 @@ section("Nachklicken: Konsole und Studio nennen dieselben Tasten")
 import re as _re_nk
 _appjs = (Path(_nk.__file__).resolve().parent
           / "sequence_studio" / "web" / "app.js").read_text(encoding="utf-8")
-_js_block = _appjs[_appjs.index("const WZ_KEYS"):_appjs.index("const WZ_STEPS")]
+_js_block = _appjs[_appjs.index("const TOOLS_KEYS"):_appjs.index("const TOOLS_STEPS")]
 _js_keys = _re_nk.findall(r'\["(CTRL\+ALT\+\w)",\s*"([^"]+)"', _js_block)
 check("das Studio nennt dieselben vier Tasten in derselben Reihenfolge",
       _js_keys == [(t_[0], t_[1]) for t_ in _nk.KEYS])

@@ -24,26 +24,12 @@ MODES = (
 # Arten, zwei Werkzeugkästen.
 MODE_REGION = "region"
 MODE_ACTION = "action"
-MODES_DETECTION = (
-    MODE_CHOICE,
-    MODE_REGION,
-    MODE_ACTION,
-)
 # Was `scan_mode_set()` überhaupt annimmt. Reihenfolge egal, Menge zählt.
 MODES_ALL = MODES + (MODE_REGION, MODE_ACTION)
 
 KIND_SLOT = "slot"
 KIND_ITEM = "item"
 KIND_SCAN = "scan"
-# Die Erkennungs-Scans. `KIND_BOSS_SCAN`/`KIND_ICON_SCAN` sind die Konfigurationen,
-# `KIND_BOSS` ist ein einzelner Boss DARIN — dieselbe Trennung wie Scan/Slot bei
-# den Items: der Scan ist der Zusammenhang, das andere das bearbeitete Ding.
-KIND_BOSS_SCAN = "boss_scan"
-KIND_BOSS = "boss"
-KIND_ICON_SCAN = "icon_scan"
-# Die globale Boss-Bibliothek ist keine Datei unter vielen, sondern EIN Eintrag
-# am Ende der Liste. Sie gilt zusätzlich in jedem Boss-Scan.
-KIND_LIBRARY = "library"
 
 # Womit die Oberfläche zwischen den drei Scan-Arten umschaltet. Reiner
 # Oberflächenzustand (`scanKind` in app.js) — die Brücke bekommt bei jedem Befehl

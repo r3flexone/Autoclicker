@@ -22,6 +22,7 @@ section("Icon- und Boss-Scan-Editor: Tastenfolgen")
 import autoclicker.editors._detection_capture as _DC
 import autoclicker.editors.boss_scan_editor as _BO
 import autoclicker.editors.icon_scan_editor as _IC
+import autoclicker.editors.scan_services as _SS
 import autoclicker.ocr as _OCR
 from autoclicker.models import (
     AutoClickerState as _ST, BossProfile as _BP, BossScanConfig as _BSC,
@@ -31,7 +32,7 @@ from autoclicker.models import (
     ICON_ACTION_CLICK, ICON_ACTION_KEY, ICON_ACTION_SKIP,
 )
 
-_MODULES = (_BO, _IC, _DC)
+_MODULES = (_BO, _IC, _DC, _SS)
 
 
 class _Shot:
@@ -99,7 +100,7 @@ class _Run:
             "OPENCV_AVAILABLE": self.opencv,
             "save_icon_scan": self._save,
             "save_boss_scan": self._save,
-            "save_global_bosses": lambda state: self.saved.append("bibliothek"),
+            "save_boss_library": lambda state: self.saved.append("bibliothek"),
             "list_available_item_scans": lambda owner: [(n, None) for n in self.item_scans],
             "_test_llm_connection": lambda state: None,
         }
@@ -280,10 +281,10 @@ _r(_BO.edit_boss_scan, None)
 check("Boss-Liste: 'done' ohne Boss wird abgelehnt",
       "Mindestens 1 Boss" in _r.output and _r.saved == [])
 _r = _boss_new("X", "done", "", choices=[0, 0])
-_r.state.global_bosses = [_BP("Global")]
+_r.state.boss_library = [_BP("Bibliothek")]
 _r(_BO.edit_boss_scan, None)
-check("Boss-Liste: mit globalen Bossen darf sie leer bleiben",
-      _r.saved and _r.saved[0].bosses == [] and "globalen" in _r.output)
+check("Boss-Liste: mit Bossen aus der Bibliothek darf sie leer bleiben",
+      _r.saved and _r.saved[0].bosses == [] and "nutzt die 1 aus der Bibliothek" in _r.output)
 _r = _boss_new("X", "add", "A", "add", "B", "add", "C", "del 2", "edit 9", "edit x",
                "del 9", "del x", "show", "quatsch", "done", "",
                choices=[1, 3, 1, 3, 1, 3, 0, 0])
@@ -410,13 +411,13 @@ check("Boss: scheitert das Speichern, steht kein 'gespeichert' da",
 
 # Die Boss-Bibliothek.
 _r = _Run(inputs=["add", "Golem", "done"], choices=[1, 3])
-_r.state.global_bosses = [_BP("Alt")]
-_r(_BO.edit_global_bosses)
+_r.state.boss_library = [_BP("Alt")]
+_r(_BO.edit_boss_library)
 check("Bibliothek: 'done' übernimmt und speichert",
-      [b.name for b in _r.state.global_bosses] == ["Alt", "Golem"] and _r.saved == ["bibliothek"])
+      [b.name for b in _r.state.boss_library] == ["Alt", "Golem"] and _r.saved == ["bibliothek"])
 _r = _Run(inputs=["del 1", "cancel"])
-_r.state.global_bosses = [_BP("Alt")]
-_r(_BO.edit_global_bosses)
+_r.state.boss_library = [_BP("Alt")]
+_r(_BO.edit_boss_library)
 check("Bibliothek: 'cancel' verwirft",
-      [b.name for b in _r.state.global_bosses] == ["Alt"] and _r.saved == []
+      [b.name for b in _r.state.boss_library] == ["Alt"] and _r.saved == []
       and "verworfen" in _r.output)

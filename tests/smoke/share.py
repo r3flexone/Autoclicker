@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def setup():
@@ -30,10 +30,7 @@ def setup():
 def run():
     b = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     # Erst ein Buendel schreiben, damit der Reiter etwas zu zeigen hat.
     z = b.share_data()

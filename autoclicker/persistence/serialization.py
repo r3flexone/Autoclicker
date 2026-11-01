@@ -1,8 +1,9 @@
 """Serialisierungs-Helfer: konvertieren Dataclasses ↔ JSON-Dicts.
 
-Genutzt von den anderen persistence-Modulen UND von import_export.py, damit
-beide dasselbe Format schreiben. Die führenden Underscores sind historisch —
-die Funktionen waren einmal modulprivat.
+Die EINE Quelle der Wahrheit fürs Dateiformat: die Saver und der Start-Durchgang
+(`sweep.py`) laufen alle durch diese Funktionen. `import_export.py` rechnet das
+Bündel dagegen auf den rohen Dicts um und kennt sie nicht. Die führenden
+Underscores sind historisch — die Funktionen waren einmal modulprivat.
 """
 
 from dataclasses import asdict
@@ -26,40 +27,6 @@ if TYPE_CHECKING:  # nur fuer die Annotationen unten
 
 # Sentinel: unterscheidet "kein Default hinterlegt" von "Default ist None".
 _NO_DEFAULT = object()
-
-
-# Schon gemeldete Altfelder - sonst steht dieselbe Zeile bei 40 Items vierzigmal da.
-_LEGACY_REPORTED: set = set()
-
-
-def _click_reference(data: dict, where: str, what_to_do: str):
-    """`action_point_id` lesen - und ein altes `action_x/y` melden statt es zu schlucken.
-
-    Boss- und Icon-Aktionen klicken heute einen Punkt. Die alte Koordinate im Scan war
-    zwar nie doppelt gespeichert, hing aber auch an keinem Punkt: sie folgte weder einer
-    Reparatur im Punkte-Menue noch einer Kalibrierung ueber die Punkte.
-    """
-    if data.get("action_point_id") is None and (data.get("action_x") or data.get("action_y")):
-        _legacy_reported(where, "action_x/action_y", what_to_do)
-    return data.get("action_point_id")
-
-
-def _legacy_reported(where: str, field: str, what_to_do: str) -> None:
-    """Meldet ein Feld, das der Loader nicht mehr liest - einmal pro Fundstelle.
-
-    Fuer Koordinaten, die es vor der Umstellung auf Punkt-Referenzen gab. Bewusst
-    keine Migration: sie liesse sich bauen, kostet aber mehr als das Feld einmal neu
-    zu setzen - und ein Feld, das niemand hat, braucht keinen Migrationsschritt. Still
-    verschwinden darf es trotzdem nicht.
-    """
-    from ..utils import hint, warn
-    key_name = f"{where}:{field}"
-    if key_name in _LEGACY_REPORTED:
-        return
-    _LEGACY_REPORTED.add(key_name)
-    print(warn(f"{where}: '{field}' wird nicht mehr gelesen - Koordinaten wohnen jetzt "
-               f"in sequence.json."))
-    print(hint(f"       {what_to_do}."))
 
 
 def _is_default(value, default) -> bool:
@@ -129,8 +96,8 @@ def _slot_to_dict(slot: 'ItemSlot') -> dict:
 def _slot_from_dict(name: str, data: dict) -> 'ItemSlot':
     """Deserialisiert einen ItemSlot. `name` kommt aus dem Schlüssel.
 
-    Zentral, damit globals.py, presets.py und der Import dasselbe lesen - vorher stand
-    dieselbe Schleife dreimal da.
+    Zentral, damit Item-Scan, Presets und Start-Durchgang dasselbe lesen - vorher
+    stand dieselbe Schleife dreimal da.
     """
     if not isinstance(data, dict):
         raise TypeError("Slot muss ein JSON-Objekt sein")
@@ -165,14 +132,8 @@ def _item_from_dict(data: dict, name: str) -> ItemProfile:
     """Deserialisiert ein ItemProfile. `name` kommt aus dem Schlüssel des Dicts."""
     if not isinstance(data, dict):
         raise TypeError("Item muss ein JSON-Objekt sein")
-    # Ein altes `confirm_point` (Koordinate im Item) wird NICHT mehr gelesen - der
-    # Bestätigungsklick ist heute ein Punkt. Bewusst ohne Migration: die Koordinate
-    # liesse sich zwar in einen Punkt heben, aber der Weg dorthin (Punkte-Liste durch
-    # alle Item-Loader reichen) kostet mehr, als das Feld neu zu setzen. Gemeldet wird
-    # es, damit es nicht still verschwindet.
-    if data.get("confirm_point") is not None and data.get("confirm_point_id") is None:
-        _legacy_reported(f"Item '{name}'", "confirm_point",
-                      "Bestätigungs-Punkt im Item-Editor neu setzen")
+    # Ein altes `confirm_point` (Koordinate im Item) ist ein unbekannter Schlüssel
+    # wie jeder andere: der Bestätigungsklick ist heute ein Punkt (`confirm_point_id`).
     variants = data.get("template_variants", [])
     if not isinstance(variants, list):
         variants = []
@@ -239,8 +200,7 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
         action=data.get("action", BOSS_ACTION_SCAN),
         action_scan=data.get("action_scan"),
         action_scan_mode=data.get("action_scan_mode", SCAN_MODE_ALL),
-        action_point_id=_click_reference(data, f"Boss '{data.get('name', '?')}'",
-                                        "Klick-Punkt im Boss-Scan-Editor neu setzen"),
+        action_point_id=data.get("action_point_id"),
         action_key=data.get("action_key"),
         action_delay=data.get("action_delay", 0),
     )
@@ -250,8 +210,8 @@ def _boss_profile_from_dict(data: dict) -> BossProfile:
 # SCAN-KONFIGURATIONEN (eine JSON pro Scan)
 # =============================================================================
 # Diese Funktionen sind die EINE Quelle der Wahrheit für das Dateiformat der
-# Scans — genutzt von den persistence-Savern UND vom ZIP-Export, damit beide
-# garantiert dasselbe schreiben.
+# Scans — die persistence-Saver und der Start-Durchgang laufen durch dieselben,
+# damit beide garantiert dasselbe schreiben.
 
 # Als benannte Tabelle wie alle anderen - inline stehende Literale waren der Grund, warum
 # der Item-Scan als einziger Typ nicht vom Drift-Test gegen die Dataclass geprueft wurde.
@@ -288,8 +248,9 @@ def _item_scan_to_dict(config: 'ItemScanConfig') -> dict:
 def _item_scan_from_dict(data: dict) -> ItemScanConfig:
     """Deserialisiert das zentrale Item-Scan-Format.
 
-    Loader und ZIP-Import müssen durch dieselbe Stelle laufen. Sonst verschwindet
-    ein neues Feld beim Import still, obwohl eine normal geladene Datei es kennt.
+    Loader und Start-Durchgang müssen durch dieselbe Stelle laufen. Sonst schriebe
+    der Round-Trip ein neues Feld nicht zurück, obwohl eine normal geladene Datei
+    es kennt.
     """
     if not isinstance(data, dict):
         raise TypeError("Item-Scan muss ein JSON-Objekt sein")
@@ -346,7 +307,7 @@ _BOSS_SCAN_DEFAULTS = {
 
 
 def _boss_scan_to_dict(config: 'BossScanConfig') -> dict:
-    """Serialisiert eine BossScanConfig zu einem Dict (ohne globale Bosse)."""
+    """Serialisiert eine BossScanConfig zu einem Dict (ohne die Boss-Bibliothek)."""
     return _without_defaults({
         "name": config.name,
         "scan_region": list(config.scan_region),
@@ -396,29 +357,19 @@ def _icon_scan_to_dict(config: 'IconScanConfig') -> dict:
 def _step_to_dict(s: SequenceStep) -> dict:
     """Konvertiert einen SequenceStep in ein JSON-serialisierbares dict.
 
-    Koordinaten werden NICHT geschrieben, solange eine `point_id` daneben steht;
-    betrifft drei Paare — den Klick (x/y + recorded_color), den Pruef-Pixel
-    (wait_pixel/wait_color) und den Else-Klick (else_x/else_y/else_name).
-
-    `x`/`y` bleiben nur den Schritten, die gar keinen Punkt haben koennen (Taste,
-    Scans, Screenshot) — dort sind sie 0 und fallen durch `_without_defaults` weg.
+    **Koordinaten werden nie geschrieben.** Klick, Prüf-Pixel, Nachprüfung und
+    Else-Klick stehen als Punkt-ID da; `x`/`y`, Pixel, Farben und der Name des
+    Else-Klicks sind aus dem Punkt abgeleitete Arbeitswerte (`resolve()`).
+    `name` bleibt nur an Schritten ohne Punkt — dort ist es der eigene Name des
+    Blocks (Taste, Scans, Screenshot).
     """
     wc = s.wait_condition
     ec = s.else_config
     vc = s.verify_condition
-    # Der Punkt traegt die Stelle: alles, was sich daraus ableiten laesst, entfaellt.
-    click_at_point = s.point_id is not None
-    wait_at_point = wc is not None and wc.point_id is not None
-    else_at_point = ec is not None and ec.point_id is not None
-    verify_at_point = vc is not None and vc.point_id is not None
-    full_value = {"x": 0 if click_at_point else s.x,
-            "y": 0 if click_at_point else s.y,
-            "name": "" if click_at_point else s.name,
+    full_value = {"name": "" if s.point_id is not None else s.name,
             "point_id": s.point_id,
             "delay_before": s.delay_before,
             "wait_point_id": wc.point_id if wc else None,
-            "wait_pixel": None if (wc is None or wait_at_point) else wc.pixel,
-            "wait_color": None if (wc is None or wait_at_point) else wc.color,
             "wait_until_gone": wc.until_gone if wc else False,
             "wait_check_only": wc.check_only if wc else False,
             "wait_timeout": wc.timeout if wc else None,
@@ -430,43 +381,30 @@ def _step_to_dict(s: SequenceStep) -> dict:
             "key_press": s.key_press,
             "else_action": ec.action if ec else None,
             "else_point_id": ec.point_id if ec else None,
-            "else_x": 0 if (ec is None or else_at_point) else ec.x,
-            "else_y": 0 if (ec is None or else_at_point) else ec.y,
             "else_delay": ec.delay if ec else 0,
             "else_key": ec.key if ec else None,
-            "else_name": "" if (ec is None or else_at_point) else ec.name,
             "verify_point_id": vc.point_id if vc else None,
-            "verify_pixel": None if (vc is None or verify_at_point) else vc.pixel,
-            "verify_color": None if (vc is None or verify_at_point) else vc.color,
             "verify_until_gone": vc.until_gone if vc else False,
             "screenshot_only": s.screenshot_only,
             "screenshot_region": list(s.screenshot_region) if s.screenshot_region else None,
             "breakpoint": bool(s.breakpoint),
-            "mouse_return": bool(s.mouse_return),
-            "recorded_color": None if click_at_point or not s.recorded_color
-                              else list(s.recorded_color)}
+            "mouse_return": bool(s.mouse_return)}
     return _without_defaults(full_value, _STEP_DEFAULTS)
 
 
 # Was ein Feld bedeutet, wenn es "nicht gesetzt" ist; steht der Wert drin, wird das
-# Feld nicht geschrieben. Ein Klick-Schritt hat 27 Felder, davon 21 leer - und in
-# einer Datei voller "wait_pixel": null findet man nichts mehr.
+# Feld nicht geschrieben. Ein Klick-Schritt hat 25 Felder, davon 23 leer - und in
+# einer Datei voller "wait_point_id": null findet man nichts mehr.
 # `delay_before` steht NICHT hier: eine Wartezeit von 0 will man sehen.
 _STEP_DEFAULTS = {
     "name": "",
-    "x": 0,
-    "y": 0,
     "point_id": None,
     "wait_point_id": None,
     "else_point_id": None,
-    "wait_pixel": None,
-    "wait_color": None,
     "wait_until_gone": False,
     "wait_check_only": False,
     "wait_timeout": None,
     "verify_point_id": None,
-    "verify_pixel": None,
-    "verify_color": None,
     "verify_until_gone": False,
     "item_scan": None,
     "item_scan_mode": "all",
@@ -477,20 +415,13 @@ _STEP_DEFAULTS = {
     "delay_max": None,
     "key_press": None,
     "else_action": None,
-    "else_x": 0,
-    "else_y": 0,
     "else_delay": 0,
     "else_key": None,
-    "else_name": "",
     "screenshot_only": False,
     "screenshot_region": None,
     "breakpoint": False,
     "mouse_return": True,
-    "recorded_color": None,
 }
-
-
-
 
 
 def _sequence_to_dict(seq: Sequence) -> dict:
@@ -518,7 +449,7 @@ def _sequence_to_dict(seq: Sequence) -> dict:
 
 
 def _parse_steps(steps_data: list) -> list[SequenceStep]:
-    """Parst die Schritt-Liste aus einer Sequence-JSON. Behandelt alle Legacy-Formate."""
+    """Parst die Schritt-Liste aus einer Sequence-JSON."""
     if not isinstance(steps_data, list) or any(not isinstance(s, dict) for s in steps_data):
         raise ValueError("Schritte müssen eine Liste von Objekten sein")
     return [_parse_step(s) for s in steps_data]
@@ -532,11 +463,9 @@ def _parse_step(s: dict) -> SequenceStep:
     if delay_raw is None:
         delay_raw = 0
     delay_max_raw = s.get("delay_max")
-    # Aufgenommene Pixelfarbe (Referenzdatum für Nachbearbeitung)
-    recorded_color_raw = s.get("recorded_color")
+    # x/y, Farben und Pixel liest der Loader nicht: sie stehen im Punkt und kommen von
+    # dort (`resolve()`).
     return SequenceStep(
-        x=s.get("x", 0),
-        y=s.get("y", 0),
         delay_before=float(delay_raw),
         name=s.get("name", ""),
         point_id=s.get("point_id"),
@@ -555,17 +484,16 @@ def _parse_step(s: dict) -> SequenceStep:
         screenshot_region=_parse_screenshot_region(s.get("screenshot_region")),
         breakpoint=bool(s.get("breakpoint", False)),
         mouse_return=bool(s.get("mouse_return", True)),
-        recorded_color=tuple(int(v) for v in recorded_color_raw) if recorded_color_raw else None,
     )
 
 
-def _int_tuple(raw):
-    return tuple(int(v) for v in raw) if raw else raw
-
-
 def _parse_wait_condition(s: dict) -> Optional[WaitCondition]:
-    """Die Vorbedingung. Mit `wait_point_id` liefert der Punkt Position UND Farbe
-    nach — pixel/color bleiben hier leer und fuellt resolve_point_references()."""
+    """Die Vorbedingung. Der Punkt liefert Position UND Farbe nach — pixel/color
+    bleiben hier leer und fuellt resolve_point_references(). Ohne `wait_point_id`
+    gibt es keine Bedingung."""
+    wait_point_id = s.get("wait_point_id")
+    if wait_point_id is None:
+        return None
     # Eigene Zeitgrenze des Blocks; fehlt sie oder ist sie unlesbar, gilt
     # die Config — ein kaputter Wert soll den Block nicht ohne Grenze lassen.
     wait_timeout = s.get("wait_timeout")
@@ -573,29 +501,19 @@ def _parse_wait_condition(s: dict) -> Optional[WaitCondition]:
         wait_timeout = max(0.0, float(wait_timeout)) if wait_timeout is not None else None
     except (TypeError, ValueError):
         wait_timeout = None
-    common = {"until_gone": s.get("wait_until_gone", False),
-              "check_only": s.get("wait_check_only", False),
-              "timeout": wait_timeout}
-    wait_point_id = s.get("wait_point_id")
-    if wait_point_id is not None:
-        return WaitCondition(point_id=wait_point_id, **common)
-    wait_pixel, wait_color = _int_tuple(s.get("wait_pixel")), _int_tuple(s.get("wait_color"))
-    if wait_pixel and wait_color:
-        return WaitCondition(pixel=wait_pixel, color=wait_color, **common)
-    return None
+    return WaitCondition(point_id=wait_point_id,
+                         until_gone=s.get("wait_until_gone", False),
+                         check_only=s.get("wait_check_only", False),
+                         timeout=wait_timeout)
 
 
 def _parse_verify_condition(s: dict) -> Optional[WaitCondition]:
     """Nachpruefung ("hat der Klick gewirkt?") - gleiche Bauart wie wait_condition."""
-    until_gone = s.get("verify_until_gone", False)
     verify_point_id = s.get("verify_point_id")
-    if verify_point_id is not None:
-        return WaitCondition(point_id=verify_point_id, until_gone=until_gone)
-    verify_pixel, verify_color = s.get("verify_pixel"), s.get("verify_color")
-    if verify_pixel and verify_color:
-        return WaitCondition(pixel=_int_tuple(verify_pixel), color=_int_tuple(verify_color),
-                             until_gone=until_gone)
-    return None
+    if verify_point_id is None:
+        return None
+    return WaitCondition(point_id=verify_point_id,
+                         until_gone=s.get("verify_until_gone", False))
 
 
 def _parse_screenshot_region(raw) -> Optional[tuple]:
@@ -622,9 +540,8 @@ def _parse_else_config(s: dict) -> Optional[ElseConfig]:
     return ElseConfig(
         action=else_action,
         point_id=s.get("else_point_id"),
-        x=_or_zero(s.get("else_x")), y=_or_zero(s.get("else_y")),
         delay=_or_zero(s.get("else_delay")),
-        key=s.get("else_key"), name=s.get("else_name") or "",
+        key=s.get("else_key"),
     )
 
 

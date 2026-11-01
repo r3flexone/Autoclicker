@@ -22,14 +22,16 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ...persistence import load_sequence_file
 from .bridge_contract import WAIT_TIMEOUT
+from .model import PalettePoint, palette_from_sequence, rgb_value
 
 
 # Was die Kalibrierung anfasst. Steht als Tabelle da, weil die Ansicht dieselben
 # Schalter zeigt und der Test beide Seiten gegeneinander hält.
 CALIB_EXTENT = (
     ("with_scans", "Scan-Regionen und Klickpunkte", True),
-    ("with_sequences", "Screenshot-Bereiche in den Sequenzen", True),
+    ("with_sequences", "Übrige Sequenzen und Screenshot-Bereiche", True),
     ("with_slots", "Slots", False),
 )
 
@@ -124,7 +126,7 @@ class BridgeToolsMixin:
             for boss in cfg.bosses:
                 if boss.action_point_id == point_id:
                     out.append((f"Boss '{boss.name}' in '{name}'", "Aktion"))
-        for boss in self.global_bosses:
+        for boss in self.boss_library:
             if boss.action_point_id == point_id:
                 out.append((f"Boss '{boss.name}' aus Bibliothek", "Aktion"))
         for name, cfg in self.icon_scans.items():
@@ -218,13 +220,12 @@ class BridgeToolsMixin:
         if self._running():
             return {"ok": False, "message": "Eine Sequenz läuft — die Maus gehört dem Worker."}
         data = data or {}
-        point = self._point_with_id(data.get("point_id"))
+        point = self._point(data.get("point_id"))
         x, y, message = self._await_position()
         if x is None:
             return {"ok": False, "message": message + " — nichts geändert."}
         color = self._color_at(x, y)
         if point is None:
-            from .model import PalettePoint
             point = PalettePoint(
                 id=max((p.id for p in self.points), default=0) + 1,
                 x=x, y=y,
@@ -247,7 +248,7 @@ class BridgeToolsMixin:
     def tool_point_set(self, data: Optional[dict] = None) -> dict:
         """Ändert Name, Koordinate oder Farbe eines Punktes aus der Werkzeugliste."""
         data = data or {}
-        point = self._point_with_id(data.get("point_id"))
+        point = self._point(data.get("point_id"))
         if point is None:
             return {"ok": False, "message": "Punkt nicht gefunden."}
         field, value = str(data.get("field") or ""), data.get("value")
@@ -257,7 +258,6 @@ class BridgeToolsMixin:
             elif field == "name":
                 point.name = str(value or "").strip()
             elif field == "color":
-                from .model import rgb_value
                 point.color = rgb_value(value)
             else:
                 return {"ok": False, "message": f"Unbekanntes Feld '{field}'."}
@@ -268,19 +268,41 @@ class BridgeToolsMixin:
         return {"ok": True, "message": f"Punkt #{point.id} geändert."}
 
     def tool_point_show(self, data: Optional[dict] = None) -> dict:
-        """Fährt einen Punkt an und liefert gespeicherte sowie aktuelle Farbe."""
+        """Fährt einen Punkt an und sagt, ob dort noch seine Farbe liegt.
+
+        Die Messung stand nur in Feldern (`saved`, `current`), die die Seite nie
+        las: der Knopf heisst „Zeigen & Farbe prüfen" und meldete bloss, wo die
+        Maus steht. Geurteilt wird wie bei „Stelle zeigen" im Editor
+        (`command_show` im Hauptprozess): Abstand gegen `pixel_wait_tolerance`,
+        also so, wie ein Farb-Trigger an diesem Punkt im Lauf entschiede.
+        """
         if self._running():
             return {"ok": False, "message": "Eine Sequenz läuft — die Maus gehört dem Worker."}
-        point = self._point_with_id((data or {}).get("point_id"))
+        point = self._point((data or {}).get("point_id"))
         if point is None:
             return {"ok": False, "message": "Punkt nicht gefunden."}
         from ...winapi import set_cursor_pos
         set_cursor_pos(point.x, point.y)
-        current = self._color_at(point.x, point.y)
-        return {"ok": True, "point_id": point.id,
-                "saved": list(point.color) if point.color else None,
-                "current": list(current) if current else None,
-                "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y})."}
+        verdict, kind = self._color_verdict(point.color, self._color_at(point.x, point.y))
+        return {"ok": True, "kind": kind,
+                "message": f"Maus steht auf Punkt #{point.id} ({point.x}, {point.y}). {verdict}"}
+
+    @staticmethod
+    def _color_verdict(saved, current) -> tuple[str, str]:
+        """`(Satz, Art der Meldung)` zum Vergleich gespeicherte gegen aktuelle Farbe."""
+        from ...config import CONFIG
+        from ...imaging import color_distance
+        if not current:
+            return "Die Farbe dort ist nicht lesbar.", "warn"
+        now = tuple(current)
+        if not saved:
+            return (f"Dort jetzt RGB{now} — der Punkt hat keine gespeicherte Farbe "
+                    "zum Vergleichen.", "info")
+        distance = color_distance(tuple(saved), now)
+        if distance <= CONFIG.pixel_wait_tolerance:
+            return f"Farbe passt: RGB{now}.", "ok"
+        return (f"Farbe weicht ab: gespeichert RGB{tuple(saved)}, jetzt RGB{now} "
+                f"(Abstand {distance:.0f}, erlaubt {CONFIG.pixel_wait_tolerance}).", "warn")
 
     def _point_remove(self, point_id) -> tuple[bool, str, list[str]]:
         """Die EINE Löschregel für Punkte: nur unbenutzte, Referenzen nie still brechen.
@@ -290,7 +312,7 @@ class BridgeToolsMixin:
         Gibt `(gelöscht, Meldung, Verwendungen)` zurück; den Rückgängig-Stand
         legt der Aufrufer ab.
         """
-        point = self._point_with_id(point_id)
+        point = self._point(point_id)
         if point is None:
             return False, "Punkt nicht gefunden.", []
         used = self._point_usages(point.id)
@@ -470,7 +492,7 @@ class BridgeToolsMixin:
         """
         data = data or {}
         number = 2 if int(data.get("number") or 1) == 2 else 1
-        point = self._point_with_id(data.get("point_id"))
+        point = self._point(data.get("point_id"))
         if point is None:
             return {"ok": False, "message": "Punkt nicht gefunden."}
         if number == 2 and not self._calib.get("ref1"):
@@ -611,31 +633,33 @@ class BridgeToolsMixin:
             return {"ok": False, "message": f"Kalibrierung fehlgeschlagen: {e}"}
 
         self._calib = {}
-        self._after_calibration()
+        reread = self._after_calibration()
         parts = ", ".join(f"{n} {name}" for name, n in sorted(tally.items()) if n)
         message = f"Kalibriert: {parts or 'nichts geändert'}."
+        if not reread:
+            message += (" Die Sequenzdatei liess sich nicht neu lesen — die Punkte "
+                        "im Fenster zeigen noch den alten Stand, bitte neu laden.")
         if backup:
             message += f" Sicherung: {backup}"
         return {"ok": True, "message": message, "backup": backup or ""}
 
-    def _after_calibration(self) -> None:
-        """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess."""
-        from .model import load_palette_points
+    def _after_calibration(self) -> bool:
+        """Beide Seiten auf den neuen Stand: der Reiter und der Hauptprozess.
+
+        Gibt `False` zurück, wenn die Sequenzdatei nicht zu lesen war: die Punkte
+        im Fenster bleiben dann, wie sie sind, statt leer zu werden.
+        """
         from ...mailbox import send_command
-        self.points = load_palette_points(self.filepath)
+        seq = load_sequence_file(self.filepath)
+        if seq is not None:
+            self.points = palette_from_sequence(seq)
         # Was auf Platte geschrieben ist, holt kein STRG+Z zurück.
         self._edit_reset()
         # Der Hauptprozess hält seinen eigenen Stand im Speicher und merkt von
         # geschriebenen Dateien nichts. Ohne das klickt er bis zum nächsten
         # Neustart auf die alten Stellen.
         send_command("data_reload")
-
-    def _point_with_id(self, point_id):
-        try:
-            wanted = int(point_id)
-        except (TypeError, ValueError):
-            return None
-        return next((p for p in self.points if p.id == wanted), None)
+        return seq is not None
 
     def _calib_compute(self) -> None:
         """Aus den gesetzten Referenzpunkten einen Transform bauen."""

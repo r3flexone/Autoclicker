@@ -240,21 +240,21 @@ class Window:
         # the DOM") — und das passiert hier staendig, weil jede Bruecken-Antwort
         # neu zeichnet. Ueber den Text einen Selektor zu bauen geht nicht: die
         # Beschriftungen enthalten Zeilenumbrueche und Anfuehrungszeichen.
-        last_one = None
+        last_error = None
         for _ in range(3):
             match = [k for k in self.page.query_selector_all(choice)
-                       if text in (k.inner_text() or "")]
+                     if text in (k.inner_text() or "")]
             if not match:
                 self.page.wait_for_timeout(150)
                 continue
             try:
                 match[0].click()
             except Exception as error:      # noqa: BLE001 - erneut versuchen
-                last_one = error
+                last_error = error
                 self.page.wait_for_timeout(150)
                 continue
             return self.settle()
-        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({last_one})" if last_one else ""))
+        raise AssertionError(f"kein '{text}' in {choice}" + (f" ({last_error})" if last_error else ""))
 
     # ---------------------------------------------------------------- Ablesen
 
@@ -273,6 +273,18 @@ class Window:
         return target
 
 
+def make_expect(error: list):
+    """Die Prüffunktion `expect(bedingung, text)` eines Rauchtests.
+
+    Hängt den Text an `error`, wenn die Bedingung nicht gilt — der Test läuft
+    weiter und meldet am Ende alles auf einmal statt beim ersten Fehler.
+    """
+    def expect(condition, text):
+        if not condition:
+            error.append(text)
+    return expect
+
+
 def run_smoke(name: str, run) -> int:
     """Ein Rauchtest als Programm: Ergebnis auf stdout, Rueckgabe als Exit-Code."""
     # **Ein unbekanntes Zeichen ist ein Darstellungsproblem, kein Testergebnis.**
@@ -284,8 +296,8 @@ def run_smoke(name: str, run) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
-    da, reason = playwright_available()
-    if not da:
+    available, reason = playwright_available()
+    if not available:
         print(f"UEBERSPRUNGEN  {name}: {reason}")
         return 0
     cwd = os.getcwd()

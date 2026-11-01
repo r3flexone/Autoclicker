@@ -152,7 +152,7 @@ def analyze(backend, img, boss_names, languages):
 
     if boss_names:
         print()
-        success, matched, raw, dur = detect_boss_name(
+        success, matched, raw, _duration, new_candidate = detect_boss_name(
             img, boss_names, backend=backend, languages=languages
         )
         if success and matched:
@@ -160,6 +160,9 @@ def analyze(backend, img, boss_names, languages):
         else:
             print(f"  {color('Kein Boss-Name zugeordnet', 'yellow')}")
             print(f"  Erkannter Text: '{raw}'")
+            if new_candidate:
+                print(f"  {color('Möglicher neuer Boss:', 'bold')} "
+                      f"{color(new_candidate, 'cyan')}")
     else:
         print(f"\n  {color('Hinweis:', 'yellow')} Nutze --bosses um gegen bekannte Namen abzugleichen")
 

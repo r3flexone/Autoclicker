@@ -507,11 +507,11 @@ def _scan_frame(regions: list, window_image, window_rect):
 
 
 def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
-                             config=None) -> None:
+                             config) -> None:
     """Lernt einen unbekannten Slot-Inhalt als neues Item des LAUFENDEN Scans (opt-in).
 
     **In den Scan, der gerade laeuft — nicht in die Arbeitsansicht der Konsole.**
-    Hier stand `state.global_items`, und das ist seit dem Umzug auf
+    Hier stand `state.global_items` (heute `state.scan_items`), und das ist seit dem Umzug auf
     Besitzeinheiten nur noch die Ansicht auf `state.active_item_scan`, also den
     Scan, den der Konsolen-Editor zuletzt offen hatte. Mit zwei Item-Scans in
     einer Sequenz landete ein aus Scan B gelerntes Item damit in Scan A — samt
@@ -542,7 +542,7 @@ def _learn_unknown_slot_item(state: AutoClickerState, slot, img, debug: bool,
     Slots, die nur die Hintergrundfarbe zeigen, gelten als leer.
     """
     from ..imaging import OPENCV_AVAILABLE
-    if not OPENCV_AVAILABLE or config is None:
+    if not OPENCV_AVAILABLE:
         return
     # Editor-Helfer lazy importieren (markers.py hängt nur an imaging/config,
     # kein Import-Zyklus mit runtime/)
@@ -674,7 +674,7 @@ def _reserve_learned_item(state: AutoClickerState, config, slot, marker_colors,
         # das Item auch sehen — sonst schriebe ihr naechstes `done` die Liste
         # ohne das Item zurueck (flush_item_scan_context ersetzt cfg.items).
         if state.active_item_scan == config.name:
-            state.global_items[name] = item
+            state.scan_items[name] = item
     return item
 
 
@@ -690,12 +690,12 @@ def _store_learned_template(state: AutoClickerState, config, item, masked,
         with state.lock:
             config.items = [it for it in config.items if it is not item]
             if state.active_item_scan == config.name:
-                state.global_items.pop(item.name, None)
+                state.scan_items.pop(item.name, None)
         print(warn(f"Auto-Lernen: Template für '{item.name}' konnte nicht gespeichert werden: {e}"))
         return False
 
 
-def _save_learned(config) -> bool:
+def _save_learned(config) -> None:
     """Schreibt den Scan nach dem Lernen — ein Fehler bremst den Lauf nicht.
 
     `save_item_scan` wirft ohne Besitzer-Sequenz; im Worker riss das sonst den
@@ -703,10 +703,9 @@ def _save_learned(config) -> bool:
     """
     from ..persistence import save_item_scan
     try:
-        return bool(save_item_scan(config))
+        save_item_scan(config)
     except (ValueError, OSError) as e:
         print(warn(f"Auto-Lernen: Scan '{config.name}' konnte nicht gespeichert werden: {e}"))
-        return False
 
 
 def _park_mouse_for_scan(park_pos) -> None:
@@ -726,16 +725,35 @@ def _park_mouse_for_scan(park_pos) -> None:
 # Analyse greift damit beim naechsten Scan, ohne Neustart. Wie beim Template-Cache
 # ohne Lock: Dict-Zugriffe sind unter dem GIL atomar, und zweimal dieselbe kleine
 # JSON zu lesen kostet nichts.
-_marktwert_cache: dict = {}
+_market_value_cache: dict = {}
+
+
+def market_key(name) -> str:
+    """Wie ein Item-Name in der Marktwert-Tabelle nachgeschlagen wird.
+
+    Die Analyse schreibt die Namen der Spiel-API (`oak_log`), hier heisst dasselbe
+    Item `Oak Log` (Katalog) oder so, wie es jemand getippt hat. Verglichen wurde
+    exakt, und damit traf keine einzige Zeile. Ohne Gross-/Kleinschreibung und mit
+    Unterstrich gleich Leerzeichen meinen beide dasselbe.
+    """
+    return " ".join(str(name or "").replace("_", " ").split()).casefold()
+
+
+def market_value(values: dict, name) -> Optional[float]:
+    """Der Wert eines Items aus `load_market_values()` - None, wenn es keinen hat."""
+    return values.get(market_key(name))
 
 
 def load_market_values(path: str) -> dict:
-    """Item-Name -> Gold pro Stueck. Leeres Dict, wenn aus oder nicht lesbar.
+    """Item-Name -> Verkaufswert je Stueck. Leeres Dict, wenn aus oder nicht lesbar.
 
     Die Datei schreibt `market_analysis` (dort `export_market_values`). Sie ist die
     EINZIGE Verbindung zwischen den beiden Teilprojekten, und zwar in genau eine
     Richtung: die Analyse weiss nichts vom Autoclicker, der Autoclicker importiert
     nichts aus der Analyse. Fehlt die Datei, laeuft alles wie vorher.
+
+    Die Schluessel sind `market_key()`s - nachgeschlagen wird mit `market_value()`,
+    nie mit `.get()`.
     """
     if not path:
         return {}
@@ -744,7 +762,7 @@ def load_market_values(path: str) -> dict:
     except OSError:
         return {}
     stamp = (st.st_mtime, st.st_size)
-    entry = _marktwert_cache.get(path)
+    entry = _market_value_cache.get(path)
     if entry is not None and entry["stamp"] == stamp:
         return entry["values"]
     try:
@@ -759,10 +777,11 @@ def load_market_values(path: str) -> dict:
     values = {}
     for name, value in raw.items():
         try:
-            values[str(name)] = float(value)
+            values[market_key(name)] = float(value)
         except (TypeError, ValueError):
             continue
-    _marktwert_cache[path] = {"stamp": stamp, "values": values}
+    values.pop("", None)            # ein leerer Name ist kein Item
+    _market_value_cache[path] = {"stamp": stamp, "values": values}
     return values
 
 
@@ -776,12 +795,13 @@ def _effective_priority(item, saved: int, values: dict) -> float:
     weil negative Zahlen unter allen Prioritaeten liegen. Das ist gewollt - ein
     gemessener Wert ist eine staerkere Aussage als eine von Hand getippte Zahl - aber
     es heisst auch, dass ein Item ohne Eintrag in der Wertetabelle nach hinten rutscht.
-    Wer das nicht will, laesst `scan_market_value_file` leer.
+    Wer das nicht will, leert `scan_market_value_file` (der Standard zeigt auf die
+    Datei der Marktanalyse).
 
-    Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: items.json
-    bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
+    Die gespeicherte `item.priority` wird dabei NICHT ueberschrieben: die
+    Item-Scan-Datei bleibt unberuehrt, die Sortierung gilt nur fuer diesen Lauf.
     """
-    value = values.get(item.name)
+    value = market_value(values, item.name)
     return -value if value is not None else float(saved)
 
 

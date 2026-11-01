@@ -152,9 +152,6 @@ class ScanLearningMixin:
             "existing": match or "", "new_name": new_name,
             "duplicate": match if compatible else "",
             "variant": match if match and not compatible else "",
-            # Der Arbeitsbestand gehört bereits vollständig zum offenen Scan.
-            # Es gibt keine zweite Mitgliedschaft mehr.
-            "in_scan": bool(match), "can_add": False,
             # Das Haekchen beschreibt die gewuenschte Scan-Mitgliedschaft:
             # erkannt = vorausgewaehlt. So kann man ein erkanntes Item
             # bewusst abwaehlen und damit aus genau diesem Scan entfernen.

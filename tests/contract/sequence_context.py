@@ -239,3 +239,48 @@ check("AutoClickerState hat keinen Sequenz-Cache mehr",
       not hasattr(_ST(), "sequences"))
 check("und save_data() gibt es nicht mehr — geschrieben wird die aktive Sequenz",
       not hasattr(_pers, "save_data") and callable(_pers.save_points))
+
+# =============================================================================
+section("Factory-Reset: löscht, was die App heute schreibt — keine Altlayout-Ordner")
+# =============================================================================
+# Der Reset räumte zusätzlich `items/`, `slots/`, `item_scans/`, `boss_scans/` und
+# `icon_scans/` im Wurzelverzeichnis weg, falls ein Altbestand dort herumlag. Die
+# Konstanten dafür (`ITEMS_DIR` & Co.) standen in `paths.py` nur noch für diesen
+# einen Zweck. Der Bestand des Nutzers liegt in `sequences/`; die Altlast ist weg.
+import autoclicker.handlers as _hnd
+import autoclicker.persistence.paths as _paths
+check("paths.py kennt die Altlayout-Ordner nicht mehr",
+      not any(hasattr(_paths, _n) for _n in
+              ("ITEMS_DIR", "SLOTS_DIR", "ITEM_SCANS_DIR", "BOSS_SCANS_DIR", "ICON_SCANS_DIR"))
+      and not any(hasattr(_pers, _n) for _n in
+                  ("ITEMS_DIR", "SLOTS_DIR", "ITEM_SCANS_DIR", "BOSS_SCANS_DIR",
+                   "ICON_SCANS_DIR")))
+
+_reset_cwd = _os.getcwd()
+_reset_dir = _tmp.mkdtemp(prefix="reset_")
+_os.chdir(_reset_dir)
+_real_input = _hnd.safe_input
+try:
+    _folder = _os.path.join("sequences", "farm")
+    _os.makedirs(_os.path.join(_folder, "item_scans"))
+    with open(_os.path.join(_folder, "sequence.json"), "w", encoding="utf-8") as _fh:
+        _fh.write('{"name": "farm"}')
+    with open("config.json", "w", encoding="utf-8") as _fh:
+        _fh.write("{}")
+    # Etwas, das die App nicht schreibt: der Reset fasst es nicht an.
+    _os.makedirs("items")
+    with open(_os.path.join("items", "alt.json"), "w", encoding="utf-8") as _fh:
+        _fh.write("{}")
+
+    _hnd.safe_input = lambda _p="": "JA"
+    with _cl.redirect_stdout(_io.StringIO()):
+        _hnd.handle_reset(_ST())
+    check("der Reset löscht die Sequenzen samt ihren Scans",
+          _os.path.isdir("sequences") and _os.listdir("sequences") == [])
+    check("und die Config", not _os.path.exists("config.json"))
+    check("einen fremden Ordner im Wurzelverzeichnis lässt er stehen",
+          _os.path.exists(_os.path.join("items", "alt.json")))
+finally:
+    _hnd.safe_input = _real_input
+    _os.chdir(_reset_cwd)
+    _sh.rmtree(_reset_dir, ignore_errors=True)

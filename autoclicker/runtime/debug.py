@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import time
 
-from ..models import AutoClickerState, GATE_COMMANDS, SequenceStep  # noqa: F401
+from ..models import AutoClickerState, GATE_COMMANDS, SequenceStep
 from ..utils import col, dbg, describe_color, hint, read_command, warn
 from ..winapi import get_cursor_pos, set_cursor_pos
 
@@ -67,7 +67,7 @@ def is_detail_debug(state: AutoClickerState) -> bool:
 
 def is_step_mode(state: AutoClickerState) -> bool:
     """Manueller Modus: Schritt für Schritt auf Bestätigung, Wartezeiten übersprungen."""
-    return bool(getattr(state, "step_mode", False))
+    return state.step_mode
 
 
 def skip_waits(state: AutoClickerState) -> bool:

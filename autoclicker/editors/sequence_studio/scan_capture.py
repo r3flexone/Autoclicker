@@ -67,12 +67,12 @@ class ScanCaptureMixin:
         # woanders liegen kann.
         self._matches = {}
         self._search_area = None
-        wo = "Fenster" if window_used else ("Bereich" if area else "Vollbild")
+        source = "Fenster" if window_used else ("Bereich" if area else "Vollbild")
         # **Die Uhrzeit steht dabei, damit man SIEHT, dass aufgenommen wurde.**
         # Zwei Aufnahmen desselben Spielstands sehen gleich aus, und wenn auch
         # die Meldung Wort für Wort dieselbe ist, wirkt der Knopf kaputt — genau
         # der Eindruck, wegen dem hier vorher „passiert nichts" gemeldet wurde.
-        return self._scan_report(f"{wo} aufgenommen um {time.strftime('%H:%M:%S')}: "
+        return self._scan_report(f"{source} aufgenommen um {time.strftime('%H:%M:%S')}: "
                                 f"{image.width}×{image.height} px "
                                 f"ab ({left}, {top}).{hint}"
                                 f"{self._outside_hint()}",
@@ -136,9 +136,9 @@ class ScanCaptureMixin:
     def _slots_to_window(self, cfg, rect_value: tuple) -> tuple[str, bool]:
         """Zieht Slots auf die aktuelle Fensterlage und merkt die neue Referenz.
 
-        Die Slots bleiben aus Kompatibilitätsgründen global in Bildschirm-
-        Koordinaten gespeichert. Das Referenzrechteck sagt, zu welcher Lage sie
-        gehören. Beim neuen Foto werden beide gemeinsam verschoben bzw. skaliert.
+        Die Slots stehen in Bildschirm-Koordinaten. Das Referenzrechteck sagt,
+        zu welcher Lage sie gehören. Beim neuen Foto werden beide gemeinsam
+        verschoben bzw. skaliert.
         """
         from ..scan_services import map_point_between_rects, map_region_between_rects
 
@@ -265,10 +265,10 @@ class ScanCaptureMixin:
             return self._scan_report("Vollbild gewählt — jetzt „Screenshot aufnehmen“.",
                                     "info")
         x1, y1, x2, y2 = self.scan_area
-        wo = "Fenster" if self.scan_window_id else "Bereich"
+        source = "Fenster" if self.scan_window_id else "Bereich"
         return self._scan_report(
-            f"{wo} gewählt: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1}) — "
-            f"jetzt „{wo} aufnehmen“."
+            f"{source} gewählt: {x2 - x1}×{y2 - y1} px ab ({x1}, {y1}) — "
+            f"jetzt „{source} aufnehmen“."
             + (" Slots folgen diesem Fenster danach automatisch."
                if self.scan_window_id else ""), "info")
 

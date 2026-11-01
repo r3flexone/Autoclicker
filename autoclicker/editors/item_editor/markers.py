@@ -1,7 +1,7 @@
 """
 Marker-Farben-Sammlung und Template-Duplikat-Erkennung.
 
-collect_marker_colors: interaktive Variante mit Region-Selektion und Konsolen-Output.
+collect_marker_colors: Variante für die Konsole, mit Ausgabe der gefundenen Farben.
 _collect_markers_silent: für den Auto-Scan — keine User-Interaktion, keine Ausgabe.
 _find_matching_existing_item: prüft ob ein neu gescanntes Bild schon als Item existiert.
 """
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from ...config import CONFIG
 from ...imaging import (
-    OPENCV_AVAILABLE, take_screenshot, select_region,
+    OPENCV_AVAILABLE, take_screenshot,
     get_color_name, color_distance,
 )
 
@@ -18,15 +18,8 @@ if TYPE_CHECKING:
     from PIL import Image
 
 
-def collect_marker_colors(region: tuple = None, exclude_color: tuple = None) -> list[tuple]:
-    """Sammelt Marker-Farben für ein Item-Profil durch Region-Scan."""
-    if not region:
-        print("\n  Wähle einen Bereich auf dem Item aus:")
-        print("  (Die 5 häufigsten Farben werden automatisch genommen)")
-        region = select_region()
-        if not region:
-            return []
-
+def collect_marker_colors(region: tuple, exclude_color: tuple = None) -> list[tuple]:
+    """Sammelt Marker-Farben für ein Item-Profil aus der Region eines Slots."""
     print(f"\n  Scanne Region ({region[0]},{region[1]}) - ({region[2]},{region[3]})...")
     img = take_screenshot(region)
     if img is None:
@@ -104,11 +97,11 @@ def _collect_markers_silent(img: 'Image.Image', slot_color: tuple = None) -> lis
             if masked and len(raw) > 3 and raw[3] <= 127:
                 continue                      # Hintergrund, schon ausmaskiert
             pixel = raw[:3]
-            rounded = (pixel[0] // 5 * 5, pixel[1] // 5 * 5, pixel[2] // 5 * 5)
+            rounded = _rounded(pixel)
             color_counts[rounded] = color_counts.get(rounded, 0) + 1
 
     if slot_color and not masked:
-        exclude_rounded = (slot_color[0] // 5 * 5, slot_color[1] // 5 * 5, slot_color[2] // 5 * 5)
+        exclude_rounded = _rounded(slot_color)
         slot_color_dist = CONFIG.scan_slot_color_distance
         colors_to_remove = [c for c in color_counts if color_distance(c, exclude_rounded) <= slot_color_dist]
         for color in colors_to_remove:
@@ -207,9 +200,7 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
         best_name = None
         best_confidence = -1.0
         for name, item in existing_items:
-            templates_list = (item.template_names() if hasattr(item, "template_names")
-                         else ([item.template] if item.template else []))
-            for template_value in templates_list:
+            for template_value in item.template_names():
                 size_fits = template_size(template_value, template_root) == tuple(img.size)
                 if size_fits != same_size:
                     continue
@@ -230,7 +221,5 @@ def _find_matching_existing_item(img: 'Image.Image', existing_items: list,
 def _item_has_compatible_template(item, img: 'Image.Image', template_root=None) -> bool:
     """Hat das Item bereits eine Vorlage exakt fuer diese Slot-Groesse?"""
     from ...imaging import template_size
-    templates_list = (item.template_names() if hasattr(item, "template_names")
-                 else ([item.template] if item.template else []))
     return any(template_size(template_value, template_root) == tuple(img.size)
-               for template_value in templates_list)
+               for template_value in item.template_names())

@@ -36,10 +36,10 @@ from .bridge_contract import (
     SCAN_MODES,
     TYPE_ORDER,
     WAIT_TIMEOUT,
-    _hex,
     _position,
     _wait_text,
     else_applies,
+    scan_name,
     trigger_name,
 )
 from .model import (
@@ -52,6 +52,7 @@ from .model import (
     PHASE_KIND_WHEN,
     Lane,
     PalettePoint,
+    hex_color,
     ink_color,
 )
 
@@ -62,7 +63,7 @@ def _mouse_return_target() -> str:
     Aus `scan_mouse_after` dieses Prozesses (`config_write()` zieht es nach)
     und der Beschriftung in `config_meta` — die Ansicht erfindet keine Namen.
     """
-    value = getattr(CONFIG, "scan_mouse_after", "back")
+    value = CONFIG.scan_mouse_after
     return dict(META["scan_mouse_after"].options).get(value, value)
 
 
@@ -104,7 +105,7 @@ class BridgeViewMixin:
             "sequences": sorted(name for name, _ in list_available_sequences()),
             "scan_names": self._scan_names(),
             "types": [{"key": t, "label": BLOCK_LABELS[t],
-                       "color": _hex(BLOCK_COLORS[t]),
+                       "color": hex_color(BLOCK_COLORS[t]),
                        "ink": ink_color(BLOCK_COLORS[t])} for t in TYPE_ORDER],
             "scan_modes": SCAN_MODES,
             # Die Auswahl „Art" im Phasenkopf — Reihenfolge des Ablaufs.
@@ -175,16 +176,8 @@ class BridgeViewMixin:
             BLOCK_BOSS_WATCHER: bosses,
         }
 
-    def _lane_index(self, lane) -> Optional[int]:
-        """Stelle einer Phase im Board — über die IDENTITÄT, nicht über Gleichheit.
-
-        `Lane` ist eine Dataclass: zwei leere Loop-Phasen sind gleich, und
-        `lanes.index()` fände immer die erste.
-        """
-        return next((i for i, ln in enumerate(self.board.lanes) if ln is lane), None)
-
     def _sel_index(self) -> Optional[int]:
-        return None if self.sel_lane is None else self._lane_index(self.sel_lane)
+        return None if self.sel_lane is None else self.board.position(self.sel_lane)
 
     def _selected_rows(self, lane) -> list[int]:
         """Die gewählten Zeilen EINER Phase — sortiert und nur gültige."""
@@ -216,7 +209,7 @@ class BridgeViewMixin:
         # Punkt, den vier Bloecke teilen, ist genau der, den man vor dem
         # Verschieben kennen will; einer mit 0 ist ein Rest der Aufnahme.
         return {"id": p.id, "name": p.name or f"Punkt {p.id}", "x": p.x, "y": p.y,
-                "color": _hex(p.color), "source": p.source,
+                "color": hex_color(p.color), "source": p.source,
                 "usages": len(self._point_usages(p.id))}
 
     def _phase_json(self, index: int, lane: Lane) -> dict:
@@ -226,7 +219,6 @@ class BridgeViewMixin:
             "name": lane.name,
             "repeat": lane.repeat,
             "start": lane.scheduled_start or "",
-            "deletable": lane.kind == LANE_LOOP,
             "blocks": [self._block_json(lane, row, s) for row, s in enumerate(lane.steps)],
         }
 
@@ -263,14 +255,13 @@ class BridgeViewMixin:
         """Eine Karte im Board — knapp genug, dass 50 davon untereinander passen."""
         type_value = block_type(step)
         wc = step.wait_condition
-        field = SCAN_FIELD.get(type_value)
         point = self._point(step.point_id)
         rows = self._lines(step, type_value)
         block = {
             "row": row,
             "type": type_value,
             "label": BLOCK_LABELS[type_value],
-            "color": _hex(BLOCK_COLORS[type_value]),
+            "color": hex_color(BLOCK_COLORS[type_value]),
             # Die Schriftfarbe der Kopfzeile folgt der Typfarbe — fest dunkel
             # fiel sie auf Boss-Watcher (2,2:1) und vier weiteren Typen durch.
             "ink": ink_color(BLOCK_COLORS[type_value]),
@@ -292,7 +283,7 @@ class BridgeViewMixin:
             # „jeder Block mit Punkt" — und ein Warten-Block trug das Feldchen
             # vor seiner Wartezeit, ein Scan mit einem Rest-Punkt aus einem
             # Typwechsel vor seinem Scan-Namen.
-            "point_color": (_hex(point.color)
+            "point_color": (hex_color(point.color)
                             if point is not None and rows and rows[0]["label"] == "STELLE"
                             else None),
             # Alle Punkte, an denen der Block haengt (Stelle, Pruef-Pixel,
@@ -303,14 +294,14 @@ class BridgeViewMixin:
                 step.verify_condition.point_id if step.verify_condition else None,
                 step.else_config.point_id if step.else_config else None,
             ) if pid is not None}),
-            "color_swatch": _hex(wc.color) if wc else None,
+            "color_swatch": hex_color(wc.color) if wc else None,
             "color_text": self._trigger_text(wc) if wc else "",
             "else_text": self._else_text(step),
             # Ein ELSE, das nie feuern kann, steht sonst als Zusage auf der Karte.
             "else_applies": else_applies(step),
             # Ein Scan ohne Namen wird beim Speichern abgelehnt — die Karte sagt
             # das schon vorher, sonst sucht man den Block hinterher in vier Phasen.
-            "warning": ("Name fehlt" if field and not (getattr(step, field) or "").strip()
+            "warning": ("Name fehlt" if type_value in SCAN_FIELD and not scan_name(step)
                         else None),
         }
         return block
@@ -336,7 +327,7 @@ class BridgeViewMixin:
             r = step.screenshot_region
             return [row("BEREICH", f"{r[0]},{r[1]} → {r[2]},{r[3]}" if r else "Vollbild")]
         if type_value in SCAN_FIELD:
-            name = (getattr(step, SCAN_FIELD[type_value]) or "").strip() or "(kein Name)"
+            name = scan_name(step) or "(kein Name)"
             mode = f" · {step.item_scan_mode}" if type_value == BLOCK_ITEM_SCAN else ""
             lines = [row("SCAN", f"{name}{mode}")]
         elif type_value == BLOCK_KEY:
@@ -401,11 +392,11 @@ class BridgeViewMixin:
         type_value = block_type(step)
         wc, vc, ec = step.wait_condition, step.verify_condition, step.else_config
         return {
-            "phase": self.board.lanes.index(lane),
+            "phase": self.board.position(lane),
             "row": row,
             "type": type_value,
             "label": BLOCK_LABELS[type_value],
-            "color": _hex(BLOCK_COLORS[type_value]),
+            "color": hex_color(BLOCK_COLORS[type_value]),
             "name": step.name or "",
             "point_id": step.point_id,
             # **Wer den Punkt SONST noch benutzt, steht am Block.** X/Y und
@@ -420,7 +411,6 @@ class BridgeViewMixin:
                              if step.point_id is not None else {"count": 0, "lines": []}),
             "x": step.x,
             "y": step.y,
-            "captured_color": _hex(step.recorded_color),
             "delay_before": step.delay_before,
             "delay_max": step.delay_max or 0,
             "key_press": step.key_press or "",
@@ -429,7 +419,6 @@ class BridgeViewMixin:
             "icon_scan": step.icon_scan or "",
             "boss_scan": step.boss_scan or "",
             "boss_watcher": step.boss_watcher or "",
-            "wait_only": step.wait_only,
             "breakpoint": bool(step.breakpoint),
             # Der Schalter sagt OB, die Einstellung WOHIN — die Beschriftung
             # nennt das Wohin, damit man nicht nachsehen muss.
@@ -447,7 +436,6 @@ class BridgeViewMixin:
             "else_applies": else_applies(step),
             "else_point": ec.point_id if ec else None,
             "else_key": (ec.key or "") if ec else "",
-            "else_delay": ec.delay if ec else 0,
         }
 
     # --------------------------------------------------------------- Zustand
@@ -470,9 +458,12 @@ class BridgeViewMixin:
         return self._report(text, kind, offer=offer)
 
     def _point(self, point_id) -> Optional[PalettePoint]:
-        if point_id is None:
+        """Der Punkt zu einer ID — `None` bei fehlender oder unlesbarer ID."""
+        try:
+            wanted = int(point_id)
+        except (TypeError, ValueError):
             return None
-        return next((p for p in self.points if p.id == int(point_id)), None)
+        return next((p for p in self.points if p.id == wanted), None)
 
     def _points_apply(self) -> None:
         """Zieht die abgeleiteten Werte aller Schritte aus der Palette nach.

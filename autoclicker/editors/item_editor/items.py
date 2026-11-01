@@ -25,6 +25,7 @@ from ...utils import (
 )
 from .._detection_capture import ask_min_confidence
 from .._item_fields import ask_confirm_click, ask_priority
+from ..scan_services import save_template
 
 
 def select_category(state: AutoClickerState, show_explanation: bool = True) -> Optional[str]:
@@ -65,7 +66,7 @@ def ask_new_item_name(state: AutoClickerState, prompt_extra: str = "",
     die Rueckfrage nach dem Ueberschreiben. `next_free_name()` fuellt Luecken.
     """
     with state.lock:
-        proposal = next_free_name("Item", state.global_items)
+        proposal = next_free_name("Item", state.scan_items)
     item_name = safe_input(f"  Item-Name (Enter = '{proposal}'{prompt_extra}): ").strip()
     if is_cancel(item_name):
         if cancel_message:
@@ -74,7 +75,7 @@ def ask_new_item_name(state: AutoClickerState, prompt_extra: str = "",
     item_name = item_name or proposal
 
     with state.lock:
-        name_exists = item_name in state.global_items
+        name_exists = item_name in state.scan_items
     if name_exists:
         if not confirm(f"  '{item_name}' existiert bereits. Überschreiben?"):
             print("  -> Abgebrochen")
@@ -97,9 +98,7 @@ def _capture_item_template(state: AutoClickerState, item_name: str, min_confiden
     if not img:
         return None
     template_file = free_template_file(active_templates_dir(state), item_name)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(template_path)
+    template_path = save_template(state, img, template_file)
     print(f"  -> Template gespeichert: {template_path}")
     return template_file, ask_min_confidence(min_confidence)
 
@@ -191,7 +190,7 @@ def _edit_item_name(state: AutoClickerState, item: ItemProfile, draft: ItemProfi
     if not name_input:
         return
     with state.lock:
-        collision = name_input != item.name and name_input in state.global_items
+        collision = name_input != item.name and name_input in state.scan_items
     if collision:
         print("  -> Name bereits vergeben. Bitte einen anderen Namen wählen.")
         return

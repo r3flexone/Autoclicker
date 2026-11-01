@@ -9,7 +9,7 @@ aus".
 
 from pathlib import Path
 
-from ._bridge import Window, main, sandbox
+from ._bridge import Window, main, make_expect, sandbox
 
 
 def setup():
@@ -57,10 +57,7 @@ def setup():
 def run():
     b, folder_raid = setup()
     error = []
-
-    def expect(condition, text):
-        if not condition:
-            error.append(text)
+    expect = make_expect(error)
 
     with Window(b) as f:
         f.tab("sequences")

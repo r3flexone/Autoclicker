@@ -579,7 +579,7 @@ def _set_point(state: AutoClickerState, x: int, y: int, color) -> None:
     target, point_id, point = current
 
     # **Ein Klick ausserhalb des Spiels ist kein Punkt.** Ausserhalb des Locks,
-    # weil `is_target_window_active()` das Betriebssystem fragt und der Hook
+    # weil `clicked_window()` das Betriebssystem fragt und der Hook
     # schnell zurück muss.
     if not _in_target_window(target, x, y):
         foreign = clicked_window(x, y) or "?"
@@ -696,7 +696,7 @@ def _show_current(state: AutoClickerState, delayed: bool = False) -> None:
     Vorher sprang er nach einem echten Klick nicht (aus Sorge um Ziehen und
     Tooltips), und dann stand die alte Stelle nur als Zahlenpaar in der Konsole:
     man musste sie suchen, statt sie zu sehen. Die Sorge löst `JUMP_DELAY`
-    besser als das Nicht-Springen — `verzoegert=True` sagt „der Klick ist gerade
+    besser als das Nicht-Springen — `delayed=True` sagt „der Klick ist gerade
     erst passiert".
     """
     # Jede Bewegung der Runde geht hier durch — also steht hier auch der

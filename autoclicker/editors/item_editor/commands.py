@@ -1,7 +1,7 @@
 """
 Weitere Item-Editor-Befehle: rename, template, templates.
 
-- rename: Item umbenennen inkl. Template-Datei und Aktualisierung aller Scan-Configs
+- rename: Item umbenennen inkl. Template-Datei (ein Item gehört genau einem Scan)
 - templates: Listet verfügbare Template-PNGs auf
 - template: Setzt/entfernt/captured ein Template für ein Item
 """
@@ -9,9 +9,11 @@ Weitere Item-Editor-Befehle: rename, template, templates.
 
 from ...imaging import take_screenshot, select_region
 from ...models import AutoClickerState
-from ...persistence import save_global_items, active_templates_dir, free_template_file
+from ...persistence import save_scan_items, active_templates_dir, free_template_file
 from ...utils import (confirm, is_cancel, safe_input, sanitize_filename, unique_name,
                       clean_item_name, ok, err, info, hint)
+from .._detection_capture import ask_min_confidence
+from ..scan_services import save_template
 
 
 def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
@@ -21,12 +23,12 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
 
         # Daten unter Lock lesen, dann Lock freigeben für User-Input
         with state.lock:
-            item_names = list(state.global_items.keys())
+            item_names = list(state.scan_items.keys())
             if rename_num < 1 or rename_num > len(item_names):
                 print(f"  -> Ungültiges Item! Verfügbar: 1-{len(item_names)}")
                 return
             old_name = item_names[rename_num - 1]
-            old_template = state.global_items[old_name].template
+            old_template = state.scan_items[old_name].template
 
         # User-Input OHNE Lock (blockiert nicht andere Threads)
         print(f"\n  Aktueller Name: '{old_name}'")
@@ -43,7 +45,7 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
             return
 
         with state.lock:
-            name_exists = new_name in state.global_items
+            name_exists = new_name in state.scan_items
         if name_exists:
             if not confirm(f"  '{new_name}' existiert bereits. Überschreiben?"):
                 print("  -> Abgebrochen")
@@ -57,25 +59,28 @@ def handle_rename_command(state: AutoClickerState, cmd: str) -> None:
 
 def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
                        *, overwrite: bool = False) -> bool:
-    """Benennt ein Item mechanisch um: Template-Datei, global_items, Scan-Configs.
+    """Benennt ein Item mechanisch um: Template-Datei und scan_items.
+
+    Scan-Configs ziehen nicht mit — ein Item gehört genau einem Scan, der danach
+    als Ganzes gespeichert wird.
 
     Still (keine Prompts) — für programmatische Aufrufe wie 'autoname'. new_name
     muss eindeutig sein, ausser der Aufrufer hat Überschreiben bestätigt.
     Ein Dateifehler lässt den bisherigen Namen und die Referenz unverändert.
     """
     with state.lock:
-        if old_name not in state.global_items:
+        if old_name not in state.scan_items:
             return False
-        if new_name != old_name and new_name in state.global_items and not overwrite:
+        if new_name != old_name and new_name in state.scan_items and not overwrite:
             print(err(f"'{new_name}' existiert bereits — Umbenennen abgebrochen."))
             return False
-        item = state.global_items[old_name]
+        item = state.scan_items[old_name]
         old_template = item.template
         # Der Vorlagenordner gehört der Sequenz; andere Scans dürfen dieselbe
         # Datei verwenden. Deren Referenzen bleiben beim Umbenennen erhalten.
-        other_items = [*state.global_items.values(),
+        other_items = [*state.scan_items.values(),
                         *(i for cfg in state.item_scans.values() for i in cfg.items)]
-        detector = [*state.icon_scans.values(), *state.global_bosses,
+        detector = [*state.icon_scans.values(), *state.boss_library,
                     *(b for cfg in state.boss_scans.values() for b in cfg.bosses)]
         shared = old_template and (
             any(i is not item and old_template in i.template_names() for i in other_items)
@@ -99,14 +104,14 @@ def _apply_item_rename(state: AutoClickerState, old_name: str, new_name: str,
             return False
 
     with state.lock:
-        if old_name not in state.global_items:
+        if old_name not in state.scan_items:
             return False
-        item = state.global_items[old_name]
+        item = state.scan_items[old_name]
         item.name = new_name
         if new_template is not None:
             item.template = new_template
-        del state.global_items[old_name]
-        state.global_items[new_name] = item
+        del state.scan_items[old_name]
+        state.scan_items[new_name] = item
     # Ein Item gehoert genau einem Scan; der wird danach als Ganzes gespeichert.
     # Gleichnamige Items anderer Scans ziehen ausdruecklich nicht mit.
     return True
@@ -117,14 +122,10 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
 
     Blockierend (LLM-Antworten dauern) — daher NUR ausserhalb eines laufenden
     Scans aufrufen (Editor/Setup). Speichert NICHT selbst; der Aufrufer macht
-    save_global_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
+    save_scan_items, wenn der Rückgabewert > 0 ist. Gibt die Anzahl
     umbenannter Items zurück.
     """
-    try:
-        from ...llm_vision import suggest_item_name
-    except ImportError:
-        print(f"  {err('LLM-Vision-Modul nicht verfügbar.')}")
-        return 0
+    from ...llm_vision import suggest_item_name
     try:
         from PIL import Image
     except ImportError:
@@ -151,7 +152,7 @@ def llm_name_items(state: AutoClickerState, targets: list[tuple[str, str]]) -> i
             continue
         # Eindeutig — wobei der eigene, alte Name nicht als belegt zählt.
         with state.lock:
-            new_name = unique_name(base, set(state.global_items) - {old_name})
+            new_name = unique_name(base, set(state.scan_items) - {old_name})
         if new_name != old_name and _apply_item_rename(state, old_name, new_name):
             print(f"    + '{old_name}' → '{new_name}'")
             renamed += 1
@@ -189,7 +190,7 @@ def handle_autoname_command(state: AutoClickerState) -> None:
 
     # Auto-gelernte Items mit Template (Kategorie 'Auto')
     with state.lock:
-        targets = [(n, it.template) for n, it in state.global_items.items()
+        targets = [(n, it.template) for n, it in state.scan_items.items()
                    if it.category == "Auto" and it.template]
     if not targets:
         print("  " + info("Keine auto-gelernten Items (Kategorie 'Auto') mit Template gefunden."))
@@ -203,7 +204,7 @@ def handle_autoname_command(state: AutoClickerState) -> None:
 
     renamed = llm_name_items(state, targets)
     if renamed:
-        save_global_items(state)
+        save_scan_items(state)
     print(f"  {ok(f'{renamed} Item(s) benannt.')}")
 
 
@@ -240,8 +241,8 @@ def handle_template_command(state: AutoClickerState, cmd: str) -> None:
         print("  -> Format: template <Nr>")
         return
     with state.lock:
-        item_names = list(state.global_items.keys())
-        item = (state.global_items[item_names[item_num - 1]]
+        item_names = list(state.scan_items.keys())
+        item = (state.scan_items[item_names[item_num - 1]]
                 if 1 <= item_num <= len(item_names) else None)
     if item is None:
         print("  -> Ungültiges Item!")
@@ -293,15 +294,14 @@ def _capture_template_for_item(state: AutoClickerState, item) -> None:
         return
 
     template_file = _template_file_for(state, item, img.size)
-    template_path = active_templates_dir(state) / template_file
-    template_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(template_path)
+    save_template(state, img, template_file)
     if not item.template:
         item.template = template_file
     elif template_file != item.template and template_file not in item.template_variants:
         item.template_variants.append(template_file)
 
-    _ask_confidence_percent(item, f"  Min. Konfidenz (Enter={item.min_confidence:.0%}): ")
+    item.min_confidence = ask_min_confidence(
+        item.min_confidence, f"  Min. Konfidenz (Enter={item.min_confidence:.0%}): ")
     print(f"  + Vorlage für {img.size[0]}x{img.size[1]} gespeichert: {template_file}")
 
 
@@ -312,7 +312,7 @@ def _ask_capture_region(state: AutoClickerState):
     Region gewählt; eine Slot-Nummer ausserhalb wird gesagt.
     """
     with state.lock:
-        slot_list = list(state.global_slots.values())
+        slot_list = list(state.scan_slots.values())
     if not slot_list:
         return select_region()
 
@@ -351,18 +351,6 @@ def _template_file_for(state: AutoClickerState, item, size: tuple) -> str:
     return free_template_file(folder, item.name)
 
 
-def _ask_confidence_percent(item, prompt: str) -> None:
-    """Konfidenz in Prozent (ein '%' darf dabei sein); leer oder unlesbar = bleibt."""
-    conf_input = safe_input(prompt).strip()
-    if not conf_input:
-        return
-    try:
-        conf = float(conf_input.replace("%", "")) / 100
-    except ValueError:
-        return
-    item.min_confidence = max(0.1, min(1.0, conf))
-
-
 def _assign_template_to_item(item, template_input: str, templates: list) -> None:
     """Weist dem Item ein bestehendes Template zu (per Nummer oder Dateiname)."""
     try:
@@ -377,6 +365,7 @@ def _assign_template_to_item(item, template_input: str, templates: list) -> None
             template_input += ".png"
         item.template = template_input
 
-    _ask_confidence_percent(
-        item, f"  Min. Konfidenz (aktuell {item.min_confidence:.0%}, Enter=behalten): ")
+    item.min_confidence = ask_min_confidence(
+        item.min_confidence,
+        f"  Min. Konfidenz (aktuell {item.min_confidence:.0%}, Enter=behalten): ")
     print(f"  + Template gesetzt: {item.template} (>={item.min_confidence:.0%})")

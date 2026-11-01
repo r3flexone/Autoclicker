@@ -7,8 +7,7 @@ Datei-Zugriff auf einen globalen Bestand.
 
 Lag bis zum Umbau unter `editors/scan_canvas/` neben dem Dear-PyGui-Fenster.
 Das Fenster ist weg — der Modell-Layer nicht: er war von Anfang an ohne GUI
-geschrieben und wird jetzt vom Scans-Reiter des Sequenz-Studios benutzt
-(`scans.py`).
+geschrieben und wird jetzt vom Scans-Reiter des Sequenz-Studios benutzt.
 """
 
 from pathlib import Path
@@ -48,7 +47,7 @@ def crop_region(full_img, region: tuple[int, int, int, int],
     return crop_screen_region(full_img, region, (virtual_left, virtual_top))
 
 
-def save_template(img, name: str, background=None, *, template_dir) -> str | None:
+def save_template(img, name: str, *, template_dir) -> str | None:
     """Speichert ein Bild im Template-Ordner der Sequenz. Gibt den Dateinamen zurück.
 
     Items und Bosse der Sequenz teilen sich diesen Ordner. Existiert die
@@ -59,14 +58,6 @@ def save_template(img, name: str, background=None, *, template_dir) -> str | Non
     """
     if img is None:
         return None
-    # Mit bekanntem Hintergrund traegt das Template seine Maske selbst: der
-    # Vergleich stimmt sonst zu neun Zehnteln ueber die Slot-Flaeche ab.
-    if background:
-        try:
-            from ...imaging import with_background_mask
-            img = with_background_mask(img, background)
-        except ImportError:
-            pass
     target_folder = Path(template_dir)
     target_folder.mkdir(parents=True, exist_ok=True)
     base = sanitize_filename(name)

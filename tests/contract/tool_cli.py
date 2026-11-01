@@ -155,6 +155,46 @@ else:
           _calls["analyzed"][0] == "easyocr" and "Bild geladen: boss.png" in _out)
 
 # =============================================================================
+section("OCR-Werkzeug: die Analyse nimmt entgegen, was die Erkennung liefert")
+# =============================================================================
+
+# `_run()` ersetzt `analyze` durch eine Attrappe — die Analyse selbst lief in
+# keinem Test. Dort entpackte sie vier Werte aus `detect_boss_name`, das seit
+# dem „neuen Namen" fünf liefert, und stürzte bei jedem Aufruf mit --bosses ab.
+# Hier läuft die echte `analyze` gegen die echte `detect_boss_name`; ersetzt ist
+# nur das Lesen des Texts.
+import autoclicker.ocr as _ocr_module                                   # noqa: E402
+
+
+def _analyze_with(texts, bosses):
+    saved = (_OCR.read_text, _ocr_module.read_text, _ocr_module.is_available)
+    _OCR.read_text = lambda img, **kwargs: texts
+    _ocr_module.read_text = lambda img, **kwargs: texts
+    _ocr_module.is_available = lambda: True
+    out = _io.StringIO()
+    try:
+        with _cl.redirect_stdout(out):
+            _OCR.analyze("easyocr", _Img(), bosses, ["en"])
+        return out.getvalue()
+    except Exception as error:                                          # noqa: BLE001
+        return f"ABSTURZ {type(error).__name__}: {error}"
+    finally:
+        _OCR.read_text, _ocr_module.read_text, _ocr_module.is_available = saved
+
+
+_out = _analyze_with([("Hydra", 0.95)], ["Hydra"])
+check("Analyse mit bekanntem Boss: erkannt, kein Absturz",
+      "ABSTURZ" not in _out and "Boss erkannt" in _out and "Hydra" in _out)
+_out = _analyze_with([("Kraken", 0.95)], ["Hydra"])
+check("unbekannter Name: kein Absturz, Text und Kandidat stehen da",
+      "ABSTURZ" not in _out and "Kein Boss-Name zugeordnet" in _out
+      and "Möglicher neuer Boss" in _out and "Kraken" in _out)
+_out = _analyze_with([("Kraken", 0.5)], ["Hydra"])
+check("unsicherer Text wird nicht als neuer Boss vorgeschlagen",
+      "ABSTURZ" not in _out and "Kein Boss-Name zugeordnet" in _out
+      and "Möglicher neuer Boss" not in _out)
+
+# =============================================================================
 section("Slot-Tester: derselbe Farbname wie die App")
 # =============================================================================
 

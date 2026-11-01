@@ -12,7 +12,7 @@ häufigsten sieht (Titelleiste, Browser-Tab). Das kleine ist dieselbe Kette mit
 vier Knoten, jede Kante auf dem 16er-Raster. Bis `SMALL_UP_TO` Pixel gilt das
 kleine, darüber das grosse — es ist das eigentliche Logo.
 
-Absichtlich gibt es keine SVG- oder Pillow-Laufzeitabhängigkeit. Das neue Logo
+Absichtlich gibt es keine SVG- oder Pillow-Laufzeitabhängigkeit. Das Logo
 braucht aus SVG nur gefüllte Pfade mit M/L/C/Z sowie eine Rotation. Diese kleine
 Teilmenge wird hier mit der Standardbibliothek gelesen und zeilenweise mit
 Kantenglättung gerastert. Die transparenten Aussparungen bleiben dabei echte
@@ -29,9 +29,10 @@ from xml.etree import ElementTree
 _WEB = Path(__file__).parent / "editors" / "sequence_studio" / "web"
 LOGO_PATH = _WEB / "sequenz-studio-logo.svg"
 LOGO_SMALL_PATH = _WEB / "sequenz-studio-logo-small.svg"
-# Bis zu dieser Kantenlänge das kleine Motiv. Nur 16 px: ab 32 ist das grosse
-# lesbar genug, und es ist das eigentliche Logo — das kleine springt nur dort
-# ein, wo vom grossen nichts übrig bleibt.
+# Bis einschliesslich dieser Kantenlänge das kleine Motiv. Gebraucht wird es bei
+# 16 px; die Grenze liegt bei 24, damit auch die Grössen dazwischen noch das
+# kleine bekommen. Ab 32 ist das grosse lesbar genug, und es ist das eigentliche
+# Logo — das kleine springt nur dort ein, wo vom grossen nichts übrig bleibt.
 SMALL_UP_TO = 24
 SAMPLES = 4
 CURVE_STEPS = 12
@@ -166,13 +167,13 @@ def logo_path(edge: int) -> Path:
 
 @lru_cache(maxsize=2)
 def _logo_geometry(path: Path = LOGO_PATH):
-    """Liest Farbe, ViewBox, sichtbaren Grund und Aussparungen aus dem SVG."""
-    root_layer = ElementTree.parse(path).getroot()
-    viewbox = tuple(float(w) for w in root_layer.attrib["viewBox"].split())
+    """Liest Farbe, ViewBox, sichtbare Grundfläche und Aussparungen aus dem SVG."""
+    svg_root = ElementTree.parse(path).getroot()
+    viewbox = tuple(float(w) for w in svg_root.attrib["viewBox"].split())
     if len(viewbox) != 4 or viewbox[2] <= 0 or viewbox[3] <= 0:
         raise ValueError("Ungültige viewBox im Studio-Logo")
 
-    color_rect = next((e for e in root_layer if _tag(e) == "rect" and "mask" in e.attrib), None)
+    color_rect = next((e for e in svg_root if _tag(e) == "rect" and "mask" in e.attrib), None)
     if color_rect is None:
         raise ValueError("Farbfläche im Studio-Logo fehlt")
     color_text = color_rect.attrib.get("fill", "").lstrip("#")
@@ -180,23 +181,23 @@ def _logo_geometry(path: Path = LOGO_PATH):
         raise ValueError("Das Studio-Logo braucht eine sechsstellige Hex-Farbe")
     color = tuple(int(color_text[i:i + 2], 16) for i in (0, 2, 4))
 
-    mask = next((e for e in root_layer.iter() if _tag(e) == "mask"), None)
+    mask = next((e for e in svg_root.iter() if _tag(e) == "mask"), None)
     group = (next((e for e in mask.iter() if _tag(e) == "g"), None)
                if mask is not None else None)
     if group is None:
         raise ValueError("Pfadgruppe in der Maske des Studio-Logos fehlt")
     rotate = _rotator(group.attrib.get("transform", ""))
 
-    reason = []
+    base = []
     cutouts = []
-    for path in (e for e in group.iter() if _tag(e) == "path"):
-        target = reason if path.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
+    for shape in (e for e in group.iter() if _tag(e) == "path"):
+        target = base if shape.attrib.get("fill", "").lower() in {"white", "#fff", "#ffffff"} \
             else cutouts
-        for polygon in _path_polygons(path.attrib.get("d", "")):
+        for polygon in _path_polygons(shape.attrib.get("d", "")):
             target.append(tuple(rotate(point) for point in polygon))
-    if not reason or not cutouts:
+    if not base or not cutouts:
         raise ValueError("Grund oder transparente Aussparung im Studio-Logo fehlt")
-    return color, viewbox, tuple(reason), tuple(cutouts)
+    return color, viewbox, tuple(base), tuple(cutouts)
 
 
 def _intervals(polygons, y: float):
@@ -241,7 +242,7 @@ def pixel_rows(edge: int, samples: int = SAMPLES):
     elif edge >= 128:
         samples = min(samples, 2)
 
-    color, (left, top, width, height), reason, cutouts = _logo_geometry(logo_path(edge))
+    color, (left, top, width, height), base, cutouts = _logo_geometry(logo_path(edge))
     sub_width = edge * samples
     x_step = width / sub_width
     y_step = height / (edge * samples)
@@ -252,7 +253,7 @@ def pixel_rows(edge: int, samples: int = SAMPLES):
         for py in range(samples):
             y = top + (zy * samples + py + 0.5) * y_step
             subpixel = bytearray(sub_width)
-            _paint(subpixel, _intervals(reason, y), 1, left, x_step)
+            _paint(subpixel, _intervals(base, y), 1, left, x_step)
             _paint(subpixel, _intervals(cutouts, y), 0, left, x_step)
             for zx in range(edge):
                 from_index = zx * samples

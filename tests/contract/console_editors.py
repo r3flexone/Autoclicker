@@ -51,6 +51,49 @@ check("eine unbekannte Taste fragt erneut",
 check("eine leere Eingabe ebenso",
       _dc_sequence(_DC.prompt_key, ["", "1"]) == "1")
 
+
+# --- ask_min_confidence / ask_tolerance: eine Fehleingabe behaelt den Wert UND sagt es ---
+# Beide stehen an einer Stelle (Boss-, Icon-, Item- und Item-Scan-Editor fragen darueber);
+# vorher stand die Abfrage viermal da, und nur eine Kopie sagte, dass sie nichts verstand.
+def _dc_ask(fn, text, *args):
+    """Eine Abfrage mit EINER Eingabe: (Ergebnis, Ausgabe, gezeigter Fragetext)."""
+    shown = []
+    _old = _DC.safe_input
+    _DC.safe_input = lambda prompt="": shown.append(prompt) or text
+    buffer = _io2.StringIO()
+    try:
+        with _cl2.redirect_stdout(buffer):
+            result = fn(*args)
+    finally:
+        _DC.safe_input = _old
+    return result, buffer.getvalue(), shown[0]
+
+
+check("Konfidenz: eine Zahl in Prozent", _dc_ask(_DC.ask_min_confidence, "90", 0.8)[0] == 0.9)
+check("Konfidenz: ein '%' darf dabei sein",
+      _dc_ask(_DC.ask_min_confidence, "90%", 0.8)[0] == 0.9)
+check("Konfidenz: zu kleine Werte werden auf 10 % gehoben",
+      _dc_ask(_DC.ask_min_confidence, "5", 0.8)[0] == 0.1)
+_res, _out, _ = _dc_ask(_DC.ask_min_confidence, "", 0.8)
+check("Konfidenz: leer behaelt den Wert, ohne ein Wort", _res == 0.8 and _out == "")
+_res, _out, _ = _dc_ask(_DC.ask_min_confidence, "abc", 0.8)
+check("Konfidenz: Unlesbares behaelt den Wert und sagt es",
+      _res == 0.8 and "ungültig — behalte 80" in _out)
+_res, _out, _shown = _dc_ask(_DC.ask_min_confidence, "", 0.5, "  Eigener Text: ")
+check("Konfidenz: ein eigener Fragetext wird gezeigt", _shown == "  Eigener Text: ")
+check("Konfidenz: der Standard-Fragetext nennt den bisherigen Wert",
+      "Enter=50" in _dc_ask(_DC.ask_min_confidence, "", 0.5)[2])
+check("Toleranz: eine Zahl", _dc_ask(_DC.ask_tolerance, "35", "Toleranz: ", 20)[0] == 35)
+check("Toleranz: wird auf 1-100 begrenzt",
+      _dc_ask(_DC.ask_tolerance, "500", "Toleranz: ", 20)[0] == 100
+      and _dc_ask(_DC.ask_tolerance, "0", "Toleranz: ", 20)[0] == 1)
+_res, _out, _shown = _dc_ask(_DC.ask_tolerance, "", "Toleranz: ", 20)
+check("Toleranz: leer behaelt den Wert, ohne ein Wort; der Fragetext kommt vom Aufrufer",
+      _res == 20 and _out == "" and _shown == "Toleranz: ")
+_res, _out, _ = _dc_ask(_DC.ask_tolerance, "abc", "Toleranz: ", 20)
+check("Toleranz: Unlesbares behaelt den Wert und sagt es",
+      _res == 20 and "ungültig — behalte 20" in _out)
+
 # --- _prompt_region_coords: vier Zahlen, und x2>x1, y2>y1 ---
 _pr = _DC._prompt_region_coords
 check("vier Zahlen ergeben eine Region",
@@ -145,24 +188,24 @@ try:
     _st_r2.active_sequence = _seq_r2
     Path("sequences/s/templates").mkdir(parents=True)
     Path("sequences/s/templates/alt.png").write_bytes(b"PNG")
-    _st_r2.global_items = {"Alt": _IPR(name="Alt", template="alt.png",
+    _st_r2.scan_items = {"Alt": _IPR(name="Alt", template="alt.png",
                                         marker_colors=[(1, 2, 3)])}
     _st_r2.item_scans["Inventar"] = _ISCR(
-        name="Inventar", owner_sequence="S", items=list(_st_r2.global_items.values()))
+        name="Inventar", owner_sequence="S", items=list(_st_r2.scan_items.values()))
     with _cl2.redirect_stdout(_io2.StringIO()):
         _success = _air(_st_r2, "Alt", "Neu")
 
     check("das Umbenennen meldet Erfolg", _success is True)
     check("der Eintrag heisst neu",
-          "Neu" in _st_r2.global_items and "Alt" not in _st_r2.global_items)
+          "Neu" in _st_r2.scan_items and "Alt" not in _st_r2.scan_items)
     check("das Item traegt seinen neuen Namen auch im Objekt",
-          _st_r2.global_items["Neu"].name == "Neu")
+          _st_r2.scan_items["Neu"].name == "Neu")
     # Die DATEI wandert mit - sonst zeigt das Profil auf einen Namen, den es nicht gibt.
     check("die Template-Datei wandert mit",
           Path("sequences/s/templates/neu.png").exists()
           and not Path("sequences/s/templates/alt.png").exists())
     check("und das Profil zeigt auf den neuen Dateinamen",
-          _st_r2.global_items["Neu"].template == "neu.png")
+          _st_r2.scan_items["Neu"].template == "neu.png")
     check("das Item im Scan heisst mit — es ist dasselbe Objekt",
           [i.name for i in _st_r2.item_scans["Inventar"].items] == ["Neu"])
     check("ein Item, das es nicht gibt, meldet False",
@@ -250,12 +293,10 @@ _IF.shift_category_priorities = lambda st, kat: _moved.append(kat)
 try:
     check("eine Zahl kommt als Prioritaet zurueck",
           _field_sequence(_IF.ask_priority, ["3"], state=_st_f, category="Helme") == 3)
-    check("leere Eingabe behaelt die Vorgabe",
-          _field_sequence(_IF.ask_priority, [""], state=_st_f,
-                      category="Helme", default_value=4) == 4)
-    check("Zahlensalat behaelt die Vorgabe",
-          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f,
-                      category="Helme", default_value=4) == 4)
+    check("leere Eingabe ergibt die Vorgabe 1",
+          _field_sequence(_IF.ask_priority, [""], state=_st_f, category="Helme") == 1)
+    check("Zahlensalat ergibt die Vorgabe 1",
+          _field_sequence(_IF.ask_priority, ["abc"], state=_st_f, category="Helme") == 1)
     check("negative Zahlen werden auf 1 gehoben",
           _field_sequence(_IF.ask_priority, ["-5"], state=_st_f, category="Helme") == 1)
     # 0 heisst „beste": alle anderen der Kategorie rutschen nach hinten.
@@ -291,7 +332,7 @@ import autoclicker.editors.item_editor.commands as _CMD
 from autoclicker.models import AutoClickerState as _ST_t, ItemProfile as _IP_t
 
 _st_t = _ST_t()
-_st_t.global_items["Bogen"] = _IP_t(name="Bogen")
+_st_t.scan_items["Bogen"] = _IP_t(name="Bogen")
 _captured = []
 
 
@@ -325,7 +366,7 @@ finally:
 # Frischer State: mit dem alten Code hielte der blockierte Thread oben den Lock
 # noch — und dieser Teil hinge dann mit, statt oben sauber rot zu werden.
 _st_t2 = _ST_t()
-_st_t2.global_items["Bogen"] = _IP_t(name="Bogen", template="bogen.png")
+_st_t2.scan_items["Bogen"] = _IP_t(name="Bogen", template="bogen.png")
 _CMD.safe_input = lambda _p="": "remove"
 _CMD.active_templates_dir = lambda st: Path(tempfile.gettempdir()) / "gibtsnicht_templates"
 try:
@@ -333,7 +374,7 @@ try:
         _CMD.handle_template_command(_st_t2, "template 1")
         _CMD.handle_template_command(_st_t2, "template 9")
         _CMD.handle_template_command(_st_t2, "template x")
-    check("`remove` leert die Vorlagen", _st_t2.global_items["Bogen"].template is None)
+    check("`remove` leert die Vorlagen", _st_t2.scan_items["Bogen"].template is None)
 finally:
     _CMD.safe_input = _old_input
     _CMD.active_templates_dir = _old_dir

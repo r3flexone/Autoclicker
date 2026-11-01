@@ -155,7 +155,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 def execute():
                     if kind == "boss":
                         return boss_detection._execute_boss_action(
-                            state, boss, SequenceStep(boss_scan="B"), 1, 1, "INIT", False)
+                            state, boss, 1, 1, "INIT", False)
                     return steps._execute_icon_scan_step(
                         state, SequenceStep(icon_scan="I"), 1, 1, "INIT")
 
@@ -174,10 +174,10 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_worker_fehler_raeumt_lauf_und_log_auf(self):
         state = AutoClickerState()
         state.is_running = True
-        protokoll = Mock()
+        session_log = Mock()
         seq = Sequence("Test", init_steps=[SequenceStep(wait_only=True)])
         with patch.object(worker, "_prepare_worker_state", return_value=seq), \
-                patch("autoclicker.session_log.start_session_log", return_value=protokoll), \
+                patch("autoclicker.session_log.start_session_log", return_value=session_log), \
                 patch.object(worker, "_run_main_loop", side_effect=RuntimeError("Schritt kaputt")), \
                 patch.object(worker, "set_console_title"), \
                 patch.object(worker.status, "write_status"), \
@@ -189,7 +189,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertFalse(state.is_running)
         self.assertTrue(state.stop_event.is_set())
         self.assertIsNone(state.session_log)
-        protokoll.close.assert_called_once()
+        session_log.close.assert_called_once()
         self.assertIn("Fehler", end.call_args.args[1])
 
     def test_zyklen_vor_einem_neustart_zaehlen_in_der_zusammenfassung_mit(self):
@@ -313,6 +313,36 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertIs(english_1, english_2)
         self.assertIsNot(english_1, german)
         self.assertEqual([entry[0] for entry in created], [("en",), ("de",)])
+
+    def test_tesseract_bekommt_die_sprache_als_lang(self):
+        """Die Sprache geht als `lang` an pytesseract, nicht unter erfundenem Namen.
+
+        Der Fake hat die Signatur des echten `image_to_data` (ohne `**kwargs`):
+        ein falsches Schluesselwort scheitert hier mit TypeError, so wie es
+        in der echten Bibliothek scheitern wuerde.
+        """
+        received = {}
+
+        class FakePytesseract:
+            class Output:
+                DICT = "dict"
+
+            @staticmethod
+            def image_to_data(image, lang=None, config="", nice=0,
+                              output_type="string", timeout=0,
+                              pandas_config=None):
+                received["lang"] = lang
+                received["output_type"] = output_type
+                return {"text": ["", " Drache "], "conf": ["-1", "90"]}
+
+        with patch.object(ocr, "_pytesseract_mod", FakePytesseract):
+            matches = ocr._read_tesseract(Mock(), ["de", "en"], 0.3)
+            self.assertEqual("de+en", received["lang"])
+            ocr._read_tesseract(Mock(), None, 0.3)
+            self.assertEqual("eng", received["lang"])
+
+        self.assertEqual([("Drache", 0.9)], matches)
+        self.assertEqual("dict", received["output_type"])
 
     def test_immediate_modus_nimmt_das_fenster_nur_nach_einem_klick_neu_auf(self):
         """Ein Durchgang, viele Slots, EINE Aufnahme — bis geklickt wird.
@@ -484,7 +514,7 @@ class RuntimeHardeningTest(unittest.TestCase):
     def test_auto_lernen_schreibt_in_den_laufenden_scan_nicht_in_die_arbeitsansicht(self):
         """Zwei Item-Scans in einer Sequenz: gelernt wird in dem, der LAEUFT.
 
-        `state.global_items` ist nur die Konsolen-Ansicht auf `active_item_scan`
+        `state.scan_items` ist nur die Konsolen-Ansicht auf `active_item_scan`
         (hier: Scan A). Laeuft Scan B mit `learn_unknown`, landete das Item vorher
         in A — und wurde gegen die Items von A dedupliziert. Dazu gehoert: das
         gelernte Item ist GEPARKT (enabled=False), also wird es im naechsten
@@ -519,7 +549,7 @@ class RuntimeHardeningTest(unittest.TestCase):
         self.assertEqual(scan_b.items[0].category, "Auto")
         save.assert_called_once_with(scan_b)
         # Die Konsolen-Ansicht zeigt weiter auf A und bleibt unberuehrt.
-        self.assertEqual(list(state.global_items), ["Bogen"])
+        self.assertEqual(list(state.scan_items), ["Bogen"])
 
     def test_auto_lernen_haelt_die_arbeitsansicht_desselben_scans_aktuell(self):
         """Zeigt die Konsolen-Ansicht auf den laufenden Scan, sieht sie das Item.
@@ -547,7 +577,7 @@ class RuntimeHardeningTest(unittest.TestCase):
                 patch("autoclicker.persistence.save_item_scan"):
             item_scan._learn_unknown_slot_item(state, slot, image, False, scan)
 
-        self.assertIn("Auto Slot 1", state.global_items)
+        self.assertIn("Auto Slot 1", state.scan_items)
         flush_item_scan_context(state)
         self.assertEqual([it.name for it in scan.items], ["Auto Slot 1"])
 

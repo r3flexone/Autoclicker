@@ -19,9 +19,11 @@ können: dort steht, was der Wert technisch tut, hier steht, wann man ihn anfass
 
 from dataclasses import dataclass
 
-# Die Arten des Bedienelements. Mehr gibt es nicht — wer eine sechste braucht,
-# trägt sie hier UND in der Oberfläche ein (`cfgFeld()` in web/index.html); ein
-# Test hält beide Listen gegeneinander.
+from .config import SCAN_MOUSE_BACK, SCAN_MOUSE_PARK
+
+# Die Arten des Bedienelements. Mehr gibt es nicht — wer eine neunte braucht,
+# trägt sie hier UND in der Oberfläche ein (`cfgControl()` in web/app.js); ein
+# Test hält beide gegeneinander.
 CONTROL_BOOL = "bool"        # Kippschalter
 CONTROL_INT = "int"          # ganze Zahl
 CONTROL_FLOAT = "float"      # Kommazahl
@@ -30,9 +32,6 @@ CONTROL_TEXT = "text"        # einzeilig
 CONTROL_AREA = "area"        # mehrzeilig
 CONTROL_ENUM = "enum"        # feste Auswahl, `options`
 CONTROL_XY = "xy"            # Schalter + Koordinatenpaar (nur `scan_park_mouse`)
-
-CONTROLS = (CONTROL_BOOL, CONTROL_INT, CONTROL_FLOAT, CONTROL_RATIO, CONTROL_TEXT, CONTROL_AREA,
-         CONTROL_ENUM, CONTROL_XY)
 
 
 @dataclass(frozen=True)
@@ -208,8 +207,8 @@ META: dict = {
         "Blocks verdecken. OB die Maus danach geht, schaltet jeder Scan-Block "
         "selbst (Schalter „Maus danach absetzen“, an ist Standard). Nach einem "
         "Stopp oder in der Pause bleibt sie, wo sie ist.",
-        options=(("back", "zurück an die Stelle davor"),
-                 ("park", "auf die Parkposition (ohne: zurück)"))),
+        options=((SCAN_MOUSE_BACK, "zurück an die Stelle davor"),
+                 (SCAN_MOUSE_PARK, "auf die Parkposition (ohne: zurück)"))),
     "scan_slot_delay": M(
         "Pause zwischen Slots", CONTROL_FLOAT, "Zeit zwischen zwei Slot-Scans.",
         unit="s"),
@@ -235,13 +234,15 @@ META: dict = {
         unit="px"),
     "scan_market_value_file": M(
         "Marktwert-Tabelle", CONTROL_TEXT,
-        "Pfad zu einer Item→Gold-JSON aus market_analysis. Ist sie gesetzt, "
-        "sortiert der Item-Scan seine Klicks nach Wert statt nach der von Hand "
-        "getippten Priorität — und jedes Item MIT Wert gewinnt gegen jedes ohne.",
+        "Pfad zu einer Item→Gold-JSON aus market_analysis. Voreingestellt ist "
+        "die Datei, die die Marktanalyse selbst schreibt — liegt sie da, gilt "
+        "sie ohne weiteres Zutun. Dann sortiert der Item-Scan seine Klicks nach "
+        "Wert statt nach der von Hand getippten Priorität, und jedes Item MIT "
+        "Wert gewinnt gegen jedes ohne. Wer das nicht will, leert das Feld.",
         empty="nach getippter Priorität"),
     "scan_catalog_file": M(
         "Item-Katalog", CONTROL_TEXT,
-        "Pfad zur katalog.json mit den echten Item-Namen des Spiels. Der Knopf "
+        "Pfad zur catalog.json mit den echten Item-Namen des Spiels. Der Knopf "
         "darunter holt sie aus der offiziellen Spiel-API und trägt den Pfad "
         "gleich hier ein. Ist sie gesetzt, setzt „Aus Katalog einordnen“ "
         "Kategorie und Priorität, und die LLM-Benennung wählt aus den echten "
@@ -300,7 +301,7 @@ META: dict = {
         "Wiederholungen", CONTROL_INT,
         "Wie oft bei „kein Boss erkannt“ neu gefragt wird — mit einem frischen "
         "Screenshot, denn im Spiel kann sich inzwischen etwas geändert haben. "
-        "Gilt für Boss- und Icon-Scans, nicht für die Item-Benennung: die "
+        "Gilt nur für Boss-Scans, nicht für die Item-Benennung: die "
         "fragt mit Temperatur 0 und bekäme zweimal dieselbe Antwort. Eine "
         "Zeitüberschreitung wird davon unabhängig einmal wiederholt.",
         empty="nicht wiederholen", dep="llm_enabled"),
@@ -342,9 +343,9 @@ META: dict = {
         "Zeitgrenze für den Watcher.", unit="s", empty="unbegrenzt",
         dep="llm_enabled"),
     "boss_learn_global": M(
-        "Neue Bosse global lernen", CONTROL_BOOL,
+        "Neue Bosse in der Bibliothek lernen", CONTROL_BOOL,
         "Ein von OCR oder LLM entdeckter unbekannter Boss landet in der "
-        "globalen Bibliothek statt nur in diesem einen Scan. Gilt für beide "
+        "Boss-Bibliothek statt nur in diesem einen Scan. Gilt für beide "
         "Erkenner."),
 
     # === OCR ===

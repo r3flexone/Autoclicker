@@ -59,7 +59,7 @@ class StartupEditorTest(unittest.TestCase):
 
         args = start_now.call_args.args[0]
         self.assertNotIn("AktivImHauptprozess", args)
-        self.assertIn("--beenden-mit-fenster", args)
+        self.assertIn("--quit-with-window", args)
 
 
 class MainStartTest(unittest.TestCase):
@@ -99,7 +99,6 @@ class MainStartTest(unittest.TestCase):
             for name, result in names.items():
                 stack.enter_context(patch.object(main_module, name, recorded(name, result)))
             stack.enter_context(patch.object(main_module, "_platform_ready", return_value=True))
-            stack.enter_context(patch.object(main_module, "get_current_thread_id", return_value=77))
             stack.enter_context(patch.object(main_module, "_first_start", return_value=first))
             stack.enter_context(patch.object(main_module, "register_hotkeys", return_value=hotkeys_ok))
             stack.enter_context(patch.object(main_module, "poll_hotkey", poll))
@@ -178,8 +177,9 @@ class MainStartTest(unittest.TestCase):
         loop = order[order.index("studio") + 1:]
         self.assertEqual(["_check_commands", "handle_pause", "flush_hotkey_messages",
                           "_check_commands", "handle_quit", "unregister_hotkeys"], loop)
-        quit_args = dict(calls)["handle_quit"]
-        self.assertEqual(77, quit_args[1])
+        # Beenden braucht nur den Zustand: die Schleife endet über `quit_event`,
+        # es gibt keine Windows-Nachricht, die jemand abholt.
+        self.assertEqual(1, len(dict(calls)["handle_quit"]))
 
     def test_ein_fehler_im_handler_beendet_die_schleife_nicht(self):
         broken = MagicMock(side_effect=RuntimeError("kaputt"))

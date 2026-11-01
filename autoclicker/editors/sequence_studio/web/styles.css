@@ -50,6 +50,11 @@ body{
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
+/* Die Ecke, in der sich beide Leisten treffen, gehört zu keiner von beiden:
+   wer die Leiste selbst gestaltet, bekommt sie im Standard-Weiss — ein
+   weisses Quadrat unten rechts in jeder Fläche, die in beide Richtungen
+   scrollt. */
+::-webkit-scrollbar-corner{background:var(--bg)}
 
 /* ---------------------------------------------------------------- Grundformen */
 .app{display:flex;flex-direction:column;height:100%}
@@ -416,7 +421,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-header.loop .phase-name{color:var(--loop)}
 .phase-name:hover:not(:disabled){border-color:var(--line)}
 .phase-name:disabled{color:var(--text)}
-/* **Dasselbe Raster wie das `knopfpaar` darunter** — gleiche Spaltenbreite,
+/* **Dasselbe Raster wie das `button-pair` darunter** — gleiche Spaltenbreite,
    gleiche Kanten, gleicher Umbruchpunkt. Vorher war das ein `flex` mit fest
    getippten 70 und 74 px: die Zeile hoerte bei rund 60 % auf, waehrend die
    Knopfzeile darunter ueber die volle Breite ging, und die beiden Felder waren
@@ -429,7 +434,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-tool label.field{font-size:10.5px;gap:2px;min-width:0}
 .phase-tool .row{gap:4px}
 /* Die Sammel-Aktionen der Phase: frueher EIN Knopf, deshalb stand hier ein
-   `align-self`. Jetzt ein `knopfpaar` (gleiche Spalten, bricht um statt
+   `align-self`. Jetzt ein `button-pair` (gleiche Spalten, bricht um statt
    abzuschneiden) — die Groesse bleibt die kleine des Phasenkopfs. */
 .phase-all > .btn{font-size:11px;padding:4px 7px}
 .phases-create{gap:8px}
@@ -474,9 +479,8 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .card-label.else{color:var(--accent)}
 .card-label.dead{color:var(--dim)}
 .card-row{font-family:var(--mono);font-size:11.5px;color:var(--muted);min-width:0}
-.card-row.with-color,
+.card-row.with-color{display:flex;align-items:center;gap:6px}
 .card-color{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
-.card-row.with-color{font-size:11.5px}
 .card-row .swatch,
 .card-color .swatch{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
 .card-else{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:11px;min-width:0}
@@ -724,16 +728,13 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .phase-tile.done{opacity:.55}
 .phase-tile .p-name{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.phase-tile.running .p-name{color:var(--accent)}
+/* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
+   läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
+   kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. Deshalb gibt es
+   hier keine eigene Regel für `.running` — jede Kachel trägt ihre Art. */
 .phase-tile[data-kind="init"] .p-name{color:var(--init)}
 .phase-tile[data-kind="loop"] .p-name{color:var(--loop)}
 .phase-tile[data-kind="end"] .p-name{color:var(--end)}
-/* Der Name behält seine Phasenfarbe auch in der laufenden Kachel: dass sie
-   läuft, sagt schon der Ring ringsum. Zwei Zeichen für dieselbe Aussage
-   kosten die Phasenfarbe genau da, wo man sie am ehesten sucht. */
-.phase-tile.running[data-kind="init"] .p-name{color:var(--init)}
-.phase-tile.running[data-kind="loop"] .p-name{color:var(--loop)}
-.phase-tile.running[data-kind="end"] .p-name{color:var(--end)}
 .phase-tile .p-position{font-size:11.5px;color:var(--dim)}
 
 /* Der laufende Block traegt seine Typfarbe — dieselbe wie seine Karte im Board.
@@ -848,10 +849,8 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-review-order{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:6px;align-items:end}
 .scan-review-prio{display:flex;flex-direction:column;gap:2px;font-size:9.5px;color:var(--dim)}
 .scan-review-row.done{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
-.scan-review-row.assign{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .scan-review-row.variant{border-color:var(--ok);box-shadow:inset 3px 0 0 var(--ok)}
 .scan-review-row.other{opacity:1;border-color:#7C9CF5;box-shadow:inset 3px 0 0 #7C9CF5}
-.scan-review-row.remove{opacity:1;border-color:var(--err);box-shadow:inset 3px 0 0 var(--err)}
 .scan-review-row.skip{opacity:.58}
 .scan-review-action{align-self:flex-start;width:auto;padding:4px 8px;font-size:10.5px}
 .scan-advanced{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
@@ -980,7 +979,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    aendert. */
 /* Der Schalter oben, die Nummer UNTEN — dadurch steht sie auf derselben Hoehe
    wie die Zustandszeile in der dritten Spalte, und die Groesse daneben ist
-   dieselbe Kachel (`zahl`). Ohne `stretch` waere die Spalte nur so hoch wie
+   dieselbe Kachel (`num`). Ohne `stretch` waere die Spalte nur so hoch wie
    ihr Inhalt, und die beiden lägen ein paar Pixel auseinander. */
 .scan-badge{display:flex;flex-direction:column;align-items:center;gap:5px;
   align-self:stretch;justify-content:space-between}
@@ -1002,9 +1001,6 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-bulk{display:flex;flex-direction:column;gap:7px;padding:9px 10px;
   margin-bottom:10px;border:1px solid var(--accent);border-radius:6px;
   background:#F59E0B0F}
-/* Die Filterzeile traegt in 370 px drei Bedienelemente. Ohne Umbruch wird das
-   letzte abgeschnitten — und das war ausgerechnet der Kategorie-Filter. */
-.row.wrapping{flex-wrap:wrap}
 #scan-insp .section > .row{flex-wrap:wrap}
 /* Boss und Icon tragen keine Masken: das Gewaehlte steht unter der Liste. Die
    Trennlinie sagt, wo die Liste aufhoert — sonst liest sich der Editor wie ein
@@ -1060,14 +1056,14 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-filter > label.on.tile{width:100%;justify-self:stretch;
   border:1px solid var(--line);border-radius:5px;padding:6px 10px}
 /* **Zwei Knoepfe in einer Zeile teilen sie sich zu gleichen Teilen.** Vorher
-   nahm „Items erkennen" den Rest der Zeile (`wachse`) und „Rueckgaengig" nur
+   nahm „Items erkennen" den Rest der Zeile (`grow`) und „Rueckgaengig" nur
    seine Textbreite — bei einem langen Rueckgaengig-Namen kippte das Verhaeltnis
    von Zeile zu Zeile. Gleiche Spalten stehen still.
 
-   **Zwei Klassen, ein Wortschatz**: `btn breit` ist EIN Knopf ueber die volle
-   Breite, `knopfpaar` sind mehrere zu gleichen Teilen. Damit gibt es fuer
+   **Zwei Klassen, ein Wortschatz**: `btn wide` ist EIN Knopf ueber die volle
+   Breite, `button-pair` sind mehrere zu gleichen Teilen. Damit gibt es fuer
    „nebeneinander" nur noch eine Antwort — vorher stand an jeder Zeile eine
-   eigene Mischung aus `wachse`, Abstandhaltern und Textbreite. */
+   eigene Mischung aus `grow`, Abstandhaltern und Textbreite. */
 /* **Gleiche Spalten duerfen nichts kosten, was man lesen muss.** Mit einer
    festen Spaltenzahl schnitten drei Knoepfe in 290 px die Beschriftung ab
    („Item ler…", „Hintergrund mes…") — ein abgeschnittenes Wort ist schlimmer
@@ -1161,7 +1157,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-result-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;
   padding:6px 8px;border:1px solid var(--line);border-radius:4px;font-size:11.5px}
 .scan-result-row.ok{border-color:#3ED07A59}
-.scan-result-row .ground{grid-column:1/-1;font-size:10.5px;color:var(--dim);
+.scan-result-row .reason{grid-column:1/-1;font-size:10.5px;color:var(--dim);
   font-family:var(--mono)}
 .scan-result-row.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 /* Die Boss-Bibliothek als Kartenraster an der Stelle der Buehne. */
@@ -1172,7 +1168,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .scan-card-numbers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
 .seq-card.new-from-llm{border-color:var(--accent)}
 /* Der Rueckgaengig-Knopf nennt, was er zuruecknimmt — und das kann lang sein.
-   Im `knopfpaar` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
+   Im `button-pair` hat er eine feste halbe Spalte, also kuerzt er nur sich selbst;
    `max-width` braucht es dafuer nicht mehr, die Spalte deckelt ihn. */
 .scan-undo{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -1187,7 +1183,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 
 /* --------------------------------------------------------------- Fernstart
    Gebaut aus dem, was da ist: Karten sind `share-card`, die Spalten `section`,
-   die Hakenliste `wz-checked`. Eigen ist nur die Zeile — Wort, Pfeil, Sequenz,
+   die Hakenliste `tools-checked`. Eigen ist nur die Zeile — Wort, Pfeil, Sequenz,
    Knopf auf einer Flucht —, und die Lampe für einen Fehler. */
 .rem-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px}
 .rem-row select,.rem-row input{flex:1;min-width:0}
@@ -1320,50 +1316,50 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
  * liest sich als Verzierung, ein Kasten als Zustand (dieselbe Regel wie bei
  * Karte und Phasenkopf). Fehler und Hinweis sind zwei Dinge und sehen deshalb
  * verschieden aus - „laeuft so nicht" gegen „ist vermutlich nicht gewollt". */
-.wz-symbol{width:20px;height:20px;display:block;flex:none}
+.tools-symbol{width:20px;height:20px;display:block;flex:none}
 
 /* Linke Navigation: echte Werkzeugkarten statt zweizeiliger Textknöpfe. Das
  * Icon gibt jeder Funktion eine Silhouette; Befehl und Beschreibung bleiben
  * Zusatzinformation und kämpfen nicht mehr mit dem Namen um dieselbe Zeile. */
-.wz-nav{position:relative;width:100%;display:grid;grid-template-columns:38px 1fr 14px;
+.tools-nav{position:relative;width:100%;display:grid;grid-template-columns:38px 1fr 14px;
   gap:10px;align-items:center;text-align:left;padding:11px 10px;border-radius:8px;
   border:1px solid transparent;color:var(--muted);transition:.14s ease}
-.wz-nav:hover{background:var(--sub);border-color:var(--line);color:var(--text);
+.tools-nav:hover{background:var(--sub);border-color:var(--line);color:var(--text);
   transform:translateX(2px)}
-.wz-nav.on{background:linear-gradient(110deg,#F59E0B1C,transparent 75%);
+.tools-nav.on{background:linear-gradient(110deg,#F59E0B1C,transparent 75%);
   border-color:#F59E0B70;color:var(--text);box-shadow:0 0 0 1px #F59E0B18}
-.wz-nav-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;
+.tools-nav-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;
   justify-content:center;background:var(--sub);color:var(--muted);border:1px solid var(--line)}
-.wz-nav.check .wz-nav-icon{color:var(--ok);background:#3ED07A12}
-.wz-nav.recording .wz-nav-icon{color:#FB7185;background:#FB718512}
-.wz-nav.calibrate .wz-nav-icon{color:var(--end);background:#38BDF812}
-.wz-nav.reclick .wz-nav-icon{color:var(--loop);background:#A78BFA12}
-.wz-nav.on .wz-nav-icon{border-color:currentColor}
-.wz-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
-.wz-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
-.wz-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
-.wz-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
-.wz-nav:hover .wz-nav-arrow,.wz-nav.on .wz-nav-arrow{color:var(--accent);transform:translateX(2px)}
+.tools-nav.check .tools-nav-icon{color:var(--ok);background:#3ED07A12}
+.tools-nav.recording .tools-nav-icon{color:#FB7185;background:#FB718512}
+.tools-nav.calibrate .tools-nav-icon{color:var(--end);background:#38BDF812}
+.tools-nav.reclick .tools-nav-icon{color:var(--loop);background:#A78BFA12}
+.tools-nav.on .tools-nav-icon{border-color:currentColor}
+.tools-nav-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
+.tools-nav-title{display:flex;align-items:center;gap:6px;font-weight:650;color:var(--text)}
+.tools-nav-short{font-size:10.5px;line-height:1.35;color:var(--dim);white-space:normal}
+.tools-nav-arrow{font-size:20px;color:var(--dim);transition:transform .14s}
+.tools-nav:hover .tools-nav-arrow,.tools-nav.on .tools-nav-arrow{color:var(--accent);transform:translateX(2px)}
 /* Der Kopf ist zugleich Orientierung und ruhige Illustration. Farbige Glows
  * bleiben in der eigenen Karte und konkurrieren nicht mit Statusfarben. */
-.wz-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
+.tools-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
   max-width:880px;padding:20px 22px;margin-bottom:12px;border:1px solid var(--line);
   border-radius:12px;background:linear-gradient(125deg,var(--panel),var(--sub))}
-.wz-hero::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;
+.tools-hero::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;
   right:-70px;top:-85px;background:currentColor;opacity:.065;filter:blur(2px)}
-.wz-hero.check{color:var(--ok)}
-.wz-hero.recording{color:#FB7185}
-.wz-hero.calibrate{color:var(--end)}
-.wz-hero.reclick{color:var(--loop)}
-.wz-hero-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;
+.tools-hero.check{color:var(--ok)}
+.tools-hero.recording{color:#FB7185}
+.tools-hero.calibrate{color:var(--end)}
+.tools-hero.reclick{color:var(--loop)}
+.tools-hero-icon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;
   justify-content:center;flex:none;color:currentColor;background:currentColor;
   box-shadow:inset 0 0 0 1px currentColor}
-.wz-hero-icon .wz-symbol{width:28px;height:28px;color:var(--bg);filter:brightness(2)}
-.wz-hero-copy{position:relative;z-index:1;min-width:0}
-.wz-kicker,.wz-subheader{font-size:9.5px;letter-spacing:.15em;font-weight:700;
-  color:currentColor;margin-bottom:3px}
-.wz-hero h2{font-size:18px;line-height:1.2;color:var(--text);margin:0 0 5px}
-.wz-hero p{font-size:12px;line-height:1.5;color:var(--muted);max-width:660px}
+.tools-hero-icon .tools-symbol{width:28px;height:28px;color:var(--bg);filter:brightness(2)}
+.tools-hero-copy{position:relative;z-index:1;min-width:0}
+.tools-kicker,.tools-subheader{font-size:9.5px;letter-spacing:.15em;font-weight:700;
+  margin-bottom:3px}
+.tools-hero h2{font-size:18px;line-height:1.2;color:var(--text);margin:0 0 5px}
+.tools-hero p{font-size:12px;line-height:1.5;color:var(--muted);max-width:660px}
 
 /* Erklaerungen sind dieselben aufklappbaren i wie im Editor. Der kleine Wirt
  * reserviert nur die Icon-Breite; der Text erscheint erst nach einem Klick und
@@ -1371,160 +1367,160 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 /* Der Titel steht daneben und darf umbrechen: in der schmalen linken Spalte
    passt „Slots exakt reparieren" nicht in eine Zeile. `align-items:flex-start`
    statt `center`, damit das ⓘ bei zwei Zeilen an der ERSTEN klebt. */
-.wz-info-compact{max-width:880px;display:flex;align-items:flex-start;min-height:18px;
+.tools-info-compact{max-width:880px;display:flex;align-items:flex-start;min-height:18px;
   margin:6px 0;color:var(--dim);font-size:11.5px;line-height:1.4}
-.wz-info-compact .with-info{align-items:flex-start;min-width:0;white-space:normal}
-.wz-info-compact .info{width:16px;height:16px;font-size:10px}
-.wz-info-compact + .help-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
+.tools-info-compact .with-info{align-items:flex-start;min-width:0;white-space:normal}
+.tools-info-compact .info{width:16px;height:16px;font-size:10px}
+.tools-info-compact + .help-text{margin:5px 0 3px;padding:8px 10px;border:1px solid var(--line);
   border-radius:6px;background:var(--panel);white-space:normal;line-height:1.5}
 /* NUR der Abstand. Vorher stand hier zusaetzlich `display:flex` — und weil die
    Regel weiter unten steht als `.grid2`/`.grid3`, gewann sie bei gleicher
-   Spezifitaet: die beiden Stellen, die ausdruecklich `wz-action gitter2` bzw.
-   `gitter3 wz-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
+   Spezifitaet: die beiden Stellen, die ausdruecklich `tools-action grid2` bzw.
+   `grid3 tools-action` schreiben, bekamen nie ihre gleichen Spalten. Sichtbar
    war das als Knopfreihe in Textbreite — genau die Ungleichheit, die die
-   Klasse verhindern sollte. Wer eine Reihe will, schreibt `reihe` dazu. */
-.wz-action{margin:13px 0}
-.wz-main-action{display:flex;align-items:center;gap:8px;padding:8px 15px}
-.wz-main-action .wz-symbol{width:16px;height:16px}
+   Klasse verhindern sollte. Wer eine Reihe will, schreibt `row` dazu. */
+.tools-action{margin:13px 0}
+.tools-main-action{display:flex;align-items:center;gap:8px;padding:8px 15px}
+.tools-main-action .tools-symbol{width:16px;height:16px}
 
-.wz-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));
+.tools-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));
   gap:8px;max-width:880px;margin:12px 0}
-.wz-metric{min-height:68px;display:flex;flex-direction:column;justify-content:center;
+.tools-metric{min-height:68px;display:flex;flex-direction:column;justify-content:center;
   padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-metric strong{font:700 20px/1.1 var(--mono);color:var(--text)}
-.wz-metric span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
-.wz-metric.error{border-color:#EF444466;background:#EF44440B}
-.wz-metric.error strong{color:var(--err)}
-.wz-metric.hint{border-color:#F59E0B66;background:#F59E0B0B}
-.wz-metric.hint strong{color:var(--accent)}
-.wz-success{max-width:880px;display:flex;align-items:center;gap:12px;padding:15px 16px;
+.tools-metric strong{font:700 20px/1.1 var(--mono);color:var(--text)}
+.tools-metric span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.tools-metric.error{border-color:#EF444466;background:#EF44440B}
+.tools-metric.error strong{color:var(--err)}
+.tools-metric.hint{border-color:#F59E0B66;background:#F59E0B0B}
+.tools-metric.hint strong{color:var(--accent)}
+.tools-success{max-width:880px;display:flex;align-items:center;gap:12px;padding:15px 16px;
   margin-top:14px;border:1px solid #3ED07A77;border-radius:9px;background:#3ED07A0D;color:var(--ok)}
-.wz-success .wz-symbol{width:26px;height:26px}
-.wz-success div{display:flex;flex-direction:column}
-.wz-success b{color:var(--text)}
-.wz-success span{font-size:11px;color:var(--muted)}
-.wz-subheader{max-width:880px;color:var(--dim);margin-top:18px}
+.tools-success .tools-symbol{width:26px;height:26px}
+.tools-success div{display:flex;flex-direction:column}
+.tools-success b{color:var(--text)}
+.tools-success span{font-size:11px;color:var(--muted)}
+.tools-subheader{max-width:880px;color:var(--dim);margin-top:18px}
 
-.wz-finding{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+.tools-finding{border:1px solid var(--line);border-radius:6px;padding:8px 10px;
   margin-top:8px;font-size:12px;display:grid;grid-template-columns:28px 1fr;gap:9px}
-.wz-finding.error{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
-.wz-finding.hint{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.wz-finding-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;
+.tools-finding.error{border-color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
+.tools-finding.hint{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.tools-finding-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;
   justify-content:center;background:#0002}
-.wz-finding-icon .wz-symbol{width:15px;height:15px}
-.wz-finding.error .wz-finding-icon{color:var(--err)}
-.wz-finding.hint .wz-finding-icon{color:var(--accent)}
-.wz-finding-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
-.wz-area{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.wz-ref{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;
+.tools-finding-icon .tools-symbol{width:15px;height:15px}
+.tools-finding.error .tools-finding-icon{color:var(--err)}
+.tools-finding.hint .tools-finding-icon{color:var(--accent)}
+.tools-finding-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tools-area{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tools-ref{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:10px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
-.wz-ref > .wz-area{flex-basis:100%}
-.wz-ref select{flex:1 1 260px;min-width:0;width:auto}
-.wz-ref > .btn{flex:none}
-.wz-preview{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
-.wz-preview:last-child{border-bottom:none}
-.wz-checked{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
+.tools-ref > .tools-area{flex-basis:100%}
+.tools-ref select{flex:1 1 260px;min-width:0;width:auto}
+.tools-ref > .btn{flex:none}
+.tools-preview{border-bottom:1px solid var(--line);padding:4px 0;font-size:12px}
+.tools-preview:last-child{border-bottom:none}
+.tools-checked{display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid var(--line);
   font-size:11.5px;color:var(--muted)}
-.wz-checked:last-child{border-bottom:none}
-.wz-checked .wz-symbol{width:14px;height:14px;color:var(--ok)}
+.tools-checked:last-child{border-bottom:none}
+.tools-checked .tools-symbol{width:14px;height:14px;color:var(--ok)}
 
 /* Der Bezug steht als Zeile UEBER dem Werkzeug, nicht als Fussnote darunter:
  * „worauf wirkt das" beantwortet man, bevor man den Knopf drueckt. Die Variante
  * fuer genau eine Sequenz ist abgesetzt (Akzentkante) — dort ist die Angabe eine
  * Entscheidung, bei „ganzer Bestand" nur eine Einordnung. */
-.wz-scope{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
+.tools-scope{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;
   border:1px solid var(--line);border-left-width:3px;border-radius:6px;
   padding:8px 11px;margin:10px 0 4px;color:var(--muted);max-width:880px;
   background:linear-gradient(90deg,#F59E0B0A,transparent)}
-.wz-scope.single{border-left-color:var(--accent);color:var(--text)}
-.wz-scope-badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+.tools-scope.single{border-left-color:var(--accent);color:var(--text)}
+.tools-scope-badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);flex:none}
 
 /* Die Farb-Rueckfrage: beide Farben nebeneinander, damit man entscheiden kann,
  * statt eine Zahl zu glauben. Ein Abstand von 40 sagt niemandem etwas - zwei
  * Quadrate schon. */
-.wz-color-question{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
+.tools-color-question{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
   border-top:1px solid var(--line);padding-top:8px;margin-top:4px}
-.wz-color-series{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
-.wz-color{width:22px;height:22px;border-radius:4px;border:1px solid var(--line);
+.tools-color-series{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.tools-color{width:22px;height:22px;border-radius:4px;border:1px solid var(--line);
   flex:none}
 
 /* ------------------------------------------------- Punkte nachklicken (Reiter)
  * Die Runde wird im SPIEL bedient, nicht hier: was hier steht, schlaegt man
  * mitten im Klicken nach. Deshalb Tabelle statt Absatz - ein Fliesstext zwingt
  * zum Lesen von vorn, und genau das tut dann niemand. */
-.wz-steps{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;
+.tools-steps{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;
   align-items:start;margin:10px 0}
-.wz-number{width:20px;height:20px;border-radius:50%;background:var(--accent);
+.tools-number{width:20px;height:20px;border-radius:50%;background:var(--accent);
   color:#1b1200;font-size:11px;font-weight:700;display:flex;align-items:center;
   justify-content:center;flex:none}
-.wz-step-text{font-size:13px;line-height:1.45}
+.tools-step-text{font-size:13px;line-height:1.45}
 
-.wz-keys{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:12px}
-.wz-keys td{padding:5px 6px;border-bottom:1px solid var(--line);
+.tools-keys{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:12px}
+.tools-keys td{padding:5px 6px;border-bottom:1px solid var(--line);
   vertical-align:baseline}
-.wz-keys tr:last-child td{border-bottom:none}
-.wz-key{font-family:var(--mono);font-size:11px;
+.tools-keys tr:last-child td{border-bottom:none}
+.tools-key{font-family:var(--mono);font-size:11px;
   white-space:nowrap;background:var(--sub);border:1px solid var(--line);
   border-radius:4px;padding:2px 6px;color:var(--text)}
-.wz-keys .wz-what{white-space:nowrap;color:var(--text)}
-.wz-keys .wz-why{color:var(--muted)}
+.tools-keys .tools-what{white-space:nowrap;color:var(--text)}
+.tools-keys .tools-why{color:var(--muted)}
 
 /* Die eine Regel, an der alles haengt: nichts wird geschrieben, bis jemand
  * uebernimmt. Als Kasten und nicht als Satz im Absatz - wer sie ueberliest,
  * haelt eine abgebrochene Runde fuer gespeichert. */
-.wz-rule{display:flex;gap:8px;align-items:flex-start;font-size:12px;
+.tools-rule{display:flex;gap:8px;align-items:flex-start;font-size:12px;
   border:1px solid var(--accent);border-radius:6px;padding:8px 10px;margin:10px 0;
   background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.wz-rule b{color:var(--accent)}
+.tools-rule b{color:var(--accent)}
 
 /* Aufnahme: dieselben Feldgrössen wie im Editor, aber als ruhiges Formular.
  * Der laufende Zustand ist nicht nur Text — Punkt, Rahmen und Stop-Knopf zeigen
  * auch beim schnellen Blick, dass der globale Hook gerade aktiv ist. */
-.wz-recording-form{max-width:880px;display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);
+.tools-recording-form{max-width:880px;display:grid;grid-template-columns:minmax(220px,2fr) minmax(130px,1fr);
   gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-recording-form .field{margin:0}
-.wz-recording-form .wz-recording-note{grid-column:1/-1}
-.wz-recording-form textarea{width:100%;resize:vertical;min-height:66px}
-.wz-recording-state{max-width:880px;display:flex;align-items:center;gap:11px;margin-top:12px;
+.tools-recording-form .field{margin:0}
+.tools-recording-form .tools-recording-note{grid-column:1/-1}
+.tools-recording-form textarea{width:100%;resize:vertical;min-height:66px}
+.tools-recording-state{max-width:880px;display:flex;align-items:center;gap:11px;margin-top:12px;
   padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.wz-recording-state > div{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
-.wz-recording-state b{color:var(--text)}
-.wz-recording-state span{font-size:11px;color:var(--muted);white-space:normal}
-.wz-rec-point{flex:none;width:11px;height:11px;border-radius:50%;background:var(--dim)}
-.wz-recording-state.running{border-color:#FB718577;background:#FB71850B}
-.wz-recording-state.running .wz-rec-point{background:#FB7185;box-shadow:0 0 0 5px #FB718522;
-  animation:wz-rec-puls 1.35s ease-in-out infinite}
-.wz-recording-button{flex:none}
-.wz-recording-output{max-width:880px;margin-top:10px;border:1px solid var(--line);
+.tools-recording-state > div{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
+.tools-recording-state b{color:var(--text)}
+.tools-recording-state span{font-size:11px;color:var(--muted);white-space:normal}
+.tools-rec-point{flex:none;width:11px;height:11px;border-radius:50%;background:var(--dim)}
+.tools-recording-state.running{border-color:#FB718577;background:#FB71850B}
+.tools-recording-state.running .tools-rec-point{background:#FB7185;box-shadow:0 0 0 5px #FB718522;
+  animation:tools-rec-pulse 1.35s ease-in-out infinite}
+.tools-recording-button{flex:none}
+.tools-recording-output{max-width:880px;margin-top:10px;border:1px solid var(--line);
   border-radius:8px;overflow:hidden;background:#080B10}
-.wz-output-header{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
+.tools-output-header{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
   border-bottom:1px solid var(--line);font:700 9.5px var(--mono);letter-spacing:.11em;
   color:var(--dim);background:#111722}
-.wz-output-counter{letter-spacing:0;color:var(--muted);font-weight:500}
-.wz-output-rows{min-height:96px;padding:6px 0;display:flex;flex-direction:column;
+.tools-output-counter{letter-spacing:0;color:var(--muted);font-weight:500}
+.tools-output-rows{min-height:96px;padding:6px 0;display:flex;flex-direction:column;
   justify-content:flex-end}
-.wz-output-row{display:grid;grid-template-columns:34px minmax(180px,1fr) 72px minmax(160px,.7fr);
+.tools-output-row{display:grid;grid-template-columns:34px minmax(180px,1fr) 72px minmax(160px,.7fr);
   align-items:center;gap:8px;min-height:28px;padding:3px 10px;font:11px var(--mono);
   color:var(--muted);border-left:2px solid transparent}
-.wz-output-row.new{color:var(--text);background:#FB718509;border-left-color:#FB7185}
-.wz-output-nr{text-align:right;color:var(--dim)}
-.wz-output-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wz-output-time{text-align:right;color:var(--end)}
-.wz-output-color-text{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
-.wz-output-color{font-size:15px;line-height:1;text-shadow:0 0 8px currentColor}
-.wz-output-empty{padding:0 12px 7px;font:11px var(--mono);color:var(--dim)}
-.wz-recording-flow{display:grid;grid-template-columns:auto 1fr;gap:10px 9px;font-size:11px;
+.tools-output-row.new{color:var(--text);background:#FB718509;border-left-color:#FB7185}
+.tools-output-nr{text-align:right;color:var(--dim)}
+.tools-output-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tools-output-time{text-align:right;color:var(--end)}
+.tools-output-color-text{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.tools-output-color{font-size:15px;line-height:1;text-shadow:0 0 8px currentColor}
+.tools-output-empty{padding:0 12px 7px;font:11px var(--mono);color:var(--dim)}
+.tools-recording-flow{display:grid;grid-template-columns:auto 1fr;gap:10px 9px;font-size:11px;
   line-height:1.45;color:var(--muted)}
-.wz-recording-flow b{color:var(--text);white-space:nowrap}
-@keyframes wz-rec-puls{50%{box-shadow:0 0 0 8px #FB71850A}}
+.tools-recording-flow b{color:var(--text);white-space:nowrap}
+@keyframes tools-rec-pulse{50%{box-shadow:0 0 0 8px #FB71850A}}
 @media(max-width:720px){
-  .wz-recording-form{grid-template-columns:1fr}
-  .wz-recording-form .wz-recording-note{grid-column:auto}
-  .wz-recording-state{align-items:flex-start;flex-wrap:wrap}
-  .wz-recording-button{width:100%}
-  .wz-output-row{grid-template-columns:28px minmax(120px,1fr) 60px}
-  .wz-output-color-text{grid-column:2/-1;padding-bottom:3px}
+  .tools-recording-form{grid-template-columns:1fr}
+  .tools-recording-form .tools-recording-note{grid-column:auto}
+  .tools-recording-state{align-items:flex-start;flex-wrap:wrap}
+  .tools-recording-button{width:100%}
+  .tools-output-row{grid-template-columns:28px minmax(120px,1fr) 60px}
+  .tools-output-color-text{grid-column:2/-1;padding-bottom:3px}
 }
 
 .recording-row{margin-top:4px}
@@ -1535,8 +1531,8 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
   gap: 8px;
 }
 
-.wz-color-list { display: flex; flex-direction: column; gap: 6px; }
-.wz-color-row {
+.tools-color-list { display: flex; flex-direction: column; gap: 6px; }
+.tools-color-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1546,7 +1542,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
   border-radius: 6px;
   background: var(--panel);
 }
-.wz-color-sample {
+.tools-color-sample {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
@@ -1607,8 +1603,8 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 .wait-remaining{font-variant-numeric:tabular-nums;color:var(--text)}
 
 /* ---------------------------------------------------------------- Bericht */
-/* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `wz-metrics`,
-   Karten sind `share-card`, die Spalten sind `abschnitt`. Eigene Klassen gibt
+/* Der achte Reiter baut mit dem, was da ist: Kennzahlen sind `tools-metrics`,
+   Karten sind `share-card`, die Spalten sind `section`. Eigene Klassen gibt
    es nur fuer die beiden Dinge, die es sonst nirgends gibt — die Rangzeile und
    die Sitzungsauswahl. */
 
@@ -1621,7 +1617,7 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
 /* Der Sprungknopf: klein, gedaempft, mit Pfeil — ein Weg, keine Aktion an den
    Daten. Ueberall dieselbe Gestalt: Befund, Rangzeile, Warnmarke. */
 .btn.jump{font-size:11px;padding:2px 8px;gap:5px}
-.wz-finding-jump{grid-column:2;display:flex}
+.tools-finding-jump{grid-column:2;display:flex}
 .badge-small.jump{cursor:pointer;font:inherit;font-family:var(--mono);font-size:9.5px}
 .badge-small.jump:hover{background:#FFFFFF88}
 /* Der gezeigte Punkt blinkt einmal — die Liste ist lang, und „da ist er"

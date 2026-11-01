@@ -14,9 +14,9 @@
   Zustand hält sie keinen: `S` ist die letzte Momentaufnahme aus der Brücke, jede
   Änderung geht als Befehl dorthin und kommt als neue Momentaufnahme zurück. Das
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
-  Umsortieren, Feldregeln) liegt in bridge.py und wird dort gemessen.
+  Umsortieren, Feldregeln) liegt in der Brücke (`bridge*.py`) und wird dort gemessen.
 -->
-  <link rel="stylesheet" href="styles.css?v=20260920-2">
+  <link rel="stylesheet" href="styles.css?v=20261004-1">
 </head>
 <body>
 <div class="app">
@@ -217,9 +217,9 @@
            `view` und `scanList`: er aendert nichts an den Daten. Die Buehne
            (Aufnahme, Zoom, Scrollstand) bleibt beim Umschalten stehen — es ist
            dasselbe Bild, nur eine andere Frage daran. -->
-      <div class="section" id="sec-scan-kind">
+      <div class="section">
         <span class="heading">SCAN-ART</span>
-        <div class="segment" id="scan-art">
+        <div class="segment" id="scan-kind">
           <button data-scan-kind="item">Items</button>
           <button data-scan-kind="boss">Bosse</button>
           <button data-scan-kind="icon">Icons</button>
@@ -328,7 +328,7 @@
           </div>
         </div>
       </div>
-      <div class="section klappbar" id="sec-modes">
+      <div class="section collapsible" id="sec-modes">
         <button class="collapse-header" data-collapse="modes">
           <span class="arrow"></span>
           <span class="heading grow">WAS EIN KLICK TUT</span>
@@ -342,7 +342,7 @@
           <p class="hint" id="scan-modes-back" hidden>Nochmal auf die
             markierte Kachel klicken (oder ESC) = zurück zum Auswählen.</p>
           <!-- Die Handgriffe, die man ZWISCHENDURCH macht, brauchen keinen
-               Modus (scan_direct in scans.py). Sie gehoeren hierher, weil hier
+               Modus (scan_direct in scan_interaction.py). Sie gehoeren hierher, weil hier
                steht, was ein Klick tut — aber als ⓘ und nicht als Absatz:
                ausgeschrieben standen sie unter jedem Blick auf die Kacheln,
                und wer sie kennt, liest sie trotzdem jedes Mal mit. -->
@@ -361,7 +361,7 @@
 
     <main class="scan-stage" id="scan-stage">
       <div class="scan-canvas-bar" id="scan-canvas-bar">
-        <button class="scan-tool" data-scan-tool="wahl">Auswählen</button>
+        <button class="scan-tool" data-scan-tool="choice">Auswählen</button>
         <!-- Die beiden Werkzeuge der Erkennungs-Scans. Sie stehen in derselben
              Leiste wie „Auswaehlen", weil sie dieselbe Frage beantworten: was
              tut ein Klick jetzt. Sichtbar nur bei Bossen und Icons — bei Slots
@@ -409,9 +409,9 @@
        traegt sie zusaetzlich, dass eine Kalibrierung eine VORSCHAU hat: in der
        Konsole scrollt die Liste weg, hier steht sie neben dem Knopf. -->
   <div class="cfg" id="view-tools" hidden>
-    <aside class="page left" id="wz-left"></aside>
-    <main class="cfg-middle" id="wz-middle"></main>
-    <aside class="page right" id="wz-right"></aside>
+    <aside class="page left" id="tools-left"></aside>
+    <main class="cfg-middle" id="tools-middle"></main>
+    <aside class="page right" id="tools-right"></aside>
   </div>
 
   <!-- Bericht: was die vergangenen Laeufe hinterlassen haben. Der Live-Run
@@ -476,7 +476,7 @@
   </footer>
 </div>
 
-<!-- Die Tastenkuerzel-Tafel. Gebaut aus `SHORTCUTS` in app.js — derselben
+<!-- Die Tastenkuerzel-Tafel. Gebaut aus `shortcutTable()` in app.js — derselben
      Tabelle, aus der die Scan-Modi ihre Buchstaben nehmen —, nicht als
      abgetippte Liste: ein Kuerzel, das im Code existiert und hier fehlt, ist
      dann ein Testfehler. -->
@@ -502,6 +502,6 @@
   </div>
 </div>
 
-  <script src="app.js?v=20260920-2"></script>
+  <script src="app.js?v=20261011-1"></script>
 </body>
 </html>
