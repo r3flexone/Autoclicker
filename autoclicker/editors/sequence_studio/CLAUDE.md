@@ -16,6 +16,7 @@ Begründungen zu diesem Bereich gehören hierher, nicht in die Wurzel.
   - `bridge_share.py`: Export/Import im Reiter „Teilen".
   - `bridge_tools.py`: prüfen, kalibrieren, Klick-Runde im Reiter „Werkzeuge".
   - `bridge_report.py`: Session-Logs und Ertrag im Reiter „Bericht".
+  - `bridge_remote.py`: Discord-Freigaben im Reiter „Fernstart" (schreibt `remote.json`).
   - `scans.py`: `ScanPart` fügt die Scan-Mixins zusammen.
   - `scan_contract.py`, `scan_state.py`, `scan_interaction.py`,
     `scan_learning.py`, `scan_library.py`: Scan-Protokoll und getrennte
@@ -101,7 +102,7 @@ Momentaufnahme, zeichnet sie, und schickt jede Änderung als Befehl zurück, der
 nächste Momentaufnahme liefert. Zwei Wahrheiten gäbe es sonst, und die gespeicherte
 wäre nicht zwingend die angezeigte.
 
-**Acht Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
+**Neun Ansichten, ein Fenster** (Umschaltleiste im Kopf). Welche offen ist, ist
 reiner Oberflächenzustand — er steht nicht in der Momentaufnahme und nicht in der
 Brücke, denn er ändert nichts an der Sequenz. Der Editor bleibt beim Umschalten im
 Dokument stehen (nur `hidden`), damit Scrollstand und ungespeicherte Eingaben den
@@ -116,6 +117,7 @@ Ausflug überleben.
 | Teilen | Bündel schreiben und einlesen | `share_data()` + `export_/import_*` |
 | Werkzeuge | prüfen, kalibrieren, Klick-Runde | `tool_data()` + `tool_/calib_*` |
 | Bericht | was die vergangenen Läufe hinterlassen haben | `report_data()` |
+| Fernstart | was ein Wort aus Discord auf diesem PC startet | `remote_data()` + `remote_*` |
 | Einstellungen | `config.json` bearbeiten | `config_read()` / `config_write()` |
 
 **Welche Sequenz offen ist, gilt in JEDEM Reiter — also steht die Auswahl
@@ -1466,6 +1468,18 @@ Zwei Tests halten die Verdrahtung fest, und beide prüfen **beide** Richtungen: 
 Zeile bleibt ohne Knopf), und jeder Rauchtest unter `tests/smoke/` muss in
 `SMOKE_TESTS` (`tests/all_tests.py`) stehen — eine getippte Liste ist genau die
 Stelle, an der eine neue Datei vergessen wird, und der Lauf bleibt dabei grün.
+
+**Der Reiter „Fernstart" schreibt sofort, nicht auf Knopfdruck** — anders als
+die Einstellungen. Dort greifen die Werte in einen laufenden Lauf, und eine halb
+getippte Zahl darf nicht gelten; hier gibt es nichts Halbes: ein Wort ist
+freigegeben oder nicht, und der Bot liest `remote.json` von selbst neu. Drei
+Regeln: der Token kommt nie in die Seite zurück (nur `token_set`); die rechte
+Spalte (was der Bot meldet) zieht alle drei Sekunden nach, und nur sie — links
+und in der Mitte wird getippt; „Bereit?" listet alle sieben Bedingungen, an
+denen ein Fernstart still scheitern kann, denn „es passiert nichts" sucht man
+sonst an der falschen. Jeder Aufruf steht als `ask("remote_…")` da und nicht
+hinter einem eigenen Helfer, damit ihn der Test sieht, der die Seite gegen die
+Brücke hält. Die Gründe für den Fernstart selbst: `autoclicker/CLAUDE.md`.
 
 **Die Einstellungen bearbeiten eine andere Datei als der Rest des Fensters.** Das ist
 der ganze Grund, warum das Sequenz-Speichern im Kopf dort verschwindet: zwei

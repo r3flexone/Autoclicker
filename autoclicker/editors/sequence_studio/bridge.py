@@ -12,6 +12,7 @@ from typing import Optional
 from ...models import Sequence
 from .bridge_contract import _mtime
 from .bridge_report import BridgeReportMixin
+from .bridge_remote import BridgeRemoteMixin
 from .bridge_editing import BridgeEditingMixin
 from .bridge_services import BridgeServicesMixin
 from .bridge_share import BridgeShareMixin
@@ -23,6 +24,7 @@ from .scans import ScanPart
 
 class StudioBridge(
     BridgeReportMixin,
+    BridgeRemoteMixin,
     BridgeEditingMixin,
     BridgeServicesMixin,
     BridgeShareMixin,

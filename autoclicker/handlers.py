@@ -925,6 +925,132 @@ def command_schedule(state: AutoClickerState, arguments: dict) -> None:
     _start_schedule(state, time_text)
 
 
+# ---------------------------------------------------------------------------
+# Fernstart über Discord (`autoclicker/remote/`)
+# ---------------------------------------------------------------------------
+# Der Bot legt Aufträge ab, abgeholt werden sie im Main-Thread (`main.py`),
+# ausgeführt HIER. Bewusst eine eigene, kleine Tabelle statt `COMMANDS`: was
+# der Briefkasten des Studios kann (Einstellungen schreiben, Werkzeuge,
+# Programm beenden), soll aus einem Chat nicht erreichbar sein — auch dann
+# nicht, wenn im Bot ein Fehler steckt. Jeder Eintrag gibt (geklappt?,
+# Antwortzeile, Sequenz) zurück; die Zeile steht danach im Kanal.
+
+def _remote_permission(arguments: dict):
+    """Die Freigaben von Platte — oder der Grund, warum dieser Auftrag nicht gilt.
+
+    Geprüft wird hier ein zweites Mal, was der Bot schon geprüft hat: Schalter
+    und Absender. Geglaubt wird ihm nicht — die Datei ist die Wahrheit, und
+    zwischen seiner Prüfung und dieser kann sie sich geändert haben.
+    """
+    from .remote.settings import load_settings, user_allowed
+    settings = load_settings()
+    if not settings.enabled:
+        return None, "❌ Fernstart ist hier aus"
+    if not user_allowed(settings, arguments.get("sender_id")):
+        return None, "❌ nicht freigegeben"
+    return settings, ""
+
+
+def _remote_busy(state: AutoClickerState) -> str:
+    """Warum hier gerade nichts aus der Ferne startet — oder ""."""
+    with state.lock:
+        if state.recording_active:
+            return "hier läuft gerade eine Aufnahme"
+        if state.reclick_active:
+            return "hier läuft gerade eine Klick-Runde"
+        if state.is_running or state.countdown_active:
+            return "hier läuft schon etwas"
+    # **Ohne Fensterfokus-Prüfung startet nichts aus der Ferne.** Wer den Start
+    # auslöst, sitzt nicht vor diesem Bildschirm; ohne die Prüfung klickte die
+    # Sequenz in das Fenster, das der Besitzer gerade benutzt.
+    if not state.config.window_focus_check:
+        return "Fensterfokus-Prüfung ist aus — ohne sie startet hier nichts aus der Ferne"
+    return ""
+
+
+def _remote_target(arguments: dict) -> tuple:
+    """Die Startzeit — oder der Grund, warum sie nicht taugt."""
+    from .remote.settings import LEAD_SECONDS
+    try:
+        target = float(arguments.get("target"))
+    except (TypeError, ValueError):
+        return None, "❌ ohne Startzeit"
+    now = time.time()
+    if target < now + 0.5:
+        return None, "⏰ Startzeit ist schon vorbei — nicht gestartet"
+    # Später als der Vorlauf kann kein echter Auftrag liegen: die Startzeit
+    # kommt aus dem Zeitstempel der Nachricht, und die ist schon da.
+    if target > now + LEAD_SECONDS + 5:
+        return None, "❌ Startzeit liegt zu weit in der Zukunft"
+    return target, ""
+
+
+def remote_start(state: AutoClickerState, arguments: dict) -> tuple:
+    """`!start <wort>` aus Discord: die freigegebene Sequenz zum genannten Zeitpunkt.
+
+    Derselbe Countdown wie beim Zeitplan — CTRL+ALT+S bricht ihn ab, das Studio
+    zeigt ihn im Live-Run. Die Sequenz kommt frisch von Platte, wie bei jedem
+    Start aus dem Studio.
+    """
+    from .remote.bot import discord_time
+    from .remote.settings import clean_word, sequence_for
+    settings, refusal = _remote_permission(arguments)
+    if settings is None:
+        return False, refusal, ""
+    word = clean_word(arguments.get("word"))
+    name = sequence_for(settings, word)
+    if name is None:
+        return False, f"❌ `{word or '?'}` ist hier nicht freigegeben", ""
+    target, refusal = _remote_target(arguments)
+    if target is None:
+        return False, refusal, ""
+    refusal = _remote_busy(state)
+    if refusal:
+        return False, f"❌ {refusal}", ""
+    path = find_sequence_path(name)
+    seq = load_sequence_file(path) if path is not None else None
+    if seq is None:
+        return False, f"❌ die Sequenz `{name}` fehlt auf diesem PC", ""
+    activate_sequence(state, seq)
+    with state.lock:
+        # Ein Haltepunkt fragt in der Konsole, wie nach einem Hotkey-Start.
+        state.run_from_studio = False
+        # Ein im Studio angefangener Schrittmodus gilt nicht für diesen Lauf —
+        # dieselbe Regel wie bei `command_start`. Wer aus der Ferne startet,
+        # sitzt nicht da, um jeden Block zu bestätigen.
+        if state.step_via_studio:
+            state.step_mode = False
+            state.step_via_studio = False
+    sender = str(arguments.get("sender") or "?")
+    clock = time.strftime("%H:%M:%S", time.localtime(target))
+    print(f"\n{col('[DISCORD]', 'magenta')} {sender} startet '{seq.name}' um {clock} "
+          f"{hint('(CTRL+ALT+S bricht ab)')}")
+    if not _start_countdown(state, target, f"um {clock} (Discord: {sender})"):
+        return False, "❌ hier läuft schon etwas", ""
+    return True, f"⏳ `{seq.name}` startet um {discord_time(target)}", seq.name
+
+
+def remote_stop(state: AutoClickerState, arguments: dict) -> tuple:
+    """`!stop` oder 🛑 aus Discord — hält Lauf oder Countdown an, startet nie."""
+    settings, refusal = _remote_permission(arguments)
+    if settings is None:
+        return False, refusal, ""
+    with state.lock:
+        running = state.is_running or state.countdown_active
+        if running:
+            state.stop_event.set()
+    if not running:
+        return False, "💤 hier lief nichts", ""
+    print(f"\n{col('[DISCORD]', 'magenta')} {arguments.get('sender') or '?'} stoppt die Sequenz.")
+    return True, "⏹️ gestoppt", ""
+
+
+REMOTE_COMMANDS = {
+    "start": remote_start,
+    "stop": remote_stop,
+}
+
+
 def command_show(state: AutoClickerState, arguments: dict) -> None:
     """Setzt die Maus auf eine Stelle — „sitzt der Punkt noch da, wo er soll?".
 

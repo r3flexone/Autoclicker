@@ -1181,6 +1181,25 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .share-row .num{margin-left:auto}
 .share-list{display:flex;flex-direction:column;gap:4px}
 
+/* --------------------------------------------------------------- Fernstart
+   Gebaut aus dem, was da ist: Karten sind `share-card`, die Spalten `section`,
+   die Hakenliste `tools-checked`. Eigen ist nur die Zeile — Wort, Pfeil, Sequenz,
+   Knopf auf einer Flucht —, und die Lampe für einen Fehler. */
+.rem-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px}
+.rem-row select,.rem-row input{flex:1;min-width:0}
+.rem-row + .rem-row{border-top:1px solid var(--line)}
+.rem-row.missing .rem-word{color:var(--accent)}
+.rem-add{margin-top:6px;padding-top:10px;border-top:1px solid var(--line)}
+.rem-word{font-family:var(--mono);font-size:11.5px;color:var(--text);white-space:nowrap;flex:none}
+.rem-card-head{margin-bottom:4px}
+.rem-card-head h3{margin-bottom:0}
+.rem-wide{max-width:720px;margin-bottom:12px}
+.rem-check .icon{color:var(--dim)}
+.rem-check.ok .icon{color:var(--ok)}
+.rem-log{display:flex;align-items:baseline;gap:8px;font-size:12px;padding:3px 0}
+.rem-log.refused{color:var(--dim)}
+.lamp.err{background:var(--err);box-shadow:0 0 0 4px #EF444426}
+
 /* ------------------------------------------------------------ Einstellungen */
 .cfg{flex:1;display:flex;min-height:0}
 .cfg-middle{flex:1;min-width:0;overflow-y:auto;padding:14px 20px 40px}

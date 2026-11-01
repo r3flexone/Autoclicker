@@ -1,4 +1,4 @@
-# autoclicker — Bilderkennung, Katalog, Session-Log, Import/Export
+# autoclicker — Bilderkennung, Katalog, Session-Log, Import/Export, Fernstart
 
 Details zur `CLAUDE.md` im Wurzelordner — dort stehen Befehle, Architektur
 und die Regeln, die überall gelten. Claude Code lädt diese Datei, sobald eine
@@ -352,3 +352,101 @@ es die Marker-Farben.
   mit Punkt-IDs und keine eigenen Regionen — ihre Punkte stehen in der
   `sequence.json` und werden dort genau einmal umgerechnet. Mitgerechnet wäre
   jeder Bibliotheks-Klick zweimal verschoben.
+
+## Fernstart über Discord (`remote/`)
+
+**Wozu:** mehrere PCs, jeder mit eigenem Autoclicker, starten dieselbe
+Sequenz im selben Augenblick — ausgelöst von einer Nachricht in einem
+gemeinsamen Kanal (`!start raid`). Alle PCs teilen sich **einen** Bot (ein
+Token); wer starten darf und was ein Wort startet, legt jeder PC **für sich**
+fest. Der Nutzer hat das so gewollt, mit einer Bedingung, an der alles hier
+hängt: **über Discord darf nichts auf dem PC verändert werden**, und eine
+Freigabe trägt der Besitzer selbst im Studio ein.
+
+Die Entscheidungen, und warum:
+
+- **Abfragen statt Dauerverbindung, Text statt Knöpfe.** Ein Discord-Knopf
+  (Interaktion) geht an genau EINE Verbindung des Bots — teilen sich mehrere
+  PCs den Bot, erfährt nur einer vom Klick. Eine Nachricht lesen dagegen alle,
+  und nur eine Nachricht trägt den Zeitstempel, aus dem jeder PC dieselbe
+  Startzeit rechnet. „Knopf“ ist deshalb die Reaktion 🛑 zum Anhalten: die
+  liest jeder, und beim Anhalten ist die Zeit egal.
+- **`urllib` statt `discord.py`.** Sieben Anfragen reichen
+  (`remote/discord.py`). Eine Bibliothek brächte asyncio, aiohttp und fremden
+  Code mit, der die Daten aus dem Netz verarbeitet — dieselbe Abwägung wie in
+  `llm_vision.py`. Discord verlangt einen `User-Agent` der Form
+  `DiscordBot (url, version)`; mit dem von urllib weist die Firewall davor ab.
+- **Startzeit = Zeitstempel der Nachricht + 20 s** (`LEAD_SECONDS`). Der
+  Zeitstempel steckt in der ID (`snowflake_time`, auf die Millisekunde). Der
+  Vorlauf ist **Protokoll, keine Einstellung**: zwei PCs mit verschiedenem
+  Wert starteten genau dann versetzt, wenn es darauf ankommt. Die Uhr muss
+  stimmen; der Bot misst die Abweichung am `Date`-Kopf (sekundengenau) und
+  das Studio warnt ab 2 s — korrigiert wird nicht, dafür ist der Kopf zu grob.
+- **Ein Thread im Hauptprozess, kein Subprozess.** Er stirbt mit dem
+  Programm; ein Bot-Prozess, der ein abgestürztes `main.py` überlebt, würde im
+  Kanal weiter Aufträge annehmen, die niemand ausführt. Blockieren kann er
+  nichts: jede Anfrage hat ein Zeitlimit, gewartet wird nur im Thread. Er
+  startet immer (`_start_remote()` in `main.py`) und schläft ohne Freigaben;
+  `remote.json` liest er bei jeder Änderung neu (am Zeitstempel) — ein
+  Briefkasten-Befehl „neu laden“ ist dafür nicht nötig.
+- **Eigene Befehlstabelle statt Briefkasten.** Der Bot legt `Order`s in eine
+  Warteschlange; der Main-Thread holt sie in derselben Schleife wie die
+  Hotkeys (`_check_remote`) und führt sie über `REMOTE_COMMANDS` aus — zwei
+  Einträge, `start` und `stop`. Der Briefkasten (`COMMANDS`) kann
+  Einstellungen schreiben, Werkzeuge starten und das Programm beenden; nichts
+  davon soll aus einem Chat erreichbar sein, auch nicht über einen Fehler im
+  Bot. Ein Handler gibt `(geklappt?, Antwortzeile, Sequenz)` zurück, die Zeile
+  steht danach im Kanal.
+- **Der Hauptprozess glaubt dem Bot nicht.** `remote_start` prüft selbst
+  noch einmal gegen die Datei: Schalter, Absender-ID, Wort, Startzeit (nicht
+  vorbei, nicht weiter als der Vorlauf in der Zukunft), Aufnahme/Klick-Runde/
+  Lauf — und **ohne `window_focus_check` startet aus der Ferne nichts**: wer
+  startet, sitzt nicht vor diesem Bildschirm, und ohne die Prüfung klickte die
+  Sequenz in das Fenster, das gerade vorn ist. Gestartet wird über
+  `_start_countdown` — derselbe Countdown wie beim Zeitplan, `CTRL+ALT+S`
+  bricht ihn ab, das Studio zeigt ihn im Live-Run.
+- **`remote.json` statt `config.json`.** Darin stehen Token und Freigaben. Die
+  `config.json` reist mit jedem Export-Bündel zum Mitspieler und wird beim
+  Import überschrieben — eine Freigabe, die so mitreist, brächte ein fremdes
+  Bündel gleich „freigegeben“ mit. Aus demselben Grund steht die Freigabe
+  nicht in der `sequence.json`. Die Datei ist `.gitignore`d; eine unlesbare
+  wird gemeldet und **nicht** überschrieben (darin steht ein Token). Den Token
+  bekommt die Seite des Studios nie zurück, nur `token_set`.
+- **Nie nachfeuern.** Beim Verbinden gilt die neueste Nachricht als gelesen;
+  ein `!start`, dessen Startzeit vorbei ist (weniger als `MIN_REMAINING`
+  übrig), startet nicht und sagt das; ein `!stop`/`!status` über eine Minute
+  alt wird nicht beantwortet. Wird der Fernstart ausgeschaltet, verfallen
+  Antworten, die der Hauptprozess noch geschickt hat — später nachgereicht
+  wären sie Antworten auf eine Frage von gestern.
+- **Fremde bekommen keine Antwort.** Es zählt die Discord-ID, nie der Name.
+  Ein nicht freigegebener Absender erfährt nichts, steht aber im Studio unter
+  „Zuletzt im Kanal“ mit einem „erlauben“-Knopf: die ID muss niemand im
+  Entwicklermodus heraussuchen. Ein Echo steht in der Antwort nur in der Form,
+  die `clean_word()` übersteht, und `allowed_mentions` ist leer — der Bot pingt
+  niemanden an, auch nicht mit `@everyone` aus einer fremden Nachricht.
+- **Die Antwortzeile wandert mit, aber nur beim Phasenwechsel**
+  (`describe_run`: Countdown → läuft → fertig/abgebrochen). Klickzahlen im
+  Fünf-Sekunden-Takt nachzutragen verbrauchte Discords Grenze für Änderungen
+  mit Rauschen. Die Uhrzeit steht als `<t:…:T>` darin — Discord zeigt sie
+  jedem Leser in seiner eigenen Zeitzone.
+- **🛑 ist ein einzelnes Zeichen** (U+1F6D1). Bei ⏹ hängt eine
+  Variantenauswahl (U+FE0F) daran, und ob Discord die Reaktion eines Menschen
+  als dasselbe Emoji führt wie die des Bots, hinge an diesem Zeichen.
+- **Inhalts-Schalter.** Ohne „Message Content Intent“ liefert Discord Text,
+  Anhänge und Einbettungen leer aus; eine getippte Nachricht ganz ohne Inhalt
+  (`looks_stripped`) ist deshalb das Zeichen dafür, und Bot wie Studio sagen
+  es. Systemnachrichten (Typ ≠ 0/19) zählen nicht.
+
+**Was die Grenze hält, steht im Test** (`tests/contract/remote.py`):
+`bot.py` importiert aus dem Programm nur `utils`, `discord`, `settings`,
+erwähnt keine Speicherfunktion und keinen Briefkasten, schreibt per
+`atomic_write` nur `self._status_path` und sonst keine Datei;
+`_check_remote` in `main.py` kennt nur `REMOTE_COMMANDS`. Jede Sicherung im
+Bot, in den Handlern und in der Brücke wurde beim Bau einmal entschärft, und
+jedes Mal wurde ein Test rot (22 Gegenproben).
+
+**Gegen das echte Discord lief der Bot beim Bau nicht** — es gab keinen Token.
+Geprüft ist er gegen einen nachgebauten Kanal und einen nachgebauten Server.
+Wer ihn zum ersten Mal echt einsetzt, prüft zuerst mit „Verbindung prüfen“ im
+Studio und dann `!status` im Kanal; das deckt Token, Kanalrechte und den
+Inhalts-Schalter ab, bevor etwas startet.

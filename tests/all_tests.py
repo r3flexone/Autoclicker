@@ -59,7 +59,7 @@ for _stream in (sys.stdout, sys.stderr):
 # die Scans zeigen, dann die Reiter darum herum.
 SMOKE_TESTS = ("items", "detection", "sequences", "share", "tools",
               "report", "sequence_delete", "catalog", "live_run", "next_sequence",
-              "guidance")
+              "guidance", "remote")
 
 LAYERS = ("contract", "root", "smoke")
 

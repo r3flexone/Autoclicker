@@ -14,7 +14,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 # Modulare Imports
-from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE
+from autoclicker.config import CONFIG, SEQUENCES_DIR, CONFIG_FILE, RUN_STATUS_FILE
 from autoclicker.models import AutoClickerState
 from autoclicker.winapi import (
     HOTKEY_RECORD, HOTKEY_UNDO, HOTKEY_CLEAR, HOTKEY_RESET,
@@ -45,9 +45,11 @@ from autoclicker.handlers import (
     handle_record_color, handle_record_screenshot,
     handle_rec_phase, handle_rec_region, handle_rec_watch,
     handle_sequence_studio, handle_studio_scans, reload_if_pending,
-    start_next_if_pending, COMMANDS
+    start_next_if_pending, COMMANDS, REMOTE_COMMANDS
 )
 from autoclicker.mailbox import fetch_command, discard_command
+from autoclicker.remote.bot import start_bot
+from autoclicker.remote.settings import load_settings as load_remote_settings
 
 
 def print_banner() -> None:
@@ -188,6 +190,7 @@ def _check_commands(state) -> None:
     run_safely("Nachladen nach dem Lauf", reload_if_pending, state)
     # Eine Sequenz ist regulär fertig und nennt eine Folgesequenz.
     run_safely("Folgesequenz", start_next_if_pending, state)
+    _check_remote(state)
 
     command = fetch_command()
     if command is None:
@@ -202,6 +205,58 @@ def _check_commands(state) -> None:
     # blockiert nicht — er lädt höchstens eine Datei und startet einen Thread.
     # Würde hier geflusht, verschluckte ein zufällig gleichzeitiger Tastendruck.
     run_safely(f"Befehl '{name}' aus dem Studio", fn, state, command["arguments"])
+
+
+# Der Discord-Bot (`autoclicker/remote/`), sobald `main()` ihn gestartet hat.
+# Ein Modul-Global wie `_command_last`: es gibt genau einen, und der Import
+# dieses Moduls (Tests) darf ihn nicht starten.
+_remote_bot = None
+
+
+def _check_remote(state) -> None:
+    """Holt einen Auftrag des Discord-Bots ab und sagt ihm, was daraus wurde.
+
+    Im Main-Thread, wie ein Hotkey und wie ein Befehl aus dem Studio — aber
+    über `REMOTE_COMMANDS`, nicht `COMMANDS`: aus dem Chat sind genau Start und
+    Stopp erreichbar. Ein Fehler darin wird gemeldet, im Kanal wie hier.
+    """
+    if _remote_bot is None:
+        return
+    order = _remote_bot.fetch_order()
+    if order is None:
+        return
+    fn = REMOTE_COMMANDS.get(order.command)
+    if fn is None:
+        return
+    try:
+        ok, text, sequence = fn(state, order.arguments)
+    except Exception as error:                                   # noqa: BLE001
+        logging.getLogger("autoclicker").exception("Fernstart fehlgeschlagen")
+        print(err(f"Fernstart fehlgeschlagen: {type(error).__name__}: {error}"))
+        ok, text, sequence = False, "❌ Fehler auf diesem PC", ""
+    _remote_bot.answer(order, ok, text, sequence)
+
+
+def _start_remote() -> None:
+    """Startet den Discord-Bot — erst, wenn die Schleife seine Aufträge abholt.
+
+    Was vor dem Start im Kanal stand, gilt ihm als gelesen. Ohne Freigaben
+    schläft er nur (`remote.json` fehlt oder der Schalter ist aus) und wacht
+    auf, sobald das Studio sie schreibt — ein Neustart ist dafür nicht nötig.
+    """
+    global _remote_bot
+    _report_remote()
+    _remote_bot = start_bot(RUN_STATUS_FILE)
+
+
+def _report_remote() -> None:
+    """Eine Zeile, wenn der Fernstart an ist — wer mitliest, soll es wissen."""
+    settings = load_remote_settings()
+    if settings.error:
+        print(warn(f"[DISCORD] {settings.error}"))
+    elif settings.enabled:
+        print(col(f"[DISCORD] Fernstart an — {len(settings.words)} Wort/Wörter, "
+                  f"{len(settings.users)} Person(en) freigegeben", 'magenta'))
 
 
 def run_safely(what: str, fn, *arguments) -> None:
@@ -323,6 +378,8 @@ def main() -> int:
     # Altersregel in mailbox.py fängt das meiste ab, aber nicht die letzten
     # Sekunden davor.
     discard_command()
+
+    _start_remote()
 
     # Erst NACH dem Leeren des Briefkastens: der automatisch geoeffnete Editor
     # kann sehr schnell „Starten" senden. Stuende dieser Aufruf weiter oben,

@@ -767,11 +767,12 @@ function setView(next, navigated) {
   $("view-share").hidden = next !== "share";
   $("view-tools").hidden = next !== "tools";
   $("view-report").hidden = next !== "report";
+  $("view-remote").hidden = next !== "remote";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
   // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
   for (const n of document.querySelectorAll("[data-sequence]"))
     n.hidden = ["settings", "scans", "share", "tools",
-                "report"].includes(next);
+                "report", "remote"].includes(next);
   // Versteckt hat das Board keine Masse — die Leiste rechnet erst, wenn es da ist.
   if (next === "editor") requestAnimationFrame(updateBoardEdges);
   if (next === "scans") renderScans(!SC);
@@ -786,6 +787,9 @@ function setView(next, navigated) {
   // Bei jedem Oeffnen frisch von Platte: der Hauptprozess schreibt dieselbe
   // Datei (Debug-Stufen, Import, Factory Reset).
   if (next === "settings") renderSettings(true);
+  // Frisch beim Oeffnen und danach alle drei Sekunden die rechte Spalte:
+  // was im Kanal passiert, schreibt der Bot im Hauptprozess mit.
+  setRemotePolling(next === "remote");
   setRunPolling(next === "run");
 }
 
@@ -7952,6 +7956,330 @@ function toolsRenderRight() {
   if (!rows.length)
     listEl.appendChild(el("div", {class: "hint"}, "Nichts, was sich ändern würde."));
   target.replaceChildren(head, listEl);
+}
+
+/* ------------------------------------------------------------- Fernstart
+ *
+ * Was ein Wort im gemeinsamen Discord-Kanal auf DIESEM PC startet. `R` ist die
+ * Antwort von `remote_data()` — den Token enthaelt sie nie, nur ob einer
+ * eingetragen ist. Jede Aenderung geht sofort nach `remote.json`: es gibt
+ * keinen Lauf, den eine halbe Eingabe stoeren koennte, und der Bot im
+ * Hauptprozess liest die Datei von selbst neu.
+ *
+ * Jeder Aufruf steht als `ask("remote_…")` da und nicht hinter einem eigenen
+ * Helfer — so sieht ihn der Test, der die Seite gegen die Bruecke haelt. */
+let R = null;
+let remPolling = null;
+// Der Token wird ersetzt: das Feld ist offen, obwohl schon einer eingetragen ist.
+let remTokenOpen = false;
+
+const REM_SETUP_HELP =
+  "Einmal, von dem, der den Bot anlegt: discord.com/developers → New Application → "
+  + "Bot: „Reset Token“ und kopieren, „Message Content Intent“ EIN, „Public Bot“ AUS. "
+  + "Dann OAuth2 → URL Generator: Scope „bot“, Rechte „View Channels“, „Send Messages“, "
+  + "„Read Message History“, „Add Reactions“ — den Link öffnen und den Bot in euren "
+  + "Server holen. Jeder PC trägt danach denselben Token und die Kanal-ID ein "
+  + "(Discord: Einstellungen → Erweitert → Entwicklermodus, dann Rechtsklick auf den "
+  + "Kanal → „Kanal-ID kopieren“).";
+
+function setRemotePolling(on) {
+  if (remPolling) { clearInterval(remPolling); remPolling = null; }
+  if (!on) return;
+  renderRemote();
+  remPolling = setInterval(remRefreshRight, 3000);
+}
+
+async function renderRemote() {
+  const answer = await ask("remote_data");
+  if (!answer || view !== "remote") return;
+  remAdopt(answer);
+}
+
+/** Uebernimmt eine Antwort der Bruecke und zeichnet alle drei Spalten. */
+function remAdopt(answer) {
+  if (!answer) return;
+  R = answer;
+  const memo = rememberFocus();
+  remRenderLeft();
+  remRenderMiddle();
+  remRenderRight();
+  restoreFocus(memo);
+  if (answer.message) setStatus({text: answer.message, kind: answer.kind || "ok"});
+}
+
+/** Nur die rechte Spalte nachziehen — links und in der Mitte wird getippt. */
+async function remRefreshRight() {
+  if (view !== "remote") return;
+  const answer = await ask("remote_data");
+  if (!answer || view !== "remote") return;
+  R = answer;
+  remRenderRight();
+}
+
+function remClock(at) {
+  return new Date(at * 1000).toLocaleTimeString("de-DE");
+}
+
+function remAgo(at) {
+  const sec = Math.max(0, Math.round(Date.now() / 1000 - at));
+  if (sec < 90) return "vor " + sec + " s";
+  if (sec < 5400) return "vor " + Math.round(sec / 60) + " min";
+  if (sec < 172800) return "vor " + Math.round(sec / 3600) + " h";
+  return "vor " + Math.round(sec / 86400) + " Tagen";
+}
+
+/* -------------------------------------------------------------- links */
+
+function remRenderLeft() {
+  const s = R.settings;
+  const head = el("div", {class: "section sticky"},
+    heading("VERBINDUNG", REM_SETUP_HELP, "rem-setup"),
+    toggle(s.enabled ? "Fernstart an" : "Fernstart aus", s.enabled,
+      async (v) => remAdopt(await ask("remote_set", {field: "enabled", value: v})),
+      "Aus: der Bot liest den Kanal nicht, und aus der Ferne startet nichts. "
+      + "An: es gelten die Wörter und Personen in der Mitte — sonst nichts.",
+      "rem-enabled"));
+  if (R.error) head.appendChild(el("p", {class: "hint warning"}, R.error));
+
+  const body = el("div", {class: "section", id: "rem-connection"},
+    remTokenField(s),
+    remTextField("Kanal-ID", s.channel_id, "z. B. 123456789012345678", "channel_id",
+      "Der Kanal, den alle PCs lesen. Rechtsklick auf den Kanal → „Kanal-ID "
+      + "kopieren“ (dafür in Discord den Entwicklermodus einschalten)."),
+    remTextField("Name dieses PCs", s.pc_name, s.pc_default, "pc_name",
+      "So steht dieser PC in den Antworten im Kanal — bei einem gemeinsamen Bot "
+      + "sieht man nur daran, welcher PC was gemeldet hat. Leer: der Benutzername."),
+    el("button", {class: "btn wide", onclick: remCheck}, icon("refresh"),
+      "Verbindung prüfen"));
+  $("rem-left").replaceChildren(head, body, remChecklist());
+}
+
+function remTokenField(s) {
+  const help = "Der Zugang, mit dem dieser PC den Kanal liest. Er bleibt in remote.json "
+    + "auf diesem PC — nicht in der config.json, nicht im Export, und dieses Fenster "
+    + "zeigt ihn nach dem Speichern nie wieder an.";
+  if (s.token_set && !remTokenOpen) {
+    return el("div", {class: "field"}, labeled("Bot-Token", help, "rem-token"),
+      el("div", {class: "row"},
+        el("span", {class: "grow overview-ok"}, icon("check"), "eingetragen"),
+        el("button", {class: "btn quiet",
+          onclick: () => { remTokenOpen = true; remRenderLeft(); }}, "ersetzen"),
+        el("button", {class: "btn quiet", onclick: async () =>
+          remAdopt(await ask("remote_token", {token: ""}))}, "entfernen")));
+  }
+  const input = el("input", {type: "password", autocomplete: "off",
+                             placeholder: "Token aus dem Developer-Portal"});
+  const save = async () => {
+    const answer = await ask("remote_token", {token: input.value});
+    input.value = "";
+    if (answer && answer.kind === "ok") remTokenOpen = false;
+    remAdopt(answer);
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
+  return el("div", {class: "field"}, labeled("Bot-Token", help, "rem-token"),
+    el("div", {class: "row"}, input, el("button", {class: "btn", onclick: save}, "speichern")));
+}
+
+function remTextField(caption, value, placeholder, name, help) {
+  const input = el("input", {autocomplete: "off", placeholder: placeholder || ""});
+  input.value = value || "";
+  input.addEventListener("change", async () =>
+    remAdopt(await ask("remote_set", {field: name, value: input.value.trim()})));
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+  return el("label", {class: "field"}, labeled(caption, help, "rem-" + name), input);
+}
+
+/** Was noch fehlt, damit aus der Ferne etwas startet — als Liste zum Abhaken.
+ *
+ * Sieben Bedingungen, und jede einzelne verhindert den Start still: ohne die
+ * Liste sucht man bei „es passiert nichts" an der falschen. */
+function remChecklist() {
+  const s = R.settings, st = R.status || {};
+  const items = [
+    [s.token_set, "Bot-Token eingetragen"],
+    [!!s.channel_id, "Kanal eingetragen"],
+    [s.enabled, "Fernstart eingeschaltet"],
+    [!!(st.alive && st.connected), "Bot liest den Kanal"],
+    [s.words.some((w) => w.exists), "mindestens ein Wort freigegeben"],
+    [s.users.length > 0, "mindestens eine Person freigegeben"],
+    [R.focus_check, "Fensterfokus-Prüfung an"],
+  ];
+  return el("div", {class: "section growing", id: "rem-ready"},
+    heading("BEREIT?", "Erst wenn alles hier abgehakt ist, startet ein !start "
+      + "aus dem Kanal auf diesem PC.", "rem-ready-help"),
+    ...items.map(([done, text]) => el("div", {class: "tools-checked rem-check" + (done ? " ok" : "")},
+      icon(done ? "check" : "cross"), el("span", {}, text))));
+}
+
+async function remCheck() {
+  const answer = await withWork("ask", "remote_check", null, "Verbindung prüfen",
+    "Frage Discord, ob Token und Kanal stimmen.");
+  if (!answer) return;
+  setStatus({text: answer.message, kind: answer.kind || (answer.ok ? "ok" : "err")});
+  remRefreshRight();
+}
+
+/* -------------------------------------------------------------- Mitte */
+
+function remRenderMiddle() {
+  const target = $("rem-middle");
+  target.replaceChildren();
+  if (!R.focus_check) {
+    target.appendChild(el("div", {class: "foreign-hint rem-wide"},
+      el("span", {}, "Die Fensterfokus-Prüfung ist aus — so startet hier nichts aus der "
+        + "Ferne. Wer den Start auslöst, sitzt nicht vor diesem Bildschirm; ohne die "
+        + "Prüfung klickte die Sequenz in das Fenster, das gerade vorn ist."),
+      el("button", {class: "btn primary",
+        onclick: () => goTo({view: "settings", key: "window_focus_check"})},
+        "Fensterfokus-Prüfung einschalten", icon("arrow"))));
+  }
+  target.appendChild(remWordsCard());
+  target.appendChild(remUsersCard());
+}
+
+function remCardHead(title, help, key) {
+  return el("div", {class: "row rem-card-head"},
+    el("h3", {class: "grow"}, labeled(title, help, key)));
+}
+
+function remWordsCard() {
+  const s = R.settings;
+  const card = el("div", {class: "share-card", id: "rem-words"},
+    remCardHead("Freigegebene Wörter",
+      "Wer im Kanal „!start raid“ schreibt, startet hier die Sequenz hinter „raid“ — "
+      + R.lead + " Sekunden nach der Nachricht, auf allen PCs im selben Augenblick. "
+      + "Jeder PC ordnet das Wort SEINER Sequenz zu; ein Wort, das hier fehlt, "
+      + "startet hier nichts.", "rem-words-help"));
+  const choices = R.sequences.map((n) => ({value: n, text: n}));
+  for (const w of s.words) {
+    const options = w.exists ? choices
+      : [{value: w.sequence, text: w.sequence + " (fehlt)"}].concat(choices);
+    card.appendChild(el("div", {class: "rem-row" + (w.exists ? "" : " missing")},
+      el("code", {class: "rem-word"}, "!start " + w.word),
+      icon("arrow"),
+      selection(null, options, w.sequence, async (v) =>
+        remAdopt(await ask("remote_word", {action: "set", word: w.word, sequence: v}))),
+      el("button", {class: "btn quiet", title: "Freigabe entfernen", onclick: async () =>
+        remAdopt(await ask("remote_word", {action: "remove", word: w.word}))}, icon("trash"))));
+  }
+  if (!s.words.length) {
+    card.appendChild(el("p", {class: "hint"},
+      "Noch kein Wort freigegeben — ohne eines startet hier nichts aus der Ferne."));
+  }
+  const word = el("input", {autocomplete: "off", placeholder: "wort"});
+  const sequence = selection(null, [{value: "", text: "Sequenz wählen …"}].concat(choices), "",
+    () => {});
+  const add = async () => remAdopt(await ask("remote_word",
+    {action: "set", word: word.value, sequence: sequence.value}));
+  word.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+  card.appendChild(el("div", {class: "rem-row rem-add", id: "rem-word-add"},
+    el("span", {class: "rem-word"}, "!start"), word, icon("arrow"), sequence,
+    el("button", {class: "btn", onclick: add}, icon("plus"), "freigeben")));
+  return card;
+}
+
+function remUsersCard() {
+  const s = R.settings;
+  const card = el("div", {class: "share-card", id: "rem-users"},
+    remCardHead("Wer darf starten",
+      "Die Discord-ID entscheidet, nie der Name — den kann jeder ändern. Wer nicht "
+      + "auf der Liste steht, bekommt im Kanal keine Antwort. Dich selbst auch "
+      + "eintragen, sonst startest du hier aus Discord nichts.", "rem-users-help"));
+  for (const u of s.users) {
+    card.appendChild(el("div", {class: "rem-row"},
+      el("span", {class: "grow"}, u.name || "ohne Namen"),
+      el("span", {class: "small mono"}, u.id),
+      el("button", {class: "btn quiet", title: "nicht mehr erlauben", onclick: async () =>
+        remAdopt(await ask("remote_user", {action: "remove", id: u.id}))}, icon("trash"))));
+  }
+  if (!s.users.length) {
+    card.appendChild(el("p", {class: "hint"},
+      "Noch niemand. Am einfachsten: im Kanal etwas schreiben lassen und rechts unter "
+      + "„Zuletzt im Kanal“ auf „erlauben“ klicken."));
+  }
+  const id = el("input", {autocomplete: "off", placeholder: "Discord-ID"});
+  const name = el("input", {autocomplete: "off", placeholder: "Name (nur Anzeige)"});
+  card.appendChild(el("div", {class: "rem-row rem-add", id: "rem-user-add"}, id, name,
+    el("button", {class: "btn", onclick: async () => remAdopt(await ask("remote_user",
+      {action: "add", id: id.value, name: name.value}))}, icon("plus"), "erlauben")));
+  return card;
+}
+
+/* -------------------------------------------------------------- rechts */
+
+function remRenderRight() {
+  const st = R.status || {};
+  const head = el("div", {class: "section", id: "rem-state"},
+    heading("IM KANAL", "Was der Bot im Hauptprozess zuletzt gemeldet hat. Er "
+      + "liest den Kanal alle fünf Sekunden — nur solange das Programm läuft.",
+      "rem-state-help"),
+    ...remConnection(st));
+  const seen = el("div", {class: "section", id: "rem-seen"},
+    heading("ZULETZT IM KANAL", "Wer zuletzt im Kanal geschrieben hat. Freigeben geht "
+      + "hier mit einem Klick — die ID muss dafür niemand heraussuchen.", "rem-seen-help"));
+  for (const p of st.seen || []) {
+    seen.appendChild(el("div", {class: "rem-row"},
+      el("span", {class: "grow"}, p.name), el("span", {class: "small"}, remAgo(p.at)),
+      p.allowed
+        ? el("span", {class: "overview-ok small"}, icon("check"), "darf")
+        : el("button", {class: "btn quiet", onclick: async () => remAdopt(
+            await ask("remote_user", {action: "add", id: p.id, name: p.name}))},
+            icon("plus"), "erlauben")));
+  }
+  if (!(st.seen || []).length)
+    seen.appendChild(el("p", {class: "hint"}, "Noch niemand gesehen."));
+  const log = el("div", {class: "section", id: "rem-log"},
+    heading("LETZTE BEFEHLE", "Was aus dem Kanal kam und was daraus wurde, neueste "
+      + "oben.", "rem-log-help"));
+  for (const e of st.log || []) {
+    log.appendChild(el("div", {class: "rem-log" + (e.ok ? "" : " refused")},
+      el("span", {class: "small mono"}, remClock(e.at)),
+      el("span", {class: "grow"}, e.who + ": " + e.text)));
+  }
+  if (!(st.log || []).length) log.appendChild(el("p", {class: "hint"}, "Noch nichts."));
+  const commands = el("div", {class: "section growing"},
+    heading("IN DISCORD", "Gross-/Kleinschreibung egal. Antworten kommen von jedem "
+      + "PC einzeln, mit seinem Namen davor.", "rem-commands-help"),
+    remCommand("!start <wort>", "startet nach " + R.lead + " s, auf allen PCs gleichzeitig"),
+    remCommand("!stop  oder  \u{1F6D1}", "hält Lauf oder Countdown an (\u{1F6D1} unter dem !start)"),
+    remCommand("!status", "jeder PC sagt, was läuft und welche Wörter er kennt"));
+  $("rem-right").replaceChildren(head, seen, log, commands);
+}
+
+function remCommand(text, what) {
+  return el("div", {class: "rem-row"}, el("code", {class: "rem-word"}, text),
+    el("span", {class: "small grow"}, what));
+}
+
+/** Lampe und Satz: verbunden, aus, Fehler — oder gar kein Hauptprozess. */
+function remConnection(st) {
+  let lamp = "", text;
+  if (!st.alive) {
+    text = "Das Programm läuft nicht — der Bot liest nur, solange main.py läuft.";
+  } else if (!st.enabled) {
+    text = "Fernstart ist aus.";
+  } else if (st.error) {
+    lamp = "err"; text = st.error;
+  } else if (st.connected) {
+    lamp = "on";
+    text = "Bot „" + st.bot_name + "“ liest #" + st.channel_name
+      + (st.last_poll ? " · zuletzt " + remAgo(st.last_poll) : "");
+  } else {
+    text = st.ready ? "verbindet …" : "Token oder Kanal fehlt.";
+  }
+  const out = [el("div", {class: "row"}, el("span", {class: "lamp " + lamp}),
+    el("span", {class: "grow"}, text))];
+  if (st.alive && st.content_missing) {
+    out.push(el("p", {class: "hint warning"}, "Nachrichten kommen leer an — im "
+      + "Developer-Portal unter „Bot“ den „Message Content Intent“ einschalten."));
+  }
+  if (st.alive && st.clock_offset !== null && st.clock_offset !== undefined
+      && Math.abs(st.clock_offset) > 2) {
+    out.push(el("p", {class: "hint warning"}, "Die Uhr dieses PCs weicht um "
+      + Math.round(st.clock_offset) + " s von Discord ab — Windows-Zeit "
+      + "synchronisieren, sonst startet er versetzt."));
+  }
+  return out;
 }
 
 /* Der Reiter bearbeitet `config.json` — eine ANDERE Datei als der Editor, also
