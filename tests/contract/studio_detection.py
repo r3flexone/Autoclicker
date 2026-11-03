@@ -490,12 +490,10 @@ check("und die Phasenfarben sind drei verschiedene",
 # **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** Zwei Tabellen fuer
 # dieselben Werte laufen auseinander, sobald eine Aktion dazukommt — hier stehen
 # sie auf denselben Schluesseln.
-from autoclicker.editors.sequence_studio.scan_detect import (
-    _ACTION_SHORT as _SHORT, _BOSS_ACTIONS as _ORDER,
-)
-from autoclicker.models import ACTION_TEXT as _TEXT
+from autoclicker.editors.sequence_studio.scan_detect import _BOSS_ACTIONS as _ORDER
+from autoclicker.models import ACTION_SHORT as _SHORT, ACTION_TEXT as _TEXT
 check("jede angebotene Aktion hat eine Kurzbeschriftung",
-      set(_SHORT) == set(_ORDER))
+      set(_ORDER) <= set(_SHORT))
 check("und einen Satz dazu", set(_ORDER) <= set(_TEXT))
 check("die Reihenfolge deckt genau die gueltigen Boss-Aktionen ab",
       set(_ORDER) == _V_BOSS)

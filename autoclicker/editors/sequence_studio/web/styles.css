@@ -217,12 +217,17 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .badge{width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex:none}
 .badge img{display:block;width:100%;height:100%}
 .title{font-size:13px;letter-spacing:.15em;font-weight:700}
+/* Unter 1500 px bleibt nur das Symbol: der Schriftzug kostet 145 px, und der
+   Fenstertitel sagt ohnehin, wo man ist. Die Kopfzeile muss bei 1300 px in
+   eine Zeile passen — mit Schriftzug brach sie im Editor bis gut 1550 px um. */
+@media (max-width:1499px){.header .title{display:none}}
 .dirty-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
 /* Die Sequenz als EIN Bedienelement: Kuerzel, Auswahl, Ungespeichert-Punkt
    und „Neu" in einer Kachel. Die Auswahl darin traegt keinen eigenen Rahmen —
-   die Kachel ist der Rahmen. Steht rechts (margin-left:auto), zusammen mit
-   den Aktionen, die dieselbe Sequenz meinen. */
-.seq-chip{margin-left:auto;display:flex;align-items:center;gap:8px;padding:0 0 0 10px;
+   die Kachel ist der Rahmen. Steht rechts, direkt hinter den Aktionen, die
+   dieselbe Sequenz meinen; den freien Platz davor nehmen die Aktionen
+   (margin-left:auto). */
+.seq-chip{display:flex;align-items:center;gap:8px;padding:0 0 0 10px;
   background:var(--bg);border:1px solid var(--line);border-radius:5px;overflow:hidden;
   flex:none}
 .seq-chip-label{font-size:9.5px;letter-spacing:.1em;color:var(--dim);flex:none;cursor:pointer}
@@ -232,7 +237,13 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .seq-chip-new{padding:6px 10px;border-left:1px solid var(--line);color:var(--muted);
   font-size:12.5px;flex:none}
 .seq-chip-new:hover{background:var(--sub);color:var(--text)}
-.header .actions{flex:none}
+.header .actions{flex:none;margin-left:auto}
+/* In Reitern, die andere Dateien bearbeiten, ist die Gruppe unsichtbar, aber
+   nicht weg: sie haelt ihren Platz, damit der Kopf in jedem Reiter dieselbe
+   Gestalt hat (s. `setView`). `visibility` nimmt sie zugleich aus der
+   Tab-Reihenfolge und vom Mauszeiger. */
+.off-view{visibility:hidden}
+.btn.icon-only{padding:5px 8px}
 /* Nimmt den freien Platz statt einer festen Zeichenzahl: der Deckel stand bei
    46ch, und daneben lag ein Abstandhalter, der den ganzen Rest der Kopfzeile
    aufbrauchte. Eine Meldung wie "Nicht gespeichert: ITEM-SCAN in 'Loop 1'
@@ -571,7 +582,7 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
    die Bruecke, denn er aendert nichts an der Sequenz. */
 .tabs{display:flex;align-items:center;gap:2px;background:var(--bg);border:1px solid var(--line);
   border-radius:6px;padding:3px;flex:none}
-.tab{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:4px;
+.tab{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;
   font-size:12.5px;color:var(--muted)}
 /* Die Gliederung der Reiter: BAUEN · BEOBACHTEN · VERWALTEN. Ein Strich, kein
    Wort — die Gruppen erklaeren sich an ihren Mitgliedern. */
@@ -1072,6 +1083,11 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .button-pair{display:grid;gap:6px;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,118px),1fr))}
 .button-pair > .btn{width:100%;min-width:0;white-space:normal}
+/* Die Steuerknoepfe des Live-Runs: gleiche Spalten wie jedes Knopfpaar, aber
+   fest breit statt ueber die ganze Zeile gezogen — fuenf Knoepfe auf 1200 px
+   waeren je 240 px breit, und Starten/Schrittweise im Leerlauf noch breiter. */
+.button-pair.run-buttons{grid-template-columns:none;grid-auto-flow:column;
+  grid-auto-columns:minmax(0,172px)}
 /* Der Umfang steht als eigene Zeile unter den Knoepfen: rechts angeklebt wurde
    er abgeschnitten („6 Slot… · 6 Ite…"), sobald die Knoepfe die Zeile fuellen. */
 .scan-scope{color:var(--dim)}
@@ -1191,6 +1207,17 @@ label.on input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outl
 .rem-row.missing .rem-word{color:var(--accent)}
 .rem-add{margin-top:6px;padding-top:10px;border-top:1px solid var(--line)}
 .rem-word{font-family:var(--mono);font-size:11.5px;color:var(--text);white-space:nowrap;flex:none}
+/* Liste und Eingabezeile einer Karte auf einem Raster: die Spalten fluchten,
+   und der Knopf am Zeilenende hat in beiden dieselbe Breite (der Papierkorb
+   steht rechts darin, „freigeben"/„erlauben" fuellt sie). */
+.rem-grid{display:grid;align-items:center;gap:8px}
+.rem-words-grid{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) 108px}
+.rem-users-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 108px}
+.rem-grid > span:not(.rem-word-cell){min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rem-word-cell{display:flex;align-items:center;gap:8px;min-width:0}
+.rem-word-cell input{flex:1;min-width:0}
+.rem-action{justify-self:end}
+.rem-add .rem-action{justify-self:stretch}
 .rem-card-head{margin-bottom:4px}
 .rem-card-head h3{margin-bottom:0}
 .rem-wide{max-width:720px;margin-bottom:12px}

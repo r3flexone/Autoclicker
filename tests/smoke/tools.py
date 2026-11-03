@@ -180,7 +180,7 @@ def run():
         expect("+455" in metrics and "+344" in metrics,
                f"Versatz falsch: {metrics!r}")
         expect(f.count("#tools-middle input[type=checkbox]") == 3, "drei Umfang-Haken")
-        expect("Stelle(n)" in f.text("#tools-right"), "keine Vorschau rechts")
+        expect("Stellen, Auszug" in f.text("#tools-right"), "keine Vorschau rechts")
         f.image("tools_calibrate")
 
         f.click_text("#tools-middle button", "Umrechnen und speichern")

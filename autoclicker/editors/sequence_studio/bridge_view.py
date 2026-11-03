@@ -6,6 +6,7 @@ from typing import Optional
 from ...config import CONFIG
 from ...config_meta import META
 from ...models import (
+    ACTION_SHORT,
     BLOCK_BOSS_SCAN,
     BLOCK_BOSS_WATCHER,
     BLOCK_ICON_SCAN,
@@ -113,6 +114,9 @@ class BridgeViewMixin:
                              "when": PHASE_KIND_WHEN[k]}
                             for k in (LANE_INIT, LANE_LOOP, LANE_END)],
             "else_actions": ELSE_ACTIONS,
+            # Die Beschriftung der ELSE-Kacheln — dieselben Woerter wie bei der
+            # Aktion eines Boss- oder Icon-Scans. Die Kacheln zeigten den Wert.
+            "action_short": {a: ACTION_SHORT[a] for a in ELSE_ACTIONS},
             "without_else": self._without_else(),
             "phases": [self._phase_json(i, ln) for i, ln in enumerate(self.board.lanes)],
             "points": [self._point_json(p) for p in self.points],
@@ -368,7 +372,7 @@ class BridgeViewMixin:
             return f"sonst: klick {target}"
         if ec.action == ELSE_KEY:
             return f"sonst: Taste „{ec.key or '?'}“"
-        return {ELSE_SKIP: "sonst: Schritt überspringen",
+        return {ELSE_SKIP: "sonst: Block überspringen",
                 ELSE_SKIP_CYCLE: "sonst: Zyklus abbrechen",
                 ELSE_RESTART: "sonst: Sequenz neu starten"}.get(ec.action, f"sonst: {ec.action}")
 

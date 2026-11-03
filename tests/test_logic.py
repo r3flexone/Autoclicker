@@ -5696,7 +5696,7 @@ try:
           _stp16._timeout_consequence(_st16, _step16) == "Zyklus abbrechen, nächster Zyklus")
     _step16.else_config = _EC16(action="skip")
     check("mit else gewinnt else", _stp16._timeout_consequence(_st16, _step16)
-          == "ELSE: Schritt überspringen")
+          == "ELSE: Block überspringen")
     # Die Texttabelle liegt in models.py, weil zwei Anzeigen sie brauchen, die
     # sich nicht kennen duerfen. Ein neuer Aktionstyp ohne Text stuende in beiden
     # als rohes "skip_cycle" da. Gemessen wird an der Dispatch-Tabelle der
@@ -6683,6 +6683,7 @@ import tests.contract.gdi_capture          # noqa: F401,E402
 import tests.contract.tool_cli             # noqa: F401,E402
 import tests.contract.studio_guards        # noqa: F401,E402
 import tests.contract.remote               # noqa: F401,E402
+import tests.contract.studio_wording       # noqa: F401,E402
 
 
 import shutil as _shD

@@ -2010,6 +2010,29 @@ Regeln beim Erweitern:
   ist die Live-Run-Ansicht, und der Knopf erbte deren Polster). Der Kopf muss
   bei 1300 px in eine Zeile passen; umbrechen darf er, nur nicht bei jeder
   gewöhnlichen Fensterbreite.
+
+  **Die Regel stand hier, ohne dass sie jemand mass — und sie galt nicht.** Im
+  Editor brach der Kopf bis gut 1550 px in zwei Zeilen um, in den Scans nicht:
+  dort verschwanden die Sequenz-Knöpfe (`hidden`), und bei jedem Reiterwechsel
+  sprang die ganze Seite um 35 px, „?" wanderte von rechts oben nach links in
+  die zweite Zeile. Drei Dinge dagegen:
+  - **Die Gruppe Zurück · Wieder · Speichern · Starten wird unsichtbar, nicht
+    entfernt** (`.off-view` = `visibility:hidden`, in `setView`) und steht
+    **vor** der Sequenz-Kachel. So hat der Kopf in jedem Reiter dieselbe
+    Gestalt; Kachel und „?" stehen still, und der freigehaltene Platz liegt im
+    ohnehin freien Raum zwischen Reitern und Kachel.
+  - **Zurück und Wieder zeigen nur ihr Symbol** (`btn icon-only`, `aria-label`);
+    was zurückgenommen wird, steht weiter im Tooltip. Mit Beschriftung kosteten
+    die beiden 160 px.
+  - **Unter 1500 px bleibt vom Schriftzug nur das Symbol** (`@media` in
+    `styles.css`); der Fenstertitel sagt ohnehin, wo man ist.
+
+  Gemessen unter Windows: 1280 px bei 1300 px Fensterbreite. Die
+  Sequenz-Auswahl bleibt 160 px breit — schmaler schnitt sie „Rauch
+  (ungespeichert)" ab. `tests/smoke/sequences.py` misst beides: dieselbe
+  Gestalt in allen Reitern und eine Zeile — unter Windows bei 1300 px, unter
+  Linux bei der Standardgrösse 1600 px, weil die Schriften der CI breiter
+  laufen.
 - **Der Tastaturfokus ist sichtbar — überall** (`:focus-visible`-Ring in
   Akzentfarbe auf Knöpfen, Kacheln, Feldern). Eingabefelder wechselten nur die
   Rahmenfarbe, Knöpfe gar nichts: wer mit TAB durch den Inspektor ging, sah
@@ -2018,7 +2041,7 @@ Regeln beim Erweitern:
   Knopf, der denselben Befehl schickt wie Schritt 1 des Assistenten). Vorher
   nannte der Text einen Knopf, der 400 px weiter links lag.
 - **Der Editor hat ein Rückgängig** (`_edit_commit()` / `undo()` / `redo()` in
-  `bridge_editing.py`, STRG+Z / STRG+Y, „Zurück"/„Wieder" im Kopf). Der
+  `bridge_editing.py`, STRG+Z / STRG+Y, die beiden Pfeile im Kopf). Der
   Scans-Reiter hatte es mit 30 Abzügen, der Editor nichts: Entf auf einer
   Auswahl war endgültig, der einzige Ausweg „Verwerfen & neu laden". Dieselbe
   Bauart wie `_remember()` — ein **vollständiger Abzug** von Board, Punkten
@@ -2188,6 +2211,32 @@ Regeln beim Erweitern:
   dem man suchen geht; der Bericht hat dafür „Session-Log einschalten". Teilen
   sagte „erst speichern" in einem Reiter ohne Speichern-Knopf — die Warnung
   trägt ihn jetzt selbst (`saveEverythingForShare()`).
+- **Die Steuerknöpfe des Live-Runs teilen sich gleiche Spalten**
+  (`button-pair run-buttons`, fest 172 px statt über die volle Zeile), und
+  **jeder trägt sein Hotkey-Kürzel im Tooltip**. Daneben stand „oder
+  CTRL+ALT+S / CTRL+ALT+G im Hauptprozess" — ohne Zuordnung, und K, SHIFT+K
+  und F fehlten.
+- **Die Oberfläche spricht Deutsch, mit Umlauten, ein Wort je Begriff**
+  (`tests/contract/studio_wording.py`). Gefunden an den Rauchtest-Bildern,
+  nicht an einer Meldung: Boss-Kacheln „SKIP CYCLE“/„RESTART“, ELSE-Kacheln
+  mit dem rohen Wert (`skip_cycle`), „50 Schritte“ im Phasenkopf neben
+  „Blöcke 50“, „1 Klicks“, „2 Sitzung(en)“, „WO DIE SEQUENZ HAENGT“. Vier
+  Regeln, die der Test hält:
+  - **Kacheln für Aktionen tragen ein deutsches Schlagwort aus EINER Tabelle**
+    (`ACTION_SHORT` in `models.py`, neben `ACTION_TEXT`) — die ELSE-Kacheln
+    im Editor bekommen sie über `action_short` in der Momentaufnahme, Boss-
+    und Icon-Scan über `scan_detect`. Der Erkennungs-Umschalter heisst
+    „Vorlage“, wie alles daneben.
+  - **Das Studio zählt Blöcke, nicht Schritte** (Glossar in der Wurzel).
+    „Schrittweise“ als Startart bleibt — das ist ein Adverb, keine Zählung.
+  - **Eine Zahl bekommt ihr Wort über `countText(n, one, many)`** (oder die
+    Bedingung in derselben Zeile), nie ein festes Mehrzahlwort und nie eine
+    Klammer („Stelle(n)“). Die Meldungen der Brücke tragen die Klammern
+    noch; sie stehen nicht im Test.
+  - **Angezeigte Texte tragen Umlaute.** Geprüft werden die Zeichenketten der
+    Seite und der Brücken-Module gegen eine Liste von Wortstämmen, die es nur
+    umgeschrieben gibt („fuer“, „haeng“, „pruef“); Kommentare und Docstrings
+    bleiben aussen vor.
 - **Ein Werkzeug hat einen Namen, und er kommt aus `TOOLS`** (`toolsHeader(key,
   text)`). Links stand „Bestand prüfen", im Kopf „Setup prüfen", und
   „Kalibrieren" hiess drüben „Koordinaten kalibrieren". Der Konsolenbefehl

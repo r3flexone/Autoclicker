@@ -697,7 +697,7 @@ try:
     _web = studio_web_source()
     check("die Seite hat einen Reiter dafür",
           'data-view="remote"' in _web and 'id="view-remote"' in _web)
-    _hidden = _web[_web.index('n.hidden = ["settings"'):]
+    _hidden = _web[_web.index('toggle("off-view", ["settings"'):]
     check("und blendet dort die Sequenz-Knöpfe aus",
           '"remote"' in _hidden[:_hidden.index("].includes(next)")])
 finally:

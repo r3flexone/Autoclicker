@@ -5,6 +5,8 @@ Scrollposition. Ein `subgrid`, das der Browser nicht kann, und ein `sticky`, das
 an einem nicht scrollenden Vorfahren hängt, fallen nur hier auf.
 """
 
+import sys
+
 from ._bridge import Window, main, make_expect, sandbox
 
 
@@ -188,10 +190,53 @@ def run():
                    f"({visible}/2 sichtbar)")
         # Das Speichern bleibt dagegen bei der Sequenz: zwei Speichern-Knoepfe
         # fuer zwei Dateien in einer Leiste sind die Falle, um die es ging.
+        # Unsichtbar heisst `visibility`, nicht weg: der Platz bleibt (s. u.).
         f.tab("scans")
-        expect(not f.page.eval_on_selector(
-            "#btn-save", "e => e.offsetParent !== null"),
+        expect(f.page.eval_on_selector(
+            "#btn-save", "e => e.offsetParent === null "
+                         "|| getComputedStyle(e).visibility === 'hidden'"),
             "der Sequenz-Speichern-Knopf steht im Scans-Reiter")
+
+        # ------------------------------------------ Der Kopf springt nicht
+        # **Der Kopf hat in jedem Reiter dieselbe Gestalt.** Die Sequenz-Knoepfe
+        # verschwanden ausserhalb von Editor, Uebersicht und Live-Run ganz: im
+        # Editor brach der Kopf bis gut 1550 px in zwei Zeilen um, in den Scans
+        # nicht, und bei jedem Wechsel sprang die Seite um 35 px; „?" wanderte
+        # von rechts oben nach links in die zweite Zeile.
+        def head_shape():
+            return f.page.evaluate("""() => {
+              const r = (s) => document.querySelector(s).getBoundingClientRect();
+              return [Math.round(r('header').height), Math.round(r('#btn-help').left),
+                      Math.round(r('#btn-help').top), Math.round(r('.seq-chip').left)];
+            }""")
+
+        shapes = {}
+        for tab in ("editor", "sequences", "scans", "run", "report",
+                    "tools", "share", "remote", "settings"):
+            f.tab(tab)
+            shapes[tab] = head_shape()
+        expect(len({tuple(s) for s in shapes.values()}) == 1,
+               f"der Kopf hat je Reiter eine andere Gestalt: {shapes}")
+
+        # **Und er passt in eine Zeile.** Die Grenze haengt an der Schrift:
+        # unter Windows (Segoe UI) bei 1300 px, wie es die Regel verlangt; die
+        # Schriften der Linux-CI laufen breiter, dort wird an der Standardgroesse
+        # des Fensters gemessen (1600 px, `sequence_studio.py`).
+        f.tab("editor")
+        if sys.platform == "win32":
+            width = 1300
+        else:
+            width = 1600
+        f.page.set_viewport_size({"width": width, "height": 560})
+        f.settle()
+        one_row = f.page.evaluate("""() => {
+          const top = (s) => document.querySelector(s).getBoundingClientRect().top;
+          return Math.abs(top('#btn-run') - top('.tabs')) < 20
+              && Math.abs(top('#btn-help') - top('.tabs')) < 20;
+        }""")
+        expect(one_row, f"der Kopf bricht bei {width} px im Editor um")
+        f.page.set_viewport_size({"width": 1300, "height": 560})
+        f.settle()
 
         # **Der offene Reiter folgt dem Wechsel.** Scans, Teilen und Werkzeuge
         # lesen aus `sequences/<name>/`, haengen aber an eigenem Zustand, den

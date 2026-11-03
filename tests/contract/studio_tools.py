@@ -631,7 +631,8 @@ try:
          _rec.remove_mouse_hook, _rec.remove_keyboard_hook) = _old_hooks
     check("ein neuer Start setzt ihn zurueck", _right_state.recording_right_clicks == 0)
     check("die Aufnahme-Tafel im Studio zeigt den Zaehler",
-          'data.right_clicks + " Rechtsklick(s) nicht aufgezeichnet' in _app)
+          'countText(data.right_clicks, "Rechtsklick", "Rechtsklicks")'
+          ' + " nicht aufgezeichnet' in _app)
 finally:
     _os.chdir(_cwd)
 

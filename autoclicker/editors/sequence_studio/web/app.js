@@ -769,10 +769,11 @@ function setView(next, navigated) {
   $("view-report").hidden = next !== "report";
   $("view-remote").hidden = next !== "remote";
   // Die Sequenz-Bedienelemente im Kopf gehoeren nur zur Sequenz. Die anderen
-  // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf.
+  // Reiter bearbeiten andere Dateien und haben ihren eigenen Knopf. Unsichtbar
+  // statt `hidden`: der Platz bleibt, und der Kopf springt beim Wechsel nicht.
   for (const n of document.querySelectorAll("[data-sequence]"))
-    n.hidden = ["settings", "scans", "share", "tools",
-                "report", "remote"].includes(next);
+    n.classList.toggle("off-view", ["settings", "scans", "share", "tools",
+                                    "report", "remote"].includes(next));
   // Versteckt hat das Board keine Masse — die Leiste rechnet erst, wenn es da ist.
   if (next === "editor") requestAnimationFrame(updateBoardEdges);
   if (next === "scans") renderScans(!SC);
@@ -799,7 +800,7 @@ function render() {
   if (!S) return;
   const memo = rememberFocus();
   $("footer-file").textContent = S.file || "";
-  $("footer-points").textContent = S.points.length + " Punkte";
+  $("footer-points").textContent = countText(S.points.length, "Punkt", "Punkte");
   $("dirty-dot").hidden = !S.dirty;
   $("footer-lamp").classList.toggle("open", !!S.dirty);
   $("footer-lamp").title = S.dirty ? "ungespeicherte Änderungen" : "gespeichert";
@@ -1092,7 +1093,7 @@ function renderPhaseNav(visible) {
     nav.appendChild(el("button", {
       class: "phase-nav-chip" + (phase.index === selectedPhase ? " selected" : ""),
       "data-kind": phase.kind, "data-phase": String(phase.index),
-      title: label + " · " + phase.blocks.length + " Blöcke"
+      title: label + " · " + countText(phase.blocks.length, "Block", "Blöcke")
              + (phase.kind === "loop" && phase.repeat > 1 ? " · ×" + phase.repeat + " je Zyklus" : "")
              + (phase.start ? " · ab " + phase.start : "") + " — anklicken scrollt hin",
       onclick: () => scrollToPhase(phase.index),
@@ -1195,7 +1196,8 @@ function renderPhase(phase) {
   // sich nicht ändern lässt. Die zugehörige Klasse `.counter` ist damit
   // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.num`).
   head.appendChild(el("div", {class: "row"}, name,
-    el("span", {class: "small mono"}, phase.blocks.length + " Schritte")));
+    el("span", {class: "small mono"}, phase.blocks.length
+      + (phase.blocks.length === 1 ? " Block" : " Blöcke"))));
 
   if (phase.kind === "loop") {
     const reps = el("input", {type: "number", min: "1", value: phase.repeat,
@@ -1479,7 +1481,7 @@ function phaseColor(kind) {
 function phaseBar(s) {
   const parts = [{n: s.init, color: phaseColor("init"), what: "INIT: " + s.init}]
     .concat((s.phases || []).map((p) => ({n: p.steps, color: phaseColor("loop"),
-      what: p.name + ": " + p.steps + " Schritte ×" + p.repeat +
+      what: p.name + ": " + p.steps + (p.steps === 1 ? " Block ×" : " Blöcke ×") + p.repeat +
            (p.start ? " ab " + p.start : "")})))
     .concat([{n: s.end, color: phaseColor("end"), what: "END: " + s.end}]);
   const totalSum = parts.reduce((a, t) => a + t.n, 0) || 1;
@@ -1505,6 +1507,13 @@ function seqSorted(listEl) {
     name: (a, b) => a.name.localeCompare(b.name, "de", {numeric: true}),
   }[seqOrder] || (() => 0);
   return rows.sort(by);
+}
+
+/** „1 Klick", „2 Klicks" — Zahl und Wort in der passenden Form. Ein festes
+ *  „Klicks" las sich bei 1 falsch, eine Klammer („Stelle(n)") bei jeder Zahl
+ *  holprig; beides stand an rund dreissig Stellen der Seite. */
+function countText(n, one, many) {
+  return n + " " + (n === 1 ? one : many);
 }
 
 /** „vor 2 Stunden" — die Frage an ein Datum in der Uebersicht ist „ist das
@@ -1592,7 +1601,7 @@ function seqCard(s) {
   cardEl.appendChild(el("div", {class: "seq-bar"},
     s.broken ? null : phaseBar(s)));
   cardEl.appendChild(el("div", {class: "seq-numbers"}, s.broken ? null : [
-    el("span", {class: "num"}, s.steps + (s.steps === 1 ? " Schritt" : " Schritte")),
+    el("span", {class: "num"}, s.steps + (s.steps === 1 ? " Block" : " Blöcke")),
     el("span", {class: "num"}, s.phases.length + (s.phases.length === 1 ? " Loop-Phase" : " Loop-Phasen")),
     // „1 Zyklen" stand hier — der Plural sass im Code, dieselbe Falle wie
     // einmal „Item-Scann".
@@ -1607,7 +1616,7 @@ function seqCard(s) {
     el("span", {class: "seq-history-label"}, "LETZTER LAUF"),
     run ? el("span", {title: run.file},
             sinceText(run.begin) + " · " + repDuration(run.duration) + " · " +
-            run.clicks + " Klicks ",
+            run.clicks + (run.clicks === 1 ? " Klick " : " Klicks "),
             el("span", {class: "seq-run-badge" + (run.timeouts ? " warn" : " ok")},
               run.timeouts ? run.timeouts + "× Timeout" : "ohne Timeout"))
         : el("span", {class: "small"}, "kein Session-Log")]));
@@ -2087,7 +2096,7 @@ function lastScanPanel(ls, now) {
       el("span", {class: "small mono", title: timestamp(ls.at)},
          "vor " + duration(Math.max(0, now - (ls.at || now))))),
     el("p", {class: "hint"},
-      (ls.slots || 0) + " Slots gescannt · " + (ls.recognized || 0) + " erkannt"
+      countText(ls.slots || 0, "Slot", "Slots") + " gescannt · " + (ls.recognized || 0) + " erkannt"
       + (missing > 0 ? " · " + missing + " ohne Treffer" : "")
       + " · " + (ls.clicked || 0) + " geklickt"));
   const items = ls.items || [];
@@ -2133,7 +2142,7 @@ function renderSummary(target, z) {
 
   target.appendChild(el("p", {class: "hint summary-" + kind},
     reason + " · " + (z.elapsed_cycles || 0) + " von " +
-    (z.cycles ? z.cycles : "∞") + " Zyklen"));
+    (z.cycles ? countText(z.cycles, "Zyklus", "Zyklen") : "∞ Zyklen")));
 
   if (z.phases && z.phases.length) target.appendChild(phaseStrip(z, true));
   if (z.last_scan) target.appendChild(lastScanPanel(z.last_scan, Date.now() / 1000));
@@ -2176,8 +2185,13 @@ function manualControls(m) {
  *
  * Die Knöpfe führen nichts aus — dieses Fenster hat keinen Zugriff auf
  * `state.stop_event`. Sie legen einen Befehl ab, den der Hauptprozess in
- * derselben Schleife abholt wie seine Hotkeys (`mailbox.py`). Deshalb steht das
- * Hotkey-Kürzel weiterhin daneben: es ist derselbe Weg, nur ohne Fensterwechsel.
+ * derselben Schleife abholt wie seine Hotkeys (`mailbox.py`). Deshalb trägt
+ * jeder Knopf sein Hotkey-Kürzel im Tooltip: es ist derselbe Weg, nur ohne
+ * Fensterwechsel. Daneben stand „oder CTRL+ALT+S / CTRL+ALT+G“ — ohne zu
+ * sagen, welches Kürzel zu welchem Knopf gehört, und drei von fünf fehlten.
+ *
+ * Die Knöpfe teilen sich gleiche Spalten (`run-buttons`): fünf Breiten nach
+ * Textlänge nebeneinander lesen sich wie fünf Rangstufen.
  */
 function controls(running, stamp) {
   const button = (text, command, cls, sym, title) => el("button", {
@@ -2195,15 +2209,18 @@ function controls(running, stamp) {
   // Es stand hier amber gefuellt und oben gruen: zwei Gestalten fuer denselben
   // Befehl, und man fragt sich, ob sie Verschiedenes tun.
   const idle = !running && !(stamp && stamp.countdown);
-  const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"},
+  const buttons = el("div", {class: "button-pair run-buttons"},
     idle ? button("Starten", "start", "launch", "play",
                   "Startet die gespeicherte Fassung — ungespeicherte Änderungen "
-                  + "werden vorher geschrieben") : null,
+                  + "werden vorher geschrieben (CTRL+ALT+S)") : null,
     idle ? button("Schrittweise", "start_manual", "", "play",
                   "Startet und hält vor jedem Block an — du bestätigst jeden einzeln") : null,
-    running ? button("Pause", "pause", "", "pause") : null,
-    running ? button("Warten überspringen", "skip") : null,
-    running ? button("Block überspringen", "skip_step") : null,
+    running ? button("Pause", "pause", "", "pause", "Anhalten und fortsetzen (CTRL+ALT+G)") : null,
+    running ? button("Warten überspringen", "skip", "", null,
+                     "Die laufende Wartezeit abkürzen (CTRL+ALT+K)") : null,
+    running ? button("Block überspringen", "skip_step", "", null,
+                     "Den ganzen Block samt Klick, Taste oder Scan überspringen "
+                     + "(CTRL+ALT+SHIFT+K)") : null,
     running ? (finishing
       ? button("Wird abgeschlossen …", "finish", "on", "check",
                "Sanftes Ende angefordert: der laufende Zyklus läuft zu Ende, "
@@ -2211,10 +2228,10 @@ function controls(running, stamp) {
       : button("Zyklus abschliessen", "finish", "", "check",
                "Sanftes Ende (CTRL+ALT+F): den laufenden Zyklus zu Ende führen, "
                + "dann Abschluss-Phase und Stopp")) : null,
-    running ? button("Stoppen", "stop", "danger", "stop") : null,
-    !running && stamp && stamp.countdown ? button("Zeitplan abbrechen", "stop", "danger", "stop") : null,
-    running ? el("span", {class: "small"}, "oder CTRL+ALT+S / CTRL+ALT+G im Hauptprozess")
-            : null);
+    running ? button("Stoppen", "stop", "danger", "stop", "Sofort anhalten (CTRL+ALT+S)") : null,
+    !running && stamp && stamp.countdown ? button("Zeitplan abbrechen", "stop", "danger", "stop",
+                                                  "Den geplanten Start verwerfen (CTRL+ALT+S)") : null);
+  const row = el("div", {class: "row", style: "gap:8px;flex-wrap:wrap"}, buttons);
   if (idle) {
     const time = el("input", {placeholder: "14:30 oder +30m", autocomplete: "off",
       style: "width:150px"});
@@ -2281,7 +2298,7 @@ function renderPhaseInspector(target, phase) {
         ? "Startphase" : "Abschlussphase") + "“";
 
   target.appendChild(el("p", {class: "hint"},
-    phase.blocks.length + " Blöcke · läuft " + own.when
+    countText(phase.blocks.length, "Block", "Blöcke") + " · läuft " + own.when
     + (loop && phase.repeat > 1 ? ", " + phase.repeat + "× je Zyklus" : "")
     + (loop && phase.start ? ", ab " + phase.start : "")));
 
@@ -2737,7 +2754,7 @@ function renderBulkEditor(count) {
   const current = S.selection.delay_before_mixed ? null : S.selection.delay_before;
   return el("div", {},
     el("p", {class: "hint"},
-      count + " Blöcke" + (phases > 1 ? " in " + phases + " Phasen" : "")
+      countText(count, "Block", "Blöcke") + (phases > 1 ? " in " + phases + " Phasen" : "")
       + " gemeinsam bearbeiten. Verschieben: ALT+↑/↓"
       + (phases > 1 ? " (je Phase)" : "") + ", löschen: Entf."),
     el("span", {class: "heading"}, "WARTEZEIT FÜR AUSWAHL"),
@@ -2954,9 +2971,9 @@ function buildTrigger(target, b, withTrigger) {
   // erklärt, warum sich der Trigger nicht einschalten lässt.
   if (withoutOff && b.trigger === "none"
       && b.point_id !== null && b.point_id !== undefined) return;
-  target.appendChild(heading("FARB-TRIGGER (VOR DEM SCHRITT)",
+  target.appendChild(heading("FARB-TRIGGER (VOR DEM BLOCK)",
     withTrigger
-      ? "Wartet vor dem Schritt darauf, dass die Farbe des Punkts da ist (oder weg)."
+      ? "Wartet vor dem Block darauf, dass die Farbe des Punkts da ist (oder weg)."
       : "Dieser Block-Typ wertet keinen Farb-Trigger aus — die Laufzeit kehrt " +
         "vorher um. Die Bedingung steht nur hier, damit sie sich abschalten lässt.",
     "color-trigger"));
@@ -2995,7 +3012,7 @@ function buildVerification(target, b) {
   // Bleibt bei JEDEM Typ: „hat die Aktion gewirkt?" ergibt auch bei einer Taste
   // und bei einem Scan Sinn — anders als der Trigger davor.
   const directions = [DIRECTION_OFF].concat(DIRECTIONS);
-  target.appendChild(heading("NACHPRÜFUNG (NACH DEM SCHRITT)",
+  target.appendChild(heading("NACHPRÜFUNG (NACH DEM BLOCK)",
     "„Hat die Aktion gewirkt?“ Bleibt die Wirkung aus, wird die Aktion " +
     "wiederholt (verify_retries), danach greift ELSE.", "verify"));
   target.appendChild(segment(directions, b.verify,
@@ -3020,14 +3037,14 @@ function withoutElseText(ownTimeout) {
   // Hat der Block eine EIGENE Zeitgrenze, gilt die — sonst die Einstellung.
   const seconds = ownTimeout !== null && ownTimeout !== undefined ? ownTimeout : o.seconds;
   const time = seconds > 0 ? seconds + " s" : "ohne Timeout";
-  return "Ohne ELSE wartet der Schritt bis zum Timeout (" + time + "), danach: " +
+  return "Ohne ELSE wartet der Block bis zum Timeout (" + time + "), danach: " +
          o.consequence + " (config.json: pixel_timeout_action)." +
-         (o.emergency_stop > 0 ? " Nach " + o.emergency_stop + " Timeouts in Folge greift " +
+         (o.emergency_stop > 0 ? " Nach " + countText(o.emergency_stop, "Timeout", "Timeouts") + " in Folge greift " +
                             "die Notbremse." : "");
 }
 
 const ELSE_DESCRIPTIONS = {
-  skip: "Nur diesen Schritt überspringen.",
+  skip: "Nur diesen Block überspringen.",
   skip_cycle: "Den laufenden Zyklus abbrechen und den nächsten beginnen.",
   restart: "Die Sequenz von vorn beginnen.",
   click: "Stattdessen einen anderen Punkt klicken.",
@@ -3052,7 +3069,7 @@ function buildElse(target, b) {
     : withoutElseText(b.trigger_timeout);
   target.appendChild(heading("ELSE — WENN DIE BEDINGUNG NICHT GREIFT",
     "ELSE ist ein „stattdessen“, kein „zusätzlich“: greift es, entfällt die " +
-    "eigene Aktion des Schritts. " + effect +
+    "eigene Aktion des Blocks. " + effect +
     (b.else_action ? " Ein zweiter Klick auf die markierte Kachel hebt ELSE wieder auf." : ""),
     "else"));
   // Kacheln statt Klappmenü: die Auswahl ist fest und kurz (fünf Aktionen), und
@@ -3079,7 +3096,7 @@ function buildElse(target, b) {
       // Dieselbe Kachel nochmal: das leere Kommando entfernt die Aktion. Eine
       // andere Kachel wechselt sie wie gewohnt.
       onclick: () => call("block_else", {action: a === b.else_action ? "" : a}),
-    }, a))));
+    }, S.action_short[a]))));
   if (b.else_action === "click") {
     target.appendChild(selection("ELSE-Punkt", pointList(b.else_point), b.else_point,
       (v) => v && call("block_else", {action: "click", point: Number(v)})));
@@ -3589,8 +3606,8 @@ function scanTools() {
   nameField.value = open ? open.name : "";
   nameField.disabled = !open;
   $("scan-scope").textContent = open
-    ? open.slots.length + " Slots · " + open.items.length + " Items"
-    : SC.slots.length + " Slots · " + SC.items.length + " Items";
+    ? countText(open.slots.length, "Slot", "Slots") + " · " + countText(open.items.length, "Item", "Items")
+    : countText(SC.slots.length, "Slot", "Slots") + " · " + countText(SC.items.length, "Item", "Items");
 
   const target = $("scan-modes");
   target.replaceChildren();
@@ -4349,7 +4366,7 @@ function scanScanCard(c) {
     title: "Ein Block vom Typ ITEM-SCAN verweist per Name hierauf"}, c.name);
   const stamp = el("div", {class: "scan-card-state"},
     el("span", {class: "small mono"},
-       c.slots.length + " Slots · " + c.items.length + " Items"),
+       countText(c.slots.length, "Slot", "Slots") + " · " + countText(c.items.length, "Item", "Items")),
     open ? el("span", {class: "small", style: "color:var(--slot-ok)"}, "offen") : null,
     c.missing_items.length
       ? el("span", {class: "small", style: "color:var(--err)",
@@ -4701,7 +4718,8 @@ function scanBuildInspector() {
     const withTemplate = (SC.items || []).filter((i) => (i.templates || []).length).length;
     if (withTemplate) {
       work.appendChild(el("button", {class: "btn",
-        title: withTemplate + " Item(s) mit Vorlage gehen nacheinander an das Modell. "
+        title: "Das Modell benennt " + countText(withTemplate, "Item", "Items")
+               + " mit Vorlage, eins nach dem anderen. "
                + (SC.catalog_on
                   ? "Jeder Name wird aus dem Katalog gewählt, danach werden "
                     + "Kategorie und Priorität gesetzt."
@@ -5029,7 +5047,7 @@ function scanInspSelection(target) {
     "Mit einem Rechteck im Bild gewählt (im Modus „Auswählen“ neben einen Slot " +
     "klicken). STRG-Klick nimmt einzelne dazu oder heraus. Alles hier lässt " +
     "sich mit STRG+Z zurücknehmen.", "selection"));
-  target.appendChild(el("p", {class: "hint"}, SC.selection.length + " Slots gewählt"));
+  target.appendChild(el("p", {class: "hint"}, countText(SC.selection.length, "Slot", "Slots") + " gewählt"));
   // Die Namen stehen da, nicht nur die Zahl: was man loescht, soll man vorher
   // lesen koennen. Bei dreissig wird die Liste lang - dafuer scrollt sie.
   target.appendChild(el("div", {class: "column", style: "gap:2px;max-height:160px;"
@@ -5052,7 +5070,7 @@ function scanInspSelection(target) {
   target.appendChild(el("button", {class: "btn wide", disabled: !photoPresent(),
     title: "Aus jedem gewählten Slot ein Item — Doppelte werden übersprungen",
     onclick: () => callScan("scan_learn_preview", {scope: "selection"})},
-    SC.selection.length + " Items prüfen & lernen"));
+    countText(SC.selection.length, "Item", "Items") + " prüfen & lernen"));
 
   target.appendChild(el("div", {class: "button-pair", style: "margin-top:14px"},
     el("button", {class: "btn", onclick: () => callScan("scan_cancel")},
@@ -5342,20 +5360,22 @@ function detRenderChoice() {
     .concat(listEl.map((c) => ({value: c.name, text: c.name}))),
     open ? open.name : "",
     (v) => callScan(detCommand("open"), {name: v})));
+  // Dieselbe Gestalt wie beim Item-Scan: „Scan-Name“, der Knopf über die volle
+  // Breite, der Umfang als eigene Zeile darunter. Hier stand „Name“, ein Knopf
+  // so breit wie sein Wort und die Zahl rechts daneben — beim Umschalten der
+  // Scan-Art sprang die linke Spalte von einer Gestalt in die andere.
   if (open) {
-    children.push(field("Name", open.name,
+    children.push(field("Scan-Name", open.name,
       (v) => callScan(detCommand("scan_field"),
                      {name: open.name, field: "name", value: v})));
   }
-  children.push(el("div", {class: "row"},
-    el("button", {class: "btn quiet", onclick: () => {
-      scanDetStep = 2;
-      callScan(detCommand("new"));
-    }}, boss ? "+ neuer Boss-Scan" : "+ neuer Icon-Scan"),
-    el("span", {class: "grow"}),
-    el("span", {class: "small mono"}, open
-      ? (boss ? detBosses().length + " Bosse" : detHowText(open.detection))
-      : listEl.length + (listEl.length === 1 ? " Scan" : " Scans"))));
+  children.push(el("button", {class: "btn quiet wide", onclick: () => {
+    scanDetStep = 2;
+    callScan(detCommand("new"));
+  }}, "+ neuer Scan"));
+  children.push(el("span", {class: "small mono scan-scope"}, open
+    ? (boss ? countText(detBosses().length, "Boss", "Bosse") : detHowText(open.detection))
+    : countText(listEl.length, "Scan", "Scans")));
   target.replaceChildren(...children);
 }
 
@@ -5586,7 +5606,7 @@ function detDetectionFields(obj, kind, name) {
     {field: field, value: value}, name ? {name: name} : {}));
   const template = obj.detection !== "marker";
   return [
-    segment([{value: "template", text: "Template"}, {value: "marker", text: "Farb-Marker"}],
+    segment([{value: "template", text: "Vorlage"}, {value: "marker", text: "Farb-Marker"}],
       obj.detection === "marker" ? "marker" : "template",
       // Umschalten heisst hier: das andere loswerden. Beides stehen zu lassen
       // waere `_check_profile_match`s UND — dann muessen BEIDE stimmen, und
@@ -5707,7 +5727,7 @@ function detTestBar(target) {
     el("b", {style: "color:" + color},
       t.ok ? "Test: " + t.name + " erkannt" : "Test: " + t.name + " nicht erkannt"));
   if (t.method && t.confidence !== null && t.method === "Template")
-    target.appendChild(el("span", {class: "metric"}, "Template · " + t.confidence.toFixed(2)));
+    target.appendChild(el("span", {class: "metric"}, "Vorlage · " + t.confidence.toFixed(2)));
   if (t.marker_total)
     target.appendChild(el("span", {class: "metric"},
       t.marker_found + " von " + t.marker_total + " Markern · nötig " + t.marker_required));
@@ -5868,7 +5888,7 @@ function detLibraryCard(b) {
   }
   if (open) {
     cardEl.appendChild(el("p", {class: "hint"},
-      "Seine Aktion ist noch „Schritt überspringen“ — er wird erkannt, aber es "
+      "Seine Aktion ist noch „Block überspringen“ — er wird erkannt, aber es "
       + "passiert nichts."));
   } else {
     cardEl.appendChild(el("div", {class: "scan-card-numbers"},
@@ -6017,7 +6037,7 @@ function detInspLibrary(target) {
     "Gilt zusätzlich in jedem Boss-Scan. Ein lokaler Boss mit gleichem Namen "
     + "hat Vorrang.", "boss-library"));
   target.appendChild(el("p", {class: "hint"},
-    SC.boss_library.length + " Boss(e). Neu entdeckte Bosse landen hier, wenn "
+    countText(SC.boss_library.length, "Boss", "Bosse") + ". Neu entdeckte Bosse landen hier, wenn "
     + "boss_learn_global eingeschaltet ist (Reiter Einstellungen) — sonst im "
     + "Scan, der sie gefunden hat."));
   target.appendChild(el("button", {class: "btn primary",
@@ -6335,7 +6355,7 @@ function repWaitSplit(w, sessions) {
   if (!w || !w.measured_sessions) {
     boxEl.appendChild(el("p", {class: "hint"},
       "Keine Messung: diese Logs stammen von vor der Wartezeit-Erfassung. Der "
-      + "naechste Lauf schreibt sie mit."));
+      + "nächste Lauf schreibt sie mit."));
     return boxEl;
   }
   const span = w.measured_duration || 0;
@@ -6360,8 +6380,8 @@ function repWaitSplit(w, sessions) {
   boxEl.appendChild(legend);
   if (w.measured_sessions < sessions) {
     boxEl.appendChild(el("p", {class: "hint"},
-      "Gemessen in " + w.measured_sessions + " von " + sessions
-      + " Sitzungen — die übrigen Logs sind älter als die Erfassung."));
+      "Gemessen in " + w.measured_sessions + " von "
+      + countText(sessions, "Sitzung", "Sitzungen") + " — die übrigen Logs sind älter als die Erfassung."));
   }
   return boxEl;
 }
@@ -6407,8 +6427,8 @@ function reportRenderLeft() {
   const head = el("div", {class: "section sticky"},
     heading("SITZUNGEN",
       "Eine Zeile je Lauf, neueste oben. „Alle zusammen“ ist der Normalfall: "
-      + "die Frage nach dem haengenden Schritt stellt sich ueber die Nacht, "
-      + "nicht ueber eine einzelne Datei.", "report-sessions"));
+      + "die Frage nach dem hängenden Block stellt sich über die Nacht, "
+      + "nicht über eine einzelne Datei.", "report-sessions"));
   // **Ein Leerzustand nennt den Handgriff, nicht den Config-Schlüssel.** Hier
   // stand „session_log_enabled ist aus" — richtig, aber ein Satz, mit dem man
   // erst in den Einstellungen suchen geht. Der Knopf schaltet es direkt ein.
@@ -6438,7 +6458,7 @@ function reportRenderLeft() {
 
   bodyEl.appendChild(repSession({
     file: "", title: "Alle zusammen",
-    bottom: B.sessions.length + " Sitzung(en)",
+    bottom: B.sessions.length + (B.sessions.length === 1 ? " Sitzung" : " Sitzungen"),
   }));
   for (const s of B.sessions) {
     // Die Sequenz ist der Titel, das Datum steht darunter: beim Suchen fragt
@@ -6448,13 +6468,14 @@ function reportRenderLeft() {
       file: s.file,
       title: s.sequence || s.file,
       bottom: [repBegin(s.begin), repDuration(s.duration),
-               repNumber(s.clicks) + " Klicks"].filter(Boolean).join(" · "),
+               repNumber(s.clicks) + (s.clicks === 1 ? " Klick" : " Klicks")]
+                 .filter(Boolean).join(" · "),
       warning: s.timeouts ? s.timeouts + "× Timeout" : "",
     }));
   }
   if (B.skipped_files) {
     bodyEl.appendChild(el("p", {class: "hint"},
-      B.skipped_files + " aeltere Datei(en) nicht gelesen — der Reiter liest die "
+      countText(B.skipped_files, "ältere Datei", "ältere Dateien") + " nicht gelesen — der Reiter liest die "
       + "neuesten 50."));
   }
   target.appendChild(bodyEl);
@@ -6482,7 +6503,7 @@ function reportRenderMiddle() {
   if (!b || !b.sessions) {
     target.appendChild(emptyState("Noch nichts auszuwerten",
       "Der Bericht zeigt, was vergangene Läufe hinterlassen haben: welcher "
-      + "Schritt am häufigsten hängt, wie lange auf Farben gewartet wurde, was "
+      + "Block am häufigsten hängt, wie lange auf Farben gewartet wurde, was "
       + "gefunden wurde. Er liest dafür die Protokolle, die ein Lauf mit "
       + "eingeschaltetem Session-Log schreibt.",
       B.active ? null : el("button", {class: "btn primary", onclick: enableSessionLog},
@@ -6504,9 +6525,9 @@ function reportRenderMiddle() {
   // DIE Frage, fuer die es den Reiter gibt — deshalb steht sie oben und nicht
   // zwischen den Item-Zahlen.
   if (b.timeouts.length) {
-    target.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HAENGT",
-      "Der oberste Eintrag ist der Schritt, den es zu reparieren lohnt: dort "
-      + "ist eine Farb-Bedingung am haeufigsten nicht aufgegangen.", "report-timeouts",
+    target.appendChild(repList("TIMEOUTS — WO DIE SEQUENZ HÄNGT",
+      "Der oberste Eintrag ist der Block, den es zu reparieren lohnt: dort "
+      + "ist eine Farb-Bedingung am häufigsten nicht aufgegangen.", "report-timeouts",
       // Welcher Block das ist, sagt `targets` (gegen die offene Sequenz
       // aufgeloest) — die Rangzeile oeffnet ihn, statt ihn nur zu nennen.
       b.timeouts.map(([name, n]) => ({name: name, value: n, kind: "warn",
@@ -6520,20 +6541,20 @@ function reportRenderMiddle() {
   target.appendChild(repWaitSplit(b.waits, b.sessions));
   if (b.color_waits && b.color_waits.length) {
     target.appendChild(repWaitList("AUF FARBE GEWARTET — NACH BLOCK",
-      "Summe je Block, laengste zuerst. Ein Timeout zaehlt mit seiner vollen "
+      "Summe je Block, längste zuerst. Ein Timeout zählt mit seiner vollen "
       + "Wartezeit.", "report-color-waits", b.color_waits, "color-wait"));
   }
   if (b.planned_waits && b.planned_waits.length) {
     target.appendChild(repWaitList("GEPLANTE WARTEZEIT — NACH BLOCK",
       "Was die eingestellten Wartezeiten zusammen gekostet haben. Hier "
-      + "verkuerzen heisst: der Lauf wird schneller, ohne dass das Spiel "
+      + "verkürzen heisst: der Lauf wird schneller, ohne dass das Spiel "
       + "mitreden muss.", "report-planned-waits", b.planned_waits, "planned-wait"));
   }
 
   if (b.verify_miss.length) {
-    target.appendChild(repList("NACHPRUEFUNG — KLICKS OHNE WIRKUNG",
-      "Haeufige Fehlschlaege heissen: das Klickziel sitzt falsch, oder das "
-      + "Spiel braucht laenger als verify_timeout.", "report-verify",
+    target.appendChild(repList("NACHPRÜFUNG — KLICKS OHNE WIRKUNG",
+      "Häufige Fehlschläge heissen: das Klickziel sitzt falsch, oder das "
+      + "Spiel braucht länger als verify_timeout.", "report-verify",
       b.verify_miss.map(([name, n, good]) => ({
         name: name, value: n, kind: "error",
         extra: "bestätigt " + good + "/" + (good + n),
@@ -6550,7 +6571,7 @@ function reportRenderMiddle() {
   }
   if (b.disturbances.length) {
     target.appendChild(repList("UNTERBRECHUNGEN",
-      "Fokusverluste und Humanize-Pausen. Eine Haeufung heisst, dass das "
+      "Fokusverluste und Humanize-Pausen. Eine Häufung heisst, dass das "
       + "Spielfenster oft nicht vorn war.", "report-disturbances",
       b.disturbances.map(([name, n]) => ({name: name, value: n}))));
   }
@@ -6575,7 +6596,7 @@ function reportRenderRight() {
     heading("ERTRAG",
       "Stueckzahlen aus dem Log mal Marktwert aus der Analyse. Die Verbindung "
       + "zwischen beiden ist eine Datei (scan_market_value_file) — die "
-      + "Marktanalyse selbst laeuft getrennt.", "report-yield"));
+      + "Marktanalyse selbst läuft getrennt.", "report-yield"));
   target.replaceChildren(head);
 
   const bodyEl = el("div", {class: "section growing"});
@@ -6609,7 +6630,7 @@ function reportRenderRight() {
   // „eingesammelt und verkauft". Das steht hier und nicht im ⓘ: wer die Zahl
   // liest, muss es lesen, ohne danach zu fragen.
   bodyEl.appendChild(el("p", {class: "hint warning"},
-    "Obergrenze: gezaehlt wird, was der Scan ERKANNT hat — nicht, was "
+    "Obergrenze: gezählt wird, was der Scan ERKANNT hat — nicht, was "
     + "eingesammelt und verkauft wurde."));
 
   const highest = e.rows.reduce((m, z) => Math.max(m, z[3]), 0) || 1;
@@ -6622,7 +6643,7 @@ function reportRenderRight() {
 
   if (e.without_value.length) {
     bodyEl.appendChild(el("p", {class: "hint"},
-      e.without_value.length + " Item(s) ohne Marktwert: "
+      countText(e.without_value.length, "Item", "Items") + " ohne Marktwert: "
       + e.without_value.map(([name, n]) => name + " (" + n + "×)").join(", ")));
   }
   target.appendChild(bodyEl);
@@ -6792,7 +6813,7 @@ function cancelWork(cancel) {
     button.textContent = "Bricht ab …";
   }
   sayWork("Wartet noch auf die laufende Vorlage — die Antwort ist schon "
-              + "unterwegs und laesst sich nicht zurueckholen.");
+              + "unterwegs und lässt sich nicht zurückholen.");
 }
 
 /** Die Zeile im Arbeits-Kasten austauschen, ohne ihn neu aufzubauen.
@@ -7313,7 +7334,7 @@ function toolsFillRecordingOutput(target, live = toolsRecordingLive, started = t
   const headText = data.paused ? "PAUSIERT" : started ? "LIVE" : "LETZTE EREIGNISSE";
   target.replaceChildren(el("div", {class: "tools-output-header"},
     el("span", {}, headText),
-    el("span", {class: "tools-output-counter"}, String(data.count || 0) + " Ereignisse")));
+    el("span", {class: "tools-output-counter"}, countText(data.count || 0, "Ereignis", "Ereignisse"))));
   const rows = el("div", {class: "tools-output-rows"});
   if (!events.length) {
     rows.appendChild(el("div", {class: "tools-output-empty"},
@@ -7336,7 +7357,7 @@ function toolsFillRecordingOutput(target, live = toolsRecordingLive, started = t
   // hier sehen und nicht erst an der Sequenz merken, dass ein Schritt fehlt.
   if (data.right_clicks) {
     target.appendChild(el("div", {class: "hint rc-hint"},
-      data.right_clicks + " Rechtsklick(s) nicht aufgezeichnet — der Autoclicker "
+      countText(data.right_clicks, "Rechtsklick", "Rechtsklicks") + " nicht aufgezeichnet — der Autoclicker "
       + "kann keine ausführen."));
   }
 }
@@ -7466,7 +7487,7 @@ async function toolsCheck() {
   const n = toolsReport.errors || 0, h = toolsReport.hints || 0;
   setStatus({
     text: !toolsReport.ok ? (toolsReport.message || "Prüfung fehlgeschlagen.")
-        : (n || h) ? n + " Fehler, " + h + " Hinweis(e)."
+        : (n || h) ? n + " Fehler, " + countText(h, "Hinweis", "Hinweise") + "."
         : "Alles in Ordnung.",
     kind: !toolsReport.ok || n ? "err" : h ? "warn" : "ok",
   });
@@ -7740,7 +7761,7 @@ function toolsFillReclickOutput(target) {
   target.replaceChildren(el("div", {class: "tools-output-header"},
     el("span", {}, headText),
     el("span", {class: "tools-output-counter"},
-      total ? done + " von " + total + " Punkt(en)" : "—")));
+      total ? done + " von " + countText(total, "Punkt", "Punkten") : "—")));
 
   if (!total) {
     target.appendChild(el("div", {class: "tools-output-rows"},
@@ -7772,7 +7793,7 @@ function toolsFillReclickOutput(target) {
         + "hinfahren und dort klicken."));
   } else if (!running && total) {
     target.appendChild(el("div", {class: "hint rc-hint"},
-      (d.changed || 0) + " Stelle(n) geändert. Was davon geschrieben wurde, "
+      countText(d.changed || 0, "Stelle", "Stellen") + " geändert. Was davon geschrieben wurde, "
       + "hängt daran, ob übernommen oder verworfen wurde."));
   }
 
@@ -7797,7 +7818,7 @@ function toolsFillReclickOutput(target) {
   target.appendChild(rows);
   if (d.others)
     target.appendChild(el("div", {class: "hint rc-hint"},
-      d.others + " Stelle(n) erreicht die Runde nicht (beobachtete Pixel, "
+      countText(d.others, "Stelle", "Stellen") + " erreicht die Runde nicht (beobachtete Pixel, "
       + "ELSE) — dafür bleibt walk im Punkte-Menü."));
 }
 
@@ -7820,8 +7841,8 @@ function toolsStartReclickLive() {
       // Endet die Runde, sagt es die Statuszeile — sonst merkt man es nur,
       // wenn man gerade hinsieht.
       if (wasRunning && !stamp.active)
-        setStatus({text: "Klick-Runde beendet — " + (stamp.changed || 0)
-                     + " Stelle(n) geändert.", kind: "ok"});
+        setStatus({text: "Klick-Runde beendet — "
+                     + countText(stamp.changed || 0, "Stelle", "Stellen") + " geändert.", kind: "ok"});
       quiet = stamp.active ? 0 : quiet + 1;
     } else {
       quiet += 1;
@@ -7945,7 +7966,7 @@ function toolsRenderRight() {
   const rows = W.calibration.preview || [];
   const head = el("div", {class: "section"},
     el("span", {class: "heading"}, "VORSCHAU"),
-    el("div", {class: "hint"}, rows.length + " Stelle(n), Auszug"));
+    el("div", {class: "hint"}, countText(rows.length, "Stelle", "Stellen") + ", Auszug"));
   const listEl = el("div", {class: "section growing", style: "gap:4px"});
   for (const z of rows) {
     listEl.appendChild(el("div", {class: "tools-preview"},
@@ -8059,9 +8080,11 @@ function remTokenField(s) {
     + "auf diesem PC — nicht in der config.json, nicht im Export, und dieses Fenster "
     + "zeigt ihn nach dem Speichern nie wieder an.";
   if (s.token_set && !remTokenOpen) {
+    // Die beiden Knoepfe teilen sich gleiche Spalten unter dem Zustand: neben
+    // „eingetragen“ waren sie so breit wie ihr Wort und standen schief.
     return el("div", {class: "field"}, labeled("Bot-Token", help, "rem-token"),
-      el("div", {class: "row"},
-        el("span", {class: "grow overview-ok"}, icon("check"), "eingetragen"),
+      el("span", {class: "overview-ok"}, icon("check"), "eingetragen"),
+      el("div", {class: "button-pair"},
         el("button", {class: "btn quiet",
           onclick: () => { remTokenOpen = true; remRenderLeft(); }}, "ersetzen"),
         el("button", {class: "btn quiet", onclick: async () =>
@@ -8147,19 +8170,23 @@ function remWordsCard() {
   const card = el("div", {class: "share-card", id: "rem-words"},
     remCardHead("Freigegebene Wörter",
       "Wer im Kanal „!start raid“ schreibt, startet hier die Sequenz hinter „raid“ — "
-      + R.lead + " Sekunden nach der Nachricht, auf allen PCs im selben Augenblick. "
+      + countText(R.lead, "Sekunde", "Sekunden") + " nach der Nachricht, auf allen PCs im selben Augenblick. "
       + "Jeder PC ordnet das Wort SEINER Sequenz zu; ein Wort, das hier fehlt, "
       + "startet hier nichts.", "rem-words-help"));
   const choices = R.sequences.map((n) => ({value: n, text: n}));
   for (const w of s.words) {
     const options = w.exists ? choices
       : [{value: w.sequence, text: w.sequence + " (fehlt)"}].concat(choices);
-    card.appendChild(el("div", {class: "rem-row" + (w.exists ? "" : " missing")},
+    // Liste und Eingabezeile stehen auf DEMSELBEN Raster (`rem-words-grid`):
+    // Pfeil, Auswahl und Knopf lagen in der Liste woanders als darunter, wo
+    // man das naechste Wort eintippt — zwei Zeilen, die fast fluchten.
+    card.appendChild(el("div", {class: "rem-row rem-grid rem-words-grid"
+                                       + (w.exists ? "" : " missing")},
       el("code", {class: "rem-word"}, "!start " + w.word),
       icon("arrow"),
       selection(null, options, w.sequence, async (v) =>
         remAdopt(await ask("remote_word", {action: "set", word: w.word, sequence: v}))),
-      el("button", {class: "btn quiet", title: "Freigabe entfernen", onclick: async () =>
+      el("button", {class: "btn quiet rem-action", title: "Freigabe entfernen", onclick: async () =>
         remAdopt(await ask("remote_word", {action: "remove", word: w.word}))}, icon("trash"))));
   }
   if (!s.words.length) {
@@ -8172,9 +8199,10 @@ function remWordsCard() {
   const add = async () => remAdopt(await ask("remote_word",
     {action: "set", word: word.value, sequence: sequence.value}));
   word.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
-  card.appendChild(el("div", {class: "rem-row rem-add", id: "rem-word-add"},
-    el("span", {class: "rem-word"}, "!start"), word, icon("arrow"), sequence,
-    el("button", {class: "btn", onclick: add}, icon("plus"), "freigeben")));
+  card.appendChild(el("div", {class: "rem-row rem-grid rem-words-grid rem-add", id: "rem-word-add"},
+    el("span", {class: "rem-word-cell"}, el("span", {class: "rem-word"}, "!start"), word),
+    icon("arrow"), sequence,
+    el("button", {class: "btn rem-action", onclick: add}, icon("plus"), "freigeben")));
   return card;
 }
 
@@ -8186,10 +8214,10 @@ function remUsersCard() {
       + "auf der Liste steht, bekommt im Kanal keine Antwort. Dich selbst auch "
       + "eintragen, sonst startest du hier aus Discord nichts.", "rem-users-help"));
   for (const u of s.users) {
-    card.appendChild(el("div", {class: "rem-row"},
-      el("span", {class: "grow"}, u.name || "ohne Namen"),
+    card.appendChild(el("div", {class: "rem-row rem-grid rem-users-grid"},
+      el("span", {}, u.name || "ohne Namen"),
       el("span", {class: "small mono"}, u.id),
-      el("button", {class: "btn quiet", title: "nicht mehr erlauben", onclick: async () =>
+      el("button", {class: "btn quiet rem-action", title: "nicht mehr erlauben", onclick: async () =>
         remAdopt(await ask("remote_user", {action: "remove", id: u.id}))}, icon("trash"))));
   }
   if (!s.users.length) {
@@ -8197,10 +8225,14 @@ function remUsersCard() {
       "Noch niemand. Am einfachsten: im Kanal etwas schreiben lassen und rechts unter "
       + "„Zuletzt im Kanal“ auf „erlauben“ klicken."));
   }
-  const id = el("input", {autocomplete: "off", placeholder: "Discord-ID"});
+  // Dieselbe Reihenfolge wie die Liste darueber: Name, dann ID. Die
+  // Eingabezeile fragte erst die ID und dann den Namen — umgekehrt zu dem, was
+  // direkt darueber stand.
   const name = el("input", {autocomplete: "off", placeholder: "Name (nur Anzeige)"});
-  card.appendChild(el("div", {class: "rem-row rem-add", id: "rem-user-add"}, id, name,
-    el("button", {class: "btn", onclick: async () => remAdopt(await ask("remote_user",
+  const id = el("input", {autocomplete: "off", placeholder: "Discord-ID"});
+  card.appendChild(el("div", {class: "rem-row rem-grid rem-users-grid rem-add", id: "rem-user-add"},
+    name, id,
+    el("button", {class: "btn rem-action", onclick: async () => remAdopt(await ask("remote_user",
       {action: "add", id: id.value, name: name.value}))}, icon("plus"), "erlauben")));
   return card;
 }

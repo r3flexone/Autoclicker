@@ -26,7 +26,7 @@ DEFAULT_MIN_CONFIDENCE: float = 0.8
 # die familienspezifischen Namen unten sind nur Aliase für die Lesbarkeit.
 ACTION_CLICK = "click"              # Punkt klicken
 ACTION_KEY = "key"                  # Taste drücken
-ACTION_SKIP = "skip"                # Schritt überspringen
+ACTION_SKIP = "skip"                # Block überspringen
 ACTION_SKIP_CYCLE = "skip_cycle"    # Zyklus überspringen
 ACTION_RESTART = "restart"          # Sequenz neustarten
 ACTION_ITEM_SCAN = "item_scan"      # Item-Scan ausführen (nur Boss)
@@ -46,10 +46,25 @@ ELSE_KEY = ACTION_KEY
 ACTION_TEXT = {
     ACTION_CLICK: "Punkt klicken",
     ACTION_KEY: "Taste drücken",
-    ACTION_SKIP: "Schritt überspringen",
+    ACTION_SKIP: "Block überspringen",
     ACTION_SKIP_CYCLE: "Zyklus abbrechen",
     ACTION_RESTART: "Sequenz neu starten",
     ACTION_ITEM_SCAN: "Item-Scan ausführen",
+}
+
+# Dieselben Aktionen als Schlagwort für die Kacheln im Studio (ELSE am Block,
+# Aktion bei Treffer im Boss- und Icon-Scan). `ACTION_TEXT` ist für Prosa
+# gemacht; auf einer 9,5-px-Kachel in einem Dreier-Raster ist derselbe Satz
+# zweizeilig. Die ELSE-Kacheln zeigten bis dahin den rohen Wert (`skip_cycle`),
+# die Boss-Kacheln „SKIP CYCLE“ — beides Englisch in einer deutschen
+# Oberfläche. Ein Test hält beide Tabellen auf denselben Schlüsseln.
+ACTION_SHORT = {
+    ACTION_CLICK: "KLICK",
+    ACTION_KEY: "TASTE",
+    ACTION_SKIP: "ÜBERSPRINGEN",
+    ACTION_SKIP_CYCLE: "ZYKLUS ABBRECHEN",
+    ACTION_RESTART: "NEUSTART",
+    ACTION_ITEM_SCAN: "ITEM-SCAN",
 }
 
 # Was die Timeout-Aktion (`pixel_timeout_action`, Werte in config.py) tut, als

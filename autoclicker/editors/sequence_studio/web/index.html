@@ -16,7 +16,7 @@
   ist der Grund, warum hier fast nur Aufbau steht — die Editor-Logik (Auswahl,
   Umsortieren, Feldregeln) liegt in der Brücke (`bridge*.py`) und wird dort gemessen.
 -->
-  <link rel="stylesheet" href="styles.css?v=20261004-1">
+  <link rel="stylesheet" href="styles.css?v=20261103-1">
 </head>
 <body>
 <div class="app">
@@ -57,6 +57,38 @@
          Sequenz haengen: Scans, Teilen und Werkzeuge arbeiten alle in
          `sequences/<name>/`. Nebenbei behaelt der Kopf damit in jedem Reiter
          dieselbe Gestalt, statt beim Umschalten drei Gruppen zu verlieren. -->
+    <!-- Das SPEICHERN bleibt bei der Sequenz. Scans, Teilen, Werkzeuge und
+         Einstellungen schreiben andere Dateien und haben ihren eigenen Knopf;
+         zwei Speichern-Knoepfe fuer zwei Dateien in einer Leiste sind die
+         Falle, um die es hier geht. Dasselbe gilt fuer „Starten": es startet
+         die Sequenz, nicht den Reiter. Die Symbole baut `app.js` (icon()) als
+         Inline-SVG — Unicode-Glyphen stehen je nach Schrift verschieden hoch.
+
+         Die Gruppe steht VOR der Sequenz-Kachel und wird in den anderen
+         Reitern nur unsichtbar, nicht entfernt (`.off-view`). Sie stand
+         dahinter und verschwand ganz: die Kachel und „?" rutschten bei jedem
+         Reiterwechsel hin und her, und wo der Kopf im Editor umbrach und in
+         den Scans nicht, sprang die ganze Seite um 35 px. So behaelt der Kopf
+         in jedem Reiter dieselbe Gestalt, und was bleibt, steht still. -->
+    <div class="row actions" data-sequence>
+      <!-- Rueckgaengig und Wieder stehen VOR dem Speichern: sie sind die
+           Griffe, nach denen man greift, wenn etwas schiefging — und nach dem
+           Speichern gibt es nichts mehr zurueckzunehmen (der Stapel ist dann
+           leer, die Datei die Wahrheit). Nur das Symbol: mit Beschriftung
+           brauchten die beiden 160 px, und der Kopf passte erst ab gut
+           1550 px in eine Zeile. Was zurueckgenommen wird, steht im Tooltip. -->
+      <button class="btn quiet icon-only" id="btn-undo" title="Rückgängig (STRG+Z)"
+              aria-label="Rückgängig" disabled></button>
+      <button class="btn quiet icon-only" id="btn-redo" title="Wiederherstellen (STRG+Y)"
+              aria-label="Wiederherstellen" disabled></button>
+      <button class="btn primary" id="btn-save">Speichern</button>
+      <!-- Starten aus dem Editor heraus: der Weg, den man beim Bauen einer
+           Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst
+           in den Live-Run, deshalb braucht der Knopf dort keinen Zwilling.
+           Gruen umrandet, nicht gefuellt: die zweite Aktion nach Speichern,
+           aber die einzige, die im Spiel etwas tut. -->
+      <button class="btn launch" id="btn-run">Starten</button>
+    </div>
     <!-- Die Sequenz ist EIN Bedienelement, kein Trio: Auswahl, der
          Ungespeichert-Punkt und „Neu" in einer Kachel. „Laden" gibt es nicht
          mehr — die Auswahl laedt, mit derselben Rueckfrage wie vorher; ein
@@ -68,28 +100,6 @@
       <select id="seq-select"></select>
       <span class="dirty-dot" id="dirty-dot" hidden title="ungespeicherte Änderungen"></span>
       <button class="seq-chip-new" id="btn-new" title="Neue, leere Sequenz anlegen">Neu</button>
-    </div>
-    <!-- Das SPEICHERN bleibt bei der Sequenz. Scans, Teilen, Werkzeuge und
-         Einstellungen schreiben andere Dateien und haben ihren eigenen Knopf;
-         zwei Speichern-Knoepfe fuer zwei Dateien in einer Leiste sind die
-         Falle, um die es hier geht. Dasselbe gilt fuer „Starten": es startet
-         die Sequenz, nicht den Reiter. Die Symbole baut `app.js` (icon()) als
-         Inline-SVG — Unicode-Glyphen stehen je nach Schrift verschieden hoch. -->
-    <div class="row actions" data-sequence>
-      <!-- Rueckgaengig und Wieder stehen VOR dem Speichern: sie sind die
-           Griffe, nach denen man greift, wenn etwas schiefging — und nach dem
-           Speichern gibt es nichts mehr zurueckzunehmen (der Stapel ist dann
-           leer, die Datei die Wahrheit). Beschriftung fest, der letzte Schritt
-           steht im Tooltip — dieselbe Regel wie beim Zurueck des Scans-Reiters. -->
-      <button class="btn quiet" id="btn-undo" title="Rückgängig (STRG+Z)" disabled>Zurück</button>
-      <button class="btn quiet" id="btn-redo" title="Wiederherstellen (STRG+Y)" disabled>Wieder</button>
-      <button class="btn primary" id="btn-save">Speichern</button>
-      <!-- Starten aus dem Editor heraus: der Weg, den man beim Bauen einer
-           Sequenz zwanzigmal geht. Beim Start schaltet die Ansicht von selbst
-           in den Live-Run, deshalb braucht der Knopf dort keinen Zwilling.
-           Gruen umrandet, nicht gefuellt: die zweite Aktion nach Speichern,
-           aber die einzige, die im Spiel etwas tut. -->
-      <button class="btn launch" id="btn-run">Starten</button>
     </div>
     <!-- Der Zwilling der Taste „?": fuer die, die nicht raten, dass es sie
          gibt. Ganz rechts, ausserhalb der Sequenz-Aktionen — er gehoert zum
@@ -502,6 +512,6 @@
   </div>
 </div>
 
-  <script src="app.js?v=20261011-1"></script>
+  <script src="app.js?v=20261103-1"></script>
 </body>
 </html>

@@ -116,6 +116,13 @@ def run():
         expect("200" in right, f"die Goldsumme fehlt: {right[:200]!r}")
         expect("Obergrenze" in right,
                "der Vorbehalt fehlt — die Zahl waere sonst eine Behauptung")
+        # **Einzahl bei 1.** Die Liste links schrieb „1 Klicks“ unter jede der
+        # beiden Sitzungen und „2 Sitzung(en)“ darueber.
+        left = f.text("#rep-left")
+        expect("2 Sitzungen" in left and "Sitzung(en)" not in left,
+               f"die Sitzungszahl steht nicht in der Mehrzahl: {left[:200]!r}")
+        expect("1 Klick" in left and "1 Klicks" not in left,
+               f"eine Sitzung mit einem Klick heisst nicht „1 Klick“: {left[:200]!r}")
         f.image("report")
 
         # **Eine Sitzung waehlen tauscht den Bericht aus.** Die zweite Zeile ist

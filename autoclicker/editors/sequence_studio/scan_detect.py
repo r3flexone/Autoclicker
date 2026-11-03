@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from ...models import (
+    ACTION_SHORT,
     ACTION_TEXT,
     BOSS_ACTION_CLICK,
     BOSS_ACTION_KEY,
@@ -62,19 +63,9 @@ from .scan_model import normalize_region
 _BOSS_ACTIONS = (BOSS_ACTION_SCAN, BOSS_ACTION_CLICK, BOSS_ACTION_KEY,
                   BOSS_ACTION_SKIP, BOSS_ACTION_SKIP_CYCLE, BOSS_ACTION_RESTART)
 _ICON_ACTIONS = tuple(a for a in _BOSS_ACTIONS if a != BOSS_ACTION_SCAN)
-# **Die Kachel traegt ein Schlagwort, der Tooltip den Satz.** `ACTION_TEXT` ist
-# fuer Prosa gemacht („Punkt klicken", „Zyklus abbrechen") und steht so in
-# Meldungen und im Laufstatus; auf einer 9,5-px-Kachel in einem Sechser-Raster
-# ist derselbe Satz zweizeilig und unlesbar. Zwei Verwendungen, zwei Laengen —
-# ein Test haelt beide Tabellen auf denselben Schluesseln.
-_ACTION_SHORT = {
-    BOSS_ACTION_SCAN: "ITEM-SCAN",
-    BOSS_ACTION_CLICK: "KLICK",
-    BOSS_ACTION_KEY: "TASTE",
-    BOSS_ACTION_SKIP: "SKIP",
-    BOSS_ACTION_SKIP_CYCLE: "SKIP CYCLE",
-    BOSS_ACTION_RESTART: "RESTART",
-}
+# Die Kachel traegt ein Schlagwort (`ACTION_SHORT`), der Tooltip den Satz
+# (`ACTION_TEXT`); beide Tabellen stehen in `models.py`, weil die ELSE-Kacheln
+# im Editor dieselben Woerter brauchen.
 _SCAN_MODES_TEXT = (
     (SCAN_MODE_ALL, "bestes pro Kategorie"),
     (SCAN_MODE_BEST, "nur bestes"),
@@ -222,13 +213,13 @@ class ScanDetectMixin:
                         "x": p.x, "y": p.y} for p in self.points],
             "item_scan_names": sorted(self.scans, key=str.casefold),
             "actions": {
-                "boss": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                "boss": [{"value": a, "text": ACTION_TEXT[a], "short": ACTION_SHORT[a]}
                          for a in _BOSS_ACTIONS],
-                "icon": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                "icon": [{"value": a, "text": ACTION_TEXT[a], "short": ACTION_SHORT[a]}
                          for a in _ICON_ACTIONS],
                 # Der Fallback eines Boss-Scans kann weniger als ein Boss: kein
                 # Klick, keine Taste — dafuer gibt es am Scan keine Felder.
-                "boss_default": [{"value": a, "text": ACTION_TEXT[a], "short": _ACTION_SHORT[a]}
+                "boss_default": [{"value": a, "text": ACTION_TEXT[a], "short": ACTION_SHORT[a]}
                                  for a in VALID_BOSS_DEFAULT_ACTIONS],
                 "scan_modes": [{"value": w, "text": t} for w, t in _SCAN_MODES_TEXT],
             },

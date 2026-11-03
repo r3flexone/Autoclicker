@@ -361,7 +361,7 @@ check("und keine Umschalt-Zeile ohne Knopf", _orphaned == set())
 # **Die Kopfleiste blendet ihre Sequenz-Knoepfe in JEDEM fremden Reiter aus.**
 # Der Bericht liest `logs/`, nicht die offene Sequenz — bliebe „Speichern"
 # stehen, staenden zwei Speichern-Bedeutungen in einer Leiste.
-_list = re.search(r'n\.hidden = \[([^\]]*)\]\.includes\(next\)', _web)
+_list = re.search(r'toggle\("off-view", \[([^\]]*)\]\.includes\(next\)', _web)
 check("der Bericht steht bei den Reitern ohne Sequenz-Knoepfe",
       _list is not None and '"report"' in _list.group(1))
 

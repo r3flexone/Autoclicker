@@ -100,7 +100,7 @@ class ScanLearningMixin:
         scope = str((data or {}).get("scope") or "all")
         slots = self._selection_slots() if scope == "selection" else self._scan_slots()
         if not slots:
-            return self._scan_report("Keine Slots fuer die Lernvorschau.", "warn")
+            return self._scan_report("Keine Slots für die Lernvorschau.", "warn")
         if self._photo is None:
             return self._scan_report("Erst einen Screenshot aufnehmen.", "warn")
 
@@ -175,7 +175,7 @@ class ScanLearningMixin:
         if empty_slots:
             parts.append(f"{empty_slots} leere übersprungen")
         extra = " - " + ", ".join(parts) if parts else ""
-        return self._scan_report(f"{len(review)} Vorschlaege vorbereitet{extra}.", "info")
+        return self._scan_report(f"{len(review)} Vorschläge vorbereitet{extra}.", "info")
 
     @staticmethod
     def _image_url(img) -> str:
@@ -237,7 +237,7 @@ class ScanLearningMixin:
             return self._scan_report(
                 "Keine Items ausgewählt; nichts gelernt oder geändert.", "info")
 
-        self._remember("Item-Auswahl der Lernvorschau uebernommen")
+        self._remember("Item-Auswahl der Lernvorschau übernommen")
         result = _LearnResult(assigned=set(self.items))
         for line in ticked:
             user_input = by_slot.get(line["slot"], {})
