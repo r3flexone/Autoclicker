@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, MagicMock
@@ -93,7 +94,7 @@ class MainStartTest(unittest.TestCase):
             "sweep_on_start": None, "check_on_start": None, "discard_command": None,
             "handle_quit": None, "unregister_hotkeys": None,
             "flush_hotkey_messages": None, "_check_commands": None,
-            "handle_pause": None, "init_logging": None,
+            "handle_pause": None, "init_logging": None, "_start_remote": None,
         }
         with contextlib.ExitStack() as stack:
             for name, result in names.items():
@@ -116,9 +117,16 @@ class MainStartTest(unittest.TestCase):
                 stack.enter_context(patch("autoclicker.ocr.is_available", return_value=ocr))
                 stack.enter_context(patch("autoclicker.ocr.get_status", return_value="EasyOCR bereit"))
             output = io.StringIO()
+            before = set(threading.enumerate())
             # stderr: der Logger meldet einen Handler-Fehler samt Stack dorthin.
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
                 result = main_module.main()
+        # Ein Thread, der `main()` überlebt, läuft im nächsten Test weiter und
+        # schreibt in dessen Arbeitsordner: der Discord-Bot legte dort alle
+        # fünf Sekunden `.remote-status.json` ab, und das Aufräumen eines
+        # späteren Tests scheiterte daran, ohne dass dessen Prüfung falsch war.
+        left = [t.name for t in threading.enumerate() if t not in before and t.is_alive()]
+        self.assertEqual([], left, "main() hat Threads zurückgelassen")
         return result, calls, output.getvalue()
 
     @staticmethod

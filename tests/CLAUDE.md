@@ -76,6 +76,15 @@ samt Rauchtests und Gegenproben hinterlässt keinen Ordner mehr. Die Bilder aus
 `Window.image()` (`rauchtest_*.png`) liegen bewusst daneben: sie werden bei
 jedem Lauf überschrieben und sind zum Ansehen da.
 
+**Kein Thread überlebt seinen Test.** Ein Thread, der weiterläuft, schreibt in
+den Arbeitsordner des *nächsten* Tests: `MainStartTest` rief `main()` achtzehnmal
+auf, `_start_remote` war nicht ersetzt, und achtzehn Discord-Bots legten danach
+alle fünf Sekunden `.remote-status.json` in den gerade aktuellen Ordner. Rot
+wurde ein Test in einer anderen Datei, und zwar nur in seinem `tearDown`
+(„Verzeichnis ist nicht leer“), in etwa jedem dritten Lauf. `run_main()` prüft
+deshalb, dass `main()` keinen Thread zurücklässt; wer `main()` einen neuen
+Hintergrund-Thread gibt, ersetzt ihn dort mit.
+
 **Lokal grün heisst nicht CI grün — ein Unterschied ist die Umgebung.** Auf dem
 Entwicklungsrechner ist `PYTHONDONTWRITEBYTECODE` gesetzt; Python legt dort nie
 einen `__pycache__` an. In der CI schon, und ein `import main` legt ihn im
