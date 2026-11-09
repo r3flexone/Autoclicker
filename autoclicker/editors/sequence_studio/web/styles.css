@@ -1733,3 +1733,53 @@ button.cfg-default:hover{border-color:var(--line);color:var(--text)}
    und ein Pfad passen in 320 px nicht in eine Zeile. */
 .seq-footer .button-pair{grid-template-columns:repeat(3,minmax(0,1fr))}
 .seq-footer .button-pair > .btn{white-space:nowrap;padding-left:0;padding-right:0}
+
+/* ------------------------------------------------------------ Kleines Fenster */
+/* **Ein Viertel eines 16:9-Bildschirms muss gehen** — 960×540 bei 1920×1080,
+   1280×720 bei 2560×1440. Dort standen die Seitenspalten fest bei 290 und
+   370 px, und für Board oder Scan-Bild blieben bei 960 px gut 300 px: ausgerechnet
+   der Arbeitsbereich wurde als erster gequetscht. Unter 1400 px Fensterbreite
+   gilt deshalb die kompakte Fassung:
+   - die Seitenspalten werden schmaler (240 / 300 px),
+   - Speichern und Starten zeigen nur ihr Symbol (der Tooltip sagt den Rest),
+   - Blöcke im Board zeigen nur ihre Kopfzeile, Phasen Name und
+     Zusammenfassung: man sieht, wie die Sequenz AUSSIEHT. Was wegfällt, steht
+     rechts, sobald man den Block oder die Phase anklickt (`.compact-only`).
+   Gemessen wird am Fenster, nicht am Board — sonst änderte „Punkte
+   ausblenden" nebenbei die Gestalt jeder Karte. */
+.compact-only,.phase-summary{display:none}
+@media (max-width:1399px){
+  .page{width:240px}
+  .page.right{width:300px}
+  #btn-save .btn-text,#btn-run .btn-text{display:none}
+  .seq-chip select{width:130px}
+  .phase{width:210px}
+  .phase .card-body{display:none}
+  .phase-header .phase-tool,.phase-header .phase-all{display:none}
+  .phase-summary{display:inline}
+  .compact-only{display:flex}
+  /* Bei 240 px blieben vom Punktnamen drei Buchstaben; die Koordinaten
+     stehen im Inspektor des Blocks, der den Punkt benutzt. */
+  .point .xy{display:none}
+}
+/* **Unter 1100 px rückt der Kopf zusammen, damit er in EINER Zeile bleibt.**
+   Bei 960 px brach er um, und die zweite Zeile kostete 35 px von gut 500. */
+@media (max-width:1099px){
+  .header{gap:6px;padding:6px 10px}
+  .header .actions{gap:4px}
+  .tab{padding:4px 5px;font-size:11.5px}
+  .tab-gap{margin:0 1px}
+  .seq-chip{padding-left:0}
+  .seq-chip-label{display:none}
+  .seq-chip select{width:104px;padding-left:8px}
+}
+
+/* **Die Einstellungen stapeln, sobald ihre Spalte schmal wird.** Text links,
+   Bedienelement rechts braucht rund 600 px; darunter bekam die rechte Spalte
+   ihre 264 px trotzdem, und die Erklärung stand ein Wort pro Zeile (gemessen
+   bei 960 px Fensterbreite). Untereinander liest sich beides. Gefragt wird die
+   Spalte selbst, nicht das Fenster — sie ist es, die schmal wird. */
+.cfg-middle{container-type:inline-size}
+@container (max-width:600px){
+  .cfg-row{grid-template-columns:minmax(0,1fr);gap:8px}
+}

@@ -209,6 +209,10 @@ class LinuxBackendTests(unittest.TestCase):
             self.assertFalse(linux_x11.send_click(10, 20, 0, 0))
             self.assertFalse(linux_x11.send_key("a"))
 
+    def test_linux_skalierung_ist_eins(self):
+        # X11 rechnet Fenster in denselben Pixeln, die MSS misst.
+        self.assertEqual(linux_x11.get_screen_scale(), 1.0)
+
 
 class WindowsBackendTests(unittest.TestCase):
     def test_windows_backend_erfuellt_vertrag(self):
@@ -227,6 +231,16 @@ class WindowsBackendTests(unittest.TestCase):
                 patch.object(windows.user32, "SendInput", return_value=1), \
                 patch.object(windows.time, "sleep"):
             self.assertFalse(windows.send_click(10, 20, 0, 0))
+
+    def test_windows_skalierung_kommt_aus_der_system_dpi(self):
+        with patch.object(windows.user32, "GetDpiForSystem", return_value=144):
+            self.assertEqual(windows.get_screen_scale(), 1.5)
+        # 0 heisst „nicht ermittelbar“ (oder gestubbt) — dann nicht durch null teilen.
+        with patch.object(windows.user32, "GetDpiForSystem", return_value=0):
+            self.assertEqual(windows.get_screen_scale(), 1.0)
+        # Vor Windows 10 gibt es die Funktion nicht.
+        with patch.object(windows.user32, "GetDpiForSystem", side_effect=AttributeError):
+            self.assertEqual(windows.get_screen_scale(), 1.0)
 
     def test_windows_mausposition_meldet_api_fehler(self):
         with patch.object(windows.user32, "GetCursorPos", return_value=False):

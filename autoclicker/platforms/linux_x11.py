@@ -100,6 +100,15 @@ def get_screen_size() -> tuple[int, int] | None:
         return None
 
 
+def get_screen_scale() -> float:
+    """1.0: X11 rechnet Fenster in denselben Pixeln, die MSS misst.
+
+    Eine Skalierung wie unter Windows (logische Pixel × Faktor) gibt es dort
+    nicht systemweit; GTK- oder Qt-Faktoren gelten je Programm.
+    """
+    return 1.0
+
+
 def capture_screen(region=None):
     """Screenshot über MSS; Ergebnis ist ein PIL-RGB-Bild."""
     try:

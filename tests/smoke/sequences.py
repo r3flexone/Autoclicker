@@ -118,6 +118,9 @@ def run():
         f.image("sequenzen_editor")
 
         # ------------------------------------------------ Der Phasenkopf
+        # In voller Breite: unter 1400 px zeigt der Kopf nur Name und
+        # Zusammenfassung (s. „Kleines Fenster" unten).
+        f.page.set_viewport_size({"width": 1500, "height": 560})
         f.tab("editor")
         # **Kein „×" am ENDE einer Beschriftung.** Der Skalieren-Knopf hiess
         # „Wartezeiten ×" — dort, wo jede andere Oberflaeche ein Schliesskreuz
@@ -173,6 +176,8 @@ def run():
         for word in ("Läufe je Zyklus", "Start ab Uhrzeit"):
             expect(word in head_text, f"'{word}' fehlt im Phasenkopf: {head_text!r}")
         f.image("sequenzen_phasenkopf")
+        f.page.set_viewport_size({"width": 1300, "height": 560})
+        f.settle()
 
         # ------------------------------------------- Die Auswahl gilt ueberall
         # **Welche Sequenz offen ist, gilt in JEDEM Reiter.** Sie war frueher
@@ -254,6 +259,71 @@ def run():
         expect("Beta" in f.text("#tools-middle"),
                f"der Werkzeuge-Reiter zeigt nach dem Wechsel die alte Sequenz: "
                f"{f.text('#tools-middle')[:120]!r}")
+
+        # ------------------------------------------------- Kleines Fenster
+        # **Ein Viertel eines 16:9-Bildschirms muss gehen** (960×540, ohne
+        # Titelleiste gut 510). Die Seitenspalten standen fest bei 290 und
+        # 370 px, und für das Board blieben gut 300 px — der Arbeitsbereich
+        # wurde als erster gequetscht.
+        f.tab("editor")
+        f.page.set_viewport_size({"width": 960, "height": 510})
+        f.settle()
+        small = f.page.evaluate("""() => {
+          const width = (s) => document.querySelector(s).getBoundingClientRect().width;
+          const shown = (s) => [...document.querySelectorAll(s)]
+            .some(n => n.offsetParent !== null);
+          return {board: Math.round(width('#editor-body .board-wrap')),
+                  body: shown('.phase .card-body'),
+                  tool: shown('.phase-header .phase-tool'),
+                  text: shown('#btn-save .btn-text')};
+        }""")
+        expect(small["board"] >= 0.4 * 960,
+               f"das Board bekommt bei 960 px keine 40 % der Breite: {small}")
+        # Die Blöcke zeigen nur ihre Kopfzeile: man sieht, wie die Sequenz
+        # aussieht; Einzelheiten stehen rechts, sobald man etwas anklickt.
+        expect(not small["body"] and not small["tool"],
+               f"Karten oder Phasenköpfe zeigen bei 960 px alle Einzelheiten: {small}")
+        expect(not small["text"], f"Speichern trägt bei 960 px seine Beschriftung: {small}")
+        # Ob der Kopf dabei in EINE Zeile passt, hängt an der Schrift (s. o.):
+        # unter Windows wird es gemessen, sonst nur, dass er zusammenrückt.
+        if sys.platform == "win32":
+            one_row = f.page.evaluate("""() => {
+              const top = (s) => document.querySelector(s).getBoundingClientRect().top;
+              return Math.abs(top('#btn-help') - top('.tabs')) < 20;
+            }""")
+            expect(one_row, "der Kopf bricht bei 960 px um")
+        else:
+            label = f.page.eval_on_selector(
+                ".seq-chip-label", "e => getComputedStyle(e).display")
+            expect(label == "none", f"der Kopf rückt bei 960 px nicht zusammen: {label}")
+        # **Was der Phasenkopf nicht mehr zeigt, steht im Phasen-Menü.** Sonst
+        # liessen sich Wiederholungen und Startzeit im kleinen Fenster gar nicht
+        # mehr setzen.
+        f.page.click(".phase-header.loop .row > .small")
+        f.settle()
+        fields = f.page.eval_on_selector_all(
+            "#inspector .compact-only input", "ns => ns.filter(n => n.offsetParent).length")
+        expect(fields == 2, f"Läufe/Startzeit fehlen im Phasen-Menü bei 960 px: {fields}")
+        # Und bei voller Breite stehen sie wieder im Kopf — nur dort, nicht doppelt.
+        f.page.set_viewport_size({"width": 1500, "height": 560})
+        f.settle()
+        doubled = f.page.eval_on_selector_all(
+            "#inspector .compact-only", "ns => ns.filter(n => n.offsetParent).length")
+        in_head = f.page.eval_on_selector_all(
+            ".phase-header .phase-tool", "ns => ns.filter(n => n.offsetParent).length")
+        expect(doubled == 0 and in_head > 0,
+               f"bei voller Breite stehen die Phasenwerte doppelt oder gar nicht: "
+               f"Menü {doubled}, Köpfe {in_head}")
+        # **Die Einstellungen stapeln bei schmaler Spalte.** Text links und
+        # Bedienelement rechts liessen der Erklärung bei 960 px ein Wort je Zeile.
+        f.page.set_viewport_size({"width": 960, "height": 510})
+        f.tab("settings")
+        tracks = f.page.eval_on_selector(
+            ".cfg-row", "e => getComputedStyle(e).gridTemplateColumns.split(' ').length")
+        expect(tracks == 1, f"Einstellungen bei 960 px nicht gestapelt: {tracks} Spalten")
+        f.image("sequenzen_klein")
+        f.page.set_viewport_size({"width": 1300, "height": 560})
+        f.settle()
 
         error.extend(f.error)
     return error

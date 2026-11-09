@@ -62,6 +62,9 @@ die Fenstergrösse oder den virtuellen Desktop braucht, nimmt:
 - `get_virtual_desktop()` → `(l, t, r, b)` über alle Monitore, oder `None`
 - `get_virtual_origin()` → linke/obere Kante, `(0, 0)` als Rückfall
 - `get_screen_size()` → Primärmonitor, oder `None`
+- `get_screen_scale()` → dessen Skalierung (1.0 = 100 %, Linux immer 1.0). Nur
+  nötig, wo Bildschirmpixel auf logische treffen — das Studio-Fenster legt pywebview
+  in logischen Pixeln an, `get_screen_size()` misst in echten (`window_geometry()`)
 - `get_screen_center()` → Mitte, mit Rückfallkette bis `(960, 540)`
 
 `None` statt `(0, 0, 0, 0)` ist Absicht: eine Fläche von 0×0 würde jede Koordinate als

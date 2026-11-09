@@ -211,9 +211,13 @@ _inspector = _app[_app.index("function renderInspector"):]
 _inspector = _inspector[:_inspector.index("\nfunction ", 1)]
 check("der Inspektor zählt `count`, nicht die Zeilen der letzten Phase",
       "S.selection.count" in _inspector and "S.selection.rows.length" not in _inspector)
+# Ohne Leerraum verglichen: die Einrückung hängt daran, in welcher Funktion der
+# Knopf gebaut wird (heute `phaseBulk()`), nicht an dem, was er tut.
+_app_flat = " ".join(_app.split())
 check("„Alle Blöcke wählen“ fragt die Karten und reicht STRG weiter",
       "phase.blocks.every((b) => b.selected)" in _app
-      and 'call("phase_selection",\n                             {phase: phase.index, add: e.ctrlKey || e.metaKey})' in _app)
+      and 'call("phase_selection", {phase: phase.index, add: e.ctrlKey || e.metaKey})'
+      in _app_flat)
 check("„Ab hier aufnehmen“ verlangt genau einen Block über alle Phasen",
       "S.selection.count === 1" in _app)
 check("kein Rest liest mehr die Zeilenzahl der letzten Phase als Auswahlgrösse",

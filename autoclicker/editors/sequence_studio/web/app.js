@@ -1166,6 +1166,83 @@ function setLeftClosed(closed) {
   if (S) renderPhases();
 }
 
+/** Die beiden Eigenschaften einer Loop-Phase als Felder.
+ *
+ * Stehen im Phasenkopf — und im Phasen-Menü rechts, wenn das Fenster klein ist:
+ * dann zeigt der Kopf im Board nur Name und Blockzahl (`.compact-only`). */
+function phaseFields(phase) {
+  if (phase.kind !== "loop") return null;
+  const reps = el("input", {type: "number", min: "1", value: phase.repeat,
+                           title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
+  reps.addEventListener("change", () => call("phase_set",
+    {phase: phase.index, field: "repeat", value: Number(reps.value) || 1}));
+  const start = el("input", {value: phase.start, placeholder: "HH:MM",
+                             title: "Start erst ab dieser Uhrzeit"});
+  start.addEventListener("change", () => call("phase_set",
+    {phase: phase.index, field: "start", value: start.value}));
+  // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
+  // sagen, was sie ist. Gedämpft, nicht in Akzentfarbe — es beschriftet nur.
+  //
+  // Und es ist das EINZIGE „×" in dieser Zeile. Der Löschknopf trug einmal
+  // eines, was hier schon als Verwechslung notiert war — der Skalieren-Knopf
+  // hiess danach aber „Wartezeiten ×" und brachte es an derselben Stelle
+  // wieder zurück: ein „×" am ENDE einer Beschriftung liest sich als
+  // „wegmachen", nicht als „mal". Er steht jetzt unten bei den Sammel-Aktionen
+  // und sagt, was er tut (s. u.); hier bleiben nur die beiden Eigenschaften
+  // der Phase.
+  //
+  // **Beide Zeilen liegen auf DEMSELBEN Raster** (`auto-fit`, min. 118 px —
+  // dieselbe Regel wie `button-pair` darunter). Vorher war das hier ein
+  // `flex` mit fest getippten 70 und 74 px: die Zeile hörte bei rund 60 % auf,
+  // während die Knopfzeile darunter über die volle Breite ging. Zwei Zeilen
+  // mit verschiedenen Kanten übereinander lesen sich als Versehen, und die
+  // beiden Felder waren ausserdem *fast* gleich breit — nah genug, dass es
+  // wie ein Rundungsfehler aussieht, statt wie eine Absicht.
+  //
+  // Damit die halbe Breite auch etwas trägt, bekommen sie ihre Beschriftung:
+  // „× 1" und ein leeres „HH:MM" sagten bis dahin nur im Tooltip, was sie
+  // sind — und ein Tooltip ist keine Beschriftung.
+  return el("div", {class: "phase-tool"},
+    el("label", {class: "field"}, "Läufe je Zyklus", reps),
+    el("label", {class: "field"}, "Start ab Uhrzeit", start));
+}
+
+/** Die Sammel-Aktionen einer Phase. Ort wie bei `phaseFields()`: im
+ * Phasenkopf, bei kleinem Fenster im Phasen-Menü rechts. */
+function phaseBulk(phase) {
+  // **Was auf ALLE Blöcke der Phase wirkt, steht beieinander** — und nur, wenn
+  // es welche gibt. Das Skalieren stand vorher zwischen Wiederholungen und
+  // Startzeit, also zwischen zwei Feldern, die die Phase BESCHREIBEN, während
+  // es selbst jeden Block darin ändert. Ohne Blöcke hatte es ausserdem nichts
+  // zu tun und stand trotzdem da.
+  if (!phase.blocks.length) return null;
+  // Gefragt wird jede Karte, nicht `S.selection.phase`: die Auswahl darf über
+  // mehrere Phasen reichen, und eine ganz gewählte Phase muss nicht die sein,
+  // in der zuletzt geklickt wurde.
+  const all = phase.blocks.every((b) => b.selected);
+  // `button-pair`, nicht `row` mit `grow`: für „mehrere Knöpfe teilen sich
+  // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
+  // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
+  const bulk = el("div", {class: "button-pair phase-all"},
+    el("button", {class: "btn quiet",
+      title: all ? "Nur diese Phase abwählen"
+                 : "Alle Blöcke dieser Phase wählen · STRG+Klick nimmt sie dazu",
+      onclick: (e) => call("phase_selection",
+                           {phase: phase.index, add: e.ctrlKey || e.metaKey})},
+      all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
+  // In JEDER Phase dieselbe Knopfzeile: auch die Zeiten von START und
+  // ABSCHLUSS lassen sich skalieren, und seit Phasen ihre Art wechseln
+  // können, wäre eine Zeile, die je nach Art anders aussieht, eine Sonderform.
+  bulk.appendChild(el("button", {
+    class: "btn quiet",
+    title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
+    onclick: () => {
+      const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
+      if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
+    }}, "Zeiten skalieren …"));
+  return bulk;
+}
+
 function renderPhase(phase) {
   // **Jeder Phasenkopf ist anklickbar, auch START und ABSCHLUSS** — rechts
   // steht dann das Phasen-Menü (`renderPhaseInspector`): Art umstellen,
@@ -1195,77 +1272,22 @@ function renderPhase(phase) {
   // zweimal im Kopf, einmal als Zahl zum Anfassen und einmal als Abzeichen, das
   // sich nicht ändern lässt. Die zugehörige Klasse `.counter` ist damit
   // ersatzlos weg — die Sequenzen-Übersicht benutzt ihre eigene (`.num`).
+  //
+  // Bei kleinem Fenster fallen die Felder weg (`.compact-only`); was sie
+  // sagen, steht dann als Zusammenfassung daneben — dort darf es nur gelesen
+  // werden, gesetzt wird es im Phasen-Menü rechts.
+  const summary = phase.kind !== "loop" ? ""
+    : [phase.repeat > 1 ? phase.repeat + "×" : "", phase.start ? "ab " + phase.start : ""]
+        .filter(Boolean).join(" · ");
   head.appendChild(el("div", {class: "row"}, name,
     el("span", {class: "small mono"}, phase.blocks.length
-      + (phase.blocks.length === 1 ? " Block" : " Blöcke"))));
+      + (phase.blocks.length === 1 ? " Block" : " Blöcke")),
+    summary ? el("span", {class: "phase-summary small mono"}, "· " + summary) : null));
 
-  if (phase.kind === "loop") {
-    const reps = el("input", {type: "number", min: "1", value: phase.repeat,
-                             title: "Wie oft diese Phase je Zyklus läuft — 1 = einmal"});
-    reps.addEventListener("change", () => call("phase_set",
-      {phase: phase.index, field: "repeat", value: Number(reps.value) || 1}));
-    const start = el("input", {value: phase.start, placeholder: "HH:MM",
-                               title: "Start erst ab dieser Uhrzeit"});
-    start.addEventListener("change", () => call("phase_set",
-      {phase: phase.index, field: "start", value: start.value}));
-    // Das „×" wandert vor das Feld: ohne die Marke daneben muss die Zahl selbst
-    // sagen, was sie ist. Gedämpft, nicht in Akzentfarbe — es beschriftet nur.
-    //
-    // Und es ist das EINZIGE „×" in dieser Zeile. Der Löschknopf trug einmal
-    // eines, was hier schon als Verwechslung notiert war — der Skalieren-Knopf
-    // hiess danach aber „Wartezeiten ×" und brachte es an derselben Stelle
-    // wieder zurück: ein „×" am ENDE einer Beschriftung liest sich als
-    // „wegmachen", nicht als „mal". Er steht jetzt unten bei den Sammel-Aktionen
-    // und sagt, was er tut (s. u.); hier bleiben nur die beiden Eigenschaften
-    // der Phase.
-    //
-    // **Beide Zeilen liegen auf DEMSELBEN Raster** (`auto-fit`, min. 118 px —
-    // dieselbe Regel wie `button-pair` darunter). Vorher war das hier ein
-    // `flex` mit fest getippten 70 und 74 px: die Zeile hörte bei rund 60 % auf,
-    // während die Knopfzeile darunter über die volle Breite ging. Zwei Zeilen
-    // mit verschiedenen Kanten übereinander lesen sich als Versehen, und die
-    // beiden Felder waren ausserdem *fast* gleich breit — nah genug, dass es
-    // wie ein Rundungsfehler aussieht, statt wie eine Absicht.
-    //
-    // Damit die halbe Breite auch etwas trägt, bekommen sie ihre Beschriftung:
-    // „× 1" und ein leeres „HH:MM" sagten bis dahin nur im Tooltip, was sie
-    // sind — und ein Tooltip ist keine Beschriftung.
-    head.appendChild(el("div", {class: "phase-tool"},
-      el("label", {class: "field"}, "Läufe je Zyklus", reps),
-      el("label", {class: "field"}, "Start ab Uhrzeit", start)));
-  }
-  // **Was auf ALLE Blöcke der Phase wirkt, steht beieinander** — und nur, wenn
-  // es welche gibt. Das Skalieren stand vorher zwischen Wiederholungen und
-  // Startzeit, also zwischen zwei Feldern, die die Phase BESCHREIBEN, während
-  // es selbst jeden Block darin ändert. Ohne Blöcke hatte es ausserdem nichts
-  // zu tun und stand trotzdem da.
-  if (phase.blocks.length) {
-    // Gefragt wird jede Karte, nicht `S.selection.phase`: die Auswahl darf über
-    // mehrere Phasen reichen, und eine ganz gewählte Phase muss nicht die sein,
-    // in der zuletzt geklickt wurde.
-    const all = phase.blocks.every((b) => b.selected);
-    // `button-pair`, nicht `row` mit `grow`: für „mehrere Knöpfe teilen sich
-    // eine Zeile" gibt es genau eine Antwort im Haus, und sie bricht um, statt
-    // die Beschriftung abzuschneiden, sobald eine Spalte unter 118 px fiele.
-    const bulk = el("div", {class: "button-pair phase-all"},
-      el("button", {class: "btn quiet",
-        title: all ? "Nur diese Phase abwählen"
-                   : "Alle Blöcke dieser Phase wählen · STRG+Klick nimmt sie dazu",
-        onclick: (e) => call("phase_selection",
-                             {phase: phase.index, add: e.ctrlKey || e.metaKey})},
-        all ? "Auswahl aufheben" : "Alle Blöcke wählen"));
-    // In JEDER Phase dieselbe Knopfzeile: auch die Zeiten von START und
-    // ABSCHLUSS lassen sich skalieren, und seit Phasen ihre Art wechseln
-    // können, wäre eine Zeile, die je nach Art anders aussieht, eine Sonderform.
-    bulk.appendChild(el("button", {
-      class: "btn quiet",
-      title: "Alle Wartezeiten dieser Phase mit einem Faktor multiplizieren",
-      onclick: () => {
-        const factor = window.prompt("Wartezeiten mit welchem Faktor multiplizieren?", "1.0");
-        if (factor !== null) call("phase_scale", {phase: phase.index, factor: factor});
-      }}, "Zeiten skalieren …"));
-    head.appendChild(bulk);
-  }
+  const fields = phaseFields(phase);
+  if (fields) head.appendChild(fields);
+  const bulk = phaseBulk(phase);
+  if (bulk) head.appendChild(bulk);
 
   const column = el("div", {class: "phase", "data-phase": String(phase.index)}, head);
   phase.blocks.forEach((block, i) => {
@@ -1705,7 +1727,11 @@ function runEdge(active) {
   if (active && !runWasRunning && view !== "run") setView("run");
   runWasRunning = active;
   const button = $("btn-run");
-  button.replaceChildren(icon(active ? "stop" : "play"), active ? "Stoppen" : "Starten");
+  // Die Beschriftung steht in einem eigenen Element: bei kleinem Fenster
+  // bleibt nur das Symbol (`.btn-text`), und der Tooltip sagt den Rest.
+  button.replaceChildren(icon(active ? "stop" : "play"),
+                         el("span", {class: "btn-text"}, active ? "Stoppen" : "Starten"));
+  button.title = active ? "Lauf stoppen" : "Sequenz starten";
   button.classList.toggle("danger", active);
   // Die Lampe am Reiter: dass etwas laeuft, sieht man auch aus dem Editor.
   $("tab-run-lamp").classList.toggle("on", active);
@@ -2301,6 +2327,13 @@ function renderPhaseInspector(target, phase) {
     countText(phase.blocks.length, "Block", "Blöcke") + " · läuft " + own.when
     + (loop && phase.repeat > 1 ? ", " + phase.repeat + "× je Zyklus" : "")
     + (loop && phase.start ? ", ab " + phase.start : "")));
+
+  // **Bei kleinem Fenster stehen Felder und Sammel-Aktionen HIER** — der
+  // Phasenkopf im Board zeigt dann nur Name und Zusammenfassung, damit man
+  // sieht, wie die Sequenz aussieht. Bei grossem Fenster blendet `.compact-only`
+  // den Block aus: zweimal dasselbe Feld wäre eine Frage mit zwei Antworten.
+  const fields = phaseFields(phase), bulk = phaseBulk(phase);
+  if (fields || bulk) target.appendChild(el("div", {class: "compact-only column"}, fields, bulk));
 
   // Feste kurze Auswahl als Kacheln — dieselbe Regel wie beim Block-Typ. Die
   // markierte ist die eigene Art; ein belegtes START/ABSCHLUSS ist gesperrt.

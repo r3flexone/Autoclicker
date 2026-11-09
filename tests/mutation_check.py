@@ -62,6 +62,16 @@ CASES = {
         'return None, f"Teilen-Ordner nicht gefunden: {folder}"', 'return EXPORT_DIR, ""',
         "test_import_export_security.ShareFolderTest."
         "test_fehlender_teilen_ordner_weicht_nicht_auf_exports_aus"),
+    "studio-window-position": (
+        "autoclicker.sequence_studio", "main",
+        "**_start_geometry(),", "",
+        "test_studio_close.StudioStartGeometryTest."
+        "test_start_uebergibt_die_lage_an_pywebview"),
+    "studio-window-scale": (
+        "autoclicker.sequence_studio", "window_geometry",
+        "screen[0] / scale, screen[1] / scale", "screen[0], screen[1]",
+        "test_studio_close.StudioStartGeometryTest."
+        "test_skalierter_bildschirm_bleibt_mittig_und_passt"),
     "import-rollback": (
         "autoclicker.import_export", "_ImportTransaction.rollback",
         "from .config import apply_config", "return\n    from .config import apply_config",

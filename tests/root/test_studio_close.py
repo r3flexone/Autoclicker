@@ -1,4 +1,4 @@
-"""Tests für die Sicherung des Studios beim Schliessen."""
+"""Tests für das Studio-Fenster: wo es aufgeht und was es beim Schliessen sichert."""
 
 from types import SimpleNamespace
 import json
@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from test_support import install_platform_stubs
 
@@ -138,6 +138,77 @@ class StudioCloseTest(unittest.TestCase):
             answer = bridge.save({})
         self.assertEqual(answer["status"]["kind"], "err")
         self.assertEqual(existing.read_bytes(), original)
+
+
+class StudioStartGeometryTest(unittest.TestCase):
+    """Das Fenster geht mittig auf dem Hauptmonitor auf und passt darauf.
+
+    Ohne ausdrückliche Lage ging es bei (312, 312) auf — die Kaskaden-Ecke von
+    Windows; pywebviews „mittig“ greift erst, wenn das Fenster schon steht.
+    """
+
+    def test_mittig_auf_dem_hauptmonitor(self):
+        from autoclicker.sequence_studio import window_geometry
+        self.assertEqual(window_geometry((3440, 1440), 1.0),
+                         {"x": 920, "y": 220, "width": 1600, "height": 1000})
+
+    def test_skalierter_bildschirm_bleibt_mittig_und_passt(self):
+        # 150 %: pywebview multipliziert Lage und Grösse selbst mit dem Faktor.
+        # Ohne die Umrechnung stünde das Fenster rechts über den Rand hinaus.
+        from autoclicker.sequence_studio import window_geometry
+        g = window_geometry((2560, 1440), 1.5)
+        left = g["x"] * 1.5
+        right = 2560 - (g["x"] + g["width"]) * 1.5
+        bottom = 1440 - (g["y"] + g["height"]) * 1.5
+        self.assertGreaterEqual(right, 0)
+        self.assertGreaterEqual(bottom, 0)
+        self.assertLessEqual(abs(left - right), 3)
+
+    def test_kleiner_bildschirm_bekommt_ein_kleineres_fenster(self):
+        from autoclicker.sequence_studio import window_geometry
+        g = window_geometry((1366, 768), 1.0)
+        self.assertLess(g["width"], 1366)
+        self.assertLess(g["height"], 768)
+        self.assertEqual(g["x"], (1366 - g["width"]) // 2)
+        self.assertEqual(g["y"], (768 - g["height"]) // 2)
+
+    def test_ohne_bildschirm_nur_die_groesse(self):
+        from autoclicker.sequence_studio import window_geometry
+        for screen, scale in ((None, 1.0), ((0, 0), 1.0), ((1920, 1080), 0)):
+            self.assertEqual(window_geometry(screen, scale),
+                             {"width": 1600, "height": 1000}, (screen, scale))
+
+    def test_start_uebergibt_die_lage_an_pywebview(self):
+        import sys
+        import types
+        from autoclicker import winapi
+        from autoclicker.sequence_studio import main
+
+        created = {}
+
+        def create_window(title, **kwargs):
+            created.update(kwargs)
+            # MagicMock, weil `closing += …` ein `__iadd__` braucht.
+            return SimpleNamespace(events=SimpleNamespace(closing=MagicMock()))
+
+        fake = types.ModuleType("webview")
+        fake.create_window = create_window
+        fake.start = lambda *args, **kwargs: None
+        with tempfile.TemporaryDirectory() as folder:
+            cwd = os.getcwd()
+            os.chdir(folder)
+            try:
+                save_sequence_file(Sequence("test"), Path("sequences/test/sequence.json"))
+                with patch.dict(sys.modules, {"webview": fake}), \
+                        patch.object(winapi, "get_screen_size", return_value=(3440, 1440)), \
+                        patch.object(winapi, "get_screen_scale", return_value=1.0), \
+                        patch.object(winapi, "set_app_id", return_value=True), \
+                        patch("sys.stdout"):
+                    self.assertEqual(main(["studio", "test"]), 0)
+            finally:
+                os.chdir(cwd)
+        self.assertEqual((created.get("x"), created.get("y")), (920, 220))
+        self.assertEqual((created["width"], created["height"]), (1600, 1000))
 
 
 if __name__ == "__main__":

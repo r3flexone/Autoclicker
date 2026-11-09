@@ -424,6 +424,22 @@ def get_screen_size() -> tuple[int, int] | None:
     return (b, h) if b > 0 and h > 0 else None
 
 
+def get_screen_scale() -> float:
+    """Skalierung des Primaermonitors (1.0 = 100 %, 1.5 = 150 %).
+
+    `get_screen_size()` liefert Bildschirmpixel, weil der Prozess DPI-aware ist;
+    pywebview rechnet Fenstergroesse und -lage in logischen Pixeln und
+    multipliziert selbst. Wer beides zusammenbringt, braucht den Faktor. Ohne
+    `GetDpiForSystem` (vor Windows 10) gilt 1.0 — dann rechnet Windows ohnehin
+    nicht pro Monitor um.
+    """
+    try:
+        dpi = int(user32.GetDpiForSystem())
+    except (AttributeError, OSError, TypeError, ValueError):
+        return 1.0
+    return dpi / 96 if dpi > 0 else 1.0
+
+
 def get_virtual_desktop() -> tuple[int, int, int, int] | None:
     """(links, oben, rechts, unten) ueber ALLE Monitore, oder None.
 

@@ -47,6 +47,40 @@ steht, die sie benutzt. `CTRL+ALT+V` startet deshalb denselben Prozess wie
 |---|---|---|
 | `autoclicker/sequence_studio.py` (Prozess-Einstieg; gestartet von `handle_sequence_studio` und `handle_studio_scans` in `handlers.py`) | `editors/sequence_studio/` (pywebview) | `sequences/<name>/` (sequence.json, item_scans/, boss_scans/, icon_scans/, templates/), `config.json` |
 
+**Das Fenster geht mittig auf dem Hauptmonitor auf, und es passt darauf**
+(`window_geometry()`). Ohne `x`/`y` verlangt pywebview „mittig“ von WinForms,
+setzt das aber erst, wenn das Fenster schon steht — gemessen ging es bei
+(312, 312) auf, der Kaskaden-Ecke von Windows. Die Lage wird deshalb
+ausdrücklich gesetzt, in logischen Pixeln: `get_screen_size()` misst echte,
+pywebview multipliziert selbst mit der Skalierung (`get_screen_scale()`). Auf
+einem kleinen Bildschirm wird das Fenster höchstens 90 % so gross wie er, statt
+mit 1600×1000 über den Rand zu laufen.
+
+**Ein Viertel eines 16:9-Bildschirms muss gehen** (960×540 bei 1920×1080,
+1280×720 bei 2560×1440). Die Seitenspalten standen fest bei 290 und 370 px; bei
+960 px blieben für Board oder Scan-Bild gut 300 px, und die Einstellungen
+zeigten ihre Erklärungen ein Wort je Zeile. Unter 1400 px Fensterbreite gilt
+deshalb die kompakte Fassung (Abschnitt „Kleines Fenster“ am Ende von
+`styles.css`):
+
+- Seitenspalten 240 / 300 px; Speichern und Starten nur als Symbol
+  (`.btn-text`, der Tooltip sagt den Rest); unter 1100 px rückt der Kopf
+  zusammen, damit er in einer Zeile bleibt.
+- **Blöcke zeigen nur ihre Kopfzeile, Phasen Name und Zusammenfassung** — man
+  sieht, wie die Sequenz *aussieht*. Was wegfällt, steht rechts, sobald man den
+  Block oder die Phase anklickt: Wiederholungen, Startzeit und die
+  Sammel-Aktionen stehen dann im Phasen-Menü (`.compact-only`, gebaut von
+  denselben `phaseFields()`/`phaseBulk()` wie der Kopf). Bei voller Breite
+  blendet `.compact-only` sie dort aus — zweimal dasselbe Feld wäre eine Frage
+  mit zwei Antworten.
+- Gemessen wird am **Fenster**, nicht am Board: sonst änderte „Punkte
+  ausblenden“ nebenbei die Gestalt jeder Karte.
+- Die Einstellungen stapeln Text und Bedienelement, sobald **ihre Spalte**
+  unter 600 px fällt (Container-Abfrage auf `.cfg-middle`).
+
+Der Rauchtest `sequences` misst das bei 960×510 und schaut, dass bei voller
+Breite nichts davon übrig bleibt.
+
 **Der Scans-Reiter merkt, wenn der Hauptprozess seine Dateien anfasst.** Er las
 `slots.json`, `items.json` und `item_scans/` genau einmal je Sitzung — und ein
 Lauf mit `learn_unknown` legt in derselben Zeit neue Items an und **speichert**

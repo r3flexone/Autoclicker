@@ -25,6 +25,45 @@ from .utils import sanitize_filename, atomic_write, compact_json, col
 
 WINDOW_TITLE = "Sequenz-Studio"
 INDEX = Path(__file__).parent / "editors" / "sequence_studio" / "web" / "index.html"
+# Wunschgrösse in logischen Pixeln; auf einem kleineren Bildschirm wird es weniger.
+WINDOW_SIZE = (1600, 1000)
+# So viel vom Bildschirm darf das Fenster höchstens nehmen — der Rest bleibt
+# für Taskleiste und Rand, damit Titelleiste und Fusszeile erreichbar sind.
+WINDOW_SHARE = 0.9
+
+
+def window_geometry(screen, scale: float = 1.0) -> dict:
+    """Grösse und Lage des Fensters: mittig auf dem Hauptmonitor, nie grösser als er.
+
+    **Die Lage wird ausdrücklich gesetzt.** pywebview verlangt ohne `x`/`y`
+    „mittig“ von WinForms, setzt das aber erst, nachdem das Fenster schon
+    existiert — und dann gilt es nicht mehr. Gemessen ging das Studio auf dem
+    Hauptmonitor (3440×1440) bei (312, 312) auf: die Kaskaden-Ecke von Windows.
+
+    `screen` kommt in Bildschirmpixeln (`get_screen_size()`), pywebview rechnet
+    in logischen und multipliziert mit `scale` — deshalb wird erst geteilt.
+    Ohne Bildschirm gibt es nur die Grösse, und Windows wählt die Lage.
+    """
+    width, height = WINDOW_SIZE
+    try:
+        logical_w, logical_h = screen[0] / scale, screen[1] / scale
+    except (TypeError, IndexError, ZeroDivisionError):
+        return {"width": width, "height": height}
+    if logical_w <= 0 or logical_h <= 0:
+        return {"width": width, "height": height}
+    width = min(width, int(logical_w * WINDOW_SHARE))
+    height = min(height, int(logical_h * WINDOW_SHARE))
+    return {"x": int((logical_w - width) // 2), "y": int((logical_h - height) // 2),
+            "width": width, "height": height}
+
+
+def _start_geometry() -> dict:
+    """Die Fensterlage für diesen Rechner; scheitert die Abfrage, nur die Grösse."""
+    try:
+        from . import winapi
+        return window_geometry(winapi.get_screen_size(), winapi.get_screen_scale())
+    except Exception:          # noqa: BLE001 - eine Fensterlage ist kein Startgrund
+        return window_geometry(None)
 
 
 def last_edited() -> "Path | None":
@@ -188,9 +227,8 @@ def main(argv: list[str]) -> int:
         WINDOW_TITLE,
         url=INDEX.as_uri(),
         js_api=bridge,
-        width=1600,
-        height=1000,
         background_color="#0C0F14",
+        **_start_geometry(),
     )
     # Ohne den Haken geht die Rettungskopie verloren. (Bis pywebview 3.5 hiess das
     # Ereignis `window.closing`; requirements.txt holt die aktuelle Fassung.)
