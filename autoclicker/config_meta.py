@@ -436,6 +436,15 @@ META: dict = {
         "Hebt alle JSON-Dateien aufs aktuelle Format und legt vorher eine "
         "Sicherung unter backups/ an. Nur ausschalten, wenn Altbestand "
         "absichtlich eingefroren bleiben soll."),
+    "share_folder": M(
+        "Teilen-Ordner", CONTROL_TEXT,
+        "Ein Ordner für Bündel, etwa in OneDrive oder Dropbox. Der Teilen-Reiter "
+        "schreibt seine Bündel dorthin und zeigt, was andere PCs dort abgelegt "
+        "haben; beim Einlesen werden die Koordinaten auf dieses Fenster "
+        "umgerechnet. Geteilt werden Bündel, nicht die Sequenzen selbst — jeder "
+        "PC hat eigene Monitore. Gilt nur für diesen PC und reist nicht mit "
+        "einem Bündel mit. Am bequemsten im Teilen-Reiter über „Ordner wählen …“.",
+        empty="nur exports/ in diesem Ordner"),
 
     # === DEBUG ===
     "debug_log": M(

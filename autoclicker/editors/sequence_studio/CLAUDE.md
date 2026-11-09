@@ -1292,6 +1292,31 @@ Vier Regeln:
 Nach dem Import lesen beide Seiten neu — der Reiter selbst und, über den
 Briefkasten-Befehl `data_reload`, der Hauptprozess.
 
+**Der Teilen-Ordner steht als Karte oben in der Mitte** (`shareFolderCard()`,
+`share_folder_choose`/`share_folder_set`): derselbe Aufbau wie „Datei wählen …“
+beim Import, Dialog als Knopf und darunter das Feld. Warum Bündel und nicht die
+Sequenzen selbst: `autoclicker/CLAUDE.md`. Vier Regeln für den Reiter:
+
+- **Angelegt wird kein Ordner.** Ein vertippter Pfad legte sonst irgendwo einen
+  an, und das Bündel käme nirgends an. Geschrieben wird über `config_write()`,
+  damit der Hauptprozess (Konsolen-Export) mitzieht.
+- **Ein fehlender Ordner sperrt „Bündel schreiben“ und sagt es** (`folder.found`)
+  — vorher, nicht erst im Status nach dem Klick.
+- **Die Liste sagt, woher ein Bündel kommt**, als Wort („Teilen-Ordner“ /
+  „exports“), und eingelesen wird über den Pfad aus der Liste (`e.path`), nicht
+  über `"exports/" + Name`.
+- **Einzelne Sequenzen hakt man unter „Sequenzordner“ an** (`shareSeqs`,
+  `below` in `shareCheckbox()`), direkt unter dessen Zeile; hinter allen Teilen
+  las sich die Liste als Unterpunkt von „Einstellungen“. **Eine einzelne heisst
+  wie sie, ohne Zeitstempel** (`_bundle_name()`): ein neuer Export ersetzt den
+  alten, und die anderen PCs finden unter einem Namen immer die neueste
+  Fassung. Der Status sagt „ersetzt“ statt „geschrieben“.
+
+**`sanitize_filename("")` ist „unbenannt“, nicht leer.** `export_start` prüfte das
+bereinigte Ergebnis auf leer, und der Zeitstempel-Name kam nie: jeder Export ohne
+Namen hiess `unbenannt.zip` und ersetzte den vorigen, während das Feld „leer = mit
+Zeitstempel“ versprach. Geprüft wird jetzt die Eingabe.
+
 **Der Reiter „Werkzeuge" holt nach, was nur die Konsole konnte** (`bridge_tools.py`).
 Prüfen (`check`), kalibrieren (`fix`) und die Klick-Runde (`reclick`) lagen im
 Punkte-Menü — also ausgerechnet die Handgriffe, die man nach einem Bildschirm-Umbau

@@ -258,6 +258,8 @@ sequences/<name>/bilder/<n>.png          je Item-Scan ein eingefrorener Bildschi
 presets/slots/<name>.json                Slot-Presets      (programmweit)
 presets/items/<name>.json                Item-Presets      (programmweit)
 exports/<name>.zip                       Import/Export-Bündel (manifest.json + Sequenzordner)
+<share_folder>/<name>.zip                dasselbe im Teilen-Ordner (OneDrive & Co.), wenn
+                                         einer eingestellt ist — nur Bündel, nie sequences/
 backups/<pfad>.bak                       Sicherungen des Start-Durchgangs (Struktur gespiegelt)
 screenshots/                             Screenshot-Schritte zur Laufzeit
 logs/<timestamp>_<seq>.csv               Session-Log (wenn aktiviert)
@@ -468,6 +470,7 @@ erfindet, gilt dieses Glossar; wer ein neues Wort braucht, trägt es hier ein:
 | Verwendung | usage | | Ertrag | yield |
 | Fernstart | remote | | Auftrag (Fernstart) | order |
 | Freigabe / freigeben | approval / allow | | Wort (Fernstart) | word |
+| Teilen-Ordner | share folder | | Bündel | bundle |
 
 ### Altlasten werden entfernt, nicht mitgeschleppt
 

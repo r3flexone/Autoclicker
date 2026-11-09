@@ -23,6 +23,10 @@ def setup():
     st.active_sequence = seq
     st.points = seq.points
     save_sequence_file(seq, sequence_file(seq.name))
+    # Eine zweite Sequenz, damit „nur die offene" etwas abzuwählen hat.
+    save_sequence_file(Sequence(name="Raid", points=[ClickPoint(id=1, x=5, y=5)]),
+                       sequence_file("Raid"))
+    Path("onedrive").mkdir()
     return StudioBridge(seq, Path(dict(list_available_sequences())["Farm"]),
                         "sequences")
 
@@ -45,15 +49,41 @@ def run():
         # Sequenzordner liegen, sind es zwei, und die Zahl war nur noch ein
         # Pin auf einen Stand, den es nicht mehr gibt.
         from autoclicker.editors.sequence_studio.bridge_share import PARTS
-        checkbox = f.count("#share-export input[type=checkbox]")
+        checkbox = f.count("#share-export .growing > .share-row input[type=checkbox]")
         expect(checkbox == len(PARTS),
                f"{len(PARTS)} Haken erwartet (je einer pro TEILE), da: {checkbox}")
+        # Je Sequenz ein Haken darunter — eingerückt, nicht als weiterer TEIL.
+        seqs = f.count("#share-export .share-seqs input[type=checkbox]")
+        expect(seqs == 2, f"2 Sequenz-Haken erwartet, da: {seqs}")
         expect("probe.zip" in f.text("#share-middle"), "das Buendel fehlt in der Liste")
         f.image("share")
-        f.click("#share-middle button")
+
+        # **Über den Text, nicht über die Position**: der erste Knopf der Mitte
+        # ist seit dem Teilen-Ordner „Ordner wählen …", und ein Klick darauf
+        # öffnete im Prüfstand keinen Dialog, sondern eine Warnung.
+        f.click_text("#share-middle button", "einlesen")
         expect("gelesen" in f.status(), f"Einlesen: {f.status()!r}")
         expect(bool(f.text("#share-import").strip()), "rechts steht nichts zum Import")
         f.image("teilen_import")
+
+        # Nur die offene Sequenz, in den Teilen-Ordner — der Name ist ihrer.
+        f.click_text("#share-export button", "Nur die offene")
+        on = f.count("#share-export .share-seqs input:checked")
+        expect(on == 1, f"nach „Nur die offene“ ein Haken erwartet, da: {on}")
+        f.page.fill("#share-folder", "onedrive")
+        f.page.press("#share-folder", "Enter")
+        f.settle()
+        expect("Teilen-Ordner" in f.status(), f"Ordner setzen: {f.status()!r}")
+        f.click_text("#share-export button", "Bündel schreiben")
+        expect(Path("onedrive/farm.zip").exists(),
+               f"farm.zip fehlt im Teilen-Ordner: {f.status()!r}")
+        # Gemessen an der Marke der Zeile, nicht am Text der Spalte: dort steht
+        # „Teilen-Ordner" auch in den Erklärungen.
+        badges = [k.inner_text() for k in
+                  f.page.query_selector_all("#share-middle .share-list .num")]
+        expect("Teilen-Ordner" in badges and "exports" in badges,
+               f"die Liste sagt nicht, woher die Bündel kommen: {badges}")
+        f.image("teilen_ordner")
         error.extend(f.error)
     return error
 

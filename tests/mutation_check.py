@@ -52,6 +52,16 @@ CASES = {
         "autoclicker.persistence._scan_store", "write_scan",
         "return False", "return True",
         STUDIO + "test_scan_schreibfehler_bleibt_ungespeichert_und_ist_wiederholbar"),
+    "export-partial-file": (
+        "autoclicker.import_export", "export_bundle",
+        'partial = target.with_name(target.name + ".part")', "partial = target",
+        "test_import_export_security.ShareFolderTest."
+        "test_fehlgeschlagener_export_laesst_das_alte_buendel_stehen"),
+    "share-folder-fallback": (
+        "autoclicker.import_export", "export_target",
+        'return None, f"Teilen-Ordner nicht gefunden: {folder}"', 'return EXPORT_DIR, ""',
+        "test_import_export_security.ShareFolderTest."
+        "test_fehlender_teilen_ordner_weicht_nicht_auf_exports_aus"),
     "import-rollback": (
         "autoclicker.import_export", "_ImportTransaction.rollback",
         "from .config import apply_config", "return\n    from .config import apply_config",

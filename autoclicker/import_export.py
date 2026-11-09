@@ -7,9 +7,11 @@ mit optionalem Koordinaten-Remapping für andere Bildschirme.
 import copy
 import json
 import logging
+import os
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Optional, TYPE_CHECKING
 
@@ -23,6 +25,9 @@ logger = logging.getLogger("autoclicker")
 
 EXPORT_VERSION = 1
 MANIFEST_FILE = "manifest.json"
+# Wohin ein Bündel ohne Teilen-Ordner kommt — und wo die Sicherung vor einer
+# Kalibrierung immer liegt: die gehört diesem PC, nicht dem Teilen-Ordner.
+EXPORT_DIR = Path("exports")
 
 # Import-Dateien kommen von aussen. Diese Grenzen verhindern, dass ein kleines
 # Archiv beim Prüfen/Entpacken unkontrolliert Speicher oder Platte belegt.
@@ -174,8 +179,9 @@ def backup_before_calibration(state: 'AutoClickerState') -> str | None:
     import time as _time
 
     # Derselbe Ordner, in dem der Editor seine Exporte sucht — damit die Sicherung
-    # im Import-Menue ohne Pfadeingabe auftaucht.
-    target = Path("exports") / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
+    # im Import-Menue ohne Pfadeingabe auftaucht. Bewusst NICHT der Teilen-Ordner:
+    # eine Sicherung gehört diesem PC und hätte auf den anderen nichts verloren.
+    target = EXPORT_DIR / f"vor_kalibrierung_{_time.strftime('%Y%m%d_%H%M%S')}.zip"
     target.parent.mkdir(parents=True, exist_ok=True)
     # Referenzpunkte sind hier bedeutungslos (es wird nichts remappt beim
     # Zurückspielen), aber identisch dürfen sie nicht sein — sonst rechnet ein
@@ -343,7 +349,8 @@ def _remap_sequence_files(transform: dict, written_from_memory: Optional[Path],
 def export_bundle(state: 'AutoClickerState', filepath: str,
                   ref_point1: tuple[int, int], ref_point2: tuple[int, int],
                   include_sequences: bool = True, include_config: bool = True,
-                  source_window: tuple[int, int, int, int] = None) -> tuple[bool, str]:
+                  source_window: tuple[int, int, int, int] = None,
+                  sequences: Optional[list[str]] = None) -> tuple[bool, str]:
     """Exportiert Setup als ZIP-Archiv: die Sequenzordner unverändert, dazu die Config.
 
     include_sequences: die Sequenzordner. Eine Sequenz ist samt Punkten, Scans,
@@ -354,60 +361,154 @@ def export_bundle(state: 'AutoClickerState', filepath: str,
     vergessener den Export wieder ein. Drei Tests taten genau das, ohne es zu
     sagen.
 
+    sequences: welche Sequenzen (Anzeigenamen) — None heisst alle. Ein Name, den
+    es nicht gibt, ist ein Fehler und kein stilles Weglassen: ein Bündel, dem
+    die eine gewollte Sequenz fehlt, merkt man erst beim Empfänger.
+
     source_window: Client-Rect (l,t,r,b) des Spielfensters beim Export. Wird im
     Manifest abgelegt, damit der Import die Skalierung automatisch aus der
     Fenstergrösse ableiten kann (Fallback bleibt das 2-Punkt-Verfahren).
 
+    **Geschrieben wird unter `<datei>.part` und erst am Ende umbenannt.** Liegt
+    das Ziel in einem synchronisierten Ordner (OneDrive & Co.), sähe der andere
+    PC sonst ein halb geschriebenes ZIP — und die eigene Liste ebenso.
+
     Returns:
         (success, message)
     """
-    from .persistence import list_available_sequences
-
     manifest = {
         "version": EXPORT_VERSION,
         "layout": "sequence-folders",
+        # Ortszeit, sekundengenau: die Frage an ein Bündel aus dem
+        # Teilen-Ordner ist „von wann ist das", und die Dateizeit sagt nach
+        # einem Sync nur, wann es HIER angekommen ist.
+        "created": datetime.now().isoformat(timespec="seconds"),
         "reference_points": {"point1": list(ref_point1), "point2": list(ref_point2)},
         "contents": {},
     }
     if source_window:
         manifest["source_window"] = list(source_window)
 
+    target = Path(filepath)
+    partial = target.with_name(target.name + ".part")
     try:
-        with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
-            names = []
-            counters = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0,
-                       "templates": 0}
+        with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as zf:
             if include_sequences:
-                for name, main_file in list_available_sequences():
-                    folder = Path(main_file).parent
-                    archive_root = PurePosixPath("sequences", folder.name)
-                    for source in sorted(p for p in folder.rglob("*") if p.is_file()):
-                        rel_path = PurePosixPath(source.relative_to(folder).as_posix())
-                        zf.write(source, str(archive_root / rel_path))
-                        parts = rel_path.parts
-                        if parts and parts[0] in counters and source.suffix.lower() == ".json":
-                            counters[parts[0]] += 1
-                        if parts and parts[0] == "templates" and source.suffix.lower() == ".png":
-                            counters["templates"] += 1
-                    names.append(name)
+                names, counters = _write_sequence_folders(zf, sequences)
                 manifest["contents"]["sequences"] = names
                 manifest["contents"].update({k: v for k, v in counters.items() if v})
             if include_config:
                 zf.writestr("config.json", compact_json(_export_config(state.config)))
                 manifest["contents"]["config"] = True
             zf.writestr(MANIFEST_FILE, compact_json(manifest))
+        os.replace(partial, target)
         return True, filepath
-    except (IOError, OSError, zipfile.BadZipFile) as e:
+    except (IOError, OSError, zipfile.BadZipFile, ValueError) as e:
         logger.error("Export fehlgeschlagen: %s", e)
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError:
+            pass
         return False, str(e)
 
 
+def _write_sequence_folders(zf: zipfile.ZipFile,
+                            wanted: Optional[list[str]]) -> tuple[list, dict]:
+    """Die Sequenzordner ins Archiv — alle oder die genannten. Gibt Namen und Zähler zurück."""
+    from .persistence import list_available_sequences
+
+    available = list_available_sequences()
+    if wanted is not None:
+        wanted_set = set(wanted)
+        missing = sorted(wanted_set - {name for name, _ in available})
+        if missing:
+            raise ValueError("Sequenz nicht gefunden: " + ", ".join(missing))
+        available = [(n, p) for n, p in available if n in wanted_set]
+    names = []
+    counters = {"item_scans": 0, "boss_scans": 0, "icon_scans": 0, "templates": 0}
+    for name, main_file in available:
+        folder = Path(main_file).parent
+        archive_root = PurePosixPath("sequences", folder.name)
+        for source in sorted(p for p in folder.rglob("*") if p.is_file()):
+            rel_path = PurePosixPath(source.relative_to(folder).as_posix())
+            zf.write(source, str(archive_root / rel_path))
+            parts = rel_path.parts
+            suffix = source.suffix.lower()
+            if parts and parts[0] in counters and suffix == ".json":
+                counters[parts[0]] += 1
+            if parts and parts[0] == "templates" and suffix == ".png":
+                counters["templates"] += 1
+        names.append(name)
+    return names, counters
+
+
+# =============================================================================
+# TEILEN-ORDNER
+# =============================================================================
+#
+# Ein Ordner, den der Nutzer wählt — gedacht für OneDrive, Dropbox, ein
+# Netzlaufwerk. Geteilt werden darin BÜNDEL, nicht die Sequenzordner selbst:
+# jeder PC hat seine eigenen Monitore und seine eigene Fensterlage, und erst
+# der Import rechnet die Punkte darauf um. Ein synchronisiertes `sequences/`
+# übernähme sie 1:1 — und zwei PCs, die gleichzeitig speichern, hinterliessen
+# Konfliktkopien statt einer Sequenz.
+
+def share_folder(config) -> Optional[Path]:
+    """Der eingestellte Teilen-Ordner — oder None, wenn keiner gesetzt ist."""
+    raw = str(getattr(config, "share_folder", "") or "").strip().strip('"')
+    return Path(raw).expanduser() if raw else None
+
+
+def export_target(config) -> tuple[Optional[Path], str]:
+    """Wohin ein Bündel geschrieben wird: `(Ordner, "")` oder `(None, Grund)`.
+
+    Ohne Teilen-Ordner `exports/`. Ist einer gesetzt, aber nicht da (USB-Platte
+    ab, OneDrive umgezogen), wird **nicht** still nach `exports/` ausgewichen:
+    wer den Ordner eingestellt hat, erwartet das Bündel auf den anderen PCs, und
+    ein lokal abgelegtes käme dort nie an.
+    """
+    folder = share_folder(config)
+    if folder is None:
+        EXPORT_DIR.mkdir(exist_ok=True)
+        return EXPORT_DIR, ""
+    if not folder.is_dir():
+        return None, f"Teilen-Ordner nicht gefunden: {folder}"
+    return folder, ""
+
+
+def list_bundles(config) -> list[dict]:
+    """Die Bündel im Teilen-Ordner und unter `exports/`, neueste zuerst.
+
+    **Gezählt, nicht geöffnet**: OneDrive legt Dateien „bei Bedarf“ nur als
+    Platzhalter ab, und wer hier jedes Manifest läse, holte bei jedem Blick
+    in den Reiter jedes Bündel aus der Cloud. Was drinsteht, liest erst
+    `read_manifest()` für das eine, das man anklickt. Eine Datei, die in beiden
+    Ordnern liegt (Teilen-Ordner = `exports/`), steht einmal da.
+    """
+    found: dict = {}
+    for folder, shared in ((share_folder(config), True), (EXPORT_DIR, False)):
+        if folder is None or not folder.is_dir():
+            continue
+        for path in folder.glob("*.zip"):
+            try:
+                stat = path.stat()
+                key = path.resolve()
+            except OSError:
+                continue
+            found.setdefault(key, {"path": str(path), "name": path.name,
+                                   "kb": round(stat.st_size / 1024, 1),
+                                   "stamp": stat.st_mtime, "shared": shared})
+    return sorted(found.values(), key=lambda e: e["stamp"], reverse=True)
+
+
 # Maschinen-/sicherheitsspezifische Config-Felder, die NIE zwischen Setups
-# wandern sollen (Failsafe-Position, Log-Pfad). Werden weder exportiert noch
-# beim Import übernommen.
+# wandern sollen (Failsafe-Position, Log-Pfad, Teilen-Ordner). Werden weder
+# exportiert noch beim Import übernommen — der Teilen-Ordner heisst auf jedem
+# PC anders, und ein mitgereister Pfad zeigte beim Empfänger ins Leere.
 _SENSITIVE_CONFIG_KEYS = {
     "failsafe_enabled", "failsafe_x", "failsafe_y",
     "session_log_enabled", "session_log_dir",
+    "share_folder",
 }
 # Beim Export zusätzlich weggelassen: Debug/Anzeige — für den Empfänger irrelevant.
 _EXPORT_SKIP_CONFIG_KEYS = _SENSITIVE_CONFIG_KEYS | {

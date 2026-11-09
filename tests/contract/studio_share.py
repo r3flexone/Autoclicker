@@ -97,3 +97,111 @@ try:
           _b2.share_data()["inventory"]["sequences"] >= 1)
 finally:
     _os.chdir(_cwd)
+
+
+section("Teilen: einzelne Sequenzen, Teilen-Ordner, Datum")
+
+import json as _json
+import zipfile as _zip
+from autoclicker.config import CONFIG as _CONFIG, AppConfig as _AC, apply_config as _apply
+
+_sandbox = tempfile.mkdtemp(prefix="teilen_ordner_")
+_os.chdir(_sandbox)
+_snapshot = _CONFIG.to_dict()        # config_write schreibt ins Modul-CONFIG
+try:
+    Path("sequences").mkdir()
+    from autoclicker.persistence import (
+        list_available_sequences, save_sequence_file, sequence_file,
+    )
+    for _name in ("Farm", "Raid"):
+        save_sequence_file(_SEQ(name=_name, points=[_CP(id=1, x=1, y=1)]),
+                           sequence_file(_name))
+    _seq = _SEQ(name="Farm", points=[_CP(id=1, x=1, y=1)])
+    _b = _SB(_seq, dict(list_available_sequences())["Farm"], "sequences")
+    _b._window_layout = lambda: None
+    _all = {k: True for k, _ in _PARTS}
+
+    _z = _b.share_data()
+    check("die Seite bekommt jede Sequenz zum Anhaken, die offene markiert",
+          sorted((s["name"], s["open"]) for s in _z["sequences"])
+          == [("Farm", True), ("Raid", False)])
+    check("ohne Teilen-Ordner zeigt sie exports/ als Ziel",
+          _z["folder"]["set"] is False and _z["folder"]["found"] is True)
+
+    _z = _b.export_start({"parts": _all, "sequences": []})
+    check("keine Sequenz angehakt: nichts geschrieben, und es wird gesagt",
+          _z["status"]["kind"] == "warn" and not Path("exports").exists())
+
+    _z = _b.export_start({"parts": _all, "sequences": ["Raid", "geloescht"]})
+    check("eine einzelne Sequenz heisst wie sie, ohne Zeitstempel",
+          Path("exports/raid.zip").exists() and "geschrieben" in _z["status"]["text"])
+    with _zip.ZipFile("exports/raid.zip") as _zf:
+        _manifest = _json.loads(_zf.read("manifest.json"))
+    check("drin ist nur die angehakte — ein inzwischen gelöschter Name fällt weg",
+          _manifest["contents"]["sequences"] == ["Raid"])
+    _z = _b.export_start({"parts": _all, "sequences": ["Raid"]})
+    check("ein zweiter Export ersetzt das Bündel und sagt es",
+          "ersetzt" in _z["status"]["text"]
+          and [e["name"] for e in _z["exports"]] == ["raid.zip"])
+
+    # `sanitize_filename("")` ist „unbenannt“ — geprüft wurde einmal das
+    # Ergebnis statt der Eingabe, und jeder Export ohne Namen hiess so.
+    _z = _b.export_start({"parts": _all, "sequences": ["Farm", "Raid"]})
+    _stamped = [p.name for p in Path("exports").glob("autoclicker_export_*.zip")]
+    check("ohne Namen und mit mehreren Sequenzen kommt der Zeitstempel, nicht „unbenannt“",
+          len(_stamped) == 1 and not Path("exports/unbenannt.zip").exists())
+    for _p in Path("exports").glob("autoclicker_export_*.zip"):
+        _p.unlink()
+
+    _raid = [e["path"] for e in _b.share_data()["exports"] if e["name"] == "raid.zip"]
+    _z = _b.import_check({"path": _raid[0] if _raid else ""})
+    check("die Liste trägt den Pfad, mit dem die Seite einliest",
+          _z["import"] is not None and _z["status"]["kind"] == "ok")
+    check("das Datum aus dem Manifest steht lesbar da",
+          _z["import"]["created"].startswith("erstellt ")
+          and _z["import"]["created"][9:11].isdigit())
+    check("ein Bündel ohne Datum bleibt ohne, statt eines zu erfinden",
+          _b._created_text(None) == "" and _b._created_text("kaputt") == "")
+
+    _z = _b.share_folder_set({"path": "gibtsnicht"})
+    check("ein Ordner, den es nicht gibt, wird abgelehnt und nicht angelegt",
+          _z["status"]["kind"] == "err" and not Path("gibtsnicht").exists()
+          and _CONFIG.share_folder == "")
+
+    Path("onedrive").mkdir()
+    _z = _b.share_folder_set({"path": "onedrive"})
+    _saved = _json.loads(Path("config.json").read_text(encoding="utf-8"))
+    check("ein vorhandener Ordner landet in config.json und im laufenden CONFIG",
+          _z["status"]["kind"] == "ok" and _saved.get("share_folder") == "onedrive"
+          and _CONFIG.share_folder == "onedrive")
+    check("und die Seite zeigt ihn als Ziel",
+          _z["folder"] == {"set": True, "path": "onedrive", "found": True})
+    _z = _b.export_start({"parts": _all, "sequences": ["Farm"]})
+    check("der Export geht in den Teilen-Ordner",
+          Path("onedrive/farm.zip").exists() and "im Teilen-Ordner" in _z["status"]["text"]
+          and not Path("exports/farm.zip").exists())
+    check("die Liste zeigt beide Ordner und sagt, woher",
+          sorted((e["name"], e["shared"]) for e in _z["exports"])
+          == [("farm.zip", True), ("raid.zip", False)])
+
+    Path("onedrive/farm.zip").unlink()
+    Path("onedrive").rmdir()
+    _z = _b.share_data()
+    check("ist der Ordner weg, sagt die Seite es vorher",
+          _z["folder"]["set"] is True and _z["folder"]["found"] is False)
+    _z = _b.export_start({"parts": _all, "sequences": ["Farm"]})
+    check("und der Export wird abgelehnt statt nach exports/ auszuweichen",
+          _z["status"]["kind"] == "err" and not Path("exports/farm.zip").exists())
+
+    _z = _b.share_folder_set({"path": ""})
+    check("leer heisst: zurück auf exports/",
+          _z["folder"]["set"] is False and _CONFIG.share_folder == "")
+
+    check("die Seite ruft beide Ordner-Befehle",
+          'callShare("share_folder_choose")' in _web
+          and 'callShare("share_folder_set"' in _web)
+    check("und liest über den Pfad aus der Liste ein, nicht über exports/ + Name",
+          'path: e.path' in _web and '"exports/" + e.name' not in _web)
+finally:
+    _apply(_CONFIG, _AC.from_dict(_snapshot))
+    _os.chdir(_cwd)

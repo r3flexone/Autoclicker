@@ -6093,6 +6093,7 @@ function detOverlay(svg, px) {
 let T = null;
 let shareExport = {};    // welche Teile ins Bündel kommen
 let shareImport = {};    // welche Teile eingelesen werden
+let shareSeqs = {};      // welche Sequenzen ins Bündel kommen (Name → an/aus)
 let shareMode = "auto";
 let shareMerge = true;
 
@@ -6104,6 +6105,10 @@ async function renderShare(fresh) {
     if (shareExport[t.key] === undefined) shareExport[t.key] = true;
     if (shareImport[t.key] === undefined) shareImport[t.key] = true;
   }
+  // Neue Sequenzen sind angehakt, verschwundene fallen aus der Merkliste.
+  const known = {};
+  for (const s of T.sequences) known[s.name] = shareSeqs[s.name] !== false;
+  shareSeqs = known;
   const memo = rememberFocus();
   shareRenderExport();
   shareRenderMiddle();
@@ -6120,7 +6125,10 @@ async function callShare(name, data) {
   await renderShare();
 }
 
-function shareCheckbox(target, selection, numbers) {
+/* `below` hängt an einen Teil, was zu ihm gehört — direkt unter seine Zeile.
+ * Die Sequenzliste stand zuerst hinter allen Teilen und las sich damit als
+ * Unterpunkt von „Einstellungen". */
+function shareCheckbox(target, selection, numbers, below) {
   for (const t of T.parts) {
     const row = el("label", {class: "share-row on"});
     const box = el("input", {type: "checkbox"});
@@ -6129,14 +6137,43 @@ function shareCheckbox(target, selection, numbers) {
     row.append(box, el("span", {}, t.text),
       el("span", {class: "num"}, String(numbers[t.key] ?? 0)));
     target.appendChild(row);
+    if (below && below[t.key]) below[t.key](target);
   }
+}
+
+/** Die angehakten Sequenzen, in der Reihenfolge der Liste. */
+function shareChosen() {
+  return T.sequences.filter((s) => shareSeqs[s.name]).map((s) => s.name);
+}
+
+/** Je Sequenz ein Haken — darunter „alle" und „nur die offene" als Abkürzung. */
+function shareSequenceList(target) {
+  const listEl = el("div", {class: "share-list share-seqs"});
+  for (const s of T.sequences) {
+    const row = el("label", {class: "share-row on"});
+    const box = el("input", {type: "checkbox"});
+    box.checked = !!shareSeqs[s.name];
+    box.addEventListener("change", () => { shareSeqs[s.name] = box.checked; renderShare(); });
+    row.append(box, el("span", {}, s.name),
+      s.open ? el("span", {class: "num"}, "offen") : el("span"));
+    listEl.appendChild(row);
+  }
+  target.appendChild(listEl);
+  const setAll = (fn) => { for (const s of T.sequences) shareSeqs[s.name] = fn(s); renderShare(); };
+  listEl.appendChild(el("div", {class: "button-pair"},
+    el("button", {class: "btn quiet", onclick: () => setAll(() => true)}, "Alle"),
+    el("button", {class: "btn quiet", disabled: !T.sequences.some((s) => s.open),
+      onclick: () => setAll((s) => s.open)}, "Nur die offene")));
 }
 
 function shareRenderExport() {
   const target = $("share-export");
   const head = el("div", {class: "section"},
     heading("EXPORTIEREN",
-      "Schreibt ein ZIP nach exports/. Enthält nur, was gespeichert ist.", "export"));
+      (T.folder.set ? "Schreibt ein ZIP in den Teilen-Ordner. "
+                    : "Schreibt ein ZIP nach exports/. ")
+      + "Enthält nur, was gespeichert ist. Eine einzelne Sequenz heisst wie "
+      + "sie — ein neuer Export ersetzt den alten.", "export"));
   // **Die Warnung trägt ihren Ausweg.** Sie sagte „erst speichern" — in einem
   // Reiter, in dem es keinen Speichern-Knopf gibt (der steht im Editor bzw.
   // rechts im Scans-Reiter). Man musste den Reiter verlassen, speichern und
@@ -6151,8 +6188,12 @@ function shareRenderExport() {
   target.replaceChildren(head);
 
   const bodyEl = el("div", {class: "section growing"});
-  shareCheckbox(bodyEl, shareExport, T.inventory);
-  bodyEl.appendChild(field("Dateiname (leer = mit Zeitstempel)", "",
+  const chosen = shareChosen();
+  shareCheckbox(bodyEl, shareExport,
+    Object.assign({}, T.inventory, {sequences: chosen.length}),
+    {sequences: (t) => { if (shareExport.sequences && T.sequences.length) shareSequenceList(t); }});
+  bodyEl.appendChild(field(chosen.length === 1 && shareExport.sequences
+      ? "Dateiname (leer = " + chosen[0] + ")" : "Dateiname (leer = mit Zeitstempel)", "",
     () => {}, {id: "share-name"}));
   // **Die Referenzpunkte kommen aus dem Spielfenster.** Ist es offen, rechnet
   // der Empfänger die Koordinaten selbst um; sonst setzt er zwei Punkte von Hand.
@@ -6165,10 +6206,43 @@ function shareRenderExport() {
         : "Kein Fenstertitel eingestellt (window_focus_title) — der Empfänger "
           + "setzt beim Import zwei Punkte von Hand.")));
   bodyEl.appendChild(el("button", {class: "btn primary",
+    disabled: !T.folder.found,
+    title: T.folder.found ? "" : "Der Teilen-Ordner ist gerade nicht da.",
     onclick: () => callShare("export_start",
-      {parts: shareExport, name: ($("share-name") || {}).value || ""})},
+      {parts: shareExport, sequences: chosen,
+       name: ($("share-name") || {}).value || ""})},
     "Bündel schreiben"));
   target.appendChild(bodyEl);
+}
+
+/** Wohin der Export schreibt — und der Griff, das zu ändern. */
+function shareFolderCard() {
+  const f = T.folder;
+  // Dieselbe Überschrift wie die Karten darunter (`h3`), das Warum im ⓘ.
+  const cardEl = el("div", {class: "share-card"},
+    el("h3", {}, labeled("Teilen-Ordner",
+      "Ein Ordner in OneDrive, Dropbox oder auf einem Netzlaufwerk. Bündel "
+      + "landen dort, und was andere PCs dort ablegen, steht hier unter "
+      + "„Vorhandene Bündel“. Geteilt werden Bündel, nicht die Sequenzen "
+      + "selbst: jeder PC hat eigene Monitore, und erst der Import rechnet die "
+      + "Stellen auf sein Fenster um.", "share-folder")));
+  // Derselbe Aufbau wie „Datei wählen …" beim Import: der Dialog als Knopf,
+  // darunter das Feld für den, der den Pfad schon kennt.
+  cardEl.appendChild(el("div", {class: "button-pair"},
+    el("button", {class: "btn", onclick: () => callShare("share_folder_choose")},
+      "Ordner wählen …"),
+    el("button", {class: "btn quiet", disabled: !f.set,
+      onclick: () => callShare("share_folder_set", {path: ""})}, "Entfernen")));
+  cardEl.appendChild(field("oder Pfad", f.set ? f.path : "",
+    (v) => callShare("share_folder_set", {path: v}), {id: "share-folder"}));
+  cardEl.appendChild(f.set && !f.found
+    ? el("p", {class: "hint warning"},
+        "Der Ordner ist gerade nicht da — Exportieren ist gesperrt, bis er wieder "
+        + "erreichbar ist oder ein anderer gewählt wird.")
+    : el("p", {class: "hint"}, f.set
+        ? "Bündel landen hier, und was andere PCs hier ablegen, steht darunter."
+        : "Keiner gesetzt — Bündel bleiben unter exports/ auf diesem PC."));
+  return cardEl;
 }
 
 /** Sequenz und Scans schreiben — was der Export gleich lesen soll. Dieselben
@@ -6187,19 +6261,22 @@ async function saveEverythingForShare() {
 
 function shareRenderMiddle() {
   const target = $("share-middle");
-  target.replaceChildren();
+  target.replaceChildren(shareFolderCard());
   const cardEl = el("div", {class: "share-card"}, el("h3", {}, "Vorhandene Bündel"));
   if (!T.exports.length) {
-    cardEl.appendChild(el("p", {class: "hint"},
-      "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
+    cardEl.appendChild(el("p", {class: "hint"}, T.folder.set
+      ? "Noch keins — weder im Teilen-Ordner noch unter exports/."
+      : "Noch keins. „Bündel schreiben“ legt eines unter exports/ an."));
   }
   const listEl = el("div", {class: "share-list"});
   for (const e of T.exports) {
-    listEl.appendChild(el("div", {class: "share-row"},
+    // Woher es kommt, steht als Wort: ein Symbol für „geteilt" müsste man kennen.
+    listEl.appendChild(el("div", {class: "share-row", title: e.path},
       el("span", {class: "mono"}, e.name),
+      el("span", {class: "num"}, e.shared ? "Teilen-Ordner" : "exports"),
       el("span", {class: "num mono"}, e.kb + " KB"),
       el("button", {class: "btn quiet",
-        onclick: () => callShare("import_check", {path: "exports/" + e.name})},
+        onclick: () => callShare("import_check", {path: e.path})},
         "einlesen")));
   }
   cardEl.appendChild(listEl);
@@ -6207,10 +6284,14 @@ function shareRenderMiddle() {
 
   target.appendChild(el("div", {class: "share-card"},
     el("h3", {}, "Weitergeben"),
-    el("p", {class: "hint"},
-      "Die ZIP-Datei verschicken. Der Empfänger legt sie in seinen "
-      + "Autoclicker-Ordner und liest sie hier oder mit CTRL+ALT+I ein. "
-      + "Koordinaten werden dabei auf sein Fenster umgerechnet.")));
+    el("p", {class: "hint"}, T.folder.set
+      ? "Bündel im Teilen-Ordner sehen die anderen PCs von selbst, sobald er "
+        + "synchronisiert ist, und lesen sie hier ein. Koordinaten werden "
+        + "dabei auf ihr Fenster umgerechnet."
+      : "Die ZIP-Datei verschicken. Der Empfänger legt sie in seinen "
+        + "Autoclicker-Ordner und liest sie hier oder mit CTRL+ALT+I ein. "
+        + "Koordinaten werden dabei auf sein Fenster umgerechnet. Ohne "
+        + "Verschicken geht es mit einem Teilen-Ordner (oben).")));
 }
 
 function shareRenderImport() {

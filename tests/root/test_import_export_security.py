@@ -385,5 +385,116 @@ class ImportExportSecurityTest(unittest.TestCase):
                          data["loop_phases"][0]["steps"][0]["screenshot_region"])
 
 
+class ShareFolderTest(unittest.TestCase):
+    """Der Teilen-Ordner: Bündel für OneDrive & Co. — und was dabei nicht passieren darf."""
+
+    def setUp(self):
+        self._old_cwd = os.getcwd()
+        self._temp = tempfile.TemporaryDirectory()
+        os.chdir(self._temp.name)
+
+    def tearDown(self):
+        os.chdir(self._old_cwd)
+        self._temp.cleanup()
+
+    @staticmethod
+    def _state(folder=""):
+        state = AutoClickerState()
+        state.config.share_folder = folder
+        return state
+
+    def test_fehlgeschlagener_export_laesst_das_alte_buendel_stehen(self):
+        # Im Teilen-Ordner ist das alte Bündel die Fassung, die die anderen PCs
+        # gerade haben. Ein Export, der mittendrin scheitert, darf es weder
+        # abschneiden noch einen halben Rest danebenlegen.
+        _write_sequence("A")
+        target = Path("raid.zip")
+        ok, _ = export_bundle(self._state(), str(target), (0, 0), (10, 10))
+        self.assertTrue(ok)
+        before = target.read_bytes()
+
+        ok, message = export_bundle(self._state(), str(target), (0, 0), (10, 10),
+                                    sequences=["gibtsnicht"])
+
+        self.assertFalse(ok)
+        self.assertIn("gibtsnicht", message)
+        self.assertTrue(target.exists(), "das alte Bündel ist weg")
+        self.assertEqual(before, target.read_bytes())
+        self.assertFalse(Path("raid.zip.part").exists())
+
+    def test_fehlender_teilen_ordner_weicht_nicht_auf_exports_aus(self):
+        # Wer den Ordner eingestellt hat, erwartet das Bündel auf den anderen
+        # PCs. Still nach exports/ geschrieben käme es dort nie an.
+        from autoclicker.import_export import export_target
+        folder, problem = export_target(self._state("weg/onedrive").config)
+        self.assertIsNone(folder)
+        self.assertIn("weg", problem)
+        self.assertFalse(Path("exports").exists())
+
+    def test_ohne_teilen_ordner_bleibt_es_bei_exports(self):
+        from autoclicker.import_export import EXPORT_DIR, export_target
+        self.assertEqual((EXPORT_DIR, ""), export_target(self._state().config))
+        Path("teilen").mkdir()
+        self.assertEqual((Path("teilen"), ""), export_target(self._state("teilen").config))
+
+    def test_nur_die_gewaehlte_sequenz_kommt_ins_buendel(self):
+        _write_sequence("A")
+        _write_sequence("B")
+        ok, _ = export_bundle(self._state(), "b.zip", (0, 0), (10, 10), sequences=["B"])
+        self.assertTrue(ok)
+        with zipfile.ZipFile("b.zip") as zf:
+            folders = {name.split("/")[1] for name in zf.namelist()
+                       if name.startswith("sequences/")}
+            manifest = json.loads(zf.read("manifest.json"))
+        self.assertEqual({"B"}, folders)
+        self.assertEqual(["B"], manifest["contents"]["sequences"])
+        # Das Datum, das der Teilen-Reiter anzeigt — vorher schrieb es niemand.
+        self.assertTrue(manifest["created"])
+
+    def test_teilen_ordner_reist_nicht_mit(self):
+        # Der Pfad heisst auf jedem PC anders. Mitgereist zeigte er beim
+        # Empfänger ins Leere — und dessen Export liefe ins Nichts.
+        _write_sequence("A")
+        ok, _ = export_bundle(self._state("C:/Ich/OneDrive"), "a.zip", (0, 0), (10, 10))
+        self.assertTrue(ok)
+        with zipfile.ZipFile("a.zip") as zf:
+            self.assertNotIn("share_folder", json.loads(zf.read("config.json")))
+
+        with zipfile.ZipFile("fremd.zip", "w") as zf:
+            zf.writestr("manifest.json", json.dumps(
+                {**_manifest_data(), "layout": "sequence-folders",
+                 "contents": {"config": True}}))
+            zf.writestr("config.json", json.dumps({"share_folder": "D:/Fremd"}))
+        state = self._state("C:/Ich/OneDrive")
+        ok, _ = import_bundle(state, "fremd.zip", import_sequences=False)
+        self.assertTrue(ok)
+        self.assertEqual("C:/Ich/OneDrive", state.config.share_folder)
+
+    def test_buendelliste_kommt_aus_beiden_ordnern_ohne_sie_zu_oeffnen(self):
+        # OneDrive legt Dateien „bei Bedarf“ als Platzhalter ab — wer die Liste
+        # aus den Manifesten baute, holte jedes Bündel aus der Cloud. Ein
+        # kaputtes ZIP steht deshalb genauso da wie ein heiles.
+        from autoclicker.import_export import list_bundles
+        Path("teilen").mkdir()
+        Path("exports").mkdir()
+        Path("teilen/kaputt.zip").write_bytes(b"kein zip")
+        Path("exports/lokal.zip").write_bytes(b"auch keins")
+        Path("teilen/halb.zip.part").write_bytes(b"noch nicht fertig")
+        found = {e["name"]: e["shared"] for e in list_bundles(self._state("teilen").config)}
+        self.assertEqual({"kaputt.zip": True, "lokal.zip": False}, found)
+        # Zeigt der Teilen-Ordner auf exports/, steht jedes Bündel einmal da.
+        same = list_bundles(self._state("exports").config)
+        self.assertEqual(["lokal.zip"], [e["name"] for e in same])
+
+    def test_sicherung_vor_kalibrierung_bleibt_auf_diesem_pc(self):
+        from autoclicker.import_export import backup_before_calibration
+        _write_sequence("A")
+        Path("teilen").mkdir()
+        path = backup_before_calibration(self._state("teilen"))
+        self.assertIsNotNone(path)
+        self.assertEqual(Path("exports"), Path(path).parent)
+        self.assertEqual([], list(Path("teilen").iterdir()))
+
+
 if __name__ == "__main__":
     unittest.main()

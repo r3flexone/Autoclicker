@@ -67,7 +67,7 @@ class _Run:
 
 
 # ============================================================ Export
-def _export(inputs=(), select=False, ok=True, window=None, title="Spiel", **kw):
+def _export(inputs=(), select=False, ok=True, window=None, title="Spiel", share="", **kw):
     exported = []
 
     def export(state, path, ref1, ref2, **flags):
@@ -79,6 +79,7 @@ def _export(inputs=(), select=False, ok=True, window=None, title="Spiel", **kw):
     run = _Run(inputs=inputs, window=window, export_bundle=export,
                list_available_sequences=lambda *a: [("A", None), ("B", None)], **kw)
     run.state.config.window_focus_title = title
+    run.state.config.share_folder = share
     run(_IEE._run_export, select)
     run.exported = exported
     return run
@@ -115,6 +116,14 @@ check("Export mit Auswahl: nur die Config",
       _r.exported[0][3]["include_sequences"] is False and _r.exported[0][3]["include_config"] is True)
 _r = _export(inputs=[""], window=(0, 0, 10, 10), ok=False)
 check("Export: ein Fehlschlag wird gesagt", "Export fehlgeschlagen: Platte voll" in _r.output)
+# Der Teilen-Ordner gilt in der Konsole genauso wie im Studio (`export_target`).
+_Path("teilen_konsole").mkdir(exist_ok=True)
+_r = _export(inputs=[""], window=(0, 0, 10, 10), share="teilen_konsole")
+check("Export: mit Teilen-Ordner landet das Bündel dort",
+      _r.exported and _Path(_r.exported[0][0]).parent == _Path("teilen_konsole"))
+_r = _export(inputs=[""], window=(0, 0, 10, 10), share="gibt_es_nicht")
+check("Export: ein fehlender Teilen-Ordner bricht ab, statt nach exports/ auszuweichen",
+      not _r.exported and "Teilen-Ordner nicht gefunden" in _r.output)
 
 
 # ============================================================ Import

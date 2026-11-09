@@ -37,12 +37,19 @@ class BridgeShareMixin:
 
     def share_data(self, data: Optional[dict] = None) -> dict:
         """Was der Reiter zeichnet. Fragt nur — ändert nichts."""
+        from ...config import CONFIG
+        from ...import_export import list_bundles
         text, kind = self._share_status
+        names = self._sequence_names()
         return {
             "parts": [{"key": k, "text": t} for k, t in PARTS],
-            "inventory": self._inventory_count(),
+            "inventory": {"sequences": len(names), "config": 1},
+            # Zum Anhaken beim Export; die offene steht dabei, damit „nur die
+            # offene“ ein Griff ist und kein Suchen in der Liste.
+            "sequences": [{"name": n, "open": n == self.board.name} for n in names],
+            "folder": self._folder_state(),
             "window": self._window_layout(),
-            "exports": self._export_list(),
+            "exports": list_bundles(CONFIG),
             "import": self._share_import,
             # Was im Fenster noch nicht gespeichert ist, liegt nicht auf Platte
             # und landet deshalb auch nicht im Bündel.
@@ -50,13 +57,26 @@ class BridgeShareMixin:
             "status": {"text": text, "kind": kind},
         }
 
-    def _inventory_count(self) -> dict:
+    @staticmethod
+    def _sequence_names() -> list:
         """Was auf Platte liegt — gezählt, nicht geladen."""
         from ...persistence import list_available_sequences
-        return {
-            "sequences": len(list_available_sequences()),
-            "config": 1,
-        }
+        return [name for name, _ in list_available_sequences()]
+
+    @staticmethod
+    def _folder_state() -> dict:
+        """Wohin der Export schreibt: der Teilen-Ordner oder `exports/`.
+
+        `found` ist die eigentliche Auskunft: ein eingestellter Ordner, den es
+        gerade nicht gibt (USB-Platte ab, OneDrive umgezogen), sperrt den
+        Export — und das soll man sehen, bevor man auf den Knopf drückt.
+        """
+        from ...config import CONFIG
+        from ...import_export import EXPORT_DIR, share_folder
+        folder = share_folder(CONFIG)
+        if folder is None:
+            return {"set": False, "path": str(EXPORT_DIR.resolve()), "found": True}
+        return {"set": True, "path": str(folder), "found": folder.is_dir()}
 
     @staticmethod
     def _window_layout() -> Optional[dict]:
@@ -75,22 +95,6 @@ class BridgeShareMixin:
         l, o, r, u = rect_value
         return {"title": title, "found": True, "rect": [l, o, r, u],
                 "width": r - l, "height": u - o}
-
-    @staticmethod
-    def _export_list() -> list:
-        """Die vorhandenen Bündel, neueste zuerst."""
-        folder = Path("exports")
-        if not folder.is_dir():
-            return []
-        found = []
-        for path in folder.glob("*.zip"):
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            found.append({"name": path.name, "kb": round(stat.st_size / 1024, 1),
-                             "stamp": stat.st_mtime})
-        return sorted(found, key=lambda e: e["stamp"], reverse=True)
 
     # ------------------------------------------------------------- Bestand
 
@@ -123,19 +127,42 @@ class BridgeShareMixin:
             return {k: True for k, _ in PARTS}
         return {k: bool(raw.get(k, True)) for k, _ in PARTS}
 
+    def _selected_sequences(self, data: dict) -> Optional[list]:
+        """Welche Sequenzen ins Bündel kommen — None heisst alle.
+
+        Was die Seite schickt, ist eine Liste von Namen. Ein Name, den es auf
+        Platte nicht (mehr) gibt, fällt weg: die Seite zeigt einen Stand von
+        vor ihrem letzten Neuaufbau, und eine inzwischen gelöschte Sequenz ist
+        kein Grund, den ganzen Export abzulehnen.
+        """
+        raw = (data or {}).get("sequences")
+        if not isinstance(raw, list):
+            return None
+        known = self._sequence_names()
+        wanted = {str(n) for n in raw}
+        return [n for n in known if n in wanted]
+
     # -------------------------------------------------------------- Export
 
     def export_start(self, data: Optional[dict] = None) -> dict:
-        """Schreibt ein Bündel nach `exports/`.
+        """Schreibt ein Bündel in den Teilen-Ordner, ohne einen nach `exports/`.
 
         Die Referenzpunkte kommen aus der Fenstergrösse, wenn das Spielfenster
         offen ist — dann rechnet der Import die Koordinaten selbst um. Sonst
         bleiben die Ecken des virtuellen Desktops als grobe Bezugsgrösse.
         """
+        from ...config import CONFIG
+        from ...import_export import export_bundle, export_target
         data = data or {}
         parts = self._selected_parts(data)
         if not any(parts.values()):
             return self._share_report("Nichts ausgewählt.", "warn")
+        chosen = self._selected_sequences(data) if parts["sequences"] else None
+        if chosen == []:
+            return self._share_report("Keine Sequenz angehakt.", "warn")
+        folder, problem = export_target(CONFIG)
+        if folder is None:
+            return self._share_report(problem + " — nichts geschrieben.", "err")
 
         layout = self._window_layout()
         window = tuple(layout["rect"]) if layout and layout.get("found") else None
@@ -144,23 +171,78 @@ class BridgeShareMixin:
         else:
             ref1, ref2 = self._fallback_reference()
 
-        name = sanitize_filename(str(data.get("name") or "").strip())
-        if not name:
-            name = "autoclicker_export_" + datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        Path("exports").mkdir(exist_ok=True)
-        path = Path("exports") / f"{name}.zip"
-
-        from ...import_export import export_bundle
+        path = folder / f"{self._bundle_name(data, chosen)}.zip"
+        existed = path.exists()
         success, result = export_bundle(
             self._inventory(), str(path), ref1, ref2,
             include_sequences=parts["sequences"],
-            include_config=parts["config"], source_window=window)
+            include_config=parts["config"], source_window=window,
+            sequences=chosen)
         if not success:
             return self._share_report(f"Export fehlgeschlagen: {result}", "err")
         kb = os.path.getsize(result) / 1024
+        where = "im Teilen-Ordner" if self._folder_state()["set"] else "unter exports/"
+        verb = "ersetzt" if existed else "geschrieben"
         extra = ("" if window else
                   "  Ohne offenes Spielfenster: der Empfänger setzt zwei Punkte von Hand.")
-        return self._share_report(f"{path.name} geschrieben ({kb:.1f} KB)." + extra)
+        return self._share_report(f"{path.name} {where} {verb} ({kb:.1f} KB)." + extra)
+
+    @staticmethod
+    def _bundle_name(data: dict, chosen: Optional[list]) -> str:
+        """Der Dateiname ohne Endung: getippt, sonst aus dem Inhalt.
+
+        **Eine einzelne Sequenz heisst wie sie, ohne Zeitstempel.** Im
+        Teilen-Ordner ersetzt ein neuer Export damit den alten, und die anderen
+        PCs finden unter demselben Namen immer die neueste Fassung — statt einer
+        wachsenden Reihe `raid_2026-11-09_…`, von der nur die letzte gilt. Wer
+        mehrere Sequenzen zusammen exportiert, bekommt den Zeitstempel weiter.
+
+        **Geprüft wird die Eingabe, nicht das bereinigte Ergebnis.**
+        `sanitize_filename("")` gibt „unbenannt“ zurück — hier stand
+        `if not sanitize_filename(…)`, und der Zeitstempel kam deshalb nie: jeder
+        Export ohne Namen hiess `unbenannt.zip` und ersetzte den vorigen, obwohl
+        das Feld „leer = mit Zeitstempel“ versprach.
+        """
+        typed = str(data.get("name") or "").strip()
+        if typed:
+            return sanitize_filename(typed)
+        if chosen and len(chosen) == 1:
+            return sanitize_filename(chosen[0])
+        return "autoclicker_export_" + datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+    # --------------------------------------------------------- Teilen-Ordner
+
+    def share_folder_choose(self, data: Optional[dict] = None) -> dict:
+        """Öffnet den Ordnerdialog des Fensters und setzt die Wahl."""
+        try:
+            import webview
+            window = webview.windows[0]
+            choice = window.create_file_dialog(webview.FOLDER_DIALOG)
+        except Exception:                                        # noqa: BLE001
+            return self._share_report(
+                "Ordnerdialog nicht verfügbar — Pfad von Hand eintragen.", "warn")
+        if not choice:
+            return self.share_data()
+        path = choice[0] if isinstance(choice, (list, tuple)) else choice
+        return self.share_folder_set({"path": path})
+
+    def share_folder_set(self, data: Optional[dict] = None) -> dict:
+        """Setzt den Teilen-Ordner (leer = zurück auf `exports/`) in `config.json`.
+
+        **Angelegt wird nichts.** Ein vertippter Pfad legte sonst irgendwo einen
+        Ordner an, und das Bündel käme auf keinem anderen PC an — genau das, was
+        man mit dem Ordner erreichen wollte. Geschrieben wird über
+        `config_write()`, damit der Hauptprozess (Konsolen-Export) mitzieht.
+        """
+        raw = str((data or {}).get("path") or "").strip().strip('"')
+        if raw and not Path(raw).expanduser().is_dir():
+            return self._share_report(f"Ordner nicht gefunden: {raw}", "err")
+        result = self.config_write({"values": {"share_folder": raw}})
+        if not result.get("ok"):
+            return self._share_report(str(result.get("message") or "Nicht gespeichert."), "err")
+        if raw:
+            return self._share_report(f"Teilen-Ordner: {raw}. Bündel landen jetzt dort.")
+        return self._share_report("Kein Teilen-Ordner mehr — Bündel landen wieder unter exports/.")
 
     @staticmethod
     def _fallback_reference() -> tuple:
@@ -177,12 +259,18 @@ class BridgeShareMixin:
     # -------------------------------------------------------------- Import
 
     def file_choose(self, data: Optional[dict] = None) -> dict:
-        """Öffnet den Dateidialog des Fensters und prüft die Wahl."""
+        """Öffnet den Dateidialog des Fensters und prüft die Wahl.
+
+        Er fängt im Teilen-Ordner an, wenn einer da ist — dort liegt, was die
+        anderen PCs abgelegt haben.
+        """
+        folder = self._folder_state()
+        start = folder["path"] if folder["set"] and folder["found"] else ""
         try:
             import webview
             window = webview.windows[0]
             choice = window.create_file_dialog(
-                webview.OPEN_DIALOG, allow_multiple=False,
+                webview.OPEN_DIALOG, directory=start, allow_multiple=False,
                 file_types=("Bündel (*.zip)", "Alle Dateien (*.*)"))
         except Exception:                                        # noqa: BLE001
             return self._share_report(
@@ -211,7 +299,7 @@ class BridgeShareMixin:
         self._share_import = {
             "path": path,
             "file": Path(path).name,
-            "created": result.get("created", ""),
+            "created": self._created_text(result.get("created")),
             "content": {k: self._content_number(content.get(k)) for k, _ in PARTS},
             "source_window": list(source) if source else None,
             "target_window": list(target) if target else None,
@@ -219,6 +307,19 @@ class BridgeShareMixin:
             "auto": bool(source and target),
         }
         return self._share_report(f"{Path(path).name} gelesen.")
+
+    @staticmethod
+    def _created_text(raw) -> str:
+        """Wann das Bündel geschrieben wurde, als Ortszeit zum Lesen — oder leer.
+
+        Hier stand der rohe Wert aus dem Manifest, nur schrieb der Export nie
+        einen hinein: das Feld war seit dem ersten Tag leer. Ein Bündel ohne
+        `created` (älterer Export) bleibt leer, statt ein Datum zu erfinden.
+        """
+        try:
+            return "erstellt " + datetime.fromisoformat(str(raw)).strftime("%d.%m.%Y %H:%M")
+        except (TypeError, ValueError):
+            return ""
 
     @staticmethod
     def _content_number(value) -> int:

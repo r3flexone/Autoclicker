@@ -825,7 +825,7 @@ Komplettes Setup als ZIP zwischen PCs (oder mit anderen Spielern) teilen. **Koor
    - Wird das Spielfenster (Titel aus `window_focus_title`, Standard „Idle Clans") gefunden, wird seine **Client-Grösse automatisch** als Referenz genommen — kein manuelles Klicken nötig.
    - Andernfalls (Fenster nicht offen/gefunden): **zwei Referenzpunkte manuell setzen** (Maus an die Stelle bewegen, Enter) — z.B. Oben-Links und Unten-Rechts im Spielfenster.
 4. Dateiname vergeben (Default: `autoclicker_export_<timestamp>.zip`)
-5. ZIP wird in `exports/` gespeichert
+5. ZIP wird in `exports/` gespeichert — oder im Teilen-Ordner (`share_folder`), wenn einer eingestellt ist (s. u.)
 6. Anleitung für den Empfänger wird angezeigt
 
 Das ZIP enthält: `manifest.json` (inkl. Spielfenster-Grösse falls erkannt), die Sequenzordner unter `sequences/<name>/` (Ablauf, Punkte, Scans, Vorlagen, gemerkte Bilder) und optional die Config (gefiltert).
@@ -855,6 +855,27 @@ Diese Transformation wird auf **alle** Koordinaten angewendet. Eine Koordinate s
 
 **Tipp**: Nutze als Referenzpunkte feste UI-Elemente die auf jedem Bildschirm leicht zu finden sind — z.B. die Ecken des Spielfensters oder feste Buttons.
 
+### Teilen-Ordner (OneDrive, Dropbox, Netzlaufwerk)
+
+Statt ZIPs zu verschicken: im Studio unter **Teilen → Teilen-Ordner → Ordner
+wählen …** einen synchronisierten Ordner einstellen, auf jedem PC. Danach
+
+- schreibt **Bündel schreiben** dorthin statt nach `exports/` — eine einzelne
+  angehakte Sequenz heisst dabei wie sie (`raid.zip`), ein neuer Export ersetzt
+  also den alten, und die anderen PCs finden unter demselben Namen immer die
+  neueste Fassung;
+- stehen unter **Vorhandene Bündel** auch die Bündel der anderen PCs (Marke
+  „Teilen-Ordner“), und **einlesen** rechnet die Koordinaten über die
+  Fenstergrösse auf diesen PC um.
+
+**Geteilt werden Bündel, nicht `sequences/` selbst.** Jeder PC hat eigene
+Monitore und eine eigene Fensterlage; ein synchronisierter Sequenzordner
+übernähme die Punkte 1:1, und zwei PCs, die gleichzeitig speichern, hinterliessen
+Konfliktkopien. Der Pfad selbst gilt nur auf diesem PC und reist nicht mit einem
+Bündel mit. Ist der Ordner gerade nicht da (Platte ab, OneDrive umgezogen), wird
+nicht exportiert — ein Bündel unter `exports/` käme auf keinem anderen PC an.
+Die Sicherung vor einer Kalibrierung bleibt immer unter `exports/`.
+
 ## Sequenzen zwischen PCs teilen
 
 Eine Sequenz ist eine **vollständige Besitzeinheit**: `sequences/<name>/` enthält
@@ -878,6 +899,7 @@ Für einen anderen Bildschirm gibt es die zwei Wege, die wirklich rechnen:
 | Weg | wofür |
 |---|---|
 | Import mit Fenster-Remapping (`CTRL+ALT+I`) | anderer Bildschirm, anderes Fenster — rechnet alle Koordinaten um |
+| Teilen-Ordner (Studio → Teilen) | dasselbe, nur ohne Verschicken: Bündel liegen in einem synchronisierten Ordner |
 | Studio → Werkzeuge → Kalibrieren | derselbe Bestand, verschobene Anordnung — mit Vorschau vor dem Anwenden |
 
 Passt gar nichts mehr zusammen (Spiel-Update, neue Fensterlage pro Element),
@@ -1301,6 +1323,12 @@ Hauptprozess, dieselben Funktionen und dieselben Dateien.
 |--------|--------------|
 | `session_log_enabled` | CSV-Log aller Aktionen pro Sequenz schreiben (Standard: false) |
 | `session_log_dir` | Verzeichnis für CSV-Dateien (Standard: `"logs"`) |
+
+### Teilen
+
+| Option | Beschreibung |
+|--------|--------------|
+| `share_folder` | Teilen-Ordner für Bündel, etwa in OneDrive — der Teilen-Reiter schreibt dorthin und zeigt, was andere PCs dort abgelegt haben. Gilt nur für diesen PC, reist nicht mit einem Bündel mit (leer = nur `exports/`) |
 
 ### Timing
 

@@ -119,7 +119,7 @@ def _run_export(state: AutoClickerState, select_parts: bool) -> None:
     if references is None:
         return
     ref1, ref2, source_window = references
-    filepath = _ask_export_path()
+    filepath = _ask_export_path(state)
     if filepath is None:
         return
 
@@ -222,8 +222,18 @@ def _ask_two_references(same_message: str):
     return ref1, ref2
 
 
-def _ask_export_path():
-    """Wohin das Bündel kommt (unter `exports/`, '.zip' wird ergänzt) — oder None."""
+def _ask_export_path(state: AutoClickerState):
+    """Wohin das Bündel kommt — oder None.
+
+    In den Teilen-Ordner, wenn einer eingestellt ist, sonst unter `exports/`
+    (dieselbe Regel wie im Studio, `export_target()`); '.zip' wird ergänzt.
+    """
+    from ..import_export import export_target
+    export_dir, problem = export_target(state.config)
+    if export_dir is None:
+        print(f"\n  {err(problem)}")
+        print(f"  {info('Ordner wieder anschliessen oder share_folder in den Einstellungen leeren.')}")
+        return None
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     default_name = f"autoclicker_export_{timestamp}.zip"
     print(f"\n  Dateiname (Enter = {default_name}):")
@@ -234,8 +244,6 @@ def _ask_export_path():
     filename = name_input or default_name
     if not filename.endswith(".zip"):
         filename += ".zip"
-    export_dir = Path("exports")
-    export_dir.mkdir(exist_ok=True)
     return export_dir / filename
 
 
@@ -278,7 +286,7 @@ def _print_sharing_guide(filepath: Path, ref1: tuple, ref2: tuple) -> None:
 def _run_import(state: AutoClickerState) -> None:
     """Import in Stufen: Datei → Manifest zeigen → Umrechnung → Umfang → importieren."""
     print(header("IMPORT"))
-    filepath = _choose_bundle()
+    filepath = _choose_bundle(state)
     if filepath is None:
         return
 
@@ -323,27 +331,31 @@ def _run_import(state: AutoClickerState) -> None:
 _CANCELLED = object()
 
 
-def _choose_bundle():
-    """Die ZIP-Datei: aus `exports/` und dem Arbeitsordner (neueste zuerst) oder ein Pfad."""
-    candidates = []
-    export_dir = Path("exports")
-    if export_dir.exists():
-        candidates.extend(sorted(export_dir.glob("*.zip"),
-                                 key=lambda f: f.stat().st_mtime, reverse=True))
-    candidates.extend(sorted(Path(".").glob("*.zip"),
-                             key=lambda f: f.stat().st_mtime, reverse=True))
+def _choose_bundle(state: AutoClickerState):
+    """Die ZIP-Datei: aus Teilen-Ordner, `exports/` und Arbeitsordner (neueste zuerst) oder ein Pfad.
+
+    Teilen-Ordner und `exports/` liefert `list_bundles()` — dieselbe Liste wie
+    im Studio; der Arbeitsordner kommt hier dazu, weil man ein empfangenes
+    Bündel in der Konsole gern einfach neben `main.py` legt.
+    """
+    from ..import_export import list_bundles
+    entries = [(Path(e["path"]), e["shared"]) for e in list_bundles(state.config)]
+    entries.extend((f, False) for f in sorted(Path(".").glob("*.zip"),
+                                              key=lambda f: f.stat().st_mtime, reverse=True))
     by_path = {}
-    for f in candidates:                     # eine Datei, die in beiden liegt, einmal
-        by_path.setdefault(f.resolve(), f)
+    for f, shared in entries:                # eine Datei, die doppelt liegt, einmal
+        by_path.setdefault(f.resolve(), (f, shared))
     unique_zips = list(by_path.values())
 
     if not unique_zips:
-        print("\n  Keine ZIP-Dateien in ./exports/ oder ./ gefunden.")
+        print("\n  Keine ZIP-Dateien im Teilen-Ordner, in ./exports/ oder ./ gefunden.")
         return _ask_filepath()
 
     print("\n  Gefundene ZIP-Dateien:")
-    shown = unique_zips[:10]
-    options = [f"{f.name} ({f.stat().st_size / 1024:.1f} KB)" for f in shown]
+    shown = [f for f, _ in unique_zips[:10]]
+    options = [f"{f.name} ({f.stat().st_size / 1024:.1f} KB)"
+               + (" · Teilen-Ordner" if shared else "")
+               for f, shared in unique_zips[:10]]
     options.append("Anderen Pfad eingeben...")
     choice = interactive_select(options)
     if choice < 0:

@@ -241,6 +241,11 @@ class AppConfig:
     # (persistence/sweep.py). Nur ausschalten, wenn man Altbestand absichtlich einfrieren
     # will - dann raeumt `tools/migrate.py --write` von Hand auf.
     migrate_on_start: bool = True
+    # Ordner, in den der Teilen-Reiter seine Bündel schreibt und aus dem er sie
+    # zusätzlich zu exports/ anbietet — gedacht für OneDrive & Co., damit andere
+    # PCs sie dort finden. Leer = nur exports/. Gilt nur auf diesem PC: reist
+    # nicht mit einem Bündel mit (import_export._SENSITIVE_CONFIG_KEYS).
+    share_folder: str = ""
 
     # === DEBUG-EINSTELLUNGEN ===
     # Zwei getrennt schaltbare Ausgabe-Stufen (s. runtime/debug.py); keine veraendert
@@ -422,7 +427,7 @@ _CONFIG_SECTIONS = [
         "timing_pause_interval",
     ]),
     ("Dateien", [
-        "migrate_on_start",
+        "migrate_on_start", "share_folder",
     ]),
     ("Fehlersuche", [
         "debug_log", "debug_detail",

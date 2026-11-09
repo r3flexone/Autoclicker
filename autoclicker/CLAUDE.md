@@ -353,6 +353,38 @@ es die Marker-Farben.
   `sequence.json` und werden dort genau einmal umgerechnet. Mitgerechnet wäre
   jeder Bibliotheks-Klick zweimal verschoben.
 
+  **Der Teilen-Ordner (`share_folder`) teilt BÜNDEL, nicht `sequences/`.** Der
+  Nutzer wollte einen Ordner für OneDrive & Co.; den Sequenzordner selbst dort
+  hineinzulegen wäre der kürzere Weg und der falsche: jeder PC hat eigene
+  Monitore und Fensterlage, und erst der Import rechnet die Punkte um — ein
+  synchronisiertes `sequences/` übernähme sie 1:1. Dazu kämen Konfliktkopien,
+  sobald zwei PCs gleichzeitig speichern, und Vorlagen, die OneDrive „bei
+  Bedarf“ noch gar nicht heruntergeladen hat, wenn der Scan sie braucht.
+  `export_target()` sagt, wohin geschrieben wird, `list_bundles()` was zum
+  Einlesen daliegt — Studio und Konsole fragen beide dieselben zwei Funktionen.
+  Sechs Regeln:
+
+  - **Kein stilles Ausweichen.** Ist der Ordner eingestellt, aber nicht da,
+    wird nicht exportiert. Ein Bündel unter `exports/` käme auf keinem anderen
+    PC an, und genau dafür war der Ordner eingestellt.
+  - **Geschrieben wird unter `<datei>.part`**, erst am Ende umbenannt. Sonst
+    sähe der andere PC ein halbes ZIP, und ein Export, der mittendrin
+    scheitert, schnitte das alte Bündel ab — die Fassung, die die anderen PCs
+    gerade haben.
+  - **Die Liste öffnet keine Datei.** Manifeste liest erst `read_manifest()` für
+    das eine angeklickte Bündel; sonst holte jeder Blick in den Reiter jedes
+    Bündel aus der Cloud.
+  - **Der Pfad reist nicht mit** (`_SENSITIVE_CONFIG_KEYS`): er heisst auf
+    jedem PC anders.
+  - **Die Sicherung vor einer Kalibrierung bleibt unter `exports/`** — sie
+    gehört diesem PC.
+  - **Ein Bündel trägt `created`** (Ortszeit). Die Dateizeit sagt nach einem
+    Sync nur, wann es HIER ankam. Bis dahin las der Teilen-Reiter das Feld,
+    und der Export schrieb es nie.
+
+  `export_bundle(sequences=[…])` nimmt einzelne Sequenzen; ein Name, den es
+  nicht gibt, ist ein Fehler statt eines stillen Weglassens.
+
 ## Fernstart über Discord (`remote/`)
 
 **Wozu:** mehrere PCs, jeder mit eigenem Autoclicker, starten dieselbe
